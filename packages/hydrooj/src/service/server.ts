@@ -1,6 +1,8 @@
 import http from 'http';
-import { resolve } from 'path';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
 import cac from 'cac';
+import type { Files } from 'formidable';
 import fs from 'fs-extra';
 import Koa from 'koa';
 import Body from 'koa-body';
@@ -11,11 +13,13 @@ import WebSocket from 'ws';
 import { Counter, isClass, parseMemoryMB } from '@hydrooj/utils/lib/utils';
 import { Context, Service } from '../context';
 import {
-    HydroError, InvalidOperationError, MethodNotAllowedError,
-    NotFoundError, PermissionError, PrivilegeError,
-    UserFacingError,
+    CsrfTokenError, HydroError, InvalidOperationError,
+    MethodNotAllowedError, NotFoundError, PermissionError,
+    PrivilegeError, UserFacingError,
 } from '../error';
 import { DomainDoc } from '../interface';
+import serializer from '../lib/serializer';
+import { Types } from '../lib/validator';
 import { Logger } from '../logger';
 import { PERM, PRIV } from '../model/builtin';
 import * as opcount from '../model/opcount';
@@ -34,6 +38,7 @@ import { Router } from './router';
 import { encodeRFC5987ValueChars } from './storage';
 
 export * from './decorators';
+export * from '../lib/validator';
 
 export interface HydroRequest {
     method: string;
@@ -79,6 +84,7 @@ interface HydroContext {
 export interface KoaContext extends Koa.Context {
     HydroContext: HydroContext;
     handler: any;
+    request: Koa.Request & { body: any, files: Files };
     session: Record<string, any>;
     render: (name: string, args: any) => Promise<void>;
     renderHTML: (name: string, args: any) => Promise<string>;
@@ -95,6 +101,7 @@ export const router = new Router();
 export const httpServer = http.createServer(app.callback());
 export const wsServer = new WebSocket.Server({ server: httpServer });
 export const captureAllRoutes = {};
+app.proxy = !!system.get('server.xproxy') || !!system.get('server.xff');
 app.on('error', (error) => {
     if (error.code !== 'EPIPE' && error.code !== 'ECONNRESET' && !error.message.includes('Parse Error')) {
         logger.error('Koa app-level error', { error });
@@ -105,12 +112,6 @@ wsServer.on('error', (error) => {
 });
 
 const ignoredLimit = `,${argv.options.ignoredLimit},`;
-const serializer = (showDisplayName = false) => (k: string, v: any) => {
-    if (k.startsWith('_') && k !== '_id') return undefined;
-    if (typeof v === 'bigint') return `BigInt::${v.toString()}`;
-    if (v instanceof User && !showDisplayName) delete v.displayName;
-    return v;
-};
 
 export class HandlerCommon {
     render: (name: string, args?: any) => Promise<void>;
@@ -166,7 +167,8 @@ export class HandlerCommon {
 export class Handler extends HandlerCommon {
     loginMethods: any;
     noCheckPermView = false;
-    __param: Record<string, decorators.ParamOption[]>;
+    allowCors = false;
+    __param: Record<string, decorators.ParamOption<any>[]>;
 
     back(body?: any) {
         this.response.body = body || this.response.body || {};
@@ -180,7 +182,16 @@ export class Handler extends HandlerCommon {
         if (name) this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(name)}"`;
     }
 
+    // This is beta API, may be changed in the future.
+    progress(message: string) {
+        Hydro.model.message.sendInfo(this.user._id, message);
+    }
+
     async init() {
+        if (this.request.method === 'post' && this.request.headers.referer && !this.context.cors && !this.allowCors) {
+            const host = new URL(this.request.headers.referer).host;
+            if (host !== this.request.host) this.context.pendingError = new CsrfTokenError(host);
+        }
         if (!argv.options.benchmark) await this.limitRate('global', 5, 100);
         if (!this.noCheckPermView && !this.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)) this.checkPerm(PERM.PERM_VIEW);
         this.loginMethods = Object.keys(global.Hydro.module.oauth)
@@ -193,9 +204,9 @@ export class Handler extends HandlerCommon {
     }
 
     async onerror(error: HydroError) {
-        if (!error.msg) error.msg = () => error.message;
+        error.msg ||= () => error.message;
         if (error instanceof UserFacingError && !process.env.DEV) error.stack = '';
-        if (!(error instanceof NotFoundError)) {
+        if (!(error instanceof NotFoundError) && !('nolog' in error)) {
             // eslint-disable-next-line max-len
             logger.error(`User: ${this.user._id}(${this.user.uname}) ${this.request.method}: /d/${this.domain._id}${this.request.path}`, error.msg(), error.params);
             if (error.stack) logger.error(error.stack);
@@ -253,16 +264,18 @@ async function handle(ctx: KoaContext, HandlerClass, checker) {
 
         const name = HandlerClass.name.replace(/Handler$/, '');
         const steps = [
-            'init', 'handler/init', `handler/before-prepare/${name}`, 'handler/before-prepare',
-            'log/__prepare', '__prepare', '_prepare', 'prepare',
-            'log/__prepareDone', `handler/before/${name}`, 'handler/before',
+            'init', 'handler/init',
+            `handler/before-prepare/${name}#${method}`, `handler/before-prepare/${name}`, 'handler/before-prepare',
+            'log/__prepare', '__prepare', '_prepare', 'prepare', 'log/__prepareDone',
+            `handler/before/${name}#${method}`, `handler/before/${name}`, 'handler/before',
             'log/__method', 'all', method, 'log/__methodDone',
             ...operation ? [
                 `handler/before-operation/${name}`, 'handler/before-operation',
                 `post${operation}`, 'log/__operationDone',
             ] : [], 'after',
-            `handler/after/${name}`, 'handler/after', 'cleanup',
-            `handler/finish/${name}`, 'handler/finish',
+            `handler/after/${name}#${method}`, `handler/after/${name}`, 'handler/after',
+            'cleanup',
+            `handler/finish/${name}#${method}`, `handler/finish/${name}`, 'handler/finish',
         ];
 
         let current = 0;
@@ -330,7 +343,9 @@ export class ConnectionHandler extends HandlerCommon {
     conn: WebSocket;
 
     send(data: any) {
-        this.conn.send(JSON.stringify(data, serializer(this.user?.hasPerm(PERM.PREM_VIEW_DISPLAYNAME))));
+        this.conn.send(JSON.stringify(data, serializer({
+            showDisplayName: this.user?.hasPerm(PERM.PREM_VIEW_DISPLAYNAME),
+        })));
     }
 
     close(code: number, reason: string) {
@@ -368,19 +383,41 @@ export function Connection(
         await bus.parallel('connection/create', h);
         ctx.handler = h;
         h.conn = conn;
+        const disposables = [];
         try {
             checker.call(h);
             if (h._prepare) await h._prepare(args);
             if (h.prepare) await h.prepare(args);
-            if (h.message) {
-                conn.onmessage = (e) => {
-                    h.message(JSON.parse(e.data.toString()));
-                };
-            }
-            conn.onclose = () => {
+            // eslint-disable-next-line @typescript-eslint/no-shadow
+            for (const { name, target } of h.__subscribe || []) disposables.push(bus.on(name, target.bind(h)));
+            let lastHeartbeat = Date.now();
+            let closed = false;
+            let interval: NodeJS.Timer;
+            const clean = () => {
+                if (closed) return;
+                closed = true;
                 bus.emit('connection/close', h);
+                if (interval) clearInterval(interval);
+                disposables.forEach((d) => d());
                 h.cleanup?.(args);
             };
+            interval = setInterval(() => {
+                if (Date.now() - lastHeartbeat > 80000) {
+                    clean();
+                    conn.terminate();
+                }
+                if (Date.now() - lastHeartbeat > 30000) conn.send('ping');
+            }, 40000);
+            conn.onmessage = (e) => {
+                lastHeartbeat = Date.now();
+                if (e.data === 'pong') return;
+                if (e.data === 'ping') {
+                    conn.send('pong');
+                    return;
+                }
+                h.message?.(JSON.parse(e.data.toString()));
+            };
+            conn.onclose = clean;
             await bus.parallel('connection/active', h);
         } catch (e) {
             await h.onerror(e);
@@ -456,7 +493,22 @@ export async function apply(pluginContext: Context) {
         changeOrigin: true,
         rewrite: (p) => p.replace('/fs', ''),
     });
+    const corsAllowHeaders = 'x-requested-with, accept, origin, content-type, upgrade-insecure-requests';
     app.use(async (ctx, next) => {
+        if (ctx.request.headers.origin) {
+            const host = new URL(ctx.request.headers.origin).host;
+            if (host !== ctx.request.headers.host && `,${system.get('server.cors')},`.includes(`,${host},`)) {
+                ctx.set('Access-Control-Allow-Credentials', 'true');
+                ctx.set('Access-Control-Allow-Origin', ctx.request.headers.origin);
+                ctx.set('Access-Control-Allow-Headers', corsAllowHeaders);
+                ctx.set('Vary', 'Origin');
+                ctx.cors = true;
+            }
+        }
+        if (ctx.request.method.toLowerCase() === 'options') {
+            ctx.body = 'ok';
+            return null;
+        }
         for (const key in captureAllRoutes) {
             if (ctx.path.startsWith(key)) return captureAllRoutes[key](ctx, next);
         }
@@ -484,14 +536,22 @@ export async function apply(pluginContext: Context) {
 ${ctx.response.status} ${endTime - startTime}ms ${ctx.response.length}`);
         });
     }
+    const uploadDir = join(tmpdir(), 'hydro', 'upload', process.env.NODE_APP_INSTANCE || '0');
+    fs.ensureDirSync(uploadDir);
+    logger.debug('Using upload dir: %s', uploadDir);
     app.use(Body({
         multipart: true,
         jsonLimit: '8mb',
         formLimit: '8mb',
         formidable: {
+            uploadDir,
             maxFileSize: parseMemoryMB(system.get('server.upload') || '256m') * 1024 * 1024,
+            keepExtensions: true,
         },
     }));
+    pluginContext.on('app/exit', () => {
+        fs.emptyDirSync(uploadDir);
+    });
     const layers = [baseLayer, rendererLayer(router, logger), responseLayer(logger), userLayer];
     app.use(async (ctx, next) => await next().catch(console.error)).use(domainLayer);
     app.use(router.routes()).use(router.allowedMethods());
@@ -513,7 +573,7 @@ ${ctx.response.status} ${endTime - startTime}ms ${ctx.response.length}`);
         socket.close();
     });
     const port = system.get('server.port');
-    pluginContext.on('app/ready', async () => {
+    pluginContext.on('app/listen', async () => {
         await new Promise((r) => {
             httpServer.listen(argv.options.port || port, () => {
                 logger.success('Server listening at: %d', argv.options.port || port);
@@ -529,6 +589,7 @@ ${ctx.response.status} ${endTime - startTime}ms ${ctx.response.length}`);
 
 global.Hydro.service.server = {
     ...decorators,
+    Types,
     app,
     httpServer,
     wsServer,

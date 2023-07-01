@@ -1,9 +1,8 @@
 /* eslint-disable global-require */
-/* eslint-disable import/no-extraneous-dependencies */
 import { CleanWebpackPlugin } from 'clean-webpack-plugin';
 import CopyWebpackPlugin from 'copy-webpack-plugin';
 import { ESBuildMinifyPlugin } from 'esbuild-loader';
-import FriendlyErrorsPlugin from 'friendly-errors-webpack-plugin';
+import { DuplicatesPlugin } from 'inspectpack/plugin';
 import ExtractCssPlugin from 'mini-css-extract-plugin';
 import MonacoWebpackPlugin from 'monaco-editor-webpack-plugin';
 import { dirname } from 'path';
@@ -55,7 +54,7 @@ export default function (env: { watch?: boolean, production?: boolean, measure?:
       options: {
         stylusOptions: {
           preferPathResolver: 'webpack',
-          use: [require('rupture')()], // eslint-disable-line global-require
+          use: [require('rupture')()],
           import: ['~vj/common/common.inc.styl'],
         },
       },
@@ -128,7 +127,7 @@ export default function (env: { watch?: boolean, production?: boolean, measure?:
               const p = pathData.module.resource.replace(/\\/g, '/');
               const filename = p.split('/').pop();
               if (p.includes('node_modules')) {
-                const extra = p.split('node_modules')[1];
+                const extra = p.split('node_modules/').pop();
                 const moduleName = extra.split('/')[0];
                 if (extra.includes('@fontsource')) {
                   return `fonts/${filename}?[hash:6]`;
@@ -190,15 +189,17 @@ export default function (env: { watch?: boolean, production?: boolean, measure?:
         automaticNameDelimiter: '-',
         cacheGroups: {
           style: {
-            test: /\.(css|styl|less|s[ac]ss)$/,
             priority: 99,
-            name: 'style',
+            name: 'theme',
+            type: 'css/mini-extract',
+            chunks: 'all',
+            enforce: true,
           },
           vendors: {
             test: /[\\/]node_modules[\\/].+\.([jt]sx?|json|yaml)$/,
             priority: -10,
             name(module) {
-              const packageName = module.context.match(/[\\/]node_modules[\\/](.*?)([\\/]|$)/)[1];
+              const packageName = module.context.replace(/\\/g, '/').split('node_modules/').pop().split('/')[0];
               if (packageName === 'monaco-editor-nls') {
                 return `i.monaco.${module.userRequest.split('/').pop().split('.')[0]}`;
               }
@@ -242,7 +243,6 @@ export default function (env: { watch?: boolean, production?: boolean, measure?:
         filename: '[name].css?[fullhash:6]',
       }),
       new WebpackManifestPlugin({}),
-      new FriendlyErrorsPlugin(),
       new webpack.IgnorePlugin({ resourceRegExp: /(^\.\/locale$|mathjax|abcjs|vditor.+\.d\.ts)/ }),
       new CopyWebpackPlugin({
         patterns: [
@@ -262,6 +262,7 @@ export default function (env: { watch?: boolean, production?: boolean, measure?:
         minChunkSize: 128000,
       }),
       new webpack.NormalModuleReplacementPlugin(/\/(vscode-)?nls\.js/, require.resolve('../../components/monaco/nls')),
+      new webpack.NormalModuleReplacementPlugin(/^prettier[$/]/, root('../../modules/nop.ts')),
       new MonacoWebpackPlugin({
         filename: '[name].[hash:6].worker.js',
         customLanguages: [{
@@ -273,7 +274,10 @@ export default function (env: { watch?: boolean, production?: boolean, measure?:
           },
         }],
       }),
-      ...env.measure ? [new BundleAnalyzerPlugin({ analyzerPort: 'auto' })] : [],
+      ...env.measure ? [
+        new BundleAnalyzerPlugin({ analyzerPort: 'auto' }),
+        new DuplicatesPlugin(),
+      ] : [],
     ],
   };
 

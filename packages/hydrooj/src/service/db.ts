@@ -1,7 +1,8 @@
 /* eslint-disable no-await-in-loop */
 import {
-    Collection, Db, IndexSpecification, MongoClient,
+    Collection, Db, IndexDescription, MongoClient, WriteConcern,
 } from 'mongodb';
+import { Time } from '@hydrooj/utils';
 import { Logger } from '../logger';
 import options from '../options';
 import * as bus from './bus';
@@ -17,6 +18,7 @@ interface MongoConfig {
     port?: string,
     name?: string,
     url?: string,
+    uri?: string,
     prefix?: string,
 }
 
@@ -29,7 +31,7 @@ class MongoService {
         let mongourl = `${opts.protocol || 'mongodb'}://`;
         if (opts.username) mongourl += `${opts.username}:${encodeURIComponent(opts.password)}@`;
         mongourl += `${opts.host}:${opts.port}/${opts.name}`;
-        if (opts.url) mongourl = opts.url;
+        if (opts.url || opts.uri) mongourl = opts.url || opts.uri;
         return mongourl;
     }
 
@@ -42,17 +44,35 @@ class MongoService {
             mongourl = mongod.getUri();
         }
         this.opts = opts;
-        this.client = await MongoClient.connect(mongourl, { useNewUrlParser: true, useUnifiedTopology: true });
+        this.client = await MongoClient.connect(mongourl, {
+            readPreference: 'nearest',
+            writeConcern: new WriteConcern('majority'),
+        });
         this.db = this.client.db(opts.name || 'hydro');
         await bus.parallel('database/connect', this.db);
+        setInterval(() => this.fixExpireAfter(), Time.hour);
     }
 
-    public collection<K extends keyof Collections>(c: K): Collection<Collections[K]> {
-        if (this.opts.prefix) return this.db.collection(`${this.opts.prefix}.${c}`);
-        return this.db.collection(c);
+    public collection<K extends keyof Collections>(c: K) {
+        if (this.opts.prefix) return this.db.collection<Collections[K]>(`${this.opts.prefix}.${c}`);
+        return this.db.collection<Collections[K]>(c);
     }
 
-    public async ensureIndexes<T>(coll: Collection<T>, ...args: IndexSpecification[]) {
+    public async fixExpireAfter() {
+        // Sometimes mongo's expireAfterSeconds is not working in non-replica set mode;
+        const collections = await this.db.listCollections().toArray();
+        for (const c of collections) {
+            const coll = this.db.collection(c.name);
+            const indexes = await coll.listIndexes().toArray();
+            for (const i of indexes) {
+                if (typeof i.expireAfterSeconds !== 'number') continue;
+                const key = Object.keys(i.key)[0];
+                await coll.deleteMany({ [key]: { $lt: new Date(Date.now() - i.expireAfterSeconds * 1000) } });
+            }
+        }
+    }
+
+    public async ensureIndexes<T>(coll: Collection<T>, ...args: IndexDescription[]) {
         if (process.env.NODE_APP_INSTANCE !== '0') return;
         let existed: any[];
         try {

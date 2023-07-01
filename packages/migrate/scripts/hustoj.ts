@@ -1,10 +1,11 @@
 /* eslint-disable no-tabs */
 /* eslint-disable no-await-in-loop */
-import mysql from 'mysql';
+import path from 'path';
+import mariadb from 'mariadb';
 import TurndownService from 'turndown';
 import {
-    buildContent, ContestModel, DomainModel, fs, noop, NotFoundError, ObjectID, postJudge, ProblemModel,
-    RecordDoc, RecordModel, SolutionModel, STATUS, SystemModel, Time, UserModel,
+    _, buildContent, ContestModel, DomainModel, fs, noop, NotFoundError, ObjectId, postJudge, ProblemModel,
+    RecordDoc, RecordModel, SolutionModel, STATUS, StorageModel, SystemModel, Time, UserModel,
 } from 'hydrooj';
 
 const turndown = new TurndownService({
@@ -48,26 +49,31 @@ const nameMap: Record<string, string> = {
     'test.in': 'test0.in',
     'test.out': 'test0.out',
 };
+
+async function addContestFile(domainId: string, tid: ObjectId, filename: string, filepath: string) {
+    const tdoc = await ContestModel.get(domainId, tid);
+    await StorageModel.put(`contest/${domainId}/${tid}/${filename}`, filepath, 1);
+    const meta = await StorageModel.getMeta(`contest/${domainId}/${tid}/${filename}`);
+    const payload = { _id: filename, name: filename, ..._.pick(meta, ['size', 'lastModified', 'etag']) };
+    if (!meta) return false;
+    await ContestModel.edit(domainId, tid, { files: [...(tdoc.files || []), payload] });
+    return true;
+}
+
 export async function run({
     host = 'localhost', port = 3306, name = 'jol',
     username, password, domainId, contestType = 'oi',
-    dataDir, rerun = true, randomMail = false,
+    dataDir, uploadDir = '/home/judge/src/web/upload/', rerun = true, randomMail = false,
 }, report: Function) {
-    const src = mysql.createConnection({
+    const src = await mariadb.createConnection({
         host,
         port,
         user: username,
         password,
         database: name,
     });
-    await new Promise((resolve, reject) => {
-        src.connect((err) => (err ? reject(err) : resolve(null)));
-    });
-    const query = (q: string | mysql.Query) => new Promise<[values: any[], fields: mysql.FieldInfo[]]>((res, rej) => {
-        src.query(q, (err, val, fields) => {
-            if (err) rej(err);
-            else res([val, fields]);
-        });
+    const query = (q: string) => new Promise<any[]>((res, rej) => {
+        src.query(q).then((r) => res(r)).catch((e) => rej(e));
     });
     const target = await DomainModel.get(domainId);
     if (!target) throw new NotFoundError(domainId);
@@ -88,13 +94,13 @@ export async function run({
         school      varchar	100	N	用户所在学校
     */
     const uidMap: Record<string, number> = {};
-    const [udocs] = await query('SELECT * FROM `users`');
+    const udocs = await query('SELECT * FROM `users`');
     const precheck = await UserModel.getMulti({ unameLower: { $in: udocs.map((u) => u.user_id.toLowerCase()) } }).toArray();
     if (precheck.length) throw new Error(`Conflict username: ${precheck.map((u) => u.unameLower).join(', ')}`);
     for (const udoc of udocs) {
         if (randomMail) delete udoc.email;
         let current = await UserModel.getByEmail(domainId, udoc.email || `${udoc.user_id}@hustoj.local`);
-        if (!current) current = await UserModel.getByUname(domainId, udoc.user_id);
+        current ||= await UserModel.getByUname(domainId, udoc.user_id);
         if (current) {
             report({ message: `duplicate user with email ${udoc.email}: ${current.uname},${udoc.user_id}` });
             uidMap[udoc.user_id] = current._id;
@@ -121,7 +127,7 @@ export async function run({
         }
     }
 
-    const [admins] = await query("SELECT * FROM `privilege` WHERE `rightstr` = 'administrator'");
+    const admins = await query("SELECT * FROM `privilege` WHERE `rightstr` = 'administrator'");
     for (const admin of admins) await DomainModel.setUserRole(domainId, uidMap[admin.user_id], 'root');
     const adminUids = admins.map((admin) => uidMap[admin.user_id]);
     report({ message: 'user finished' });
@@ -148,32 +154,41 @@ export async function run({
         solution #optional
     */
     const pidMap: Record<string, number> = {};
-    const [[{ 'count(*)': pcount }]] = await query('SELECT count(*) FROM `problem`');
+    const [{ 'count(*)': pcount }] = await query('SELECT count(*) FROM `problem`');
     const step = 50;
-    const pageCount = Math.ceil(pcount / step);
+    const pageCount = Math.ceil(Number(pcount) / step);
     for (let pageId = 0; pageId < pageCount; pageId++) {
-        const [pdocs] = await query(`SELECT * FROM \`problem\` LIMIT ${pageId * step}, ${step}`);
+        const pdocs = await query(`SELECT * FROM \`problem\` LIMIT ${pageId * step}, ${step}`);
         for (const pdoc of pdocs) {
             if (rerun) {
                 const opdoc = await ProblemModel.get(domainId, `P${pdoc.problem_id}`);
                 if (opdoc) pidMap[pdoc.problem_id] = opdoc.docId;
             }
             if (!pidMap[pdoc.problem_id]) {
+                const files = {};
+                let content = buildContent({
+                    description: pdoc.description,
+                    input: pdoc.input,
+                    output: pdoc.output,
+                    samples: [[pdoc.sample_input.trim(), pdoc.sample_output.trim()]],
+                    hint: pdoc.hint,
+                    source: pdoc.source,
+                }, 'html');
+                const uploadFiles = content.matchAll(/(?:src|href)="\/upload\/([^"]+\/([^"]+))"/g);
+                for (const file of uploadFiles) {
+                    files[file[2]] = await fs.readFile(path.join(uploadDir, file[1]));
+                    content = content.replace(`/upload/${file[1]}`, `file://${file[2]}`);
+                }
                 const pid = await ProblemModel.add(
                     domainId, `P${pdoc.problem_id}`,
-                    pdoc.title, buildContent({
-                        description: pdoc.description,
-                        input: pdoc.input,
-                        output: pdoc.output,
-                        samples: [[pdoc.sample_input.trim(), pdoc.sample_output.trim()]],
-                        hint: pdoc.hint,
-                        source: pdoc.source,
-                    }, 'html'),
+                    pdoc.title, content,
                     1, pdoc.source.split(' ').map((i) => i.trim()).filter((i) => i), pdoc.defunct === 'Y',
                 );
                 pidMap[pdoc.problem_id] = pid;
+                await Promise.all(Object.keys(files).map((filename) => ProblemModel.addAdditionalFile(domainId, pid, filename, files[filename])));
+                if (Object.keys(files).length) report({ message: `move ${Object.keys(files).length} file for problem ${pid}` });
             }
-            const [cdoc] = await query(`SELECT * FROM \`privilege\` WHERE \`rightstr\` = 'p${pdoc.problem_id}'`);
+            const cdoc = await query(`SELECT * FROM \`privilege\` WHERE \`rightstr\` = 'p${pdoc.problem_id}'`);
             const maintainer = [];
             for (let i = 1; i < cdoc.length; i++) maintainer.push(uidMap[cdoc[i].user_id]);
             await ProblemModel.edit(domainId, pidMap[pdoc.problem_id], {
@@ -205,19 +220,27 @@ export async function run({
         user_id	char(48)			允许参加比赛用户列表
     */
     const tidMap: Record<string, string> = {};
-    const [tdocs] = await query('SELECT * FROM `contest`');
+    const tdocs = await query('SELECT * FROM `contest`');
     for (const tdoc of tdocs) {
-        const [pdocs] = await query(`SELECT * FROM \`contest_problem\` WHERE \`contest_id\` = ${tdoc.contest_id}`);
+        const pdocs = await query(`SELECT * FROM \`contest_problem\` WHERE \`contest_id\` = ${tdoc.contest_id}`);
         const pids = pdocs.map((i) => pidMap[i.problem_id]).filter((i) => i);
+        const files = {};
+        let description = tdoc.description;
+        const uploadFiles = description.matchAll(/(?:src|href)="\/upload\/([^"]+\/([^"]+))"/g);
+        for (const file of uploadFiles) {
+            files[file[2]] = await fs.readFile(path.join(uploadDir, file[1]));
+            description = description.replace(`/upload/${file[1]}`, `file://${file[2]}`);
+        }
         const tid = await ContestModel.add(
             domainId, tdoc.title, tdoc.description || 'Description',
             adminUids[0], contestType, tdoc.start_time, tdoc.end_time, pids, true,
             { _code: password },
         );
         tidMap[tdoc.contest_id] = tid.toHexString();
+        await Promise.all(Object.keys(files).map((filename) => addContestFile(domainId, tid, filename, files[filename])));
+        if (Object.keys(files).length) report({ message: `move ${Object.keys(files).length} file for contest ${tidMap[tdoc.contest_id]}` });
     }
     report({ message: 'contest finished' });
-
     /*
         solution	程序运行结果记录
         字段名	类型	长度	是否允许为空	备注
@@ -239,10 +262,10 @@ export async function run({
         lint_error	int		N	？？？
         judger	char(16)		N	判题机
     */
-    const [[{ 'count(*)': rcount }]] = await query('SELECT count(*) FROM `solution`');
-    const rpageCount = Math.ceil(rcount / step);
+    const [{ 'count(*)': rcount }] = await query('SELECT count(*) FROM `solution`');
+    const rpageCount = Math.ceil(Number(rcount) / step);
     for (let pageId = 0; pageId < rpageCount; pageId++) {
-        const [rdocs] = await query(`SELECT * FROM \`solution\` LIMIT ${pageId * step}, ${step}`);
+        const rdocs = await query(`SELECT * FROM \`solution\` LIMIT ${pageId * step}, ${step}`);
         for (const rdoc of rdocs) {
             const data: RecordDoc = {
                 status: statusMap[rdoc.result] || 0,
@@ -262,14 +285,14 @@ export async function run({
                 rejudged: false,
                 judger: 1,
             };
-            const [ceInfo] = await query(`SELECT \`error\` FROM \`compileinfo\` WHERE \`solution_id\` = ${rdoc.solution_id}`);
+            const ceInfo = await query(`SELECT \`error\` FROM \`compileinfo\` WHERE \`solution_id\` = ${rdoc.solution_id}`);
             if (ceInfo[0]?.error) data.judgeTexts.push(ceInfo[0].error);
-            const [rtInfo] = await query(`SELECT \`error\` FROM \`runtimeinfo\` WHERE \`solution_id\` = ${rdoc.solution_id}`);
+            const rtInfo = await query(`SELECT \`error\` FROM \`runtimeinfo\` WHERE \`solution_id\` = ${rdoc.solution_id}`);
             if (rtInfo[0]?.error) data.judgeTexts.push(rtInfo[0].error);
-            const [source] = await query(`SELECT \`source\` FROM \`source_code\` WHERE \`solution_id\` = ${rdoc.solution_id}`);
+            const source = await query(`SELECT \`source\` FROM \`source_code\` WHERE \`solution_id\` = ${rdoc.solution_id}`);
             if (source[0]?.source) data.code = source[0].source;
             if (rdoc.contest_id) {
-                data.contest = new ObjectID(tidMap[rdoc.contest_id]);
+                data.contest = new ObjectId(tidMap[rdoc.contest_id]);
                 await ContestModel.attend(domainId, data.contest, uidMap[rdoc.user_id]).catch(noop);
             }
             await RecordModel.coll.insertOne(data);

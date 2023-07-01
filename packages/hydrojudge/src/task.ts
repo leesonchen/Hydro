@@ -1,10 +1,8 @@
-import path from 'path';
-import fs from 'fs-extra';
-import { noop } from 'lodash';
+import { fs } from '@hydrooj/utils';
 import { LangConfig } from '@hydrooj/utils/lib/lang';
 import { STATUS } from '@hydrooj/utils/lib/status';
 import type {
-    FileInfo, JudgeMeta, JudgeRequest, JudgeResultBody,
+    FileInfo, JudgeMeta, JudgeRequest, JudgeResultBody, TestCase,
 } from 'hydrooj';
 import readCases from './cases';
 import { getConfig } from './config';
@@ -13,8 +11,7 @@ import { NextFunction, ParsedConfig } from './interface';
 import judge from './judge';
 import { Logger } from './log';
 import { CopyInFile } from './sandbox';
-import * as tmpfs from './tmpfs';
-import { compilerText, Lock, md5 } from './utils';
+import { compilerText, md5 } from './utils';
 
 interface Session {
     getLang: (name: string) => LangConfig;
@@ -33,17 +30,17 @@ export class JudgeTask {
     rid: string;
     lang: string;
     code: CopyInFile;
-    tmpdir: string;
     input?: string;
-    clean: (() => Promise<any>)[];
+    clean: (() => Promise<any>)[] = [];
     data: FileInfo[];
     folder: string;
     config: ParsedConfig;
     meta: JudgeMeta;
-    files?:Record<string, string>;
+    files?: Record<string, string>;
     next: (data: Partial<JudgeResultBody>) => void;
     end: (data: Partial<JudgeResultBody>) => void;
     env: Record<string, string>;
+    callbackCache?: TestCase[];
 
     constructor(public session: Session, public request: JudgeRequest) {
         this.stat = {};
@@ -69,16 +66,11 @@ export class JudgeTask {
                 HYDRO_DOMAIN: this.request.domainId.toString(),
                 HYDRO_RECORD: this.rid,
                 HYDRO_LANG: this.lang,
-                HYDRO_USER: this.request.uid.toString(),
+                HYDRO_USER: (this.request.uid || 0).toString(),
                 HYDRO_CONTEST: tid,
             };
             this.next = this.session.getNext(this);
             this.end = this.session.getEnd(this);
-            this.tmpdir = path.resolve(getConfig('tmp_dir'), this.rid);
-            this.clean = [];
-            await Lock.acquire(`${host}/${this.source}/${this.rid}`);
-            fs.ensureDirSync(this.tmpdir);
-            tmpfs.mount(this.tmpdir, getConfig('tmpfs_size'));
             logger.info('Submission: %s/%s/%s', host, this.source, this.rid);
             await this.doSubmission();
         } catch (e) {
@@ -101,11 +93,8 @@ export class JudgeTask {
                 });
             }
         } finally {
-            Lock.release(`${host}/${this.source}/${this.rid}`);
             // eslint-disable-next-line no-await-in-loop
-            for (const clean of this.clean) await clean()?.catch(noop);
-            tmpfs.umount(this.tmpdir);
-            fs.removeSync(this.tmpdir);
+            for (const clean of this.clean) await clean()?.catch(() => null);
         }
     }
 
@@ -128,6 +117,8 @@ export class JudgeTask {
                 next: this.next,
                 isSelfSubmission: this.meta.problemOwner === this.request.uid,
                 key: md5(`${this.source}/${getConfig('secret')}`),
+                lang: this.lang,
+                langConfig: ['objective', 'submit_answer'].includes(this.request.config.type) ? null : this.session.getLang(this.lang),
             },
         );
         this.stat.judge = new Date();

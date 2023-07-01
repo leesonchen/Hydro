@@ -2,7 +2,7 @@
 import mariadb from 'mariadb';
 import {
     buildContent, ContestModel, DiscussionDoc, DiscussionReplyDoc, DocumentModel, DomainModel,
-    fs, noop, NotFoundError, ObjectID, PERM, postJudge, ProblemModel, RecordDoc, RecordModel,
+    fs, noop, NotFoundError, ObjectId, PERM, postJudge, ProblemModel, RecordDoc, RecordModel,
     STATUS, SystemModel, Time, UserModel, yaml,
 } from 'hydrooj';
 
@@ -116,7 +116,7 @@ export async function run({
     for (const udoc of udocs) {
         if (randomMail) delete udoc.email;
         let current = await UserModel.getByEmail(domainId, udoc.email || `${udoc.username}@syzoj.local`);
-        if (!current) current = await UserModel.getByUname(domainId, udoc.username);
+        current ||= await UserModel.getByUname(domainId, udoc.username);
         if (current) {
             report({ message: `duplicate user with email ${udoc.email}: ${current.uname},${udoc.username}` });
             uidMap[udoc.id] = current._id;
@@ -125,8 +125,10 @@ export async function run({
                 udoc.email || `${udoc.username}@syzoj.local`, udoc.username, '',
                 null, udoc.ip, SystemModel.get('default.priv'),
             );
-            if (udoc.is_admin) await UserModel.setSuperAdmin(uid);
-            superAdmin.push(uid);
+            if (udoc.is_admin) {
+                await UserModel.setSuperAdmin(uid);
+                superAdmin.push(uid);
+            }
             uidMap[udoc.id] = uid;
             await UserModel.setById(uid, {
                 regat: new Date(udoc.register_time * 1000),
@@ -237,7 +239,7 @@ export async function run({
                 const additionalFile = await query(`SELECT * FROM \`file\` WHERE \`id\` = ${pdoc.additional_file_id}`);
                 if (additionalFile.length) {
                     const [afdoc] = additionalFile;
-                    await ProblemModel.addAdditionalFile(domainId, pdoc.docId,
+                    await ProblemModel.addAdditionalFile(domainId, pidMap[pdoc.id],
                         `additional_file_${pdoc.additional_file_id}.zip`, `${dataDir}/additional_file/${afdoc.md5}`);
                 }
             }
@@ -345,7 +347,7 @@ export async function run({
                 }
             }
             if (rdoc.type) {
-                data.contest = new ObjectID(tidMap[rdoc.type_info]);
+                data.contest = new ObjectId(tidMap[rdoc.type_info]);
                 await ContestModel.attend(domainId, data.contest, uidMap[rdoc.user_id]).catch(noop);
             }
             await RecordModel.coll.insertOne(data);

@@ -1,30 +1,15 @@
 /* eslint-disable no-await-in-loop */
 import { PassThrough } from 'stream';
-import findChrome from 'chrome-finder';
 import yaml from 'js-yaml';
 import { JSDOM } from 'jsdom';
-import type { Browser, Page } from 'puppeteer';
-import puppeteer from 'puppeteer-extra';
-import PortalPlugin from 'puppeteer-extra-plugin-portal';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import superagent from 'superagent';
-import proxy from 'superagent-proxy';
 import {
-    buildContent, Logger, SettingModel, sleep, STATUS, Time,
+    buildContent, Logger, sleep, STATUS,
 } from 'hydrooj';
+import { BasicFetcher } from '../fetch';
 import { IBasicProvider, RemoteAccount } from '../interface';
 import { normalize, VERDICT } from '../verdict';
 
-proxy(superagent);
 const logger = new Logger('remote/codeforces');
-puppeteer.use(StealthPlugin()).use(PortalPlugin({
-    webPortalConfig: {
-        listenOpts: {
-            port: 3000,
-        },
-        baseUrl: 'http://localhost:3000',
-    },
-}));
 
 function parseProblemId(id: string) {
     const [, type, contestId, problemId] = id.startsWith('P921')
@@ -74,72 +59,12 @@ ${lines.map((i) => i.innerHTML).join('\n').trim()}
 \n`;
     };
 
-export default class CodeforcesProvider implements IBasicProvider {
+export default class CodeforcesProvider extends BasicFetcher implements IBasicProvider {
     constructor(public account: RemoteAccount, private save: (data: any) => Promise<void>) {
-        if (account.cookie) this.cookie = account.cookie;
-        this.account.endpoint ||= 'https://codeforces.com';
+        super(account, 'https://codeforces.com', 'form', logger);
     }
 
-    cookie: string[] = [];
     csrf: string;
-    puppeteer: Browser;
-
-    async ensureBrowser() {
-        if (this.puppeteer) return true;
-        try {
-            const executablePath = findChrome();
-            logger.debug(`Using chrome found at ${executablePath}`);
-            const args = ['--disable-gpu', '--disable-setuid-sandbox'];
-            if (this.account.proxy?.startsWith('http://')) args.push(`--proxy-server=${this.account.proxy.split('//')[1]}`);
-            if (process.platform === 'linux' && process.getuid() === 0) args.push('--no-sandbox');
-            this.puppeteer = await puppeteer.launch({ headless: true, executablePath, args });
-            logger.success('Successfully launched browser');
-        } catch (e) {
-            logger.error(e.message);
-            logger.error('Failed to launch browser, using fallback mode');
-            return false;
-        }
-        return true;
-    }
-
-    async getPage() {
-        const page = await this.puppeteer.newPage();
-        const url = await page.openPortal();
-        logger.info('portal=', url);
-        for (const str of this.cookie) {
-            const [name, value] = str.split(';')[0].split('=');
-            await page.setCookie({ name, value, domain: 'codeforces.com' });
-        }
-        return page;
-    }
-
-    async clearPage(page: Page) {
-        let cookies = await page.cookies();
-        while (!cookies.find((i) => i.name === 'evercookie_etag').value) {
-            await sleep(1000);
-            cookies = await page.cookies();
-        }
-        this.cookie = cookies.map((i) => `${i.name}=${i.value}`);
-        logger.debug('Cookie:', this.cookie);
-        await this.save({ cookie: this.cookie });
-        await page.close();
-    }
-
-    get(url: string) {
-        logger.debug('get', url);
-        if (!url.includes('//')) url = `${this.account.endpoint}${url}`;
-        const req = superagent.get(url).set('Cookie', this.cookie);
-        if (this.account.proxy) return req.proxy(this.account.proxy);
-        return req;
-    }
-
-    post(url: string) {
-        logger.debug('post', url, this.cookie);
-        if (!url.includes('//')) url = `${this.account.endpoint}${url}`;
-        const req = superagent.post(url).type('form').set('Cookie', this.cookie);
-        if (this.account.proxy) return req.proxy(this.account.proxy);
-        return req;
-    }
 
     getCookie(target: string) {
         return this.cookie.find((i) => i.startsWith(`${target}=`))?.split('=')[1]?.split(';')[0];
@@ -157,55 +82,38 @@ export default class CodeforcesProvider implements IBasicProvider {
         return _tta;
     }
 
-    async checkLogin() {
-        await this.ensureBrowser();
-        const page = await this.getPage();
-        await page.goto(`${this.account.endpoint}/enter`, { waitUntil: 'networkidle2', timeout: 180000 });
-        const html = await page.content();
-        let cookies = await page.cookies();
-        let c = 0;
-        while (!cookies.find((i) => i.name === 'evercookie_etag').value && c <= 60) {
-            await sleep(1000);
-            cookies = await page.cookies();
-            c++;
-        }
-        if (c < 60) {
-            this.cookie = cookies.map((i) => `${i.name}=${i.value}`);
-            await this.save({ cookie: this.cookie });
-        }
-        const ftaa = cookies.find((i) => i.name === '70a7c28f3de')?.value;
-        const bfaa = /_bfaa = "(.{32})"/.exec(html)?.[1];
-        await page.close();
-        return [ftaa, bfaa, !html.includes('Login into Codeforces')];
-    }
-
     async getCsrfToken(url: string) {
-        const { text: html } = await this.get(url);
-        const { window: { document } } = new JSDOM(html);
+        const { document, html, headers } = await this.html(url);
         if (document.body.children.length < 2 && html.length < 512) {
-            throw new Error(document.body.textContent);
+            throw new Error(document.body.textContent!);
         }
-        const ftaa = this.getCookie('70a7c28f3de');
-        const bfaa = /_bfaa = "(.{32})"/.exec(html)?.[1] || this.getCookie('raa') || this.getCookie('bfaa');
+        const ftaa = this.getCookie('70a7c28f3de') || 'n/a';
+        const bfaa = this.getCookie('raa') || this.getCookie('bfaa') || 'n/a';
         return [
             (
                 document.querySelector('meta[name="X-Csrf-Token"]')
                 || document.querySelector('input[name="csrf_token"]')
             )?.getAttribute('content'),
-            ftaa, bfaa,
+            ftaa, bfaa, headers,
         ];
     }
 
     get loggedIn() {
-        return this.get('/enter').then(({ text: html }) => {
-            if (html.includes('Login into Codeforces')) return false;
-            if (html.length < 1000 && html.includes('Redirecting...')) return false;
-            return true;
+        return this.get('/').then((res) => {
+            const html = res.text;
+            if (html.length < 1000 && html.includes('Redirecting...')) {
+                logger.debug('Got a redirect', html);
+                return false;
+            }
+            return html.includes('header-bell__img');
         });
     }
 
-    async normalLogin() {
-        const [csrf, ftaa, bfaa] = await this.getCsrfToken('/enter');
+    async ensureLogin() {
+        if (await this.loggedIn) return true;
+        logger.info('retry normal login');
+        const [csrf, ftaa, bfaa, header] = await this.getCsrfToken('/enter');
+        if (header['set-cookie']) this.setCookie(header['set-cookie']);
         const res = await this.post('/enter').send({
             csrf_token: csrf,
             action: 'enter',
@@ -218,35 +126,8 @@ export default class CodeforcesProvider implements IBasicProvider {
         const cookie = res.header['set-cookie'];
         if (cookie) {
             await this.save({ cookie });
-            this.cookie = cookie;
+            this.setCookie(cookie);
         }
-    }
-
-    async puppeteerLogin() {
-        await this.ensureBrowser();
-        if (!this.puppeteer) return false;
-        const page = await this.puppeteer.newPage();
-        await page.goto(`${this.account.endpoint}/enter`, { waitUntil: 'networkidle2' });
-        const url = await page.openPortal();
-        logger.info(`Login portal opened: ${url}`);
-        await page.waitForRequest((req) => {
-            if (req.method() !== 'POST') return false;
-            // sometimes we have validation query strings, ignore them
-            return req.url().split('?')[0].endsWith('/enter');
-        }, { timeout: Time.day });
-        await page.waitForTimeout(10 * 1000);
-        await this.clearPage(page);
-        await this.puppeteer?.close();
-        return true;
-    }
-
-    async ensureLogin() {
-        if (await this.loggedIn) return true;
-        logger.info('retry normal login');
-        await this.normalLogin();
-        if (await this.loggedIn) return true;
-        logger.info('starting puppeteer login');
-        await this.puppeteerLogin();
         if (await this.loggedIn) {
             logger.success('Logged in');
             return true;
@@ -359,19 +240,21 @@ export default class CodeforcesProvider implements IBasicProvider {
         if (resync && page > 1) return [];
         if (resync && listName.startsWith('GYM')) return [];
         if (listName.startsWith('GYM') && page > 1) return [];
-        const res = await this.get(listName === 'main'
+        const { document } = await this.html(listName === 'main'
             ? `/problemset/page/${page}`
             : listName === 'gym'
                 ? `/gyms/page/${page}`
                 : `/gym/${listName.split('GYM')[1]}`,
         );
-        const { window: { document } } = new JSDOM(res.text);
         if (['gym', 'main'].includes(listName)) {
             const index = document.querySelector('.page-index.active').getAttribute('pageindex');
             if (index !== page.toString()) return [];
         }
         if (listName === 'main') {
-            return Array.from(document.querySelectorAll('.id>a')).map((i) => `P${i.innerHTML.trim()}`);
+            // 1769 is a hidden contest
+            return Array.from(document.querySelectorAll('.id>a'))
+                .map((i) => `P${i.innerHTML.trim()}`)
+                .filter((i) => !['P1772', 'P1769'].find((t) => i.startsWith(t)));
         }
         if (listName === 'gym') {
             return Array.from(document.querySelectorAll('[data-contestId]')).map((i) => `LIST::GYM${i.getAttribute('data-contestId')}`);
@@ -389,34 +272,24 @@ export default class CodeforcesProvider implements IBasicProvider {
 
     async submitProblem(id: string, lang: string, code: string, info, next, end) {
         const programTypeId = lang.includes('codeforces.') ? lang.split('codeforces.')[1] : '54';
-        const comment = SettingModel.langs[lang].comment;
-        if (comment) {
-            const msg = `Hydro submission #${info.rid}@${new Date().getTime()}`;
-            if (typeof comment === 'string') code = `${comment} ${msg}\n${code}`;
-            else if (comment instanceof Array) code = `${comment[0]} ${msg} ${comment[1]}\n${code}`;
-        }
         const [type, contestId, problemId] = parseProblemId(id);
-        const [csrf, ftaa, bfaa] = await this.getCsrfToken(type !== 'GYM'
-            ? '/problemset/submit'
-            : `/gym/${contestId}/submit`);
+        const endpoint = type === 'GYM'
+            ? `/gym/${contestId}/submit`
+            : `/problemset/submit/${contestId}/${problemId}`;
+        const [csrf, ftaa, bfaa] = await this.getCsrfToken(endpoint);
         // TODO check submit time to ensure submission
-        const { text: submit } = await this.post(`/${type !== 'GYM' ? 'problemset' : `gym/${contestId}`}/submit?csrf_token=${csrf}`).send({
+        const { text: submit } = await this.post(`${endpoint}?csrf_token=${csrf}`).send({
             csrf_token: csrf,
             action: 'submitSolutionFormSubmitted',
             programTypeId,
             source: code,
-            tabsize: 4,
+            tabSize: 4,
             sourceFile: '',
             ftaa,
             bfaa,
             _tta: this.tta(this.getCookie('39ce7')),
-            ...(type !== 'GYM')
-                ? {
-                    submittedProblemCode: contestId + problemId,
-                    sourceCodeConfirmed: true,
-                } : {
-                    submittedProblemIndex: problemId,
-                },
+            contestId,
+            submittedProblemIndex: problemId,
         });
         const { window: { document: statusDocument } } = new JSDOM(submit);
         const message = Array.from(statusDocument.querySelectorAll('.error'))
@@ -425,12 +298,12 @@ export default class CodeforcesProvider implements IBasicProvider {
             end({ status: STATUS.STATUS_COMPILE_ERROR, message });
             return null;
         }
-        const { text: status } = await this.get(type !== 'GYM'
+        const { document } = await this.html(type !== 'GYM'
             ? '/problemset/status?my=on'
             : `/gym/${contestId}/my`);
-        const { window: { document } } = new JSDOM(status);
         this.csrf = document.querySelector('meta[name="X-Csrf-Token"]').getAttribute('content');
-        return document.querySelector('[data-submission-id]').getAttribute('data-submission-id');
+        const submission = document.querySelector('[data-submission-id]').getAttribute('data-submission-id');
+        return type !== 'GYM' ? submission : `${contestId}#${submission}`;
     }
 
     async waitForSubmission(id: string, next, end) {
@@ -438,32 +311,37 @@ export default class CodeforcesProvider implements IBasicProvider {
         // eslint-disable-next-line no-constant-condition
         while (true) {
             await sleep(3000);
-            const { body } = await this.post('/data/submitSource').send({
-                csrf_token: this.csrf,
-                submissionId: id,
-            });
+            const contestId = id.includes('#') ? id.split('#')[0] : null;
+            const { body } = await this.post('/data/submitSource')
+                .set('referer', contestId ? `https://codeforces.com/gym/${contestId}/my` : 'https://codeforces.com/problemset/status?my=on')
+                .send({
+                    csrf_token: this.csrf,
+                    submissionId: contestId ? id.split('#')[1] : id,
+                });
             if (body.compilationError === 'true') {
-                await next({ compilerText: body['checkerStdoutAndStderr#1'] });
                 return await end({
-                    status: STATUS.STATUS_COMPILE_ERROR, score: 0, time: 0, memory: 0,
+                    compilerText: body['checkerStdoutAndStderr#1'],
+                    status: STATUS.STATUS_COMPILE_ERROR,
+                    score: 0,
+                    time: 0,
+                    memory: 0,
                 });
             }
             const time = Math.sum(Object.keys(body).filter((k) => k.startsWith('timeConsumed#')).map((k) => +body[k]));
             const memory = Math.max(...Object.keys(body).filter((k) => k.startsWith('memoryConsumed#')).map((k) => +body[k])) / 1024;
+            const cases = [];
             for (; i <= +body.testCount; i++) {
                 const status = VERDICT[body[`verdict#${i}`]] || STATUS.STATUS_WRONG_ANSWER;
-                await next({
-                    status: STATUS.STATUS_JUDGING,
-                    case: {
-                        id: +i,
-                        subtaskId: 1,
-                        status,
-                        time: +body[`timeConsumed#${i}`],
-                        memory: +body[`memoryConsumed#${i}`] / 1024,
-                        message: body[`checkerStdoutAndStderr#${i}`] || body[`verdict#${i}`],
-                    },
+                cases.push({
+                    id: +i,
+                    subtaskId: 1,
+                    status,
+                    time: +body[`timeConsumed#${i}`],
+                    memory: +body[`memoryConsumed#${i}`] / 1024,
+                    message: body[`checkerStdoutAndStderr#${i}`] || body[`verdict#${i}`],
                 });
             }
+            if (cases.length) await next({ status: STATUS.STATUS_JUDGING, cases });
             if (body.waiting === 'true') continue;
             const status = VERDICT[Object.keys(VERDICT).find((k) => normalize(body.verdict).includes(k))];
             return await end({

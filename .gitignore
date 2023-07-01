@@ -27,6 +27,7 @@ globalConfig.json
 /config.yaml
 /config.json
 yarn.lock
+pnpm-lock.yaml
 tsconfig.json
 tsconfig.*.json
 
@@ -45,6 +46,7 @@ packages/ui-default/public
 packages/ui-default/misc/.iconfont
 packages/ui-default/static/locale
 plugins/
+modules/
 
 # Data files
 *.mmdb
@@ -55,3 +57,6 @@ __*
 !__mocks__
 !.gitkeep
 *.local
+
+# Monokle
+.monokle

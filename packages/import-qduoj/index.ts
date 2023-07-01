@@ -6,7 +6,8 @@ import {
     ProblemConfigFile, ProblemModel, ValidationError, yaml,
 } from 'hydrooj';
 
-fs.ensureDirSync('/tmp/hydro/import-qduoj');
+const tmpdir = path.join(os.tmpdir(), 'hydro', 'import-qduoj');
+fs.ensureDirSync(tmpdir);
 
 class ImportQduojHandler extends Handler {
     async fromFile(domainId: string, zipfile: string) {
@@ -16,13 +17,15 @@ class ImportQduojHandler extends Handler {
         } catch (e) {
             throw new ValidationError('zip', null, e.message);
         }
-        const tmp = path.resolve(os.tmpdir(), 'hydro', 'import-qduoj', String.random(32));
+        const tmp = path.resolve(tmpdir, String.random(32));
         await new Promise((resolve, reject) => {
             zip.extractAllToAsync(tmp, true, (err) => (err ? reject(err) : resolve(null)));
         });
+        let cnt = 0;
         try {
-            const folders = await fs.readdir(tmp);
-            for (const folder of folders) {
+            const folders = await fs.readdir(tmp, { withFileTypes: true });
+            for (const { name: folder } of folders.filter((i) => i.isDirectory())) {
+                if (!fs.existsSync(path.join(tmp, folder, 'problem.json'))) continue;
                 const buf = await fs.readFile(path.join(tmp, folder, 'problem.json'));
                 const pdoc = JSON.parse(buf.toString());
                 const content: ContentNode[] = [];
@@ -76,7 +79,10 @@ class ImportQduojHandler extends Handler {
                 if (+pdoc.display_id) pdoc.display_id = `P${pdoc.display_id}`;
                 const n = await ProblemModel.get(domainId, pdoc.display_id);
                 if (n) pdoc.display_id = null;
-                const pid = await ProblemModel.add(domainId, pdoc.display_id, pdoc.title, buildContent(content, 'html'), this.user._id, pdoc.tags);
+                const pid = await ProblemModel.add(
+                    domainId, pdoc.display_id, pdoc.title, buildContent(content, 'html'),
+                    this.user._id, pdoc.tags || [],
+                );
                 const config: ProblemConfigFile = {
                     time: `${pdoc.time_limit}ms`,
                     memory: `${pdoc.memory_limit}m`,
@@ -115,10 +121,12 @@ class ImportQduojHandler extends Handler {
                     ProblemModel.edit(domainId, pid, { html: true }),
                 );
                 await Promise.all(tasks);
+                cnt++;
             }
         } finally {
             await fs.remove(tmp);
         }
+        if (!cnt) throw new ValidationError('zip', 'No problemset imported');
     }
 
     async get() {

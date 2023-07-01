@@ -43,7 +43,6 @@
     {% if handler.user.hasPerm(perm.PERM_ATTEND_CONTEST) and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
       <form action="{{ url('contest_detail', tid=tdoc.docId) }}" method="POST">
         <input type="hidden" name="operation" value="attend">
-        <input type="hidden" name="csrfToken" value="{{ handler.csrfToken }}">
         <button class="menu__link" {% if tdoc._code %}data-contest-code{% endif %} type="submit">
           <span class="icon icon-add"></span> {{ _('Attend Contest') }}
         </button>
@@ -58,7 +57,7 @@
         </a>
     {% endif %}
       </li>
-    {% endif %}
+    {% endif %}{# not attend and not done #}
     {% if model.contest.canShowScoreboard.call(handler, tdoc, False) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_scoreboard', tid=tdoc.docId) }}">
         <span class="icon icon-statistics"></span> {{ _('Scoreboard') }}
@@ -72,8 +71,8 @@
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_edit', tid=tdoc.docId) }}">
         <span class="icon icon-edit"></span> {{ _('Edit Contest') }}
       </a></li>
-      <li class="menu__item"><a class="menu__link" href="{{ url('contest_files', tid=tdoc.docId) }}">
-        <span class="icon icon-file"></span> {{ _('Files') }}
+      <li class="menu__item"><a class="menu__link" href="{{ url('contest_manage', tid=tdoc.docId) }}">
+        <span class="icon icon-settings"></span> {{ _('Contest Management') }}
       </a></li>
     {% endif %}
     {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}
@@ -106,7 +105,7 @@
           ({{ _('Attended') }})
         {% endif %}
       </dd>
-      <dt>{{ _('Rule') }}</dt><dd>{{ model.contest.RULES[tdoc.rule].TEXT }}</dd>
+      <dt>{{ _('Rule') }}</dt><dd>{{ _(model.contest.RULES[tdoc.rule].TEXT) }}</dd>
       <dt>{{ _('Problem') }}</dt><dd>{{ tdoc.pids.length }}</dd>
       <dt>{{ _('Start at') }}</dt><dd>{{ contest.render_time(tsdoc.startAt or tdoc.beginAt) }}</dd>
       <dt>{{ _('End at') }}</dt><dd>{{ contest.render_time(tsdoc.endAt or tdoc.endAt) }}</dd>

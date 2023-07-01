@@ -5,7 +5,7 @@
 {{ set(UiContext, 'udoc', udoc) }}
 <style>
   .user-profile-bg {
-    background-image : url("{{ udoc.backgroundImage }}");
+    background-image: url("{{ udoc.backgroundImage }}"), url("/components/profile/backgrounds/1.jpg");
   }
 </style>
 <div class="row">
@@ -20,9 +20,10 @@
             <div class="media__body profile-header__main">
               <h1>
                 {{ udoc['uname'] }}
-                <small>({{ _('UID') }}: {{ udoc['_id'] }})</small>
+                {% if udoc.displayName %}<small>({{ udoc['displayName'] }})</small>{% endif %}
               </h1>
               <p>
+                {{ _('UID') }}: {{ udoc['_id'] }},
                 {{ _('Registered at') }} {{ datetimeSpan(udoc['regat'])|safe }},
                 {{ _('last login at') }} {{ datetimeSpan(udoc['loginat'])|safe }},
               {% if sdoc %}
@@ -32,7 +33,7 @@
               {% endif %}
               </p>
               <p>{{ _('Solved {0} problems, RP: {1} (No. {2})').format(udoc.nAccept|default(0), udoc['rp']|default(0.0)|round(2), udoc['rank']|default('?')) }}</p>
-              {% if not udoc.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+              {% if udoc._id != 1 and not udoc.hasPriv(PRIV.PRIV_USER_PROFILE) %}
                 <p>{{ _('This user was banned.') }}</p>
               {% endif %}
               <div class="profile-header__contact-bar">
@@ -94,7 +95,7 @@
               <h1 class="section__tab-title">{{ _('Bio') }}</h1>
               <div class="section__tab-main">
               {% if not udoc.bio %}
-                {{ nothing.render("This person is lazy and didn't wrote anything.") }}
+                {{ nothing.render("This person is lazy and didn't write anything.") }}
               {% else %}
                 <div class="section__body typo">
                   {{ udoc.bio|default('')|markdown|safe }}

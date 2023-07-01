@@ -6,7 +6,7 @@ import { chunk } from 'lodash';
 import * as React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AutoloadPage } from 'vj/misc/Page';
-import request from 'vj/utils/request';
+import { request } from 'vj/utils';
 
 function renderReactions(reactions, self, rootEle) {
   let html = '';
@@ -38,7 +38,6 @@ function Reaction({ payload, ele }) {
   const [finish, updateFinish] = React.useState(false);
   if (finish) setTimeout(() => updateFinish(false), 1000);
   return (
-    // eslint-disable-next-line no-nested-ternary
     <Popover usePortal interactionKind="hover" isOpen={finish ? false : (focus ? true : undefined)}>
       <span className="icon icon-emoji"></span>
       <div>
@@ -69,7 +68,7 @@ const reactionPage = new AutoloadPage('reactionPage', () => {
   const canUseReaction = $('[data-op="react"]').length > 0;
   $('[data-op="react"]').each((i, e) => {
     ReactDOM.createRoot(e).render(
-      <Reaction payload={$(e).data('form')} ele={$(`.reactions[data-${$(e).data('form').type}='${$(e).data('form').id}']`)} />,
+      <Reaction payload={$(e).data('form')} ele={$(`.reactions[data-${$(e).data('form').nodeType}='${$(e).data('form').id}']`)} />,
     );
   });
   $(document).on('click', '.reaction', async (e) => {
@@ -80,7 +79,7 @@ const reactionPage = new AutoloadPage('reactionPage', () => {
     const target = $(e.currentTarget);
     const res = await request.post('', {
       operation: 'reaction',
-      type: target.parent().data('type'),
+      nodeType: target.parent().data('type'),
       id: target.parent().data(target.parent().data('type')),
       emoji: target.text().trim().split(' ')[0],
       reverse: target.hasClass('active'),

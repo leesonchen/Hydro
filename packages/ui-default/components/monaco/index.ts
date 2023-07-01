@@ -6,8 +6,7 @@ import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import { IQuickInputService } from 'monaco-editor/esm/vs/platform/quickinput/common/quickInput';
 import list from 'monaco-themes/themes/themelist.json';
 import { nanoid } from 'nanoid';
-import i18n from 'vj/utils/i18n';
-import request from 'vj/utils/request';
+import { i18n, request } from 'vj/utils';
 
 export default monaco;
 export const customOptions: monaco.editor.IStandaloneDiffEditorConstructionOptions = JSON.parse(localStorage.getItem('editor.config') || '{}');
@@ -147,7 +146,9 @@ export function registerAction(
         monaco.KeyMod.WinCtrl | monaco.KeyCode.Enter,
       ],
       run: () => {
-        $(element).closest('form').submit();
+        const form = $(element).closest('form');
+        if (form.find('[data-default-submit]').length) form.find('[data-default-submit]').click();
+        else form.submit();
       },
     });
   }

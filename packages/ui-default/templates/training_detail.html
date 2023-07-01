@@ -7,6 +7,12 @@
       <ol class="menu">
         <li class="menu__item nojs--hide">
           <form method="get" id="searchForm">
+            <select name="group" class="select"{% if not groups.length %} style="display:none"{% endif %}>
+              <option value="all" selected>{{ _('All') }}</option>
+              {% for group in groups %}
+                <option value="{{ group.uids.join(',') }}">{{ group.name }}</option>
+              {% endfor %}
+            </select>
             <input name="uid" type="text" class="search__input textbox" placeholder="{{ _('Select User') }}">
           </form>
         </li>
@@ -64,7 +70,6 @@
           <li class="menu__item">
             <form action="" method="POST">
               <input type="hidden" name="operation" value="enroll">
-              <input type="hidden" name="csrfToken" value="{{ handler.csrfToken }}">
               <button class="menu__link" type="submit">
                 <span class="icon icon-add"></span> {{ _('Enroll Training') }}
               </button>
@@ -74,6 +79,9 @@
         {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_TRAINING) %}
           <li class="menu__item"><a class="menu__link" href="{{ url('training_edit', tid=tdoc.docId) }}">
             <span class="icon icon-edit"></span>  {{ _('Edit') }}
+          </a></li>
+          <li class="menu__item"><a class="menu__link" href="{{ url('training_files', tid=tdoc.docId) }}">
+            <span class="icon icon-file"></span> {{ _('Files') }}
           </a></li>
         {% endif %}
           <li class="menu__item"><a class="menu__link" href="{{ url('wiki_help', anchor='training') }}">

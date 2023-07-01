@@ -48,7 +48,7 @@
           <li class="footer__extra-link-item"><a href="{{ url('wiki_about', anchor='contact') }}">{{ _('Contact Us') }}</a></li>
           <li class="footer__extra-link-item"><a href="{{ url('wiki_about', anchor='privacy') }}">{{ _('Privacy') }}</a></li>
           <li class="footer__extra-link-item"><a href="{{ url('wiki_about', anchor='tos') }}">{{ _('Terms of Service') }}</a></li>
-          <li class="footer__extra-link-item"><a href="https://hydro.js.org/#%E8%81%94%E7%B3%BB%E6%88%91%E4%BB%AC">{{ _('Copyright Complaint') }}</a></li>
+          <li class="footer__extra-link-item"><a href="{{ url('wiki_about', anchor='contact') }}">{{ _('Copyright Complaint') }}</a></li>
           <li class="footer__extra-link-item nojs--hide" data-dropdown-target="#menu-footer-lang">
             <span><span class="icon icon-global"></span> Language <span class="icon icon-expand_less"></span></span>
             <ol class="dropdown-target menu" id="menu-footer-lang">
@@ -56,6 +56,13 @@
               <li class="menu__item"><a class="menu__link" href="{{ url('switch_language', lang=k) }}">{{ v }}</a></li>
             {%- endfor -%}
             </ol>
+          </li>
+          <li class="footer__extra-link-item">
+            {% if handler.session.legacy %}
+              <a href="/legacy">{{ _('Standard mode') }}</a>
+            {% else %}
+              <a href="/legacy?legacy=true">{{ _('Legacy mode') }}</a>
+            {% endif %}
           </li>
           <li class="footer__extra-link-item nojs--hide" data-dropdown-target="#menu-footer-theme">
             <span><span class="icon icon-global"></span> {{ _('Theme') }} <span class="icon icon-expand_less"></span></span>
@@ -74,7 +81,7 @@
           {%- for html in (model.system.get('ui-default.footer_extra_html')|default('')).split('\n') -%}
             <li class="footer__extra-link-item">{{ html|safe }}</li>
           {%- endfor -%}
-          <li class="footer__extra-link-item">Worker {{ process.env.NODE_APP_INSTANCE }} in {{ Date.now() - handler.args.__start }}ms</li>
+          <li class="footer__extra-link-item">Worker {{ process.env.NODE_APP_INSTANCE }}, {{ Date.now() - handler.args.__start }}ms</li>
           <!-- Prepare {{ handler.args.__prepareDone - handler.args.__prepare }}ms -->
           <!-- Method {{ handler.args.__methodDone - handler.args.__method }}ms -->
           <li class="footer__extra-link-item">Powered by <a href="https://hydro.js.org">Hydro v{{ global.Hydro.version.hydrooj }}</a> {{ "Professional" if model.system.get('server.pro') else "Community" }}</li>

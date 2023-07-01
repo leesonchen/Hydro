@@ -2,7 +2,7 @@
 {% import "components/user.html" as user with context %}
 {% import "components/paginator.html" as paginator with context %}
 {% if not ddocs.length %}
-  {{ nothing.render('no discussion yet...') }}
+  {{ nothing.render('No discussion yet...') }}
 {% else %}
   <ol class="section__list discussion__list">
   {%- for ddoc in ddocs -%}
@@ -35,6 +35,9 @@
               @
               {{ datetimeSpan(ddoc.updateAt)|safe }}
             </li>
+            {%- if ddoc.hidden -%}
+              <li class="text-orange">({{ _('Hidden') }})</li>
+            {%- endif -%}
           </ul>
         </div>
       </div>

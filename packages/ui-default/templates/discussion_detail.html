@@ -42,7 +42,6 @@
       {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
         <li><form class="form--inline" method="post">
           <input type="hidden" name="operation" value="{% if not dsdoc['star'] %}star{% else %}unstar{% endif %}">
-          <input type="hidden" name="csrfToken" value="{{ handler.csrfToken }}">
           <button class="star{% if dsdoc['star'] %} activated{% endif %}" type="submit">
             <span class="starred--hide"><span class="icon icon-star--outline"></span> {{ _('Star Topic') }}</span>
             <span class="starred--show"><span class="icon icon-star"></span> {{ _('Unstar Topic') }}</span>
@@ -63,7 +62,7 @@
           <span class="icon icon-warning"></span> {{ _('Report') }}
         </a></li>
       {% if handler.user.hasPerm(perm.PERM_ADD_REACTION) %}
-        <li><a href="javascript:;" data-op="react" data-type="discuss" data-form="{{ {operation: 'reaction', type:'did', id: ddoc._id }|json }}">
+        <li><a href="javascript:;" data-op="react" data-type="discuss" data-form="{{ {operation: 'reaction', nodeType:'did', id: ddoc._id }|json }}">
           <span class="icon icon-emoji"></span>
         </a></li>
       {% endif %}

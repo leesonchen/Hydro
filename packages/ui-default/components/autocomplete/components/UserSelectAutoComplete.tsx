@@ -1,7 +1,7 @@
 import type { Udoc } from 'hydrooj/src/interface';
 import PropTypes from 'prop-types';
 import React, { forwardRef } from 'react';
-import api, { gql } from 'vj/utils/api';
+import { api, gql } from 'vj/utils';
 import AutoComplete, { AutoCompleteHandle, AutoCompleteProps } from './AutoComplete';
 
 // eslint-disable-next-line prefer-arrow-callback
@@ -25,8 +25,8 @@ const UserSelectAutoComplete = forwardRef<AutoCompleteHandle<Udoc>, AutoComplete
         displayName
       }
     `, ['data', 'users'])}
-    itemText={(user) => user.uname + (user.displayName ? ` (${ user.displayName })` : '')}
-    itemKey={(user) => (props.multi ? user._id.toString() : user.uname)}
+    itemText={(user) => user.uname + (user.displayName ? ` (${user.displayName})` : '')}
+    itemKey={(user) => ((props.multi || /^[+-]?\d+$/.test(user.uname.trim())) ? user._id.toString() : user.uname)}
     renderItem={(user) => (
       <div className="media">
         <div className="media__left medium">

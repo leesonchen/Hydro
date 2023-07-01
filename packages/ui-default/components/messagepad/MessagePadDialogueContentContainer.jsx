@@ -6,8 +6,7 @@ import moment from 'moment';
 import React from 'react';
 import { connect } from 'react-redux';
 import TimeAgo from 'timeago-react';
-import i18n from 'vj/utils/i18n';
-import { parse as parseMongoId } from 'vj/utils/mongoId';
+import { i18n, mongoId } from 'vj/utils';
 import Message from './MessageComponent';
 
 const mapStateToProps = (state) => ({
@@ -48,9 +47,9 @@ export default connect(mapStateToProps)(class MessagePadDialogueContentContainer
       // Is system message
       try {
         const data = JSON.parse(msg.content);
-        const str = i18n(data.message).replace(/\{([^{}]+)\}/g, (match, key) => `%substitude%${key}%substitude%`);
-        const arr = str.split('%substitude%');
-        data.params = data.params || {};
+        const str = i18n(data.message).replace(/\{([^{}]+)\}/g, (match, key) => `%placeholder%${key}%placeholder%`);
+        const arr = str.split('%placeholder%');
+        data.params ||= {};
         for (let i = 1; i < arr.length; i += 2) {
           if (arr[i].endsWith(':link')) {
             const link = data.params[arr[i].split(':link')[0]];
@@ -70,7 +69,7 @@ export default connect(mapStateToProps)(class MessagePadDialogueContentContainer
   renderInner() {
     if (this.props.activeId === null) return [];
     const sorted = this.props.item.messages
-      .sort((msg1, msg2) => parseMongoId(msg1._id).timestamp - parseMongoId(msg2._id).timestamp);
+      .sort((msg1, msg2) => mongoId(msg1._id).timestamp - mongoId(msg2._id).timestamp);
     return sorted.map((msg) => (
       <Message
         key={msg._id}
@@ -82,8 +81,8 @@ export default connect(mapStateToProps)(class MessagePadDialogueContentContainer
         }
       >
         <div>{this.renderContent(msg)}</div>
-        <time data-tooltip={moment(parseMongoId(msg._id).timestamp * 1000).format('YYYY-MM-DD HH:mm:ss')}>
-          <TimeAgo datetime={parseMongoId(msg._id).timestamp * 1000} locale={i18n('timeago_locale')} />
+        <time data-tooltip={moment(mongoId(msg._id).timestamp * 1000).format('YYYY-MM-DD HH:mm:ss')}>
+          <TimeAgo datetime={mongoId(msg._id).timestamp * 1000} locale={i18n('timeago_locale')} />
         </time>
       </Message>
     ));
@@ -91,9 +90,19 @@ export default connect(mapStateToProps)(class MessagePadDialogueContentContainer
 
   render() {
     return (
-      <ol className="messagepad__content" ref="list">
-        {this.renderInner()}
-      </ol>
+      <>
+        <div className="messagepad__header">
+          { this.props.item
+          && (
+            <a className="messagepad__content__header__title" href={`/user/${this.props.item.udoc._id}`}>
+              {`${this.props.item.udoc.uname}(UID: ${this.props.item.udoc._id})`}
+            </a>
+          )}
+        </div>
+        <ol className="messagepad__content" ref="list">
+          {this.renderInner()}
+        </ol>
+      </>
     );
   }
 });

@@ -1,18 +1,16 @@
 import AdmZip from 'adm-zip';
-import fs from 'fs-extra';
-import yaml from 'js-yaml';
 import _ from 'lodash';
-import moment from 'moment-timezone';
+import { ObjectId as ObjectID } from 'mongodb';
 import Schema from 'schemastery';
 import superagent from 'superagent';
 import { Context } from './context';
-export { ObjectID, ObjectId, FilterQuery } from 'mongodb';
+export { ObjectId, Filter } from 'mongodb';
 export { WebSocket, WebSocketServer } from 'ws';
 export * from './utils';
 export * from './interface';
 export * from './typeutils';
 export {
-    Schema, yaml, fs, AdmZip, superagent, _, moment,
+    Schema, AdmZip, superagent, _, ObjectID,
 };
 export const definePlugin = <T = never>(args: {
     using?: keyof Context[];

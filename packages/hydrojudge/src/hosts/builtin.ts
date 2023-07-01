@@ -1,13 +1,12 @@
 // Hydro Integration
 /* eslint-disable no-await-in-loop */
 import path from 'path';
-import fs from 'fs-extra';
+import { fs } from '@hydrooj/utils';
 import {
     JudgeResultBody, RecordModel, SettingModel,
     StorageModel, SystemModel, TaskModel,
 } from 'hydrooj';
 import { end, next } from 'hydrooj/src/handler/judge';
-import { processTestdata } from '../cases';
 import { getConfig } from '../config';
 import { FormatError, SystemError } from '../error';
 import { Context } from '../judge/interface';
@@ -68,17 +67,22 @@ const session = {
             fs.writeFile(path.join(filePath, 'etags'), JSON.stringify(version)),
             fs.writeFile(path.join(filePath, 'lastUsage'), Date.now().toString()),
         ]);
-        await processTestdata(filePath);
         return filePath;
     },
 };
 
 export async function postInit() {
     if (SystemModel.get('hydrojudge.disable')) return;
+    await fs.ensureDir(getConfig('tmp_dir'));
     const handle = async (t) => {
         const rdoc = await RecordModel.get(t.domainId, t.rid);
-        (new JudgeTask(session, Object.assign(rdoc, t))).handle().catch(logger.error);
+        if (!rdoc) {
+            logger.debug('Record not found: %o', t);
+            return;
+        }
+        await (new JudgeTask(session, Object.assign(rdoc, t))).handle().catch(logger.error);
     };
-    TaskModel.consume({ type: 'judge' }, handle);
+    const parallelism = Math.max(getConfig('parallelism'), 2);
+    for (let i = 1; i < parallelism; i++) TaskModel.consume({ type: 'judge' }, handle);
     TaskModel.consume({ type: 'judge', priority: { $gt: -50 } }, handle);
 }

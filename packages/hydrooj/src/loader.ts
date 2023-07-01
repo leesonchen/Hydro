@@ -11,11 +11,12 @@ import path from 'path';
 import './utils';
 import cac from 'cac';
 import './ui';
+import './lib/i18n';
 
 import { Logger } from './logger';
 import { Context } from './context';
 // eslint-disable-next-line import/no-duplicates
-import { unwrapExports } from './utils';
+import { sleep, unwrapExports } from './utils';
 import { PRIV } from './model/builtin';
 import { inject } from './lib/ui';
 
@@ -35,6 +36,9 @@ export function resolveConfig(plugin: any, config: any) {
     return config;
 }
 Context.service('loader');
+
+const timeout = Symbol.for('loader.timeout');
+const showLoadTime = argv.options.showLoadTime;
 
 export class Loader {
     static readonly Record = Symbol.for('loader.record');
@@ -60,11 +64,40 @@ export class Loader {
             fork.update(config);
         } else {
             logger.info('apply plugin %c', key.split('node_modules').pop());
-            const plugin = await this.resolvePlugin(key);
+            let plugin = await this.resolvePlugin(key);
             if (!plugin) return;
             resolveConfig(plugin, config);
             if (asName) plugin.name = asName;
             // fork = parent.plugin(plugin, this.interpolate(config));
+            if (plugin.apply) {
+                const original = plugin.apply;
+                const apply = (...args) => {
+                    const start = Date.now();
+                    const result = Promise.resolve()
+                        .then(() => original(...args))
+                        .catch((e) => logger.error(e));
+                    Promise.race([
+                        result,
+                        new Promise((resolve) => {
+                            setTimeout(() => resolve(timeout), 10000);
+                        }),
+                    ]).then((t) => {
+                        if (t === timeout) {
+                            logger.warn('Plugin %s took too long to load', key);
+                        }
+                    });
+                    if (showLoadTime && (typeof showLoadTime !== 'number' || Date.now() - start > showLoadTime)) {
+                        logger.info('Plugin %s loaded in %dms', key, Date.now() - start);
+                    }
+                    return result;
+                };
+                plugin = Object.create(plugin);
+                Object.defineProperty(plugin, 'apply', {
+                    writable: true,
+                    value: apply,
+                    enumerable: true,
+                });
+            }
             fork = parent.plugin(plugin, config);
             if (!fork) return;
             parent.state[Loader.Record] ||= Object.create(null);
@@ -124,6 +157,34 @@ app.state[Loader.Record] = Object.create(null);
 export async function load() {
     addon(path.resolve(__dirname, '..'), true);
     Error.stackTraceLimit = 50;
+    try {
+        const { simpleGit } = require('simple-git') as typeof import('simple-git');
+        const { all } = await simpleGit().log();
+        if (all.length > 0) Hydro.version.hydrooj += `-${all[0].hash.substring(0, 7)}`;
+        const { isClean } = await simpleGit().status();
+        if (!isClean()) Hydro.version.hydrooj += '-dirty';
+        if (process.env.DEV) {
+            const q = await simpleGit().listRemote(['--get-url']);
+            if (!q.includes('hydro-dev/Hydro')) {
+                console.warn('\x1b[93m');
+                console.warn('DISCLAIMER:');
+                console.warn(' You are under development mode.');
+                console.warn(' The Hydro project is licensed under AGPL3,');
+                console.warn(' which means you have to open source your modifications,');
+                console.warn(' unless you have got another license from the original author.');
+                console.warn('');
+                console.warn('声明：');
+                console.warn(' 你正在运行开发者模式。');
+                console.warn(' Hydro 项目基于 AGPL3 协议开源，');
+                console.warn(' 这意味着除非你获得了原作者的其他授权，你需要同样以 AGPL3 协议开源所有的修改。');
+                console.warn('\x1b[39m');
+                console.log('');
+                console.log('Hydro will start in 5s.');
+                console.log('Hydro 将在五秒后继续启动。');
+                await sleep(5000);
+            }
+        }
+    } catch (e) { }
     await require('./entry/worker').apply(app);
     global.gc?.();
 }

@@ -1,7 +1,7 @@
 import $ from 'jquery';
 import _ from 'lodash';
 import moment from 'moment';
-import tpl from 'vj/utils/tpl';
+import { tpl } from 'vj/utils';
 
 export default class Calendar {
   constructor(events) {
@@ -349,7 +349,7 @@ export default class Calendar {
               };
               banner.endAt = banner.event.maskFrom.clone().subtract(1, 'day');
               banner.endSnap = true;
-              bannerSpans[i].span -= newBannerSpan.span; // eslint-disable-line no-param-reassign
+              bannerSpans[i].span -= newBannerSpan.span;
               bannerSpans.splice(i + 1, 0, newBannerSpan);
               i++;
             }

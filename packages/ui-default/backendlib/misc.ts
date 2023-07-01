@@ -1,8 +1,7 @@
 import AnsiUp from 'ansi_up';
-import moment from 'moment-timezone';
-import { ObjectID } from 'mongodb';
+import { moment, ObjectId } from 'hydrooj';
 
-export { size, formatSeconds } from '@hydrooj/utils/lib/utils';
+export { size, formatSeconds } from 'hydrooj';
 
 const AU = new AnsiUp();
 
@@ -11,10 +10,10 @@ export function ansiToHtml(str: string, whiteToBlack = true) {
   return whiteToBlack ? res.replace(/style="color:rgb\(255,255,255\)"/g, 'style="color:black"') : res;
 }
 
-export function datetimeSpan(dt: Date | ObjectID, relative = true, format = 'YYYY-M-D H:mm:ss', tz = 'Asia/Shanghai') {
+export function datetimeSpan(dt: Date | ObjectId, relative = true, format = 'YYYY-M-D H:mm:ss', tz = 'Asia/Shanghai') {
   if (!dt) return 'DATETIME_SPAN_ERROR';
-  if (dt instanceof ObjectID) dt = dt.getTimestamp();
-  else if (typeof dt === 'string' && ObjectID.isValid(dt)) dt = new Date(new ObjectID(dt).generationTime * 1000);
+  if (dt instanceof ObjectId) dt = dt.getTimestamp();
+  else if (typeof dt === 'string' && ObjectId.isValid(dt)) dt = new ObjectId(dt).getTimestamp();
   else if (typeof dt === 'number' || typeof dt === 'string') dt = new Date(dt);
   return '<span class="time{0}" data-timestamp="{1}">{2}</span>'.format(
     relative ? ' relative' : '',

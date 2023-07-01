@@ -1,14 +1,13 @@
 /* eslint-disable no-await-in-loop */
 import path from 'path';
-import fs from 'fs-extra';
-import { ObjectID } from 'mongodb';
+import { ObjectId } from 'mongodb';
 import PQueue from 'p-queue';
 import superagent from 'superagent';
 import WebSocket from 'ws';
+import { fs } from '@hydrooj/utils';
 import { LangConfig } from '@hydrooj/utils/lib/lang';
 import * as sysinfo from '@hydrooj/utils/lib/sysinfo';
 import type { JudgeResultBody } from 'hydrooj';
-import { processTestdata } from '../cases';
 import { getConfig } from '../config';
 import { FormatError, SystemError } from '../error';
 import log from '../log';
@@ -24,9 +23,9 @@ export default class Hydro {
     language: Record<string, LangConfig>;
 
     constructor(public config) {
-        this.config.detail = this.config.detail ?? true;
-        this.config.cookie = this.config.cookie || '';
-        this.config.last_update_at = this.config.last_update_at || 0;
+        this.config.detail ??= true;
+        this.config.cookie ||= '';
+        this.config.last_update_at ||= 0;
         if (!this.config.server_url.startsWith('http')) this.config.server_url = `http://${this.config.server_url}`;
         if (!this.config.server_url.endsWith('/')) this.config.server_url = `${this.config.server_url}/`;
         this.getLang = this.getLang.bind(this);
@@ -91,11 +90,12 @@ export default class Hydro {
                 files: filenames,
             });
             if (!res.body.links) throw new FormatError('problem not exist');
+            const that = this;
             // eslint-disable-next-line no-inner-declarations
             async function download(name: string) {
                 if (name.includes('/')) await fs.ensureDir(path.join(filePath, name.split('/')[0]));
                 const w = fs.createWriteStream(path.join(filePath, name));
-                this.get(res.body.links[name]).pipe(w);
+                that.get(res.body.links[name]).pipe(w);
                 await new Promise((resolve, reject) => {
                     const timeout = setTimeout(() => reject(new Error(`DownloadTimeout(${name}, 60s)`)), 60000);
                     w.on('error', (e) => {
@@ -111,12 +111,11 @@ export default class Hydro {
             const tasks = [];
             const queue = new PQueue({ concurrency: 10 });
             for (const name in res.body.links) {
-                tasks.push(queue.add(() => download.call(this, name)));
+                tasks.push(queue.add(() => download(name)));
             }
             queue.start();
             await Promise.all(tasks);
             await fs.writeFile(path.join(filePath, 'etags'), JSON.stringify(version));
-            await processTestdata(filePath);
         }
         await fs.writeFile(path.join(filePath, 'lastUsage'), new Date().getTime().toString());
         return filePath;
@@ -142,8 +141,8 @@ export default class Hydro {
         return null;
     }
 
-    send(rid: string | ObjectID, key: 'next' | 'end', data: Partial<JudgeResultBody>) {
-        data.rid = new ObjectID(rid);
+    send(rid: string | ObjectId, key: 'next' | 'end', data: Partial<JudgeResultBody>) {
+        data.rid = new ObjectId(rid);
         data.key = key;
         if (data.case && typeof data.case.message === 'string') data.case.message = removeNixPath(data.case.message);
         if (typeof data.message === 'string') data.message = removeNixPath(data.message);
@@ -154,13 +153,20 @@ export default class Hydro {
     getNext(t: JudgeTask) {
         return (data: Partial<JudgeResultBody>) => {
             log.debug('Next: %o', data);
-            this.send(t.request.rid, 'next', data);
+            const performanceMode = getConfig('performance') || t.meta.rejudge || t.meta.hackRejudge;
+            if (performanceMode && data.case && !data.compilerText && !data.message) {
+                t.callbackCache ||= [];
+                t.callbackCache.push(data.case);
+            } else {
+                this.send(t.request.rid, 'next', data);
+            }
         };
     }
 
     getEnd(t: JudgeTask) {
         return (data: Partial<JudgeResultBody>) => {
             log.info('End: %o', data);
+            if (t.callbackCache) data.cases = t.callbackCache;
             this.send(t.request.rid, 'end', data);
         };
     }
@@ -172,7 +178,6 @@ export default class Hydro {
                 Authorization: `Bearer ${this.config.cookie.split('sid=')[1].split(';')[0]}`,
             },
         });
-        global.onDestroy.push(() => this.ws.close());
         const content = this.config.minPriority !== undefined
             ? `{"key":"prio","prio":${this.config.minPriority}}`
             : '{"key":"ping"}';
@@ -204,6 +209,10 @@ export default class Hydro {
             });
         });
         log.info(`[${this.config.host}] 已连接`);
+    }
+
+    dispose() {
+        this.ws?.close?.();
     }
 
     async setCookie(cookie: string) {

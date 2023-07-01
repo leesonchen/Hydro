@@ -4,9 +4,7 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import { connect } from 'react-redux';
 import Icon from 'vj/components/react/IconComponent';
-import getAvailableLangs from 'vj/utils/availableLangs';
-import i18n from 'vj/utils/i18n';
-import request from 'vj/utils/request';
+import { getAvailableLangs, i18n, request } from 'vj/utils';
 import Toolbar, {
   ToolbarButtonComponent as ToolbarButton,
   ToolbarItemComponent as ToolbarItem,
@@ -42,7 +40,7 @@ const mapDispatchToProps = (dispatch) => ({
     const req = request.post(UiContext.postSubmitUrl, {
       lang: props.editorLang,
       code: props.editorCode,
-      input: props.pretestInput || ' ',
+      input: props.pretestInput,
       pretest: true,
     });
     dispatch({
@@ -85,8 +83,8 @@ export default connect(mapStateToProps, mapDispatchToProps)(class ScratchpadTool
     super(props);
     if (!availableLangs[this.props.editorLang]) {
       // preference not allowed
-      const key = keys.filter((i) => availableLangs[i].pretest)
-        .find((i) => availableLangs[i].pretest.split('.')[0] === this.props.editorLang.split('.')[0]);
+      const key = this.props.editorLang ? keys.filter((i) => availableLangs[i].pretest)
+        .find((i) => availableLangs[i].pretest.split('.')[0] === this.props.editorLang.split('.')[0]) : '';
       this.props.setEditorLanguage(key || keys[0]);
     }
   }
@@ -103,15 +101,17 @@ export default connect(mapStateToProps, mapDispatchToProps)(class ScratchpadTool
 
   render() {
     let canUsePretest = ['default', 'fileio'].includes(UiContext.pdoc.config?.type);
-    if (UiContext.pdoc.config?.type === 'remote_judge') {
-      if (availableLangs[this.props.editorLang].pretest) canUsePretest = true;
+    const langInfo = availableLangs[this.props.editorLang];
+    if (UiContext.pdoc.config?.type === 'remote_judge' && langInfo) {
+      if (langInfo.pretest) canUsePretest = true;
+      if (langInfo.validAs && !langInfo.hidden) canUsePretest = true;
     }
-    if (availableLangs[this.props.editorLang]?.pretest === false) canUsePretest = false;
+    if (langInfo?.pretest === false) canUsePretest = false;
     return (
       <Toolbar>
         {canUsePretest && (
           <ToolbarButton
-            disabled={this.props.isPosting || this.props.isRunning || this.props.pretestWaitSec}
+            disabled={this.props.isPosting || this.props.isRunning || !!this.props.pretestWaitSec}
             className="scratchpad__toolbar__pretest"
             onClick={() => this.props.postPretest(this.props)}
             data-global-hotkey="f9"
@@ -125,7 +125,7 @@ export default connect(mapStateToProps, mapDispatchToProps)(class ScratchpadTool
           </ToolbarButton>
         )}
         <ToolbarButton
-          disabled={this.props.isPosting || this.props.submitWaitSec}
+          disabled={this.props.isPosting || !!this.props.submitWaitSec}
           className="scratchpad__toolbar__submit"
           onClick={() => this.props.postSubmit(this.props)}
           data-global-hotkey="f10"

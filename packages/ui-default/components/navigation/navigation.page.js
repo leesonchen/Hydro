@@ -3,9 +3,7 @@ import Slideout from 'slideout';
 import Notification from 'vj/components/notification';
 import selectUser from 'vj/components/selectUser';
 import { AutoloadPage } from 'vj/misc/Page';
-import i18n from 'vj/utils/i18n';
-import request from 'vj/utils/request';
-import tpl from 'vj/utils/tpl';
+import { i18n, request, tpl } from 'vj/utils';
 
 function handleNavLogoutClick(ev) {
   const $logoutLink = $(ev.currentTarget);
@@ -20,8 +18,9 @@ async function handlerSwitchAccount(ev) {
   const target = await selectUser('Hint::icon::switch_account');
   if (!target) return;
   try {
-    await request.get('/account', { uid: target._id });
-    window.location.reload();
+    const res = await request.get(`/account/${target._id}`);
+    if (res.url) window.location.href = res.url;
+    else window.location.reload();
   } catch (error) {
     Notification.error(error.message);
   }
@@ -107,6 +106,7 @@ const navigationPage = new AutoloadPage('navigationPage', () => {
 
   $('.header__hamburger').on('click', () => slideout.toggle());
   $(window).on('resize', handleNavbar);
+  setInterval(handleNavbar, 3000);
 }, () => {
   $trigger = $(tpl`
     <li class="nav__list-item nav_more" data-dropdown-pos="bottom right" data-dropdown-target="#menu-nav-more">

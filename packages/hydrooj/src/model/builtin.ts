@@ -69,6 +69,7 @@ export const PERM = {
     PERM_ATTEND_CONTEST: 1n << 45n,
     PERM_EDIT_CONTEST: 1n << 50n,
     PERM_EDIT_CONTEST_SELF: 1n << 51n,
+    PERM_VIEW_HIDDEN_CONTEST: 1n << 68n,
 
     // Homework
     PERM_VIEW_HOMEWORK: 1n << 52n,
@@ -78,6 +79,7 @@ export const PERM = {
     PERM_ATTEND_HOMEWORK: 1n << 56n,
     PERM_EDIT_HOMEWORK: 1n << 57n,
     PERM_EDIT_HOMEWORK_SELF: 1n << 58n,
+    PERM_VIEW_HIDDEN_HOMEWORK: 1n << 69n,
 
     // Training
     PERM_VIEW_TRAINING: 1n << 46n,
@@ -150,6 +152,7 @@ export const PERMS = [
     Permission('perm_contest', PERM.PERM_ATTEND_CONTEST, 'Attend contests'),
     Permission('perm_contest', PERM.PERM_EDIT_CONTEST, 'Edit any contests'),
     Permission('perm_contest', PERM.PERM_EDIT_CONTEST_SELF, 'Edit own contests'),
+    Permission('perm_contest', PERM.PERM_VIEW_HIDDEN_CONTEST, 'View all contests'),
     Permission('perm_homework', PERM.PERM_VIEW_HOMEWORK, 'View homework'),
     Permission('perm_homework', PERM.PERM_VIEW_HOMEWORK_SCOREBOARD, 'View homework scoreboard'),
     Permission('perm_homework', PERM.PERM_VIEW_HOMEWORK_HIDDEN_SCOREBOARD, 'View hidden homework submission status and scoreboard'),
@@ -157,6 +160,7 @@ export const PERMS = [
     Permission('perm_homework', PERM.PERM_ATTEND_HOMEWORK, 'Claim homework'),
     Permission('perm_homework', PERM.PERM_EDIT_HOMEWORK, 'Edit any homework'),
     Permission('perm_homework', PERM.PERM_EDIT_HOMEWORK_SELF, 'Edit own homework'),
+    Permission('perm_homework', PERM.PERM_VIEW_HIDDEN_HOMEWORK, 'View all homework'),
     Permission('perm_training', PERM.PERM_VIEW_TRAINING, 'View training plans'),
     Permission('perm_training', PERM.PERM_CREATE_TRAINING, 'Create training plans'),
     Permission('perm_training', PERM.PERM_EDIT_TRAINING, 'Edit training plans'),
@@ -256,19 +260,10 @@ export const PRIV = {
     PRIV_ALL: -1,
     PRIV_DEFAULT: 0,
     PRIV_NEVER: 1 << 20,
-
-    /** @deprecated */
-    PRIV_READ_PRETEST_DATA: 1 << 5,
-    /** @deprecated */
-    PRIV_READ_PRETEST_DATA_SELF: 1 << 6,
-    /** @deprecated */
-    PRIV_DELETE_FILE_SELF: 1 << 19,
 };
 
 PRIV.PRIV_DEFAULT = PRIV.PRIV_USER_PROFILE
-    + PRIV.PRIV_READ_PRETEST_DATA_SELF
     + PRIV.PRIV_CREATE_FILE
-    + PRIV.PRIV_DELETE_FILE_SELF
     + PRIV.PRIV_SEND_MESSAGE;
 
 // people whose rank is less than 1% will get Level 10
@@ -292,50 +287,15 @@ export const DEFAULT_NODES = {
         { name: '月赛' },
         { pic: 'advice', name: '建议' },
     ],
-    数据结构: [
-        { name: '散列表' },
-        { name: '搜索树' },
-        { name: '栈和队列' },
-        { name: '图' },
-        { name: '堆' },
-    ],
-    算法: [
-        { name: '数论' },
-        { name: '几何' },
-        { name: '图论' },
-        { name: '网络流' },
-        { name: '动态规划' },
-        { name: '背包' },
-        { name: '排序' },
-        { name: '搜索' },
-        { name: '并查集' },
-        { name: '贪心' },
-        { name: '博弈论' },
-    ],
-    在线题库: [
-        { name: 'CodeForces' },
-        { name: 'TopCoder' },
-        { name: 'POJ' },
-        { name: 'BZOJ' },
-        { name: 'USACO' },
-        { name: 'RQNOJ' },
-        { name: 'UOJ' },
-        { name: 'LOJ' },
-        { name: '洛谷' },
-    ],
     泛: [
         { name: '数学' },
         { name: '编程' },
-        { name: '数据库' },
         { name: 'C' },
         { name: 'C++' },
-        { name: 'Pascal' },
         { name: 'Java' },
         { name: 'PHP' },
         { name: 'Python' },
-        { name: 'Julia' },
-        { name: '游戏' },
-        { name: '保送' },
+        { name: 'Rust' },
         { name: 'ACM' },
     ],
 };

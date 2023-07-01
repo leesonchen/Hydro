@@ -1,7 +1,7 @@
 /* eslint-disable no-template-curly-in-string */
 import { STATUS } from '@hydrooj/utils/lib/status';
 import { FormatError, SystemError } from './error';
-import { CopyInFile, run } from './sandbox';
+import { CopyInFile, runQueued } from './sandbox';
 import { parse } from './testlib';
 
 export interface CheckConfig {
@@ -22,9 +22,39 @@ type Checker = (config: CheckConfig) => Promise<{
     message: string,
 }>;
 
+function parseDiffMsg(msg: string) {
+    try {
+        // Note: we only handle first diff
+        const desc = msg.split('\n')[0];
+        if (desc.includes('d')) return 'User output longer than standard answer.';
+        if (desc.includes('a')) return 'Standard answer longer than user output.';
+        const pt = msg.split('---');
+        // Get the first different line
+        const u = pt[0].split('\n')[1];
+        const t = pt[1].split('\n')[1];
+        // Split by token
+        const usr = u.substring(2).trim().split(' ');
+        const std = t.substring(2).trim().split(' ');
+        if (std.every((x) => !Number.isNaN(+x))) {
+            // Number mode, report length not match
+            if (usr.length > std.length) return 'User output longer than standard answer.';
+            if (usr.length < std.length) return 'Standard answer longer than user output.';
+        }
+        for (let i = 0; i < usr.length; i++) {
+            if (usr[i] === std[i]) continue;
+            const usrString = usr[i].length > 20 ? `${usr[i].substring(0, 16)}...` : usr[i];
+            const stdString = std[i].length > 20 ? `${std[i].substring(0, 16)}...` : std[i];
+            return { message: 'Read {0}, expect {1}.', params: [usrString, stdString] };
+        }
+        throw new Error();
+    } catch (e) {
+        return msg.substring(0, msg.length - 1 <= 30 ? msg.length - 1 : 30);
+    }
+}
+
 const checkers: Record<string, Checker> = new Proxy({
     async default(config) {
-        const { stdout } = await run('/usr/bin/diff -BZ usrout answer', {
+        const { stdout } = await runQueued('/usr/bin/diff -BZ usrout answer', {
             copyIn: {
                 usrout: config.user_stdout,
                 answer: config.output,
@@ -35,33 +65,7 @@ const checkers: Record<string, Checker> = new Proxy({
         let message: any = '';
         if (stdout) {
             status = STATUS.STATUS_WRONG_ANSWER;
-            if (config.detail) {
-                try {
-                    const pt = stdout.split('---');
-                    const u = pt[0].split('\n')[1];
-                    const usr = u.substring(2).trim().split(' ');
-                    const t = pt[1].split('\n')[1];
-                    const std = t.substring(2).trim().split(' ');
-                    if (usr.length < std.length) message = 'Standard answer longer than user output.';
-                    else if (usr.length > std.length) message = 'User output longer than standard answer.';
-                    else {
-                        let usrString = usr[0];
-                        let stdString = std[0];
-                        for (const i in usr) {
-                            if (usr[i] !== std[i]) {
-                                usrString = usr[i];
-                                stdString = std[i];
-                                break;
-                            }
-                        }
-                        if (usrString.length > 20) usrString = `${usrString.substring(0, 16)}...`;
-                        if (stdString.length > 20) stdString = `${stdString.substring(0, 16)}...`;
-                        message = { message: 'Read {0}, expect {1}.', params: [usrString, stdString] };
-                    }
-                } catch (e) {
-                    message = stdout.substring(0, stdout.length - 1 <= 30 ? stdout.length - 1 : 30);
-                }
-            }
+            if (config.detail) message = parseDiffMsg(stdout);
         } else status = STATUS.STATUS_ACCEPTED;
         if (message.length > 1024000) message = '';
         return {
@@ -72,7 +76,7 @@ const checkers: Record<string, Checker> = new Proxy({
     },
 
     async strict(config) {
-        const { stdout } = await run('/usr/bin/diff usrout answer', {
+        const { stdout } = await runQueued('/usr/bin/diff usrout answer', {
             copyIn: {
                 usrout: config.user_stdout,
                 answer: config.output,
@@ -94,7 +98,7 @@ const checkers: Record<string, Checker> = new Proxy({
      * exit code：返回判断结果
      */
     async hustoj(config) {
-        const { code, stdout } = await run(`${config.execute} input answer usrout`, {
+        const { code, stdout } = await runQueued(`${config.execute} input answer usrout`, {
             copyIn: {
                 usrout: config.user_stdout,
                 answer: config.output,
@@ -119,7 +123,7 @@ const checkers: Record<string, Checker> = new Proxy({
      * argv[6]：输出错误报告的文件
      */
     async lemon(config) {
-        const { files, code } = await run(`${config.execute} input usrout answer ${config.score} score message`, {
+        const { files, code } = await runQueued(`${config.execute} input usrout answer ${config.score} score message`, {
             copyIn: {
                 usrout: config.user_stdout,
                 answer: config.output,
@@ -152,7 +156,7 @@ const checkers: Record<string, Checker> = new Proxy({
      * exit code：返回判断结果
      */
     async qduoj(config) {
-        const { status, stdout } = await run(`${config.execute} input usrout`, {
+        const { status, stdout } = await runQueued(`${config.execute} input usrout`, {
             copyIn: {
                 usrout: config.user_stdout,
                 input: config.input,
@@ -178,7 +182,7 @@ const checkers: Record<string, Checker> = new Proxy({
      */
     async syzoj(config) {
         // eslint-disable-next-line prefer-const
-        let { status, stdout, stderr } = await run(config.execute, {
+        let { status, stdout, stderr } = await runQueued(config.execute, {
             copyIn: {
                 input: config.input,
                 user_out: config.user_stdout,
@@ -194,7 +198,7 @@ const checkers: Record<string, Checker> = new Proxy({
     },
 
     async testlib(config) {
-        const { stderr, status, code } = await run(`${config.execute} /w/in /w/user_out /w/answer`, {
+        const { stderr, status, code } = await runQueued(`${config.execute} /w/in /w/user_out /w/answer`, {
             copyIn: {
                 in: config.input,
                 user_out: config.user_stdout,
@@ -203,16 +207,21 @@ const checkers: Record<string, Checker> = new Proxy({
             },
             env: config.env,
         });
-        if (status === STATUS.STATUS_SYSTEM_ERROR) {
+        if ([STATUS.STATUS_SYSTEM_ERROR, STATUS.STATUS_TIME_LIMIT_EXCEEDED, STATUS.STATUS_MEMORY_LIMIT_EXCEEDED].includes(status)) {
+            const message = {
+                [STATUS.STATUS_SYSTEM_ERROR]: stderr,
+                [STATUS.STATUS_TIME_LIMIT_EXCEEDED]: 'Checker Time Limit Exceeded',
+                [STATUS.STATUS_MEMORY_LIMIT_EXCEEDED]: 'Checker Memory Limit Exceeded',
+            }[status];
             return {
                 status: STATUS.STATUS_SYSTEM_ERROR,
                 score: 0,
-                message: stderr,
+                message,
             };
         }
         if (status === STATUS.STATUS_RUNTIME_ERROR && !stderr?.trim()) {
             return {
-                status: STATUS.STATUS_WRONG_ANSWER,
+                status: STATUS.STATUS_SYSTEM_ERROR,
                 score: 0,
                 message: `Checker exited with code ${code}`,
             };

@@ -3,8 +3,7 @@ import _ from 'lodash';
 import { nanoid } from 'nanoid';
 import DOMAttachedObject from 'vj/components/DOMAttachedObject';
 import Notification from 'vj/components/notification';
-import i18n from 'vj/utils/i18n';
-import request from 'vj/utils/request';
+import { i18n, request } from 'vj/utils';
 
 export const config = {
   toolbar: [
@@ -27,7 +26,6 @@ export const config = {
       inlineDigit: true,
     },
     theme: {
-      // eslint-disable-next-line no-template-curly-in-string
       path: `${UiContext.cdn_prefix}vditor/dist/css/content-theme`,
       current: 'light',
     },
@@ -43,6 +41,7 @@ interface MonacoOptions {
   autoLayout?: boolean;
   value?: string;
   hide?: string[];
+  lineNumbers?: 'on' | 'off' | 'relative' | 'interval';
 }
 interface VditorOptions {
   theme?: 'classic' | 'dark'
@@ -70,7 +69,7 @@ export default class Editor extends DOMAttachedObject {
       theme = UserContext.monacoTheme || 'vs-light',
       model = `file://model-${Math.random().toString(16)}`,
       autoResize = true, autoLayout = true,
-      hide = [],
+      hide = [], lineNumbers = 'on',
     } = this.options;
     const { monaco, registerAction } = await load([language]);
     const { $dom } = this;
@@ -82,7 +81,6 @@ export default class Editor extends DOMAttachedObject {
     $dom.hide();
     origin.parentElement.appendChild(ele);
     const value = this.options.value || $dom.val();
-    // eslint-disable-next-line no-nested-ternary
     this.model = typeof model === 'string'
       ? monaco.editor.getModel(monaco.Uri.parse(model))
       || monaco.editor.createModel(value, language === 'auto' ? undefined : language, monaco.Uri.parse(model))
@@ -90,7 +88,7 @@ export default class Editor extends DOMAttachedObject {
     if (!this.options.model) this.model.setValue(value);
     const cfg: import('../monaco').default.editor.IStandaloneEditorConstructionOptions = {
       theme,
-      lineNumbers: 'on',
+      lineNumbers,
       glyphMargin: true,
       lightbulb: { enabled: true },
       model: this.model,
@@ -99,6 +97,9 @@ export default class Editor extends DOMAttachedObject {
       overviewRulerLanes: 0,
       overviewRulerBorder: false,
       fontFamily: UserContext.codeFontFamily,
+      unicodeHighlight: {
+        ambiguousCharacters: language !== 'markdown',
+      },
     };
     if (autoLayout) cfg.automaticLayout = true;
     let prevHeight = 0;

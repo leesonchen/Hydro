@@ -19,7 +19,7 @@ class I18nService extends Service {
     }
 
     load(lang: string, content: Record<string, string>) {
-        if (!translations[lang]) translations[lang] = [];
+        translations[lang] ||= [];
         translations[lang].unshift(content);
         this.caller?.on('dispose', () => {
             translations[lang] = translations[lang].filter((i) => i !== content);
@@ -42,22 +42,15 @@ String.prototype.translate = function translate(...languages: string[]) {
     if (languages[0]?.startsWith('en')) {
         // For most use cases, source text equals to translated text in English.
         // So if it doesn't exist, we should use the original text instead of fallback.
-        return app.i18n.get(this, languages[0]) || app.i18n.get(this, 'en') || this;
+        return app.i18n.get(this, languages[0]) || app.i18n.get(this, 'en') || this.toString();
     }
     for (const language of languages.filter(Boolean)) {
         const curr = app.i18n.get(this, language) || app.i18n.get(this, language.split('_')[0])
             || app.i18n.get(this, language.split('-')[0]);
         if (curr) return curr;
     }
-    return this;
+    return this.toString();
 };
-
-/** @deprecated use ctx.i18n.load instead. */
-function load(data: Record<string, Record<string, string>>) {
-    for (const i in data) app.i18n.load(i, data[i]);
-}
-
-export = load;
 
 function collect(lang: string) {
     const s = translations[lang];
@@ -81,4 +74,3 @@ global.Hydro.locales = new Proxy(translations, {
         });
     },
 }) as any;
-global.Hydro.lib.i18n = load;

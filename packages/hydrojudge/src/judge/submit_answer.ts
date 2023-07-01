@@ -1,10 +1,10 @@
 import { basename } from 'path';
-import { readFile } from 'fs-extra';
+import { fs } from '@hydrooj/utils';
 import { STATUS } from '@hydrooj/utils/lib/status';
 import checkers from '../checkers';
 import { compileChecker } from '../compile';
 import { runFlow } from '../flow';
-import { del, run } from '../sandbox';
+import { del, runQueued } from '../sandbox';
 import { NormalizedCase } from '../utils';
 import { Context } from './interface';
 
@@ -13,14 +13,14 @@ function judgeCase(c: NormalizedCase) {
         const chars = /[a-zA-Z0-9_.-]/;
         const name = (ctx.config.filename && /^[a-zA-Z0-9-_#.]+$/.test(ctx.config.filename))
             ? ctx.config.filename.replace('#', c.id.toString())
-            : await readFile(c.input, 'utf-8').then((res) => res.trim().split('').filter((i) => chars.test(i)).join(''));
+            : await fs.readFile(c.input, 'utf-8').then((res) => res.trim().split('').filter((i) => chars.test(i)).join(''));
         let file = ctx.code;
         let status = STATUS.STATUS_ACCEPTED;
         let message: any = '';
         let score = 0;
         const fileIds = [];
         if (ctx.config.subType === 'multi') {
-            const res = await run(
+            const res = await runQueued(
                 '/usr/bin/unzip foo.zip',
                 {
                     stdin: null,
@@ -54,7 +54,7 @@ function judgeCase(c: NormalizedCase) {
                 env: { ...ctx.env, HYDRO_TESTCASE: c.id.toString() },
             }));
         }
-        await Promise.all(fileIds.map(del)).catch(() => { /* Ignore file doesn't exist */ });
+        await Promise.allSettled(fileIds.map(del));
         return {
             id: c.id,
             status,

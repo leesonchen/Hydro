@@ -4,21 +4,20 @@ import $ from 'jquery';
 import _ from 'lodash';
 import Notification from 'vj/components/notification';
 import PageLoader from 'vj/misc/PageLoader';
-import delay from 'vj/utils/delay';
+import { delay } from 'vj/utils';
 
 declare global {
   interface Window {
     UserContext: any;
     UiContext: any;
     Hydro: any;
-    // eslint-disable-next-line camelcase
-    node_modules: any;
+    /** @deprecated */
     externalModules: Record<string, string>;
+    captureException?: (e: Error) => void;
   }
 }
 
 const start = new Date();
-window.UserContext = JSON.parse(window.UserContext);
 
 function buildSequence(pages, type) {
   if (process.env.NODE_ENV !== 'production') {
@@ -53,9 +52,7 @@ async function animate() {
   }
 }
 
-async function load() {
-  for (const page of window.Hydro.preload) await eval(page); // eslint-disable-line no-eval
-
+export async function initPageLoader() {
   const pageLoader = new PageLoader();
 
   const currentPageName = document.documentElement.getAttribute('data-page');
@@ -102,5 +99,3 @@ async function load() {
   $('.section').trigger('vjLayout');
   $(document).trigger('vjPageFullyInitialized');
 }
-
-load();

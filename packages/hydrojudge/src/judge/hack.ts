@@ -1,10 +1,11 @@
 /* eslint-disable no-sequences */
 import { basename } from 'path';
+import { fs } from '@hydrooj/utils';
 import { STATUS } from '@hydrooj/utils/lib/status';
 import checkers from '../checkers';
 import compile, { compileChecker, compileValidator } from '../compile';
 import { Execute } from '../interface';
-import { del, run } from '../sandbox';
+import { del, runQueued } from '../sandbox';
 import signals from '../signals';
 import { parseMemoryMB, parseTimeMS } from '../utils';
 import { Context } from './interface';
@@ -25,13 +26,14 @@ export async function judge(ctx: Context) {
         compileValidator(session.getLang, config.validator, judgeExtraFiles).then(markCleanup),
         ctx.session.fetchFile(ctx.files.hack),
     ]);
+    ctx.clean.push(() => fs.unlink(input));
     ctx.next({ status: STATUS.STATUS_JUDGING, progress: 0 });
-    const validateResult = await run(
+    const validateResult = await runQueued(
         validator.execute,
         {
             stdin: { src: input },
             copyIn: { ...validator.copyIn, ...judgeExtraFiles },
-            time: parseTimeMS(ctx.config.time || '1s') * execute.time,
+            time: parseTimeMS(ctx.config.time || '1s'),
             memory: parseMemoryMB(ctx.config.memory || '256m'),
         },
     );
@@ -39,12 +41,12 @@ export async function judge(ctx: Context) {
         const message = `${validateResult.stdout || ''}\n${validateResult.stderr || ''}`.trim();
         return ctx.end({ status: STATUS.STATUS_FORMAT_ERROR, message });
     }
-    const res = await run(
+    const res = await runQueued(
         execute.execute,
         {
             stdin: { src: input },
             copyIn: execute.copyIn,
-            time: parseTimeMS(ctx.config.time || '1s') * execute.time,
+            time: parseTimeMS(ctx.config.time || '1s'),
             memory: parseMemoryMB(ctx.config.memory || '256m'),
             cacheStdoutAndStderr: true,
         },
@@ -53,7 +55,7 @@ export async function judge(ctx: Context) {
     let { status } = res;
     let message: any = '';
     if (status === STATUS.STATUS_ACCEPTED) {
-        if (time > ctx.config.time * execute.time) {
+        if (time > ctx.config.time) {
             status = STATUS.STATUS_TIME_LIMIT_EXCEEDED;
         } else if (memory > ctx.config.memory * 1024) {
             status = STATUS.STATUS_MEMORY_LIMIT_EXCEEDED;
@@ -74,9 +76,7 @@ export async function judge(ctx: Context) {
         if (code < 32) message = signals[code];
         else message = { message: 'Your program returned {0}.', params: [code] };
     }
-    await Promise.all(
-        Object.values(res.fileIds).map((id) => del(id)),
-    ).catch(() => { /* Ignore file doesn't exist */ });
+    await Promise.allSettled(Object.values(res.fileIds).map((id) => del(id)));
 
     if (message) ctx.next({ message });
 

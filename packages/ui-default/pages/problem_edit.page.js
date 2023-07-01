@@ -1,4 +1,3 @@
-import { size } from '@hydrooj/utils/lib/common';
 import $ from 'jquery';
 import _ from 'lodash';
 import { ConfirmDialog } from 'vj/components/dialog';
@@ -8,10 +7,9 @@ import Notification from 'vj/components/notification';
 import uploadFiles from 'vj/components/upload';
 import download from 'vj/components/zipDownloader';
 import { NamedPage } from 'vj/misc/Page';
-import i18n from 'vj/utils/i18n';
-import request from 'vj/utils/request';
-import { slideDown, slideUp } from 'vj/utils/slide';
-import tpl from 'vj/utils/tpl';
+import {
+  i18n, pjax, request, slideDown, slideUp, tpl,
+} from 'vj/utils';
 
 const categories = {};
 const dirtyCategories = [];
@@ -198,15 +196,8 @@ export default new NamedPage(['problem_create', 'problem_edit'], (pagename) => {
     await new Promise((resolve) => { input.onchange = resolve; });
     await uploadFiles('./files', input.files, {
       type: 'additional_file',
-      singleFileUploadCallback: (file) => {
-        $('.additionalfile-table tbody').append(
-          $(tpl`<tr data-filename="${file.name}" data-size="${file.size.toString()}">
-            <td class="col--name" title="${file.name}"><a href="./file/${file.name}?type=testdata">${file.name}</a></td>
-            <td class="col--size">${size(file.size)}</td>
-            <td class="col--operation"><a href="javascript:;" name="testdata__delete"><span class="icon icon-delete"></span></a></td>
-          </tr>`),
-        );
-      },
+      sidebar: true,
+      pjax: true,
     });
   }
 
@@ -223,7 +214,7 @@ export default new NamedPage(['problem_create', 'problem_edit'], (pagename) => {
         type: 'additional_file',
       });
       Notification.success(i18n('File have been deleted.'));
-      $(ev.currentTarget).parent().parent().remove();
+      await pjax.request({ url: './files?d=additional_file&sidebar=true', push: false });
     } catch (error) {
       Notification.error(error.message);
     }

@@ -12,7 +12,7 @@ import storage from '../model/storage';
 import * as system from '../model/system';
 import user from '../model/user';
 import {
-    Handler, param, post, Types,
+    Handler, param, post, requireSudo, Types,
 } from '../service/server';
 import { encodeRFC5987ValueChars } from '../service/storage';
 import { builtinConfig } from '../settings';
@@ -44,7 +44,7 @@ export class FilesHandler extends Handler {
         this.response.template = 'home_files.html';
     }
 
-    @post('filename', Types.Name, true)
+    @post('filename', Types.Filename)
     async postUploadFile(domainId: string, filename: string) {
         this.checkPriv(PRIV.PRIV_CREATE_FILE);
         if ((this.user._files?.length || 0) >= system.get('limit.user_files')) {
@@ -57,9 +57,7 @@ export class FilesHandler extends Handler {
         if (size >= system.get('limit.user_files_size')) {
             if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
         }
-        if (!filename) filename = file.originalFilename || String.random(16);
-        if (filename.includes('/') || filename.includes('..')) throw new ValidationError('filename', null, 'Bad filename');
-        if (this.user._files.filter((i) => i.name === filename).length) throw new FileExistsError(filename);
+        if (this.user._files.find((i) => i.name === filename)) throw new FileExistsError(filename);
         await storage.put(`user/${this.user._id}/${filename}`, file.filepath, this.user._id);
         const meta = await storage.getMeta(`user/${this.user._id}/${filename}`);
         const payload = { name: filename, ...pick(meta, ['size', 'lastModified', 'etag']) };
@@ -69,7 +67,7 @@ export class FilesHandler extends Handler {
         this.back();
     }
 
-    @post('files', Types.Array)
+    @post('files', Types.ArrayOf(Types.Filename))
     async postDeleteFiles(domainId: string, files: string[]) {
         await Promise.all([
             storage.del(files.map((t) => `user/${this.user._id}/${t}`), this.user._id),
@@ -83,22 +81,24 @@ export class FSDownloadHandler extends Handler {
     noCheckPermView = true;
 
     @param('uid', Types.Int)
-    @param('filename', Types.Name)
+    @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
     async get(domainId: string, uid: number, filename: string, noDisposition = false) {
-        const targetUser = await user.getById('system', uid);
-        if (!targetUser) throw new NotFoundError(uid);
-        if (this.user._id !== uid && !targetUser.hasPriv(PRIV.PRIV_CREATE_FILE)) throw new AccessDeniedError();
-        this.response.addHeader('Cache-Control', 'public');
         const target = `user/${uid}/${filename}`;
         const file = await storage.getMeta(target);
         await oplog.log(this, 'download.file.user', {
             target,
             size: file?.size || 0,
         });
-        this.response.redirect = await storage.signDownloadLink(
-            target, noDisposition ? undefined : filename, false, 'user',
-        );
+        try {
+            this.response.redirect = await storage.signDownloadLink(
+                target, noDisposition ? undefined : filename, false, 'user',
+            );
+            this.response.addHeader('Cache-Control', 'public');
+        } catch (e) {
+            if (e.message.includes('Invalid path')) throw new NotFoundError(filename);
+            throw e;
+        }
     }
 }
 
@@ -106,7 +106,7 @@ export class StorageHandler extends Handler {
     noCheckPermView = true;
 
     @param('target', Types.Name)
-    @param('filename', Types.Name, true)
+    @param('filename', Types.Filename, true)
     @param('expire', Types.UnsignedInt)
     @param('secret', Types.String)
     async get(domainId: string, target: string, filename = '', expire: number, secret: string) {
@@ -122,8 +122,10 @@ export class StorageHandler extends Handler {
 }
 
 export class SwitchAccountHandler extends Handler {
+    @requireSudo
     @param('uid', Types.Int)
     async get(domainId: string, uid: number) {
+        this.session.sudoUid = this.user._id;
         this.session.uid = uid;
         this.back();
     }
@@ -134,5 +136,5 @@ export async function apply(ctx) {
     ctx.Route('home_files', '/file', FilesHandler);
     ctx.Route('fs_download', '/file/:uid/:filename', FSDownloadHandler);
     ctx.Route('storage', '/storage', StorageHandler);
-    ctx.Route('switch_account', '/account', SwitchAccountHandler, PRIV.PRIV_EDIT_SYSTEM);
+    ctx.Route('switch_account', '/account/:uid', SwitchAccountHandler, PRIV.PRIV_EDIT_SYSTEM);
 }

@@ -14,7 +14,7 @@ declare global {
         sum: (...args: Array<number[] | number>) => number;
     }
     interface SetConstructor {
-        isSuperset: (set: Set<any>, subset: Set<any>) => boolean;
+        isSuperset: (set: Set<any>, subset: Set<any> | Array<any>) => boolean;
         intersection: <T>(setA: Set<T> | Array<T>, setB: Set<T> | Array<T>) => Set<T>;
         union: <T>(setA: Set<T> | Array<T>, setB: Set<T> | Array<T>) => Set<T>;
     }
@@ -28,23 +28,21 @@ String.random = function random(digit = 32, dict = defaultDict) {
     return str;
 };
 
-if (!String.prototype.format) {
-    String.prototype.format = function formatStr(...args) {
-        let result = this;
-        if (args.length) {
-            if (args.length === 1 && typeof args[0] === 'object') {
-                const t = args[0];
-                for (const key in t) {
-                    if (!key.startsWith('_') && t[key] !== undefined) {
-                        const reg = new RegExp(`(\\{${key}\\})`, 'g');
-                        result = result.replace(reg, t[key]);
-                    }
+String.prototype.format ||= function formatStr(...args) {
+    let result = this;
+    if (args.length) {
+        if (args.length === 1 && typeof args[0] === 'object') {
+            const t = args[0];
+            for (const key in t) {
+                if (!key.startsWith('_') && t[key] !== undefined) {
+                    const reg = new RegExp(`(\\{${key}\\})`, 'g');
+                    result = result.replace(reg, t[key]);
                 }
-            } else return this.formatFromArray(args);
-        }
-        return result;
-    };
-}
+            }
+        } else return this.formatFromArray(args);
+    }
+    return result;
+};
 
 String.prototype.formatFromArray = function formatStr(args) {
     let result = this;
@@ -201,6 +199,37 @@ export function size(s: number, base = 1) {
     return `${Math.round(s * unit)} ${unitNames[unitNames.length - 1]}`;
 }
 
+export type StringKeys<O> = {
+    [K in keyof O]: string extends O[K] ? K : never
+}[keyof O];
+const fSortR = /[^\d]+|\d+/g;
+export function sortFiles(files: string[]): string[];
+export function sortFiles(files: { _id: string }[], key?: '_id'): { _id: string }[];
+export function sortFiles<T extends Record<string, any>>(files: T[], key: StringKeys<T>): T[];
+export function sortFiles(files: Record<string, any>[] | string[], key = '_id') {
+    if (!files?.length) return [];
+    const isString = typeof files[0] === 'string';
+    const result = files
+        .map((i) => (isString ? { name: i, _weights: i.match(fSortR) } : { ...i, _weights: (i[key] || i.name).match(fSortR) }))
+        .sort((a, b) => {
+            let pos = 0;
+            const weightsA = a._weights;
+            const weightsB = b._weights;
+            let weightA = weightsA[pos];
+            let weightB = weightsB[pos];
+            while (weightA && weightB) {
+                const v = weightA - weightB;
+                if (!Number.isNaN(v) && v !== 0) return v;
+                if (weightA !== weightB) return weightA > weightB ? 1 : -1;
+                pos += 1;
+                weightA = weightsA[pos];
+                weightB = weightsB[pos];
+            }
+            return weightA ? 1 : -1;
+        });
+    return result.map((x) => (isString ? x.name : (delete x._weights && x)));
+}
+
 interface MatchRule {
     regex: RegExp;
     output: ((a: RegExpExecArray) => string)[];
@@ -219,7 +248,7 @@ const SubtaskMatcher: MatchRule[] = [
             (a) => (a[1].includes('input') ? `${a[1] + a[2]}.txt`.replace(/input/g, 'output') : null),
         ],
         id: (a) => +a[2],
-        subtask: () => 0,
+        subtask: () => 1,
         preferredScorerType: 'sum',
     },
     {
@@ -229,7 +258,7 @@ const SubtaskMatcher: MatchRule[] = [
             (a) => `${a[1]}.ou${a[2]}`.replace(/input/g, 'output'),
         ],
         id: (a) => +a[2],
-        subtask: () => 0,
+        subtask: () => 1,
         preferredScorerType: 'sum',
     },
     {
@@ -314,6 +343,7 @@ export interface NormalizedSubtask extends Required<ParsedSubtask> {
 export function normalizeSubtasks(
     subtasks: ParsedSubtask[], checkFile: (name: string, errMsg: string) => string,
     time: number | string = '1000ms', memory: number | string = '256m', ignoreParseError = false,
+    timeRate = 1, memoryRate = 1,
 ): NormalizedSubtask[] {
     subtasks.sort((a, b) => (a.id - b.id));
     const subtaskScore = getScore(
@@ -333,14 +363,14 @@ export function normalizeSubtasks(
             if: [],
             ...s,
             score,
-            time: parseTimeMS(s.time || time, !ignoreParseError),
-            memory: parseMemoryMB(s.memory || memory, !ignoreParseError),
+            time: parseTimeMS(s.time || time, !ignoreParseError) * timeRate,
+            memory: parseMemoryMB(s.memory || memory, !ignoreParseError) * memoryRate,
             cases: s.cases.map((c, index) => ({
                 id: index + 1,
                 ...c,
                 score: c.score || (s.type === 'sum' ? caseScore.next().value as number : score),
-                time: parseTimeMS(c.time || s.time || time, !ignoreParseError),
-                memory: parseMemoryMB(c.memory || s.memory || memory, !ignoreParseError),
+                time: parseTimeMS(c.time || s.time || time, !ignoreParseError) * timeRate,
+                memory: parseMemoryMB(c.memory || s.memory || memory, !ignoreParseError) * memoryRate,
                 input: c.input ? checkFile(c.input, 'Cannot find input file {0}.') : '/dev/null',
                 output: c.output ? checkFile(c.output, 'Cannot find output file {0}.') : '/dev/null',
             })) as NormalizedCase[],

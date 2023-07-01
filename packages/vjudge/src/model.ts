@@ -2,10 +2,9 @@
 import os from 'os';
 import {
     Context, db, DomainModel, JudgeHandler, Logger,
-    ProblemModel, RecordModel, Service, sleep, STATUS, TaskModel, Time,
+    ProblemModel, RecordModel, Service, SettingModel, sleep, STATUS, TaskModel, Time,
 } from 'hydrooj';
 import { BasicProvider, IBasicProvider, RemoteAccount } from './interface';
-import { getDifficulty } from './providers/codeforces';
 import providers from './providers/index';
 
 const coll = db.collection('vjudge');
@@ -16,13 +15,19 @@ class AccountService {
     api: IBasicProvider;
     problemLists: Set<string>;
     listUpdated = false;
+    working = false;
+    error = null;
 
     constructor(public Provider: BasicProvider, public account: RemoteAccount) {
         this.api = new Provider(account, async (data) => {
             await coll.updateOne({ _id: account._id }, { $set: data });
         });
         this.problemLists = Set.union(this.api.entryProblemLists || ['main'], this.account.problemLists || []);
-        this.main().catch((e) => logger.error(`Error occured in ${account.type}/${account.handle}`, e));
+        this.main().catch((e) => {
+            logger.error(`Error occured in ${account.type}/${account.handle}`);
+            this.error = e.message;
+            console.error(e);
+        });
     }
 
     async addProblemList(name: string) {
@@ -40,12 +45,28 @@ class AccountService {
         const end = (payload) => JudgeHandler.end({ ...payload, rid: task.rid });
         await next({ status: STATUS.STATUS_FETCHED });
         try {
+            const langConfig = SettingModel.langs[task.lang];
+            if (langConfig.validAs?.[this.account.type]) task.lang = langConfig.validAs[this.account.type];
+            const comment = langConfig.comment;
+            if (comment) {
+                const msg = `Hydro submission #${task.rid}@${new Date().getTime()}`;
+                if (typeof comment === 'string') task.code = `${comment} ${msg}\n${task.code}`;
+                else if (comment instanceof Array) task.code = `${comment[0]} ${msg} ${comment[1]}\n${task.code}`;
+            }
             const rid = await this.api.submitProblem(task.target, task.lang, task.code, task, next, end);
             if (!rid) return;
             await next({ status: STATUS.STATUS_JUDGING, message: `ID = ${rid}` });
-            await this.api.waitForSubmission(rid, next, end);
+            const nextFunction = (data) => {
+                if (data.case) delete data.case.message;
+                if (data.cases) data.cases.forEach((x) => delete x.message);
+                return next(data);
+            };
+            await this.api.waitForSubmission(rid, task.config?.detail === false ? nextFunction : next, end);
         } catch (e) {
-            if (process.env.DEV) logger.error(e);
+            if (process.env.DEV) {
+                logger.error(e);
+                if (e.response) console.error(e.response);
+            }
             end({ status: STATUS.STATUS_SYSTEM_ERROR, message: e.message });
         }
     }
@@ -101,8 +122,9 @@ class AccountService {
         const res = await this.login();
         if (!res) return;
         setInterval(() => this.login(), Time.hour);
-        TaskModel.consume({ type: 'remotejudge', subType: this.account.type }, this.judge.bind(this), false);
-        const ddocs = await DomainModel.getMulti({ mount: this.account.type }).toArray();
+        TaskModel.consume({ type: 'remotejudge', subType: this.account.type.split('.')[0] }, this.judge.bind(this), false);
+        const ddocs = await DomainModel.getMulti({ mount: this.account.type.split('.')[0] }).toArray();
+        this.working = true;
         do {
             this.listUpdated = false;
             for (const listName of this.problemLists) {
@@ -123,21 +145,8 @@ class AccountService {
 }
 
 declare module 'hydrooj' {
-    interface Model {
-        vjudge: VJudgeModel;
-    }
     interface Context {
         vjudge: VJudgeService;
-    }
-}
-
-class VJudgeModel {
-    static async fixCodeforcesDifficulty(domainId = 'codeforces') {
-        const pdocs = await ProblemModel.getMulti(domainId, {}).toArray();
-        for (const pdoc of pdocs) {
-            await ProblemModel.edit(domainId, pdoc.docId, { difficulty: getDifficulty(pdoc.tag) });
-        }
-        return true;
     }
 }
 
@@ -153,8 +162,9 @@ class VJudgeService extends Service {
         this.accounts = await coll.find().toArray();
     }
 
-    addProvider(type: string, provider: BasicProvider) {
-        if (this.providers[type]) throw new Error(`duplicate provider ${type}`);
+    addProvider(type: string, provider: BasicProvider, override = false) {
+        if (process.env.VJUDGE_DEBUG && process.env.VJUDGE_DEBUG !== type) return;
+        if (!override && this.providers[type]) throw new Error(`duplicate provider ${type}`);
         this.providers[type] = provider;
         for (const account of this.accounts.filter((a) => a.type === type)) {
             if (account.enableOn && !account.enableOn.includes(os.hostname())) continue;
@@ -164,9 +174,23 @@ class VJudgeService extends Service {
             // TODO dispose session
         });
     }
+
+    async checkStatus(onCheckFunc = false) {
+        const res: Record<string, { working: boolean, error?: string, status?: any }> = {};
+        for (const [k, v] of Object.entries(this.pool)) {
+            res[k] = {
+                working: v.working,
+                error: v.error,
+                status: v.api.checkStatus ? await v.api.checkStatus(onCheckFunc) : null,
+            };
+        }
+        return res;
+    }
 }
 
-global.Hydro.model.vjudge = VJudgeModel;
+export { BasicFetcher } from './fetch';
+export { VERDICT } from './verdict';
+export * from './interface';
 
 Context.service('vjudge', VJudgeService);
 export const name = 'vjudge';
@@ -175,8 +199,21 @@ export async function apply(ctx: Context) {
     if (process.env.HYDRO_CLI) return;
     const vjudge = new VJudgeService(ctx);
     await vjudge.start();
+    // ctx.on('app/started', () => {
     for (const [k, v] of Object.entries(providers)) {
         vjudge.addProvider(k, v);
     }
+    // });
     ctx.vjudge = vjudge;
+    ctx.check.addChecker('Vjudge', async (_ctx, log, warn, error) => {
+        const working = [];
+        const pool = await vjudge.checkStatus(true);
+        for (const [k, v] of Object.entries(pool)) {
+            if (!v.working) error(`vjudge worker ${k}: ${v.error}`);
+            else working.push(k);
+            if (v.status) log(`vjudge worker ${k}: ${v.status}`);
+        }
+        if (!working.length) warn('no vjudge worker is working');
+        log(`vjudge working workers: ${working.join(', ')}`);
+    });
 }

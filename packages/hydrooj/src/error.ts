@@ -33,7 +33,6 @@ export class HydroError extends Error {
         this.params = params;
     }
 
-    // eslint-disable-next-line class-methods-use-this
     msg() {
         return 'HydroError';
     }
@@ -108,8 +107,8 @@ export const FileExistsError = Err('FileExistsError', ForbiddenError, 'File {0} 
 export const HackFailedError = Err('HackFailedError', ForbiddenError, 'Hack failed: {0}');
 export const ProblemAlreadyExistError = Err('ProblemAlreadyExistError', ForbiddenError, 'Problem {0} already exists.');
 export const ProblemAlreadyUsedByContestError = Err('ProblemAlreadyUsedByContestError', ForbiddenError, 'Problem {0} is already used by contest {1}.');
-export const ProblemNotAllowPretestError = Err('ProblemNotAllowPretestError', ForbiddenError, 'This {0} is not allow run pretest.');
-export const ProblemNotAllowLanguageError = Err('ProblemNotAllowSubmitError', ForbiddenError, 'This language is not allow to submit.');
+export const ProblemNotAllowPretestError = Err('ProblemNotAllowPretestError', ForbiddenError, 'Pretesting is not supported for {0}.');
+export const ProblemNotAllowLanguageError = Err('ProblemNotAllowSubmitError', ForbiddenError, 'This language is not allowed to submit.');
 
 export const HackRejudgeFailedError = Err('HackRejudgeFailedError', BadRequestError, 'Cannot rejudge a hack record.');
 export const CannotDeleteSystemDomainError = Err('CannotDeleteSystemDomainError', BadRequestError, 'You are not allowed to delete system domain.');
@@ -117,7 +116,7 @@ export const OnlyOwnerCanDeleteDomainError = Err('OnlyOwnerCanDeleteDomainError'
 export const CannotEditSuperAdminError = Err('CannotEditSuperAdminError', BadRequestError, 'You are not allowed to edit super admin in web.');
 export const ProblemConfigError = Err('ProblemConfigError', BadRequestError, 'Invalid problem config.');
 export const ProblemIsReferencedError = Err('ProblemIsReferencedError', BadRequestError, 'Cannot {0} of a referenced problem.');
-export const TFAOperationError = Err('TFAOperationError', BadRequestError, '2FA is already {0}.');
+export const AuthOperationError = Err('AuthOperationError', BadRequestError, '{0} is already {1}.');
 
 export const UserNotFoundError = Err('UserNotFoundError', NotFoundError, 'User {0} not found.');
 export const NoProblemError = Err('NoProblemError', NotFoundError, 'No problem.');

@@ -17,14 +17,16 @@ import root from './utils/root';
 const argv = cac().parse();
 
 async function runWebpack({
-  watch, production, measure, dev,
+  watch, production, measure, dev, https,
 }) {
   const compiler = webpack(webpackConfig({ watch, production, measure }));
   if (dev) {
     const server = new WebpackDevServer({
-      port: 8000,
+      port: https ? 8001 : 8000,
       compress: true,
       hot: true,
+      server: https ? 'https' : 'http',
+      allowedHosts: 'all',
       proxy: {
         context: (p) => p !== '/ws',
         target: 'http://localhost:2333',
@@ -65,7 +67,7 @@ async function runWebpack({
     if (fs.existsSync(statsPath)) {
       log('Compare to last production bundle:');
       const oldStats = JSON.parse(await fs.readFile(statsPath, 'utf-8')) as Record<string, number>;
-      for (const key in stats) if (!oldStats[key]) oldStats[key] = 0;
+      for (const key in stats) oldStats[key] ||= 0;
       const entries: [filename: string, orig: number, curr: number][] = [];
       for (const [key, value] of Object.entries(oldStats)) {
         if (Math.abs((stats[key] || 0) - value) > 25) entries.push([key, value, stats[key] || 0]);
@@ -85,11 +87,11 @@ async function runWebpack({
 }
 
 async function runGulp() {
-  function handleError(err) {
+  function errorHandler(err) {
     log(chalk.red('Error: %s'), chalk.reset(err.toString() + err.stack));
     process.exit(1);
   }
-  const gulpTasks = gulpConfig({ production: true, errorHandler: handleError });
+  const gulpTasks = gulpConfig({ errorHandler });
   return new Promise((resolve) => {
     const taskList = {};
 
@@ -118,8 +120,8 @@ async function main() {
     if (fs.existsSync('public/polyfill.js')) {
       fs.copyFileSync('public/polyfill.js', `public/polyfill-${pkg.version}.js`);
     }
-    if (fs.existsSync('public/default.theme.css')) {
-      fs.copyFileSync('public/default.theme.css', `public/default-${pkg.version}.theme.css`);
+    if (fs.existsSync('public/theme.css')) {
+      fs.copyFileSync('public/theme.css', `public/theme-${pkg.version}.css`);
     }
     if (argv.options.production) {
       for (const f of ['echarts', 'graphviz', 'mermaid', 'mathjax']) {

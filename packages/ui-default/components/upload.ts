@@ -1,9 +1,8 @@
 import { Dialog } from 'vj/components/dialog/index';
 import Notification from 'vj/components/notification';
-import delay from 'vj/utils/delay';
-import i18n from 'vj/utils/i18n';
-import pjax from 'vj/utils/pjax';
-import request from 'vj/utils/request';
+import {
+  delay, i18n, pjax, request,
+} from 'vj/utils';
 
 function onBeforeUnload(e) {
   e.returnValue = '';
@@ -12,6 +11,7 @@ function onBeforeUnload(e) {
 interface UploadOptions {
   type?: string;
   pjax?: boolean;
+  sidebar?: boolean;
   singleFileUploadCallback?: (file: File) => any;
 }
 export default async function uploadFiles(endpoint = '', files: File[] | FileList = [], options: UploadOptions = {}) {
@@ -66,7 +66,12 @@ export default async function uploadFiles(endpoint = '', files: File[] | FileLis
     }
     window.removeEventListener('beforeunload', onBeforeUnload);
     Notification.success(i18n('File uploaded successfully.'));
-    if (options.pjax) await pjax.request({ push: false });
+    if (options.pjax) {
+      let params = '';
+      if (options.type) params += `?d=${options.type}`;
+      if (options.sidebar) params += `${params ? '&' : '?'}sidebar=true`;
+      await pjax.request({ push: false, url: `${endpoint}${params || ''}` });
+    }
   } catch (e) {
     console.error(e);
     Notification.error(i18n('File upload failed: {0}', e.toString()));

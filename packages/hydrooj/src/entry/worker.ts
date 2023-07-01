@@ -48,6 +48,7 @@ export async function apply(ctx: Context) {
 
     await setting(pending, fail, require('../model/setting'));
     ctx.plugin(require('../service/monitor'));
+    ctx.plugin(require('../service/check'));
     await service(pending, fail, ctx);
     await builtinModel(ctx);
     await model(pending, fail, ctx);
@@ -71,23 +72,34 @@ export async function apply(ctx: Context) {
     await ctx.lifecycle.flush();
     await ctx.parallel('app/started');
     if (process.env.NODE_APP_INSTANCE === '0') {
-        const scripts = require('../upgrade').default;
+        const { default: scripts, init } = require('../upgrade');
         let dbVer = (await modelSystem.get('db.ver')) ?? 0;
         const isFresh = !dbVer;
         const expected = scripts.length;
-        while (dbVer < expected) {
-            const func = scripts[dbVer];
-            if (typeof func !== 'function' || (isFresh && func.toString().includes('_FRESH_INSTALL_IGNORE'))) {
+        if (isFresh) {
+            await init();
+            await modelSystem.set('db.ver', expected);
+        } else {
+            while (dbVer < expected) {
+                const func = scripts[dbVer];
+                if (typeof func !== 'function') {
+                    dbVer++;
+                    continue;
+                }
+                logger.info('Upgrading database: from %d to %d', dbVer, expected);
+                const result = await func();
+                if (!result) break;
                 dbVer++;
-                continue;
+                await modelSystem.set('db.ver', dbVer);
             }
-            logger.info('Upgrading database: from %d to %d', dbVer, expected);
-            const result = await func();
-            if (!result) break;
-            dbVer++;
-            await modelSystem.set('db.ver', dbVer);
         }
     }
+    for (const f of global.addons) {
+        const dir = path.join(f, 'public');
+        // eslint-disable-next-line no-await-in-loop
+        if (await fs.pathExists(dir)) await fs.copy(dir, path.join(os.homedir(), '.hydro/static'));
+    }
+    await ctx.parallel('app/listen');
     logger.success('Server started');
     process.send?.('ready');
     await ctx.parallel('app/ready');

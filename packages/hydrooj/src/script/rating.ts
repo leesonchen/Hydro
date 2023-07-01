@@ -1,8 +1,9 @@
 /* eslint-disable no-cond-assign */
 /* eslint-disable no-await-in-loop */
 import { NumericDictionary, unionWith } from 'lodash';
-import { FilterQuery } from 'mongodb';
+import { Filter, ObjectId } from 'mongodb';
 import Schema from 'schemastery';
+import { Counter } from '@hydrooj/utils';
 import { Tdoc, Udoc } from '../interface';
 import difficultyAlgorithm from '../lib/difficulty';
 import rating from '../lib/rating';
@@ -59,11 +60,12 @@ export const RpTypes: Record<string, RpDef> = {
             if (contests.length) await report({ message: `Found ${contests.length} contests in ${domainIds[0]}` });
             for (const tdoc of contests.reverse()) {
                 const start = Date.now();
-                const cursor = contest.getMultiStatus(tdoc.domainId, {
+                const query = {
                     docId: tdoc.docId,
                     journal: { $ne: null },
-                }).sort(contest.RULES[tdoc.rule].statusSort);
-                if (!await cursor.count()) continue;
+                };
+                if (!await contest.countStatus(tdoc.domainId, query)) continue;
+                const cursor = contest.getMultiStatus(tdoc.domainId, query).sort(contest.RULES[tdoc.rule].statusSort);
                 const rankedTsdocs = await contest.RULES[tdoc.rule].ranked(tdoc, cursor);
                 const users = rankedTsdocs.map((i) => ({ uid: i[1].uid, rank: i[0], old: udict[i[1].uid] }));
                 // FIXME sum(rating.new) always less than sum(rating.old)
@@ -100,33 +102,30 @@ export const RpTypes: Record<string, RpDef> = {
 global.Hydro.model.rp = RpTypes;
 
 export async function calcLevel(domainId: string, report: Function) {
-    const filter = { rp: { $gt: 0 } };
-    const ducnt = await domain.getMultiUserInDomain(domainId, filter).count();
     await domain.setMultiUserInDomain(domainId, {}, { level: 0, rank: null });
-    if (!ducnt) return;
     let last = { rp: null };
     let rank = 0;
     let count = 0;
     const coll = db.collection('domain.user');
-    const ducur = domain.getMultiUserInDomain(domainId, filter).project({ rp: 1 }).sort({ rp: -1 });
+    const filter = { rp: { $gt: 0 }, uid: { $nin: [0, 1], $gt: -1000 } };
+    const ducur = domain.getMultiUserInDomain(domainId, filter)
+        .project<{ _id: ObjectId, rp: number }>({ rp: 1 })
+        .sort({ rp: -1 });
     let bulk = coll.initializeUnorderedBulkOp();
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-        const dudoc = await ducur.next();
-        if (!dudoc) break;
-        if ([0, 1].includes(dudoc.uid)) continue;
+    for await (const dudoc of ducur) {
         count++;
-        if (!dudoc.rp) dudoc.rp = null;
+        dudoc.rp ||= null;
         if (dudoc.rp !== last.rp) rank = count;
         bulk.find({ _id: dudoc._id }).updateOne({ $set: { rank } });
         last = dudoc;
         if (count % 100 === 0) report({ message: `#${count}: Rank ${rank}` });
     }
+    if (!count) return;
     await bulk.execute();
     const levels = global.Hydro.model.builtin.LEVELS;
     bulk = coll.initializeUnorderedBulkOp();
     for (let i = 0; i < levels.length; i++) {
-        const query: FilterQuery<Udoc> = {
+        const query: Filter<Udoc> = {
             domainId,
             $and: [{ rank: { $lte: (levels[i] * count) / 100 } }],
         };
@@ -136,28 +135,31 @@ export async function calcLevel(domainId: string, report: Function) {
     await bulk.execute();
 }
 
-async function runInDomain(id: string, report: Function) {
-    const info = await domain.get(id);
-    const domainIds = [id, ...(info.union || [])];
+async function runInDomain(domainId: string, report: Function) {
+    const info = await domain.get(domainId);
+    const domainIds = [domainId, ...(info.union || [])];
     const results: Record<keyof typeof RpTypes, ND> = {};
-    const udict = new Proxy({}, { get: (self, key) => self[key] || 0 });
+    const udict = Counter();
+    await db.collection('domain.user').updateMany({ domainId }, { $set: { rpInfo: {} } });
     for (const type in RpTypes) {
         results[type] = new Proxy({}, { get: (self, key) => self[key] || RpTypes[type].base });
         await RpTypes[type].run(domainIds, results[type], report);
+        const bulk = db.collection('domain.user').initializeUnorderedBulkOp();
         for (const uid in results[type]) {
-            const udoc = await UserModel.getById(id, +uid);
+            const udoc = await UserModel.getById(domainId, +uid);
             if (!udoc?.hasPriv(PRIV.PRIV_USER_PROFILE)) continue;
-            await domain.updateUserInDomain(id, +uid, { $set: { [`rpInfo.${type}`]: results[type][uid] } });
+            bulk.find({ domainId, uid: +uid }).updateOne({ $set: { [`rpInfo.${type}`]: results[type][uid] } });
             udict[+uid] += results[type][uid];
         }
+        if (bulk.batches.length) await bulk.execute();
     }
-    await domain.setMultiUserInDomain(id, {}, { rp: 0 });
+    await domain.setMultiUserInDomain(domainId, {}, { rp: 0 });
     const bulk = db.collection('domain.user').initializeUnorderedBulkOp();
     for (const uid in udict) {
-        bulk.find({ domainId: id, uid: +uid }).upsert().update({ $set: { rp: Math.max(0, udict[uid]) } });
+        bulk.find({ domainId, uid: +uid }).upsert().update({ $set: { rp: Math.max(0, udict[uid]) } });
     }
-    if (bulk.length) await bulk.execute();
-    await calcLevel(id, report);
+    if (bulk.batches.length) await bulk.execute();
+    await calcLevel(domainId, report);
 }
 
 export async function run({ domainId }, report: Function) {
