@@ -39,8 +39,20 @@ export class HomeHandler extends Handler {
 
     async getHomework(domainId: string, limit = 5) {
         if (!this.user.hasPerm(PERM.PERM_VIEW_HOMEWORK)) return [[], {}];
-        const tdocs = await contest.getMulti(domainId, { rule: 'homework' })
+        const tdocsOrig = await contest.getMulti(domainId, { rule: 'homework' })
             .limit(limit).toArray();
+
+        const tdocs = [];
+        const teacherRole = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK);
+        for (const tdoc of tdocsOrig) {
+            if (tdoc.assign?.length && !this.user.own(tdoc) && !teacherRole) {
+                if (!Set.intersection(tdoc.assign, this.user.group).size) {
+                    // skip the homework for current user
+                    continue;
+                }
+            }
+            tdocs.push(tdoc);
+        }
         const tsdict = await contest.getListStatus(
             domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
         );

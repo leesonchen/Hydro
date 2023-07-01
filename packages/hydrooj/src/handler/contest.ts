@@ -97,7 +97,8 @@ export class ContestDetailBaseHandler extends Handler {
             contest.get(domainId, tid),
             contest.getStatus(domainId, tid, this.user._id),
         ]);
-        if (this.tdoc.assign?.length && !this.user.own(this.tdoc)) {
+        const teacherRole = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK);
+        if (this.tdoc.assign?.length && !this.user.own(this.tdoc) && !teacherRole) {
             const groups = await user.listGroup(domainId, this.user._id);
             if (!Set.intersection(this.tdoc.assign, groups.map((i) => i.name)).size) {
                 throw new NotAssignedError('contest', tid);

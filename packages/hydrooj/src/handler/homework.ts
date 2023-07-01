@@ -24,9 +24,24 @@ class HomeworkMainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     async get(domainId: string, page = 1) {
         const cursor = contest.getMulti(domainId, { rule: 'homework' });
-        const [tdocs, tpcount] = await paginate<Tdoc>(cursor, page, system.get('pagination.contest'));
+        const [tdocsOrig, tpcount] = await paginate<Tdoc>(cursor, page, system.get('pagination.contest'));
         const calendar = [];
-        for (const tdoc of tdocs) {
+        const tdocs = [];
+        let filterTpCount = 0;
+
+        const teacherRole = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK);
+
+        for (const tdoc of tdocsOrig) {
+            if (tdoc.assign?.length && !this.user.own(tdoc) && !teacherRole) {
+                if (!Set.intersection(tdoc.assign, this.user.group).size) {
+                    // skip the homework for current user
+                    continue;
+                }
+            }
+
+            tdocs.push(tdoc);
+            filterTpCount++;
+
             const cal = { ...tdoc, url: this.url('homework_detail', { tid: tdoc.docId }) };
             if (contest.isExtended(tdoc) || contest.isDone(tdoc)) {
                 cal.endAt = tdoc.endAt;
@@ -35,7 +50,7 @@ class HomeworkMainHandler extends Handler {
             calendar.push(cal);
         }
         this.response.body = {
-            tdocs, calendar, tpcount, page,
+            tdocs, calendar, filterTpCount, page,
         };
         this.response.template = 'homework_main.html';
     }
@@ -45,8 +60,9 @@ class HomeworkDetailHandler extends Handler {
     @param('tid', Types.ObjectID)
     async prepare(domainId: string, tid: ObjectID) {
         const tdoc = await contest.get(domainId, tid);
+        const teacherRole = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK);
         if (tdoc.rule !== 'homework') throw new ContestNotFoundError(domainId, tid);
-        if (tdoc.assign?.length && !this.user.own(tdoc)) {
+        if (tdoc.assign?.length && !this.user.own(tdoc) && !teacherRole) {
             if (!Set.intersection(tdoc.assign, this.user.group).size) {
                 throw new NotAssignedError('homework', tdoc.docId);
             }
