@@ -5,13 +5,11 @@ import {
     PermissionError,
 } from '../error';
 import { DiscussionDoc, DiscussionReplyDoc, DiscussionTailReplyDoc } from '../interface';
-import paginate from '../lib/paginate';
 import { PERM, PRIV } from '../model/builtin';
 import * as discussion from '../model/discussion';
 import * as document from '../model/document';
 import message from '../model/message';
 import * as oplog from '../model/oplog';
-import * as system from '../model/system';
 import user from '../model/user';
 import { Handler, param, Types } from '../service/server';
 
@@ -73,10 +71,10 @@ class DiscussionMainHandler extends Handler {
         // Limit to known types
         const parentType = { $in: Object.keys(typeMapper).map((i) => typeMapper[i]) };
         all &&= this.user.hasPerm(PERM.PERM_MOD_BADGE);
-        const [ddocs, dpcount] = await paginate(
+        const [ddocs, dpcount] = await this.paginate(
             discussion.getMulti(domainId, { parentType, ...all ? {} : { hidden: false } }),
             page,
-            system.get('pagination.discussion'),
+            'discussion',
         );
         const udict = await user.getList(domainId, ddocs.map((ddoc) => ddoc.owner));
         const [vndict, vnodes] = await Promise.all([
@@ -100,10 +98,10 @@ class DiscussionNodeHandler extends DiscussionHandler {
         else if (isSafeInteger(parseInt(_name, 10))) name = parseInt(_name, 10);
         else name = _name;
         const hidden = this.user.own(this.vnode) || this.user.hasPerm(PERM.PERM_EDIT_DISCUSSION) ? {} : { hidden: false };
-        const [ddocs, dpcount] = await paginate(
+        const [ddocs, dpcount] = await this.paginate(
             discussion.getMulti(domainId, { parentType: typeMapper[type], parentId: name, ...hidden }),
             page,
-            system.get('pagination.discussion'),
+            'discussion',
         );
         const uids = ddocs.map((ddoc) => ddoc.owner);
         uids.push(this.vnode.owner);
@@ -167,12 +165,13 @@ class DiscussionDetailHandler extends DiscussionHandler {
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
             ? await discussion.getStatus(domainId, did, this.user._id)
             : null;
-        const [drdocs, pcount, drcount] = await paginate(
+        const [drdocs, pcount, drcount] = await this.paginate(
             discussion.getMultiReply(domainId, did),
             page,
-            system.get('pagination.reply'),
+            'reply',
         );
         const uids = [
+            ...this.vnode.owner ? [this.vnode.owner] : [],
             this.ddoc.owner,
             ...drdocs.map((drdoc) => drdoc.owner),
         ];
@@ -239,9 +238,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
             message: 'User {0} mentioned you in {1:link}',
             params: [this.user.uname, `/d/${domainId}${this.request.path}`],
         });
-        for (const uid of uids) {
-            message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
-        }
+        await Promise.all(uids.map((i) => message.send(1, i, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD)));
         const drid = await discussion.addReply(domainId, did, this.user._id, content, this.request.ip);
         this.back({ drid });
     }
@@ -258,9 +255,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
             message: 'User {0} mentioned you in {1:link}',
             params: [this.user.uname, `/d/${domainId}${this.request.path}`],
         });
-        for (const uid of uids) {
-            message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
-        }
+        await Promise.all(uids.map((i) => message.send(1, i, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD)));
         await discussion.addTailReply(domainId, drid, this.user._id, content, this.request.ip);
         this.back();
     }
@@ -284,7 +279,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
             && this.user.hasPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF_DISCUSSION))) {
             if (!this.user.own(this.drdoc)) {
                 this.checkPerm(PERM.PERM_DELETE_DISCUSSION_REPLY);
-            } else this.checkPerm(PERM.PERM_DELETE_DISCUSSION_SELF);
+            } else this.checkPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF);
         }
         const msg = JSON.stringify({
             message: '{0} {1} delete your discussion reply {2} in "{3}"({4:link}).',
@@ -321,7 +316,10 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('drrid', Types.ObjectId)
     async postDeleteTailReply(domainId: string, drid: ObjectId, drrid: ObjectId) {
         const deleteBy = this.user.own(this.drrdoc) ? 'self' : 'Admin';
-        if (!this.user.own(this.drrdoc)) this.checkPerm(PERM.PERM_DELETE_DISCUSSION_REPLY);
+        if (!(this.user.own(this.drrdoc)
+            && this.user.hasPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF))) {
+            this.checkPerm(PERM.PERM_DELETE_DISCUSSION_REPLY);
+        }
         const msg = JSON.stringify({
             message: 'Admin {0} delete your discussion tail reply {1} in "{2}"({3:link}).',
             params: [
@@ -340,15 +338,10 @@ class DiscussionDetailHandler extends DiscussionHandler {
     }
 
     @param('did', Types.ObjectId)
-    async postStar(domainId: string, did: ObjectId) {
-        await discussion.setStar(domainId, did, this.user._id, true);
-        this.back({ star: true });
-    }
-
-    @param('did', Types.ObjectId)
-    async postUnstar(domainId: string, did: ObjectId) {
-        await discussion.setStar(domainId, did, this.user._id, false);
-        this.back({ star: false });
+    @param('star', Types.Boolean)
+    async postStar(domainId: string, did: ObjectId, star = false) {
+        await discussion.setStar(domainId, did, this.user._id, star);
+        this.back({ star });
     }
 }
 

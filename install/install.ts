@@ -24,7 +24,10 @@ const sleep = (t: number) => new Promise((r) => { setTimeout(r, t); });
 const locales = {
     zh: {
         'install.start': '开始运行 Hydro 安装工具',
-        'warn.avx2': '检测到您的 CPU 不支持 avx2 指令集，将使用 mongodb@v4.4',
+        'note.avx': `检测到您的 CPU 不支持 avx 指令集，这可能会影响系统运行速度。
+如果您正在使用 PVE/VirtualBox 等虚拟机平台，请尝试关机后将虚拟机的 CPU 类型设置为 Host，重启后再次运行该脚本。
+您也可以选择忽略此问题，安装脚本将在一分钟后自动继续安装。`,
+        'warn.avx': '检测到您的 CPU 不支持 avx 指令集，将使用 mongodb@v4.4',
         'error.rootRequired': '请先使用 sudo su 切换到 root 用户后再运行该工具。',
         'error.unsupportedArch': '不支持的架构 %s ,请尝试手动安装。',
         'error.osreleaseNotFound': '无法获取系统版本信息（/etc/os-release 文件未找到），请尝试手动安装。',
@@ -51,7 +54,12 @@ const locales = {
     },
     en: {
         'install.start': 'Starting Hydro installation tool',
-        'warn.avx2': 'Your CPU does not support avx2, will use mongodb@v4.4',
+        'note.avx': `Your CPU does not support avx, this may affect system performance.
+If you are using a virtual machine platform such as PVE/VirtualBox,
+try shutting down and setting the CPU type of the virtual machine to Host,
+then restart and run the script again.
+You can also choose to ignore this issue, the installation script will continue in one minute.`,
+        'warn.avx': 'Your CPU does not support avx, will use mongodb@v4.4',
         'error.rootRequired': 'Please run this tool as root user.',
         'error.unsupportedArch': 'Unsupported architecture %s, please try to install manually.',
         'error.osreleaseNotFound': 'Unable to get system version information (/etc/os-release file not found), please try to install manually.',
@@ -81,6 +89,7 @@ If you have any questions about the migration process, please add QQ group 10858
 
 const installAsJudge = process.argv.includes('--judge');
 const noCaddy = process.argv.includes('--no-caddy');
+const exposeDb = process.argv.includes('--expose-db');
 const addons = ['@hydrooj/ui-default', '@hydrooj/hydrojudge', '@hydrooj/fps-importer', '@hydrooj/a11y'];
 const installTarget = installAsJudge ? '@hydrooj/hydrojudge' : `hydrooj ${addons.join(' ')}`;
 const substitutersArg = process.argv.find((i) => i.startsWith('--substituters='));
@@ -111,11 +120,11 @@ for (const line of lines) {
     if (d[1].startsWith('"')) values[d[0].toLowerCase()] = d[1].substring(1, d[1].length - 2);
     else values[d[0].toLowerCase()] = d[1];
 }
-let avx2 = true;
+let avx = true;
 const cpuInfoFile = readFileSync('/proc/cpuinfo', 'utf-8');
-if (!cpuInfoFile.includes('avx2') && !installAsJudge) {
-    avx2 = false;
-    log.warn('warn.avx2');
+if (!cpuInfoFile.includes('avx') && !installAsJudge) {
+    avx = false;
+    log.warn('warn.avx');
 }
 let retry = 0;
 log.info('install.start');
@@ -164,6 +173,7 @@ const Caddyfile = `\
 # 请注意在防火墙/安全组中放行端口，且部分运营商会拦截未经备案的域名。
 # For more information, refer to caddy v2 documentation.
 :80 {
+  encode zstd gzip
   log {
     output file /data/access.log {
       roll_size 1gb
@@ -283,7 +293,9 @@ const printInfo = [
     'echo https://qm.qq.com/cgi-bin/qm/qr\\?k\\=0aTZfDKURRhPBZVpTYBohYG6P6sxABTw | qrencode -o - -m 2 -t UTF8',
     () => {
         if (installAsJudge) return;
-        password = new URL(require(`${process.env.HOME}/.hydro/config.json`).uri).password || '(No password)';
+        const config = require(`${process.env.HOME}/.hydro/config.json`);
+        if (config.uri) password = new URL(config.uri).password || '(No password)';
+        else password = config.password || '(No password)';
         log.info('extra.dbUser');
         log.info('extra.dbPassword', password);
     },
@@ -293,7 +305,7 @@ const Steps = () => [
     {
         init: 'install.preparing',
         operations: [
-            () => {
+            async () => {
                 if (process.env.IGNORE_BT) return;
                 const res = exec('bt default');
                 if (!res.code) {
@@ -302,7 +314,14 @@ const Steps = () => [
                         process.exit(1);
                     } else {
                         log.warn('warn.bt');
+                        await sleep(5000);
                     }
+                }
+            },
+            async () => {
+                if (!avx && !installAsJudge) {
+                    log.warn('note.avx');
+                    await sleep(60000);
                 }
             },
             () => {
@@ -319,7 +338,8 @@ ${nixConfBase}`);
                 exec('nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs', { stdio: 'inherit' });
                 exec('nix-channel --update', { stdio: 'inherit' });
             },
-            'nix-env -iA nixpkgs.pm2 nixpkgs.yarn nixpkgs.esbuild nixpkgs.bash nixpkgs.unzip nixpkgs.zip nixpkgs.diffutils',
+            `nix-env -iA ${['pm2', 'yarn', 'esbuild', 'bash', 'unzip', 'zip', 'diffutils', 'patch', 'screen'].map((i) => `nixpkgs.${i}`).join(' ')}`,
+            'yarn config set disable-self-update-check true',
             async () => {
                 const rl = createInterface(process.stdin, process.stdout);
                 try {
@@ -333,7 +353,7 @@ ${nixConfBase}`);
                     if (!docker) return;
                     const containers = exec('docker ps -a --format json').output?.split('\n')
                         .map((i) => i.trim()).filter((i) => i).map((i) => JSON.parse(i));
-                    const uoj = containers?.find((i) => i.Image.toLowerCase === 'universaloj/uoj-system' && i.State === 'running');
+                    const uoj = containers?.find((i) => i.Image.toLowerCase() === 'universaloj/uoj-system' && i.State === 'running');
                     if (uoj) {
                         log.info('migrate.uojFound');
                         const res = await rl.question('>');
@@ -362,27 +382,33 @@ ${nixConfBase}`);
     permittedInsecurePackages = [
         "openssl-1.1.1t"
         "openssl-1.1.1u"
+        "openssl-1.1.1v"
+        "openssl-1.1.1w"
+        "openssl-1.1.1x"
+        "openssl-1.1.1y"
+        "openssl-1.1.1z"
     ];
 }`),
-            `nix-env -iA hydro.mongodb${avx2 ? 5 : 4}${CN ? '-cn' : ''} nixpkgs.mongosh nixpkgs.mongodb-tools`,
+            `nix-env -iA hydro.mongodb${avx ? 7 : 4}${CN ? '-cn' : ''} nixpkgs.mongosh nixpkgs.mongodb-tools`,
         ],
     },
     {
         init: 'install.compiler',
         operations: [
-            'nix-env -iA nixpkgs.gcc nixpkgs.fpc nixpkgs.python3',
+            'nix-env -iA nixpkgs.gcc nixpkgs.python3',
         ],
     },
     {
         init: 'install.sandbox',
         skip: () => !exec('hydro-sandbox --help').code,
         operations: [
-            'nix-env -iA hydro.sandbox',
+            'nix-env -iA nixpkgs.go-judge',
+            'ln -sf $(which go-judge) /usr/local/bin/hydro-sandbox',
         ],
     },
     {
         init: 'install.caddy',
-        skip: () => !exec('caddy version').code || installAsJudge || noCaddy,
+        skip: () => !exec('caddy version').code || installAsJudge || noCaddy || !existsSync(`${process.env.HOME}/.hydro/Caddyfile`),
         hidden: installAsJudge,
         operations: [
             'nix-env -iA nixpkgs.caddy',
@@ -432,7 +458,9 @@ ${nixConfBase}`);
                     readPreference: 'nearest',
                     writeConcern: new WriteConcern('majority'),
                 });
-                await client.db('hydro').addUser('hydro', password, {
+                await client.db('hydro').command({
+                    createUser: 'hydro',
+                    pwd: password,
                     roles: [{ role: 'readWrite', db: 'hydro' }],
                 });
                 await client.close();
@@ -453,11 +481,14 @@ ${nixConfBase}`);
             `pm2 start bash --name hydro-sandbox -- -c "ulimit -s unlimited && hydro-sandbox -mount-conf ${process.env.HOME}/.hydro/mount.yaml -http-addr=localhost:5050"`,
             ...installAsJudge ? [] : [
                 () => console.log(`WiredTiger cache size: ${wtsize}GB`),
-                `pm2 start mongod --name mongodb -- --auth --bind_ip 0.0.0.0 --wiredTigerCacheSizeGB=${wtsize}`,
+                // The only thing mongod writes to stderr is 'libcurl no version information available'
+                `pm2 start mongod --name mongodb -e /dev/null -- --auth ${exposeDb ? '--bind_ip=0.0.0.0 ' : ''}--wiredTigerCacheSizeGB=${wtsize}`,
                 () => sleep(1000),
-                'pm2 start hydrooj',
                 async () => {
-                    if (noCaddy) return;
+                    if (noCaddy) {
+                        exec('hydrooj cli system set server.host 0.0.0.0');
+                        return;
+                    }
                     if (!await isPortFree(80)) log.warn('port.80');
                     if (migration === 'hustoj') {
                         exec('systemctl stop nginx || true');
@@ -467,7 +498,9 @@ ${nixConfBase}`);
                     exec('pm2 start caddy -- run', { cwd: `${process.env.HOME}/.hydro` });
                     exec('hydrooj cli system set server.xff x-forwarded-for');
                     exec('hydrooj cli system set server.xhost x-forwarded-host');
+                    exec('hydrooj cli system set server.xproxy true');
                 },
+                'pm2 start hydrooj',
             ],
             'pm2 startup',
             'pm2 save',
@@ -523,11 +556,12 @@ ${nixConfBase}`);
             () => {
                 const containers = exec('docker ps -a --format json').output?.split('\n')
                     .map((i) => i.trim()).filter((i) => i).map((i) => JSON.parse(i));
-                const uoj = containers!.find((i) => i.Image.toLowerCase === 'universaloj/uoj-system' && i.State === 'running')!;
-                const info = JSON.parse(exec(`docker inspect ${uoj.Id}`).output!);
+                const uoj = containers!.find((i) => i.Image.toLowerCase() === 'universaloj/uoj-system' && i.State === 'running')!;
+                const id = uoj.Id || uoj.ID;
+                const info = JSON.parse(exec(`docker inspect ${id}`).output!);
                 const dir = info[0].GraphDriver.Data.MergedDir;
                 exec(`sed s/127.0.0.1/0.0.0.0/g -i ${dir}/etc/mysql/mysql.conf.d/mysqld.cnf`);
-                exec(`docker exec -i ${uoj.Id} /etc/init.d/mysql restart`);
+                exec(`docker exec -i ${id} /etc/init.d/mysql restart`);
                 const passwd = readFileSync(`${dir}/etc/mysql/debian.cnf`, 'utf-8')
                     .split('\n').find((i) => i.startsWith('password'))?.split('=')[1].trim();
                 const script = [
@@ -536,7 +570,7 @@ ${nixConfBase}`);
                     'FLUSH PRIVILEGES;',
                     '',
                 ].join('\n');
-                exec(`docker exec -i ${uoj.Id} mysql -u debian-sys-maint -p${passwd} -e "${script}"`);
+                exec(`docker exec -i ${id} mysql -u debian-sys-maint -p${passwd} -e "${script}"`);
                 const config = {
                     host: info[0].NetworkSettings.IPAddress,
                     port: 3306,
@@ -548,7 +582,7 @@ ${nixConfBase}`);
                 };
                 console.log(config);
                 // TODO mail config
-                exec(`hydrooj cli script migrateUoj '${JSON.stringify(config)}'`, { stdio: 'inherit' });
+                exec(`hydrooj cli script migrateUniversaloj '${JSON.stringify(config)}'`, { stdio: 'inherit' });
             },
         ],
     },
@@ -560,10 +594,11 @@ ${nixConfBase}`);
     {
         init: 'install.postinstall',
         operations: [
+            'echo "layout=1" >/etc/HYDRO_INSTALLER',
             'echo "vm.swappiness = 1" >>/etc/sysctl.conf',
             'sysctl -p',
-            ['pm2 install pm2-logrotate', { retry: true }],
-            'pm2 set pm2-logrotate:max_size 64M',
+            // dont retry this as it usually fails
+            'screen -d -m "pm2 install pm2-logrotate && pm2 set pm2-logrotate:max_size 64M"',
         ],
     },
     {
@@ -578,11 +613,15 @@ ${nixConfBase}`);
 
 async function main() {
     try {
-        console.log('Getting IP info to find best mirror:');
-        const res = await fetch('https://ipinfo.io', { headers: { accept: 'application/json' } }).then((r) => r.json());
-        delete res.readme;
-        console.log(res);
-        if (res.country !== 'CN') CN = false;
+        if (process.env.REGION) {
+            if (process.env.REGION !== 'CN') CN = false;
+        } else {
+            console.log('Getting IP info to find best mirror:');
+            const res = await fetch('https://ipinfo.io', { headers: { accept: 'application/json' } }).then((r) => r.json());
+            delete res.readme;
+            console.log(res);
+            if (res.country !== 'CN') CN = false;
+        }
     } catch (e) {
         console.error(e);
         console.log('Cannot find the best mirror. Fallback to default.');
@@ -600,7 +639,9 @@ async function main() {
                     let res = exec(op[0], { stdio: 'inherit' });
                     while (res.code && op[1].ignore !== true) {
                         if (op[1].retry && retry < 30) {
-                            log.warn('Retry... (%s)', op[0]);
+                            log.warn('Retry in 3 secs... (%s)', op[0]);
+                            // eslint-disable-next-line no-await-in-loop
+                            await sleep(3000);
                             res = exec(op[0], { stdio: 'inherit' });
                             retry++;
                         } else log.fatal('Error when running %s', op[0]);
@@ -610,7 +651,9 @@ async function main() {
                     let res = await op[0](op[1]);
                     while (res === 'retry') {
                         if (retry < 30) {
-                            log.warn('Retry...');
+                            log.warn('Retry in 3 secs...');
+                            // eslint-disable-next-line no-await-in-loop
+                            await sleep(3000);
                             // eslint-disable-next-line no-await-in-loop
                             res = await op[0](op[1]);
                             retry++;

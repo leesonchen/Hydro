@@ -1,3 +1,4 @@
+/* eslint-disable consistent-return */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable no-await-in-loop */
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -20,58 +21,38 @@ import ScheduleModel from './model/schedule';
 import StorageModel from './model/storage';
 import * as system from './model/system';
 import TaskModel from './model/task';
-import user from './model/user';
+import * as training from './model/training';
+import user, { handleMailLower } from './model/user';
 import {
-    iterateAllContest,
-    iterateAllDomain, iterateAllProblem, iterateAllUser,
+    iterateAllContest, iterateAllDomain, iterateAllProblem, iterateAllUser,
 } from './pipelineUtils';
 import db from './service/db';
+import { MigrationScript } from './service/migration';
 import { setBuiltinConfig } from './settings';
 import welcome from './welcome';
 
 const logger = new Logger('upgrade');
-type UpgradeScript = void | (() => Promise<boolean | void>);
 const unsupportedUpgrade = async function _26_27() {
     throw new Error('This upgrade was no longer supported in hydrooj@4. \
 Please use hydrooj@3 to perform these upgrades before upgrading to v4');
 };
 
-export async function init() {
-    if (!await user.getById('system', 0)) {
-        await user.create('Guest@hydro.local', 'Guest', String.random(32), 0, '127.0.0.1', PRIV.PRIV_REGISTER_USER);
-    }
-    if (!await user.getById('system', 1)) {
-        await user.create('Hydro@hydro.local', 'Hydro', String.random(32), 1, '127.0.0.1', PRIV.PRIV_USER_PROFILE);
-    }
-    const ddoc = await domain.get('system');
-    if (!ddoc) await domain.add('system', 1, 'Hydro', 'Welcome to Hydro!');
-    await welcome();
-    return true;
-}
-
-const scripts: UpgradeScript[] = [
+export const coreScripts: MigrationScript[] = [
     // Mark as used
-    null,
-    // Init
-    ...new Array(26).fill(unsupportedUpgrade),
-    null,
-    async function _28_29() {
-        return await iterateAllProblem(['content', 'html'], async (pdoc) => {
-            try {
-                const parsed = JSON.parse(pdoc.content);
-                if (parsed instanceof Array) {
-                    await problem.edit(pdoc.domainId, pdoc.docId, { content: buildContent(parsed, pdoc.html ? 'html' : 'markdown') });
-                    return;
-                }
-                const res = {};
-                for (const key in parsed) {
-                    if (typeof parsed[key] === 'string') res[key] = parsed[key];
-                    else res[key] = buildContent(parsed[key]);
-                }
-                await problem.edit(pdoc.domainId, pdoc.docId, { content: JSON.stringify(res) });
-            } catch { }
-        });
+    async function init() {
+        if (!await user.getById('system', 0)) {
+            await user.create('Guest@hydro.local', 'Guest', String.random(32), 0, '127.0.0.1', PRIV.PRIV_REGISTER_USER);
+        }
+        if (!await user.getById('system', 1)) {
+            await user.create('Hydro@hydro.local', 'Hydro', String.random(32), 1, '127.0.0.1', PRIV.PRIV_USER_PROFILE);
+        }
+        const ddoc = await domain.get('system');
+        if (!ddoc) await domain.add('system', 1, 'Hydro', 'Welcome to Hydro!');
+        await welcome();
+        return true;
     },
+    // Init
+    ...new Array(28).fill(unsupportedUpgrade),
     async function _29_30() {
         return await iterateAllDomain((ddoc) => RecordModel.coll.updateMany({ domainId: ddoc._id }, { $set: { pdomain: ddoc._id } }));
     },
@@ -432,15 +413,7 @@ const scripts: UpgradeScript[] = [
         return true;
     },
     null,
-    async function _65_66() {
-        return await iterateAllDomain(async (ddoc) => {
-            Object.keys(ddoc.roles).forEach((role) => {
-                if (['guest', 'root'].includes(role)) return;
-                ddoc.roles[role] = (BigInt(ddoc.roles[role]) | PERM.PREM_VIEW_DISPLAYNAME).toString();
-            });
-            await domain.setRoles(ddoc._id, ddoc.roles);
-        });
-    },
+    null,
     async function _66_67() {
         const [
             endPoint, accessKey, secretKey, bucket, region,
@@ -602,6 +575,131 @@ const scripts: UpgradeScript[] = [
         await document.coll.updateMany({ docType: document.TYPE_CONTEST, assign: null }, { $set: { assign: [] } });
         return true;
     },
+    async function _83_84() {
+        const tdocs = await document.coll.find({ docType: document.TYPE_CONTEST, rule: 'strictioi' }).toArray();
+        for (const tdoc of tdocs) {
+            logger.info(tdoc.domainId, tdoc.title);
+            const rdocs = await RecordModel.coll.find({ domainId: tdoc.domainId, contest: tdoc.docId }).toArray();
+            for (const rdoc of rdocs) {
+                await document.revPushStatus(tdoc.domainId, document.TYPE_CONTEST, tdoc.docId, rdoc.uid, 'journal', {
+                    rid: rdoc._id, pid: rdoc.pid, status: rdoc.status, score: rdoc.score, subtasks: rdoc.subtasks,
+                }, 'rid');
+            }
+            await contest.recalcStatus(tdoc.domainId, tdoc.docId);
+        }
+        return true;
+    },
+    async function _84_85() {
+        return await iterateAllDomain(async ({ _id }) => {
+            const cursor = discussion.getMulti(_id, { parentType: document.TYPE_CONTEST });
+            for await (const ddoc of cursor) {
+                const parentId = new ObjectId(ddoc.parentId);
+                await discussion.edit(_id, ddoc.docId, { parentId });
+                try {
+                    await contest.get(_id, parentId);
+                } catch (e) {
+                    await discussion.del(_id, ddoc.docId);
+                }
+            }
+        });
+    },
+    null,
+    async function _86_87() {
+        logger.info('Removing unused files...');
+        return await iterateAllDomain(async ({ _id }) => {
+            logger.info('Processing domain %s', _id);
+            const contestFilesList = await StorageModel.list(`contest/${_id}`);
+            const trainingFilesList = await StorageModel.list(`training/${_id}`);
+            const tdocs = await contest.getMulti(_id, {}).toArray();
+            const trdocs = await training.getMulti(_id, {}).toArray();
+            let existsFiles = [];
+            for (const tdoc of tdocs) existsFiles = existsFiles.concat((tdoc.files || []).map((i) => `contest/${_id}/${tdoc.docId}/${i.name}`));
+            await StorageModel.del(contestFilesList.filter((i) => !existsFiles.includes(i.name)).map((i) => i.name));
+            existsFiles = [];
+            for (const tdoc of trdocs) existsFiles = existsFiles.concat((tdoc.files || []).map((i) => `training/${_id}/${tdoc.docId}/${i.name}`));
+            await StorageModel.del(trainingFilesList.filter((i) => !existsFiles.includes(i.name)).map((i) => i.name));
+            logger.info('Domain %s done', _id);
+        });
+    },
+    async function _87_88() {
+        return await iterateAllDomain(async (ddoc) => {
+            for (const role of Object.keys(ddoc.roles)) {
+                if (role === 'root') continue;
+                ddoc.roles[role] = (BigInt(ddoc.roles[role]) | PERM.PERM_VIEW_RECORD).toString();
+            }
+            await domain.setRoles(ddoc._id, ddoc.roles);
+        });
+    },
+    async function _88_89() {
+        const cursor = RecordModel.getMulti(undefined, {
+            status: STATUS.STATUS_ACCEPTED,
+            contest: { $nin: [RecordModel.RECORD_PRETEST, RecordModel.RECORD_GENERATE] },
+        });
+        let bulk = RecordModel.collStat.initializeUnorderedBulkOp();
+        for await (const doc of cursor) {
+            bulk.find({ _id: doc._id }).upsert().updateOne({
+                $set: {
+                    domainId: doc.domainId,
+                    pid: doc.pid,
+                    uid: doc.uid,
+                    time: doc.time,
+                    memory: doc.memory,
+                    length: doc.code?.length || 0,
+                    lang: doc.lang,
+                },
+            });
+            if (bulk.batches.length > 500) {
+                await bulk.execute();
+                bulk = RecordModel.collStat.initializeUnorderedBulkOp();
+            }
+        }
+        if (bulk.batches.length) await bulk.execute();
+        return true;
+    },
+    async function _89_90() {
+        return await iterateAllUser(async (udoc) => {
+            const wanted = handleMailLower(udoc.mail);
+            if (wanted !== udoc.mailLower) {
+                if (await user.getByEmail('system', wanted)) {
+                    console.warn('Email conflict when trying to rename %s to %s', udoc.mailLower, wanted);
+                    return;
+                }
+                await user.coll.updateOne({ _id: udoc._id }, { $set: { mailLower: wanted } });
+            }
+        });
+    },
+    async function _90_91() {
+        await document.collStatus.updateMany({ docType: document.TYPE_PROBLEM }, { $unset: { nSubmit: '', nAccept: '' } });
+        const psdocs = await document.coll.find({ docType: document.TYPE_PROBLEM_SOLUTION, vote: { $ne: 0 } })
+            .project({ docId: 1, domainId: 1 }).toArray();
+        for (const psdoc of psdocs) {
+            const filter = { docType: document.TYPE_PROBLEM_SOLUTION, domainId: psdoc.domainId, docId: psdoc.docId };
+            const [upvote, downvote] = await Promise.all([
+                document.collStatus.countDocuments({ ...filter, vote: 1 }),
+                document.collStatus.countDocuments({ ...filter, vote: -1 }),
+            ]);
+            if (upvote - downvote !== psdoc.vote) {
+                await document.set(psdoc.domainId, document.TYPE_PROBLEM_SOLUTION, psdoc.docId, { vote: upvote - downvote });
+            }
+        }
+        await iterateAllProblem(['domainId', 'docId', 'tag'], async (pdoc) => {
+            if (pdoc.tag?.some((i) => typeof i !== 'string')) {
+                return { tag: pdoc.tag.filter((i) => i).map((i) => i.toString()) };
+            }
+        });
+        return await iterateAllProblem(['domainId', 'docId', 'content', 'html'], async (pdoc) => {
+            try {
+                const parsed = JSON.parse(pdoc.content);
+                if (parsed instanceof Array) {
+                    return { content: buildContent(parsed as any, pdoc.html ? 'html' : 'markdown') };
+                }
+                const res = {};
+                for (const key in parsed) {
+                    if (typeof parsed[key] === 'string') res[key] = parsed[key];
+                    else res[key] = buildContent(parsed[key]);
+                }
+                return { content: JSON.stringify(res) };
+            } catch { }
+        });
+    },
 ];
-
-export default scripts;

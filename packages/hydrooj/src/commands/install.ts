@@ -1,11 +1,13 @@
 import child from 'child_process';
 import os from 'os';
 import path from 'path';
+import AdmZip from 'adm-zip';
 import { CAC } from 'cac';
 import fs from 'fs-extra';
 import superagent from 'superagent';
 import tar from 'tar';
-import { Logger } from '@hydrooj/utils';
+import { extractZip, Logger } from '@hydrooj/utils';
+import { version } from 'hydrooj/package.json';
 
 const logger = new Logger('install');
 let yarnVersion = 0;
@@ -18,6 +20,28 @@ try {
 
 const hydroPath = path.resolve(os.homedir(), '.hydro');
 const addonDir = path.join(hydroPath, 'addons');
+
+function downloadAndExtractTgz(url: string, dest: string) {
+    return new Promise((resolve, reject) => {
+        superagent.get(url)
+            .set('User-Agent', `Hydro/${version} Node.js/${process.version.split('v').pop()}`)
+            .pipe(tar.x({
+                C: dest,
+                strip: 1,
+            }))
+            .on('finish', resolve)
+            .on('error', reject);
+    });
+}
+async function downloadAndExtractZip(url: string, dest: string) {
+    const res = await superagent.get(url).responseType('arraybuffer');
+    await extractZip(new AdmZip(res.body), dest, true, true);
+}
+const types = {
+    '.tgz': downloadAndExtractTgz,
+    '.tar.gz': downloadAndExtractTgz,
+    '.zip': downloadAndExtractZip,
+};
 
 export function register(cli: CAC) {
     cli.command('install [package]').action(async (_src) => {
@@ -44,20 +68,14 @@ export function register(cli: CAC) {
         if (src.startsWith('http')) {
             const url = new URL(src);
             const filename = url.pathname.split('/').pop()!;
-            if (['.tar.gz', '.tgz', '.zip'].find((i) => filename.endsWith(i))) {
+            if (Object.keys(types).find((i) => filename.endsWith(i))) {
                 const name = filename.replace(/(-?(\d+\.\d+\.\d+|latest))?(\.tar\.gz|\.zip|\.tgz)$/g, '');
                 newAddonPath = path.join(addonDir, name);
                 logger.info(`Downloading ${src} to ${newAddonPath}`);
                 fs.ensureDirSync(newAddonPath);
-                await new Promise((resolve, reject) => {
-                    superagent.get(src)
-                        .pipe(tar.x({
-                            C: newAddonPath,
-                            strip: 1,
-                        }))
-                        .on('finish', resolve)
-                        .on('error', reject);
-                });
+                fs.emptyDirSync(newAddonPath);
+                const func = types[Object.keys(types).find((i) => filename.endsWith(i))]!;
+                await func(src, newAddonPath);
             } else throw new Error('Unsupported file type');
         } else throw new Error(`Unsupported install source: ${src}`);
         if (!newAddonPath) throw new Error('Addon download failed');
@@ -69,6 +87,8 @@ export function register(cli: CAC) {
             src: _src,
             lastUpdate: Date.now(),
         }));
+        logger.success(`Successfully installed ${_src}.`);
+        logger.info('Please restart Hydro to apply changes.');
     });
     cli.command('uninstall [package]').action(async (name) => {
         if (!name) {

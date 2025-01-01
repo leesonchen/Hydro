@@ -1,6 +1,6 @@
-import { AttestationFormat } from '@simplewebauthn/server/dist/helpers/decodeAttestationObject';
-import { AuthenticationExtensionsAuthenticatorOutputs } from '@simplewebauthn/server/dist/helpers/decodeAuthenticatorExtensions';
-import { CredentialDeviceType } from '@simplewebauthn/typescript-types';
+import type { AuthenticationExtensionsAuthenticatorOutputs } from '@simplewebauthn/server/esm/helpers/decodeAuthenticatorExtensions';
+import type { AttestationFormat } from '@simplewebauthn/server/helpers';
+import { CredentialDeviceType } from '@simplewebauthn/types';
 import type fs from 'fs';
 import type { Dictionary, NumericDictionary } from 'lodash';
 import type { Binary, FindCursor, ObjectId } from 'mongodb';
@@ -28,6 +28,7 @@ export interface SystemKeys {
     'server.url': string,
     'server.xff': string,
     'server.xhost': string,
+    'server.host': string,
     'server.port': number,
     'server.language': string,
     'limit.problem_files_max': number,
@@ -57,6 +58,8 @@ export interface OAuthUserResponse {
     bio?: string;
     uname?: string[];
     viewLang?: string;
+    set?: Record<string, any>;
+    setInDomain?: Record<string, any>;
 }
 
 export interface Authenticator {
@@ -220,26 +223,7 @@ export interface ProblemConfig {
     hackable?: boolean;
 }
 
-export interface PlainContentNode {
-    type: 'Plain',
-    subType: 'html' | 'markdown',
-    text: string,
-}
-export interface TextContentNode {
-    type: 'Text',
-    subType: 'html' | 'markdown',
-    sectionTitle: string,
-    text: string,
-}
-export interface SampleContentNode {
-    type: 'Sample',
-    text: string,
-    sectionTitle: string,
-    payload: [string, string],
-}
-// TODO drop contentNode support
-export type ContentNode = PlainContentNode | TextContentNode | SampleContentNode;
-export type Content = string | ContentNode[] | Record<string, ContentNode[]>;
+export type Content = string | Record<string, string>;
 
 export interface Document {
     _id: ObjectId;
@@ -294,8 +278,6 @@ export interface ProblemStatusDoc extends StatusDocBase {
     rid?: ObjectId;
     score?: number;
     status?: number;
-    nSubmit?: number;
-    nAccept?: number;
     star?: boolean;
 }
 
@@ -329,8 +311,10 @@ export interface RecordDoc {
     judgeAt: Date;
     status: number;
     progress?: number;
-    /** pretest & hack */
+    /** pretest */
     input?: string;
+    /** hack target rid */
+    hackTarget?: ObjectId;
     /** 0 if pretest&script */
     contest?: ObjectId;
 
@@ -338,27 +322,40 @@ export interface RecordDoc {
     subtasks?: Record<number, SubtaskResult>;
 }
 
+export interface RecordStatDoc {
+    _id: ObjectId;
+    domainId: string;
+    pid: number;
+    uid: number;
+    time: number;
+    memory: number;
+    length: number;
+    lang: string;
+}
 export interface JudgeMeta {
     problemOwner: number;
     hackRejudge?: string;
     rejudge?: boolean;
+    // FIXME stricter types
+    type?: string;
 }
 
 export interface JudgeRequest extends Omit<RecordDoc, '_id' | 'testCases'> {
     priority: number;
-    type: 'judge';
+    type: 'judge' | 'generate';
     rid: ObjectId;
     config: ProblemConfigFile;
     meta: JudgeMeta;
     data: FileInfo[];
     source: string;
+    trusted: boolean;
 }
 
 export interface ScoreboardNode {
     type: 'string' | 'rank' | 'user' | 'email' | 'record' | 'records' | 'problem' | 'solved' | 'time' | 'total_score';
-    value: string;
+    value: string; // 显示分数
     raw?: any;
-    score?: number;
+    score?: number; // 原始分数（100，不含赛制加成）
     style?: string;
     hover?: string;
 }
@@ -373,9 +370,9 @@ export interface TrainingNode {
     pids: number[],
 }
 
-export interface Tdoc<docType = document['TYPE_CONTEST'] | document['TYPE_TRAINING']> extends Document {
+export interface Tdoc extends Document {
     docId: ObjectId;
-    docType: docType & number;
+    docType: document['TYPE_CONTEST'];
     beginAt: Date;
     endAt: Date;
     attend: number;
@@ -393,6 +390,8 @@ export interface Tdoc<docType = document['TYPE_CONTEST'] | document['TYPE_TRAINI
     lockAt?: Date;
     unlocked?: boolean;
     autoHide?: boolean;
+    balloon?: Record<number, string | { color: string, name: string }>;
+    score?: Record<number, number>;
 
     /**
      * In hours
@@ -409,7 +408,8 @@ export interface Tdoc<docType = document['TYPE_CONTEST'] | document['TYPE_TRAINI
     dag?: TrainingNode[];
 }
 
-export interface TrainingDoc extends Tdoc {
+export interface TrainingDoc extends Omit<Tdoc, 'docType'> {
+    docType: document['TYPE_TRAINING'],
     description: string;
     pin?: number;
     dag: TrainingNode[];
@@ -492,6 +492,18 @@ export interface DiscussionTailReplyDoc {
     editor?: number;
 }
 
+export interface ContestClarificationDoc extends Document {
+    docType: document['TYPE_CONTEST_CLARIFICATION'];
+    docId: ObjectId;
+    parentType: document['TYPE_CONTEST'];
+    parentId: ObjectId;
+    // 0: contest -1: technique [pid]: problem
+    subject: number;
+    ip: string;
+    content: string;
+    reply: DiscussionTailReplyDoc[];
+}
+
 export interface TokenDoc {
     _id: string,
     tokenType: number,
@@ -513,6 +525,7 @@ export interface ContestStat extends Record<string, any> {
 
 export interface ScoreboardConfig {
     isExport: boolean;
+    showDisplayName: boolean;
     lockAt?: Date;
 }
 
@@ -523,24 +536,25 @@ export interface ContestRule<T = any> {
     check: (args: any) => any;
     statusSort: Record<string, 1 | -1>;
     submitAfterAccept: boolean;
-    showScoreboard: (tdoc: Tdoc<30>, now: Date) => boolean;
-    showSelfRecord: (tdoc: Tdoc<30>, now: Date) => boolean;
-    showRecord: (tdoc: Tdoc<30>, now: Date) => boolean;
-    stat: (this: ContestRule<T>, tdoc: Tdoc<30>, journal: any[]) => ContestStat & T;
+    showScoreboard: (tdoc: Tdoc, now: Date) => boolean;
+    showSelfRecord: (tdoc: Tdoc, now: Date) => boolean;
+    showRecord: (tdoc: Tdoc, now: Date) => boolean;
+    stat: (this: ContestRule<T>, tdoc: Tdoc, journal: any[]) => ContestStat & T;
     scoreboardHeader: (
         this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
-        tdoc: Tdoc<30>, pdict: ProblemDict,
+        tdoc: Tdoc, pdict: ProblemDict,
     ) => Promise<ScoreboardRow>;
     scoreboardRow: (
         this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
-        tdoc: Tdoc<30>, pdict: ProblemDict, udoc: BaseUser, rank: number, tsdoc: ContestStat & T,
+        tdoc: Tdoc, pdict: ProblemDict, udoc: BaseUser, rank: number, tsdoc: ContestStat & T,
         meta?: any,
     ) => Promise<ScoreboardRow>;
     scoreboard: (
         this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
-        tdoc: Tdoc<30>, pdict: ProblemDict, cursor: FindCursor<ContestStat & T>,
+        tdoc: Tdoc, pdict: ProblemDict, cursor: FindCursor<ContestStat & T>,
     ) => Promise<[board: ScoreboardRow[], udict: BaseUserDict]>;
-    ranked: (tdoc: Tdoc<30>, cursor: FindCursor<ContestStat & T>) => Promise<[number, ContestStat & T][]>;
+    ranked: (tdoc: Tdoc, cursor: FindCursor<ContestStat & T>) => Promise<[number, ContestStat & T][]>;
+    applyProjection: (tdoc: Tdoc, rdoc: RecordDoc, user: User) => RecordDoc;
 }
 
 export type ContestRules = Dictionary<ContestRule>;
@@ -613,6 +627,8 @@ export interface FileNode {
     size?: number;
     /** AutoDelete */
     autoDelete?: Date;
+    /** fileId if linked to an existing file */
+    link?: string;
     owner?: number;
     operator?: number[];
     meta?: Record<string, string | number>;
@@ -623,6 +639,7 @@ export interface EventDoc {
     event: number | string;
     payload: string;
     expire: Date;
+    trace?: string;
 }
 
 export interface OpCountDoc {
@@ -651,12 +668,25 @@ export interface DiscussionHistoryDoc {
     ip: string;
 }
 
+export interface ContestBalloonDoc {
+    _id: ObjectId;
+    domainId: string;
+    tid: ObjectId;
+    pid: number;
+    uid: number;
+    first?: boolean;
+    /** Sent by */
+    sent?: number;
+    sentAt?: Date;
+}
+
 declare module './service/db' {
     interface Collections {
         'blacklist': BlacklistDoc;
         'domain': DomainDoc;
         'domain.user': any;
         'record': RecordDoc;
+        'record.stat': RecordStatDoc;
         'document': any;
         'document.status': StatusDocBase & {
             [K in keyof DocStatusType]: { docType: K } & DocStatusType[K];
@@ -678,6 +708,7 @@ declare module './service/db' {
         'event': EventDoc;
         'opcount': OpCountDoc;
         'schedule': Schedule;
+        'contest.balloon': ContestBalloonDoc;
     }
 }
 
@@ -732,13 +763,11 @@ export interface ProblemSearchOptions {
 export type ProblemSearch = (domainId: string, q: string, options?: ProblemSearchOptions) => Promise<ProblemSearchResponse>;
 
 export interface Lib extends Record<string, any> {
-    difficulty: typeof import('./lib/difficulty');
+    difficulty: typeof import('./lib/difficulty').default;
     buildContent: typeof import('./lib/content').buildContent;
     mail: typeof import('./lib/mail');
-    rank: typeof import('./lib/rank');
-    rating: typeof import('./lib/rating');
+    rating: typeof import('./lib/rating').default;
     testdataConfig: typeof import('./lib/testdataConfig');
-    template?: any;
     problemSearch: ProblemSearch;
 }
 
@@ -756,15 +785,14 @@ export interface ModuleInterfaces {
         icon?: string;
         get: (this: Handler) => Promise<void>;
         callback: (this: Handler, args: Record<string, any>) => Promise<OAuthUserResponse>;
+        lockUsername?: boolean;
     };
-    hash: (password: string, salt: string, user: User) => boolean | string;
+    hash: (password: string, salt: string, user: User) => boolean | string | Promise<string>;
 }
 
 export interface HydroGlobal {
     version: Record<string, string>;
     model: Model;
-    /** @deprecated */
-    handler: Record<string, Function>;
     script: Record<string, Script>;
     service: HydroService;
     lib: Lib;

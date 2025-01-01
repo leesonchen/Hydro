@@ -3,6 +3,7 @@ import { generateRegistrationOptions, verifyRegistrationResponse } from '@simple
 import yaml from 'js-yaml';
 import { pick } from 'lodash';
 import { Binary, ObjectId } from 'mongodb';
+import { UAParser } from 'ua-parser-js';
 import { Context } from '../context';
 import {
     AuthOperationError, BlacklistedError, DomainAlreadyExistsError, InvalidTokenError,
@@ -12,7 +13,6 @@ import {
 import { DomainDoc, MessageDoc, Setting } from '../interface';
 import avatar, { validate } from '../lib/avatar';
 import * as mail from '../lib/mail';
-import * as useragent from '../lib/useragent';
 import { verifyTFA } from '../lib/verifyTFA';
 import BlackListModel from '../model/blacklist';
 import { PERM, PRIV } from '../model/builtin';
@@ -36,25 +36,28 @@ export class HomeHandler extends Handler {
     uids = new Set<number>();
 
     collectUser(uids: number[]) {
-        uids.forEach((uid) => this.uids.add(uid));
+        for (const uid of uids) this.uids.add(uid);
     }
 
     async getHomework(domainId: string, limit = 5) {
         if (!this.user.hasPerm(PERM.PERM_VIEW_HOMEWORK)) return [[], {}];
-        const tdocsOrig = await contest.getMulti(domainId, { rule: 'homework' })
-            .limit(limit).toArray();
-
-        const tdocs = [];
-        const teacherRole = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK);
-        for (const tdoc of tdocsOrig) {
-            if (tdoc.assign?.length && !this.user.own(tdoc) && !teacherRole) {
-                if (!Set.intersection(tdoc.assign, this.user.group).size) {
-                    // skip the homework for current user
-                    continue;
-                }
-            }
-            tdocs.push(tdoc);
-        }
+        const groups = (await user.listGroup(domainId, this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK) ? undefined : this.user._id))
+            .map((i) => i.name);
+        const tdocs = await contest.getMulti(domainId, {
+            rule: 'homework',
+            ...this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
+                ? {}
+                : {
+                    $or: [
+                        { maintainer: this.user._id },
+                        { owner: this.user._id },
+                        { assign: { $in: groups } },
+                        { assign: { $size: 0 } },
+                    ],
+                },
+        }).sort({
+            penaltySince: -1, endAt: -1, beginAt: -1, _id: -1,
+        }).limit(limit).toArray();
         const tsdict = await contest.getListStatus(
             domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
         );
@@ -64,7 +67,22 @@ export class HomeHandler extends Handler {
     async getContest(domainId: string, limit = 10) {
         if (!this.user.hasPerm(PERM.PERM_VIEW_CONTEST)) return [[], {}];
         const rules = Object.keys(contest.RULES).filter((i) => !contest.RULES[i].hidden);
-        const tdocs = await contest.getMulti(domainId, { rule: { $in: rules } })
+        const groups = (await user.listGroup(domainId, this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST) ? undefined : this.user._id))
+            .map((i) => i.name);
+        const q = {
+            rule: { $in: rules },
+            ...this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)
+                ? {}
+                : {
+                    $or: [
+                        { maintainer: this.user._id },
+                        { owner: this.user._id },
+                        { assign: { $in: groups } },
+                        { assign: { $size: 0 } },
+                    ],
+                },
+        };
+        const tdocs = await contest.getMulti(domainId, q).sort({ endAt: -1, beginAt: -1, _id: -1 })
             .limit(limit).toArray();
         const tsdict = await contest.getListStatus(
             domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
@@ -92,7 +110,7 @@ export class HomeHandler extends Handler {
 
     async getRanking(domainId: string, limit = 50) {
         if (!this.user.hasPerm(PERM.PERM_VIEW_RANKING)) return [];
-        const dudocs = await domain.getMultiUserInDomain(domainId, { uid: { $gt: 1 } })
+        const dudocs = await domain.getMultiUserInDomain(domainId, { uid: { $gt: 1 }, rp: { $gt: 0 } })
             .sort({ rp: -1 }).project({ uid: 1 }).limit(limit).toArray();
         const uids = dudocs.map((dudoc) => dudoc.uid);
         this.collectUser(uids);
@@ -103,14 +121,12 @@ export class HomeHandler extends Handler {
         if (!this.user.hasPerm(PERM.PERM_VIEW_PROBLEM)) return [[], {}];
         const psdocs = await ProblemModel.getMultiStatus(domainId, { uid: this.user._id, star: true })
             .sort('_id', 1).limit(limit).toArray();
-        const psdict = {};
-        for (const psdoc of psdocs) psdict[psdoc.docId] = psdoc;
         const pdict = await ProblemModel.getList(
             domainId, psdocs.map((pdoc) => pdoc.docId),
             this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN) || this.user._id, false,
         );
         const pdocs = Object.keys(pdict).filter((i) => +i).map((i) => pdict[i]);
-        return [pdocs, psdict];
+        return [pdocs];
     }
 
     async getRecentProblems(domainId: string, limit = 10) {
@@ -128,7 +144,7 @@ export class HomeHandler extends Handler {
     }
 
     async get({ domainId }) {
-        const homepageConfig = this.domain.homepage || system.get('hydrooj.homepage');
+        const homepageConfig = this.ctx.setting.get('hydrooj.homepage');
         const info = yaml.load(homepageConfig) as any;
         const contents = [];
         for (const column of info) {
@@ -161,7 +177,6 @@ export class HomeHandler extends Handler {
     }
 }
 
-let geoip: Context['geoip'] = null;
 class HomeSecurityHandler extends Handler {
     @requireSudo
     async get() {
@@ -170,8 +185,9 @@ class HomeSecurityHandler extends Handler {
         for (const session of sessions) {
             session.isCurrent = session._id === this.session._id;
             session._id = md5(session._id);
-            session.updateUa = useragent.parse(session.updateUa || session.createUa || '');
-            session.updateGeoip = geoip?.lookup?.(
+            const ua = session.updateUa || session.createUa;
+            if (ua) session.updateUaInfo = UAParser(ua);
+            session.updateGeoip = this.ctx.geoip?.lookup?.(
                 session.updateIp || session.createIp,
                 this.translate('geoip_locale'),
             );
@@ -184,8 +200,7 @@ class HomeSecurityHandler extends Handler {
                 'credentialID', 'name', 'credentialType', 'credentialDeviceType',
                 'authenticatorAttachment', 'regat', 'fmt',
             ])),
-            geoipProvider: geoip?.provider,
-            icon: (str = '') => str.split(' ')[0].toLowerCase(),
+            geoipProvider: this.ctx?.geoip?.provider,
         };
     }
 
@@ -198,8 +213,8 @@ class HomeSecurityHandler extends Handler {
         if (this.session.sudoUid) {
             const udoc = await user.getById(domainId, this.session.sudoUid);
             if (!udoc) throw new UserNotFoundError(this.session.sudoUid);
-            udoc.checkPassword(current);
-        } else this.user.checkPassword(current);
+            await udoc.checkPassword(current);
+        } else await this.user.checkPassword(current);
         await user.setPassword(this.user._id, password);
         await token.delByUid(this.user._id);
         this.response.redirect = this.url('user_login');
@@ -214,8 +229,8 @@ class HomeSecurityHandler extends Handler {
         if (this.session.sudoUid) {
             const udoc = await user.getById(domainId, this.session.sudoUid);
             if (!udoc) throw new UserNotFoundError(this.session.sudoUid);
-            udoc.checkPassword(current);
-        } else this.user.checkPassword(current);
+            await udoc.checkPassword(current);
+        } else await this.user.checkPassword(current);
         const udoc = await user.getByEmail(domainId, email);
         if (udoc) throw new UserAlreadyExistError(email);
         await this.limitRate('send_mail', 3600, 30);
@@ -235,7 +250,7 @@ class HomeSecurityHandler extends Handler {
     }
 
     @param('tokenDigest', Types.String)
-    async postDeleteToken(domainId: string, tokenDigest: string) {
+    async postDeleteToken({ }, tokenDigest: string) {
         const sessions = await token.getSessionListByUid(this.user._id);
         for (const session of sessions) {
             if (tokenDigest === md5(session._id)) {
@@ -255,19 +270,24 @@ class HomeSecurityHandler extends Handler {
     @requireSudo
     @param('code', Types.String)
     @param('secret', Types.String)
-    async postEnableTfa(domainId: string, code: string, secret: string) {
+    async postEnableTfa({ }, code: string, secret: string) {
         if (this.user._tfa) throw new AuthOperationError('2FA', 'enabled');
         if (!verifyTFA(secret, code)) throw new InvalidTokenError('2FA');
         await user.setById(this.user._id, { tfa: secret });
         this.back();
     }
 
+    getAuthnHost() {
+        return system.get('authn.host') && this.request.hostname.includes(system.get('authn.host'))
+            ? system.get('authn.host') : this.request.hostname;
+    }
+
     @requireSudo
     @param('type', Types.Range(['cross-platform', 'platform']))
-    async postRegister(domainId: string, type: 'cross-platform' | 'platform') {
-        const options = generateRegistrationOptions({
+    async postRegister({ }, type: 'cross-platform' | 'platform') {
+        const options = await generateRegistrationOptions({
             rpName: system.get('server.name'),
-            rpID: this.request.hostname,
+            rpID: this.getAuthnHost(),
             userID: this.user._id.toString(),
             userDisplayName: this.user.uname,
             userName: `${this.user.uname}(${this.user.mail})`,
@@ -286,13 +306,13 @@ class HomeSecurityHandler extends Handler {
 
     @requireSudo
     @param('name', Types.String)
-    async postEnableAuthn(domainId: string, name: string) {
+    async postEnableAuthn({ }, name: string) {
         if (!this.session.webauthnVerify) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_WEBAUTHN]);
         const verification = await verifyRegistrationResponse({
             response: this.args.result,
             expectedChallenge: this.session.webauthnVerify,
             expectedOrigin: this.request.headers.origin,
-            expectedRPID: this.request.hostname,
+            expectedRPID: this.getAuthnHost(),
         }).catch(() => { throw new ValidationError('verify'); });
         if (!verification.verified) throw new ValidationError('verify');
         const info = verification.registrationInfo;
@@ -313,7 +333,7 @@ class HomeSecurityHandler extends Handler {
 
     @requireSudo
     @param('id', Types.String)
-    async postDisableAuthn(domainId: string, id: string) {
+    async postDisableAuthn({ }, id: string) {
         const authenticators = this.user._authenticators?.filter((c) => Buffer.from(c.credentialID.buffer).toString('base64') !== id);
         if (this.user._authenticators?.length === authenticators?.length) throw new ValidationError('authenticator');
         await user.setById(this.user._id, { authenticators });
@@ -329,33 +349,50 @@ class HomeSecurityHandler extends Handler {
 }
 
 function set(s: Setting, key: string, value: any) {
-    if (s) {
-        if (s.family === 'setting_storage') return undefined;
-        if (s.flag & setting.FLAG_DISABLED) return undefined;
-        if ((s.flag & setting.FLAG_SECRET) && !value) return undefined;
-        if (s.type === 'boolean') {
-            if (value === 'on') return true;
-            return false;
-        }
-        if (s.type === 'number') {
-            if (!Number.isSafeInteger(+value)) throw new ValidationError(key);
-            return +value;
-        }
-        if (s.subType === 'yaml') {
-            try {
-                yaml.load(value);
-            } catch (e) {
-                throw new ValidationError(key);
-            }
-        }
-        return value;
+    if (!s) return undefined;
+    if (s.family === 'setting_storage') return undefined;
+    if (s.flag & setting.FLAG_DISABLED) return undefined;
+    if ((s.flag & setting.FLAG_SECRET) && !value) return undefined;
+    if (s.type === 'boolean') {
+        if (value === 'on') return true;
+        return false;
     }
-    return undefined;
+    if (s.type === 'number') {
+        if (!Number.isSafeInteger(+value)) throw new ValidationError(key);
+        return +value;
+    }
+    if (s.type === 'float') {
+        if (Number.isNaN(+value)) throw new ValidationError(key);
+        return +value;
+    }
+    if (value) {
+        if (['json', 'yaml', 'markdown', 'textarea'].includes(s.type)) {
+            if (!Types.Content[1](value)) throw new ValidationError(key);
+        }
+        if (s.type === 'text') {
+            if (!Types.ShortString[1](value)) throw new ValidationError(key);
+        }
+    }
+    if (s.subType === 'yaml') {
+        try {
+            yaml.load(value);
+        } catch (e) {
+            throw new ValidationError(key);
+        }
+    }
+    if (s.subType === 'json') {
+        try {
+            JSON.parse(value);
+        } catch (e) {
+            throw new ValidationError(key);
+        }
+    }
+    return value;
 }
 
 class HomeSettingsHandler extends Handler {
     @param('category', Types.Range(['preference', 'account', 'domain']))
-    async get(domainId: string, category: string) {
+    async get({ }, category: string) {
         this.response.template = 'home_settings.html';
         this.response.body = {
             category,
@@ -392,14 +429,14 @@ class HomeSettingsHandler extends Handler {
 
 class HomeAvatarHandler extends Handler {
     @param('avatar', Types.String, true)
-    async post(domainId: string, input: string) {
+    async post({ }, input: string) {
         if (input) {
             if (!validate(input)) throw new ValidationError('avatar');
             await user.setById(this.user._id, { avatar: input });
         } else if (this.request.files.file) {
             const file = this.request.files.file;
             if (file.size > 8 * 1024 * 1024) throw new ValidationError('file');
-            const ext = path.extname(file.originalFilename);
+            const ext = path.extname(file.originalFilename).toLowerCase();
             if (!['.jpg', '.jpeg', '.png'].includes(ext)) throw new ValidationError('file');
             await storage.put(`user/${this.user._id}/.avatar${ext}`, file.filepath, this.user._id);
             // TODO: cached avatar
@@ -461,15 +498,11 @@ class HomeDomainHandler extends Handler {
     }
 
     @param('id', Types.String)
-    async postStar(domainId: string, id: string) {
-        await user.setById(this.user._id, { pinnedDomains: [...this.user.pinnedDomains, id] });
-        this.back({ star: true });
-    }
-
-    @param('id', Types.String)
-    async postUnstar(domainId: string, id: string) {
-        await user.setById(this.user._id, { pinnedDomains: this.user.pinnedDomains.filter((i) => i !== id) });
-        this.back({ star: false });
+    @param('star', Types.Boolean)
+    async postStar({ }, id: string, star = false) {
+        if (star) await user.setById(this.user._id, { pinnedDomains: [...this.user.pinnedDomains, id] });
+        else user.setById(this.user._id, { pinnedDomains: this.user.pinnedDomains.filter((i) => i !== id) });
+        this.back({ star });
     }
 }
 
@@ -486,12 +519,16 @@ class HomeDomainCreateHandler extends Handler {
     async post(_: string, id: string, name: string, bulletin: string, avatar: string) {
         const doc = await domain.get(id);
         if (doc) throw new DomainAlreadyExistsError(id);
-        avatar = avatar || this.user.avatar || `gravatar:${this.user.mail}`;
+        avatar ||= this.user.avatar || `gravatar:${this.user.mail}`;
         const domainId = await domain.add(id, this.user._id, name, bulletin);
+        // When this domain is deleted but previously added to user's list we shouldn't push it again
+        const push = !this.user.pinnedDomains?.includes(domainId);
         await Promise.all([
             domain.edit(domainId, { avatar }),
             domain.setUserRole(domainId, this.user._id, 'root'),
-            user.setById(this.user._id, undefined, undefined, { pinnedDomains: domainId }),
+            push
+                ? user.setById(this.user._id, undefined, undefined, { pinnedDomains: domainId })
+                : Promise.resolve(),
         ]);
         this.response.redirect = this.url('domain_dashboard', { domainId });
         this.response.body = { domainId };
@@ -525,7 +562,7 @@ class HomeMessagesHandler extends Handler {
 
     @param('uid', Types.Int)
     @param('content', Types.Content)
-    async postSend(domainId: string, uid: number, content: string) {
+    async postSend({ }, uid: number, content: string) {
         this.checkPriv(PRIV.PRIV_SEND_MESSAGE);
         const udoc = await user.getById('system', uid);
         if (!udoc) throw new UserNotFoundError(uid);
@@ -535,7 +572,7 @@ class HomeMessagesHandler extends Handler {
     }
 
     @param('messageId', Types.ObjectId)
-    async postDeleteMessage(domainId: string, messageId: ObjectId) {
+    async postDeleteMessage({ }, messageId: ObjectId) {
         const msg = await message.get(messageId);
         if ([msg.from, msg.to].includes(this.user._id)) await message.del(messageId);
         else throw new PermissionError();
@@ -543,7 +580,7 @@ class HomeMessagesHandler extends Handler {
     }
 
     @param('messageId', Types.ObjectId)
-    async postRead(domainId: string, messageId: ObjectId) {
+    async postRead({ }, messageId: ObjectId) {
         const msg = await message.get(messageId);
         if ([msg.from, msg.to].includes(this.user._id)) {
             await message.setFlag(messageId, message.FLAG_UNREAD);
@@ -564,10 +601,8 @@ class HomeMessagesConnectionHandler extends ConnectionHandler {
     }
 }
 
-export async function apply(ctx: Context) {
-    ctx.using(['geoip'], (g) => {
-        geoip = g.geoip;
-    });
+export const inject = { geoip: { required: false } };
+export function apply(ctx: Context) {
     ctx.Route('homepage', '/', HomeHandler);
     ctx.Route('home_security', '/home/security', HomeSecurityHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_changemail_with_code', '/home/changeMail/:code', UserChangemailWithCodeHandler, PRIV.PRIV_USER_PROFILE);
@@ -575,6 +610,6 @@ export async function apply(ctx: Context) {
     ctx.Route('home_avatar', '/home/avatar', HomeAvatarHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('home_domain', '/home/domain', HomeDomainHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('home_domain_create', '/home/domain/create', HomeDomainCreateHandler, PRIV.PRIV_CREATE_DOMAIN);
-    if (system.get('server.message')) ctx.Route('home_messages', '/home/messages', HomeMessagesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('home_messages', '/home/messages', HomeMessagesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('home_messages_conn', '/home/messages-conn', HomeMessagesConnectionHandler, PRIV.PRIV_USER_PROFILE);
 }

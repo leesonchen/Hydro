@@ -22,11 +22,14 @@ declare global {
 
 const defaultDict = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890';
 
-String.random = function random(digit = 32, dict = defaultDict) {
+export function randomstring(digit = 32, dict = defaultDict) {
     let str = '';
     for (let i = 1; i <= digit; i++) str += dict[Math.floor(Math.random() * dict.length)];
     return str;
-};
+}
+try {
+    String.random = randomstring;
+} catch (e) { } // Cannot add property random, object is not extensible
 
 String.prototype.format ||= function formatStr(...args) {
     let result = this;
@@ -199,6 +202,10 @@ export function size(s: number, base = 1) {
     return `${Math.round(s * unit)} ${unitNames[unitNames.length - 1]}`;
 }
 
+export function randomPick<T>(arr: T[]): T {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
 export type StringKeys<O> = {
     [K in keyof O]: string extends O[K] ? K : never
 }[keyof O];
@@ -232,44 +239,46 @@ export function sortFiles(files: Record<string, any>[] | string[], key = '_id') 
 
 interface MatchRule {
     regex: RegExp;
-    output: ((a: RegExpExecArray) => string)[];
+    output: (a: RegExpExecArray) => string[];
     id: (a: RegExpExecArray) => number;
     subtask: (a: RegExpExecArray) => number;
-    preferredScorerType: 'min' | 'max' | 'sum';
+    preferredScorerType: (a: RegExpExecArray) => 'min' | 'max' | 'sum';
 }
 
 const SubtaskMatcher: MatchRule[] = [
     {
-        regex: /^([^\d]*(?:\d+[a-zA-Z]+)*)(\d+)\.(in|txt)$/,
-        output: [
-            (a) => `${a[1] + a[2]}.out`,
-            (a) => `${a[1] + a[2]}.ans`,
-            (a) => `${a[1] + a[2]}.out`.replace(/input/g, 'output'),
-            (a) => (a[1].includes('input') ? `${a[1] + a[2]}.txt`.replace(/input/g, 'output') : null),
-        ],
-        id: (a) => +a[2],
-        subtask: () => 1,
-        preferredScorerType: 'sum',
+        regex: /^(([A-Za-z0-9._-]*?)(?:(\d*)[-_])?(\d+))\.(in|IN|txt|TXT|in\.txt|IN\.TXT)$/,
+        output: (a) => ['out', 'ans']
+            .flatMap((i) => [i, i.toUpperCase(), `${i}.txt`, `${i.toUpperCase()}.TXT`])
+            .flatMap((i) => [`${a[1]}.${i}`, `${a[1]}.${i}`.replace(/input/g, 'output').replace(/INPUT/g, 'OUTPUT')])
+            .concat(a[1].includes('input') ? `${a[1]}.txt`.replace(/input/g, 'output') : null),
+        id: (a) => +a[4],
+        subtask: (a) => +(a[3] || 1),
+        preferredScorerType: (a) => (a[3] ? 'min' : 'sum'),
     },
     {
-        regex: /^([^\d]*)\.in(\d+)$/,
-        output: [
-            (a) => `${a[1]}.ou${a[2]}`,
-            (a) => `${a[1]}.ou${a[2]}`.replace(/input/g, 'output'),
-        ],
+        regex: /^([^\d]*)\.(in|IN)(\d+)$/,
+        output: (a) => [
+            `${a[1]}.${a[2] === 'in' ? 'ou' : 'OU'}${a[3]}`,
+            `${a[1]}.${a[2] === 'in' ? 'out' : 'OUT'}${a[3]}`,
+        ].flatMap((i) => [i, i.replace(/input/g, 'output').replace(/INPUT/g, 'OUTPUT')]),
         id: (a) => +a[2],
         subtask: () => 1,
-        preferredScorerType: 'sum',
+        preferredScorerType: () => 'sum',
     },
     {
-        regex: /^([^\d]*)([0-9]+)([-_])([0-9]+)\.in$/,
-        output: [
-            (a) => `${a[1]}${a[2]}${a[3]}${a[4]}.out`,
-            (a) => `${a[1]}${a[2]}${a[3]}${a[4]}.ans`,
-        ],
+        regex: /^([^\d]*)([0-9]+)([-_])([0-9]+)\.(in|IN)$/,
+        output: (a) => ['out', 'ans', 'OUT', 'ANS'].flatMap((i) => `${a[1]}${a[2]}${a[3]}${a[4]}.${i}`),
         id: (a) => +a[4],
         subtask: (a) => +a[2],
-        preferredScorerType: 'min',
+        preferredScorerType: () => 'min',
+    },
+    {
+        regex: /^(([0-9]+)[-_](?:.*))\.(in|IN)$/,
+        output: (a) => ['out', 'ans', 'OUT', 'ANS'].flatMap((i) => `${a[1]}.${i}`),
+        id: (a) => +a[2],
+        subtask: () => 1,
+        preferredScorerType: () => 'sum',
     },
 ];
 
@@ -304,27 +313,33 @@ export function readSubtasksFromFiles(files: string[], config) {
     const subtask: Record<number, ParsedSubtask> = {};
     for (const s of config.subtasks || []) if (s.id) subtask[s.id] = s;
     for (const file of files) {
+        let match = false;
         for (const rule of SubtaskMatcher) {
             const data = rule.regex.exec(file);
             if (!data) continue;
             const sid = rule.subtask(data);
             const c = { input: file, output: '', id: rule.id(data) };
-            for (const func of rule.output) {
-                if (config.noOutputFile) c.output = '/dev/null';
-                else c.output = func(data);
-                if (c.output === '/dev/null' || files.includes(c.output)) {
+            const type = rule.preferredScorerType(data);
+            const outputs = (config.noOutputFile ? ['/dev/null'] : rule.output(data)).filter((i) => i);
+            for (const output of outputs) {
+                if (output === file) continue;
+                if (output === '/dev/null' || files.includes(output)) {
+                    match = true;
+                    c.output = output;
                     if (!subtask[sid]) {
                         subtask[sid] = {
                             time: config.time,
                             memory: config.memory,
-                            type: rule.preferredScorerType,
+                            type,
                             cases: [c],
+                            id: sid,
                         };
                     } else if (!subtask[sid].cases) subtask[sid].cases = [c];
                     else subtask[sid].cases.push(c);
                     break;
                 }
             }
+            if (match) break;
         }
     }
     return Object.values(subtask);

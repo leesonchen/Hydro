@@ -1,6 +1,6 @@
 /* eslint-disable max-len */
 /* eslint-disable no-await-in-loop */
-import cordis from 'cordis';
+import * as cordis from 'cordis';
 import yaml from 'js-yaml';
 import { Dictionary } from 'lodash';
 import moment from 'moment-timezone';
@@ -178,7 +178,6 @@ const ServerLangSettingNode = {
 
 PreferenceSetting(
     Setting('setting_display', 'viewLang', null, langRange, 'UI Language'),
-    Setting('setting_display', 'skipAnimate', false, 'boolean', 'Skip Animation'),
     Setting('setting_display', 'timeZone', 'Asia/Shanghai', timezones, 'Timezone'),
     LangSettingNode,
     Setting('setting_usage', 'codeTemplate', '', 'textarea', 'Default Code Template',
@@ -243,11 +242,11 @@ SystemSetting(
     Setting('setting_smtp', 'smtp.verify', true, 'boolean', 'smtp.verify', 'Verify register email'),
     Setting('setting_server', 'server.center', 'https://hydro.ac/center', 'text', 'server.center', '', FLAG_HIDDEN),
     Setting('setting_server', 'server.name', 'Hydro', 'text', 'server.name', 'Server Name'),
-    Setting('setting_server', 'server.displayName', 'Hydro', 'text', 'server.name', 'Server Name (Global Display)', FLAG_PRO),
     Setting('setting_server', 'server.url', '/', 'text', 'server.url', 'Server BaseURL'),
     Setting('setting_server', 'server.upload', '256m', 'text', 'server.upload', 'Max upload file size'),
     Setting('setting_server', 'server.cdn', '/', 'text', 'server.cdn', 'CDN Prefix'),
     Setting('setting_server', 'server.ws', '/', 'text', 'server.ws', 'WebSocket Prefix'),
+    Setting('setting_server', 'server.host', '127.0.0.1', 'text', 'server.host', 'Listen host'),
     Setting('setting_server', 'server.port', 8888, 'number', 'server.port', 'Server Port'),
     Setting('setting_server', 'server.xff', null, 'text', 'server.xff', 'IP Header'),
     Setting('setting_server', 'server.xhost', null, 'text', 'server.xhost', 'Hostname Header'),
@@ -255,7 +254,6 @@ SystemSetting(
     Setting('setting_server', 'server.cors', '', 'text', 'server.cors', 'CORS domains'),
     Setting('setting_server', 'server.language', 'zh_CN', langRange, 'server.language', 'Default display language'),
     Setting('setting_server', 'server.login', true, 'boolean', 'server.login', 'Allow builtin-login', FLAG_PRO),
-    Setting('setting_server', 'server.message', true, 'boolean', 'server.message', 'Allow users send messages'),
     Setting('setting_server', 'server.checkUpdate', true, 'boolean', 'server.checkUpdate', 'Daily update check'),
     Setting('setting_server', 'server.ignoreUA', ignoreUA, 'textarea', 'server.ignoreUA', 'ignoredUA'),
     ServerLangSettingNode,
@@ -269,14 +267,17 @@ SystemSetting(
     Setting('setting_limits', 'limit.submission', 60, 'number', 'limit.submission', 'Max submission count per minute'),
     Setting('setting_limits', 'limit.submission_user', 15, 'number', 'limit.submission_user', 'Max submission count per user per minute'),
     Setting('setting_limits', 'limit.pretest', 60, 'number', 'limit.pretest', 'Max pretest count per minute'),
+    Setting('setting_limits', 'limit.codelength', 128 * 1024, 'number', 'limit.codelength', 'Max code length'),
     Setting('setting_basic', 'avatar.gravatar_url', '//cn.gravatar.com/avatar/', 'text', 'avatar.gravatar_url', 'Gravatar URL Prefix'),
     Setting('setting_basic', 'default.priv', builtin.PRIV.PRIV_DEFAULT, 'number', 'default.priv', 'Default Privilege', FLAG_HIDDEN),
     Setting('setting_basic', 'discussion.nodes', builtin.DEFAULT_NODES, 'yaml', 'discussion.nodes', 'Discussion Nodes'),
     Setting('setting_basic', 'problem.categories', builtin.CATEGORIES, 'yaml', 'problem.categories', 'Problem Categories'),
+    Setting('setting_basic', 'training.enrolled-users', true, 'boolean', 'training.enrolled-users', 'Show enrolled users for training'),
     Setting('setting_basic', 'pagination.problem', 100, 'number', 'pagination.problem', 'Problems per page'),
     Setting('setting_basic', 'pagination.contest', 20, 'number', 'pagination.contest', 'Contests per page'),
     Setting('setting_basic', 'pagination.discussion', 50, 'number', 'pagination.discussion', 'Discussions per page'),
     Setting('setting_basic', 'pagination.record', 100, 'number', 'pagination.record', 'Records per page'),
+    Setting('setting_basic', 'pagination.ranking', 100, 'number', 'pagination.ranking', 'Users per page'),
     Setting('setting_basic', 'pagination.solution', 20, 'number', 'pagination.solution', 'Solutions per page'),
     Setting('setting_basic', 'pagination.training', 10, 'number', 'pagination.training', 'Trainings per page'),
     Setting('setting_basic', 'pagination.reply', 50, 'number', 'pagination.reply', 'Replies per page'),
@@ -293,7 +294,7 @@ SystemSetting(
 // eslint-disable-next-line import/no-mutable-exports
 export const langs: Record<string, LangConfig> = {};
 
-declare module '../context' {
+declare module 'cordis' {
     interface Context {
         setting: SettingService;
     }
@@ -301,12 +302,13 @@ declare module '../context' {
 
 const T = <F extends (...args: any[]) => any>(origFunc: F, disposeFunc?) =>
     function method(this: cordis.Service, ...args: Parameters<F>) {
-        const res = origFunc(...args);
-        this.caller?.on('dispose', () => (disposeFunc ? disposeFunc(res) : res()));
+        this.ctx.effect(() => {
+            const res = origFunc(...args);
+            return () => (disposeFunc ? disposeFunc(res) : res());
+        });
     };
 
 export class SettingService extends Service {
-    static readonly methods = ['PreferenceSetting', 'AccountSetting', 'DomainSetting', 'DomainUserSetting', 'SystemSetting'];
     PreferenceSetting = T(PreferenceSetting);
     AccountSetting = T(AccountSetting);
     DomainSetting = T(DomainSetting);
@@ -315,11 +317,15 @@ export class SettingService extends Service {
     constructor(ctx: Context) {
         super(ctx, 'setting', true);
     }
+
+    get(key: string) {
+        return (this.ctx ? this.ctx.domain?.config?.[key.replace(/\./g, '$')] : null) ?? global.Hydro.model.system.get(key);
+    }
 }
 
 export async function apply(ctx: Context) {
-    Context.service('setting', SettingService);
-    ctx.setting = new SettingService(ctx);
+    ctx.provide('setting', undefined, true);
+    ctx.plugin(SettingService);
     logger.info('Ensuring settings');
     const system = global.Hydro.model.system;
     for (const setting of SYSTEM_SETTINGS) {

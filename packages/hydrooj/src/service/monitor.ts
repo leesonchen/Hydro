@@ -10,6 +10,11 @@ import db from './db';
 const coll = db.collection('status');
 const logger = new Logger('monitor');
 
+// We use this endpoint to push security notifications based on
+// component versions and configurations to administrators.
+// Removing this logic is not recommended.
+// 我们使用此端点向服务器管理员根据所安装的版本与配置推送安全通知。
+// 不建议删除此逻辑。
 export async function feedback(): Promise<[string, StatusUpdate]> {
     const {
         system, domain, document, user, record,
@@ -18,11 +23,11 @@ export async function feedback(): Promise<[string, StatusUpdate]> {
     const [mid, $update, inf] = await sysinfo.update();
     const [installId, name, url] = system.getMany(['installid', 'server.name', 'server.url']);
     const [domainCount, userCount, problemCount, discussionCount, recordCount] = await Promise.all([
-        domain.coll.countDocuments(),
-        user.coll.countDocuments(),
-        document.coll.countDocuments({ docType: document.TYPE_PROBLEM }),
-        document.coll.countDocuments({ docType: document.TYPE_DISCUSSION }),
-        record.coll.countDocuments(),
+        domain.coll.count(),
+        user.coll.count(),
+        document.coll.count({ docType: document.TYPE_PROBLEM }),
+        document.coll.count({ docType: document.TYPE_DISCUSSION }),
+        record.coll.count(),
     ]);
     const info: Record<string, any> = {
         mid: mid.toString(),
@@ -49,6 +54,7 @@ export async function feedback(): Promise<[string, StatusUpdate]> {
         const status = await db.db.admin().serverStatus();
         info.dbVersion = status.version;
     } catch (e) { }
+    await bus.serial('monitor/collect', info);
     const payload = dump(info, {
         replacer: (key, value) => {
             if (typeof value === 'function') return '';

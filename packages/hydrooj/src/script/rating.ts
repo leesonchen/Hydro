@@ -55,7 +55,7 @@ export const RpTypes: Record<string, RpDef> = {
     },
     contest: {
         async run(domainIds, udict, report) {
-            const contests: Tdoc<30>[] = await contest.getMulti('', { domainId: { $in: domainIds }, rated: true })
+            const contests: Tdoc[] = await contest.getMulti('', { domainId: { $in: domainIds }, rated: true })
                 .limit(10).toArray() as any;
             if (contests.length) await report({ message: `Found ${contests.length} contests in ${domainIds[0]}` });
             for (const tdoc of contests.reverse()) {
@@ -136,14 +136,12 @@ export async function calcLevel(domainId: string, report: Function) {
 }
 
 async function runInDomain(domainId: string, report: Function) {
-    const info = await domain.get(domainId);
-    const domainIds = [domainId, ...(info.union || [])];
     const results: Record<keyof typeof RpTypes, ND> = {};
     const udict = Counter();
     await db.collection('domain.user').updateMany({ domainId }, { $set: { rpInfo: {} } });
     for (const type in RpTypes) {
         results[type] = new Proxy({}, { get: (self, key) => self[key] || RpTypes[type].base });
-        await RpTypes[type].run(domainIds, results[type], report);
+        await RpTypes[type].run([domainId], results[type], report);
         const bulk = db.collection('domain.user').initializeUnorderedBulkOp();
         for (const uid in results[type]) {
             const udoc = await UserModel.getById(domainId, +uid);

@@ -10,6 +10,7 @@ const highlighterPage = new AutoloadPage('highlighterPage', () => {
         const m = language.match(/language-([a-z0-9]+)(\|[\d,-]+)/);
         if (m?.[2]) {
           $(code).parent().attr('data-line', m[2].substring(1));
+          if (language.includes('line-numbers')) $(code).parent().addClass('line-numbers');
           $(code).attr('class', `language-${m[1]}`);
         }
       });
@@ -17,12 +18,13 @@ const highlighterPage = new AutoloadPage('highlighterPage', () => {
       $container.find('pre code').get().forEach((code) => {
         const $code = $(code);
         const $root = $code.parent().parent();
+        const $typo = $code.closest('.richmedia');
         const language = ($(code).attr('class') || '').trim();
         const m = language.match(/language-input([0-9]+)/);
         if (m?.[1]) {
           const id = +m[1];
           if (Number.isSafeInteger(id)) {
-            const $output = $container.find(`pre.language-output${id}`);
+            const $output = ($typo.length ? $typo : $container).find(`pre.language-output${id}`);
             if ($output.length) {
               const $c = $(document.createElement('div')).addClass('row');
               $root.after($c);

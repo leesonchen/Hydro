@@ -7,8 +7,10 @@ ignorePatterns:
 overrides:
   - files: 
       - '**/{public,frontend}/**/*.{ts,tsx,page.js}'
+      - '**/plugins/**/*.page.{ts,js,tsx,jsx}'
     rules:
-      '@typescript-eslint/indent':
+      github/array-foreach: 0
+      '@stylistic/indent':
         - warn
         - 2
       '@typescript-eslint/no-invalid-this': 0

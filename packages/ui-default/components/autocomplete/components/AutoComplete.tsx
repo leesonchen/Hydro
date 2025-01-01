@@ -1,7 +1,6 @@
 /* eslint-disable jsx-a11y/role-supports-aria-props */
 /* eslint-disable jsx-a11y/no-noninteractive-element-interactions */
 import { debounce, uniqueId } from 'lodash';
-import PropTypes from 'prop-types';
 import React, {
   forwardRef, useEffect,
   useImperativeHandle, useRef, useState,
@@ -102,8 +101,8 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
   const [rerender, setRerender] = useState(false);
   const [draggableId] = useState(uniqueId());
 
-  const inputRef = useRef<HTMLInputElement>();
-  const listRef = useRef<HTMLUListElement>();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   let [queryCache, valueCache] = [useRef({}).current, useRef({}).current];
   if (props.cacheKey) {
@@ -121,7 +120,7 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
     queryCache[query] ||= await queryItems(query);
     for (const item of queryCache[query]) valueCache[itemKey(item)] = item;
     setItemList(queryCache[query]);
-    setCurrentItem((!freeSolo && queryCache[query].length > 0) ? 0 : null);
+    setCurrentItem((!freeSolo && queryCache[query].length) ? 0 : null);
   };
 
   useEffect(() => {
@@ -129,7 +128,7 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
   }, [JSON.stringify(props.selectedKeys)]);
   const dispatchChange = () => {
     if (!multi) onChange(inputRef.current?.value);
-    else onChange(selectedKeys.filter((v) => v?.trim().length > 0).join(','));
+    else onChange(selectedKeys.filter((v) => v?.trim().length).join(','));
   };
 
   let first = !multi;
@@ -200,8 +199,8 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
       return;
     }
     if (key === 'Backspace') {
-      if (target.value.length > 0) return;
-      if (selectedKeys.length > 0) {
+      if (target.value.length) return;
+      if (selectedKeys.length) {
         setSelected((s) => s.slice(0, -1));
         setSelectedKeys((s) => s.slice(0, -1));
       }
@@ -231,8 +230,8 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
 
   useImperativeHandle(ref, () => ({
     getSelectedItems: () => selected,
-    getSelectedItemKeys: () => [...selectedKeys, inputRef.current?.value].filter((v) => v?.trim().length > 0),
-    getSelectedItemsAsString: () => [...selectedKeys, inputRef.current?.value].filter((v) => v?.trim().length > 0).join(','),
+    getSelectedItemKeys: () => [...selectedKeys, inputRef.current?.value].filter((v) => v?.trim().length),
+    getSelectedItemsAsString: () => [...selectedKeys, inputRef.current?.value].filter((v) => v?.trim().length).join(','),
     setSelectedItems: (items) => {
       setSelected(items);
       setSelectedKeys(items.map((i) => itemKey(i)));
@@ -301,6 +300,18 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
               if (allowEmptyQuery) handleInputChange();
               setFocused(true);
             }}
+            onPaste={async (e) => {
+              if (!multi) return;
+              const text = e.clipboardData.getData('text');
+              if (!text || (!text.includes(',') && !text.includes('，'))) return;
+              e.preventDefault();
+              const ids = text.replace(/，/g, ',').split(',').filter((v) => v?.trim().length && !selectedKeys.includes(v));
+              if (!ids.length) return;
+              const fetched = await props.fetchItems(ids.filter((v) => !valueCache[v]));
+              for (const item of fetched) valueCache[itemKey(item)] = item;
+              setSelected([...selected, ...ids.map((id) => valueCache[id])]);
+              setSelectedKeys([...selectedKeys, ...ids.map((id) => itemKey(valueCache[id]))]);
+            }}
             placeholder={props.placeholder}
             onBlur={() => setFocused(false)}
             onKeyDown={handleInputKeyDown}
@@ -334,40 +345,6 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
     </div>
   );
 }) as (<T>(props: AutoCompleteProps<T> & { ref: React.Ref<AutoCompleteHandle<T>> }) => React.ReactElement) & React.FC;
-
-AutoComplete.propTypes = {
-  width: PropTypes.string,
-  height: PropTypes.string,
-  disabled: PropTypes.bool,
-  disabledHint: PropTypes.string,
-  listStyle: PropTypes.object,
-  queryItems: PropTypes.func.isRequired,
-  itemKey: PropTypes.func,
-  renderItem: PropTypes.func,
-  itemText: PropTypes.func,
-  onChange: PropTypes.func.isRequired,
-  multi: PropTypes.bool,
-  selectedKeys: PropTypes.arrayOf(PropTypes.string),
-  allowEmptyQuery: PropTypes.bool,
-  freeSolo: PropTypes.bool,
-  freeSoloConverter: PropTypes.func,
-  placeholder: PropTypes.string,
-};
-
-AutoComplete.defaultProps = {
-  width: '100%',
-  height: 'auto',
-  disabled: false,
-  disabledHint: '',
-  listStyle: {},
-  renderItem: (item) => item,
-  itemText: (item) => item.toString(),
-  multi: false,
-  selectedKeys: [],
-  allowEmptyQuery: false,
-  freeSolo: false,
-  freeSoloConverter: (input) => input,
-};
 
 AutoComplete.displayName = 'AutoComplete';
 

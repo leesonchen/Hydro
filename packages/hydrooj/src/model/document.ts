@@ -5,7 +5,7 @@ import {
 } from 'mongodb';
 import { Context } from '../context';
 import {
-    Content, DiscussionDoc,
+    Content, ContestClarificationDoc, DiscussionDoc,
     DiscussionReplyDoc, ProblemDoc, ProblemStatusDoc,
     Tdoc, TrainingDoc,
 } from '../interface';
@@ -27,6 +27,7 @@ export const TYPE_DISCUSSION_NODE: 20 = 20;
 export const TYPE_DISCUSSION: 21 = 21;
 export const TYPE_DISCUSSION_REPLY: 22 = 22;
 export const TYPE_CONTEST: 30 = 30;
+export const TYPE_CONTEST_CLARIFICATION: 31 = 31;
 export const TYPE_TRAINING: 40 = 40;
 /** @deprecated use `TYPE_CONTEST` with rule `homework` instead. */
 export const TYPE_HOMEWORK: 60 = 60;
@@ -39,6 +40,7 @@ export interface DocType {
     [TYPE_DISCUSSION]: DiscussionDoc;
     [TYPE_DISCUSSION_REPLY]: DiscussionReplyDoc;
     [TYPE_CONTEST]: Tdoc;
+    [TYPE_CONTEST_CLARIFICATION]: ContestClarificationDoc;
     [TYPE_TRAINING]: TrainingDoc;
 }
 
@@ -300,12 +302,18 @@ export function getMultiStatusWithoutDomain<K extends keyof DocStatusType>(
 }
 
 export async function setStatus<K extends keyof DocStatusType>(
-    domainId: string, docType: K, docId: DocStatusType[K]['docId'], uid: number, args: UpdateFilter<DocStatusType[K]>['$set'],
+    domainId: string, docType: K, docId: DocStatusType[K]['docId'], uid: number,
+    args: UpdateFilter<DocStatusType[K]>['$set'], returnDocument: 'before' | 'after' = 'after',
 ): Promise<DocStatusType[K]> {
     const res = await collStatus.findOneAndUpdate(
         { domainId, docType, docId, uid },
-        { $set: args },
-        { upsert: true, returnDocument: 'after' },
+        { $set: args, $inc: { counter: 1 } },
+        {
+            upsert: true,
+            returnDocument,
+            // if fetching document before update we want to ensure data was read from primary
+            ...(returnDocument === 'before' ? { readConcern: { level: 'majority' }, readPreference: 'primary' } : {}),
+        },
     );
     return res.value;
 }
@@ -319,41 +327,32 @@ export async function setMultiStatus<K extends keyof DocStatusType>(
     );
 }
 
+export async function setStatusIfNotCondition<T extends keyof DocStatusType>(
+    domainId: string, docType: T, docId: DocStatusType[T]['docId'], uid: number,
+    filter: Filter<DocStatusType[T]>, args: Partial<DocStatusType[T]> = {},
+    returnDocument: 'before' | 'after' = 'after',
+): Promise<DocStatusType[T]> {
+    try {
+        const res = await collStatus.findOneAndUpdate(
+            { domainId, docType, docId, uid, $nor: [filter] },
+            { $set: args },
+            { upsert: true, returnDocument },
+        );
+        return res.value;
+    } catch (e) {
+        return false;
+    }
+}
+
 export async function setIfNotStatus<T extends keyof DocStatusType, K extends keyof DocStatusType[T]>(
     domainId: string, docType: T, docId: DocStatusType[T]['docId'], uid: number,
     key: K, value: DocStatusType[T][K], ifNot: DocStatusType[T][K], args: Partial<DocStatusType[T]>,
+    returnDocument: 'before' | 'after' = 'after',
 ): Promise<DocStatusType[T]> {
-    const current: Partial<DocStatusType[T]> = await collStatus.findOne({ domainId, docType, docId, uid }) || {};
-    if (typeof key === 'string' && key.includes('.')) {
-        const acc = key.split('.');
-        let c = current;
-        for (const i of acc) {
-            if (!(i in c)) break;
-            c = c[i];
-            if (c === null || c === undefined) break;
-        }
-        if (c === ifNot) return null;
-    } else if (current[key] === ifNot) return null;
-    const res = await collStatus.findOneAndUpdate(
-        { domainId, docType, docId, uid },
-        { $set: { [key]: value, ...args } },
-        { upsert: true, returnDocument: 'after' },
+    return await setStatusIfNotCondition(
+        domainId, docType, docId, uid, { [key]: ifNot } as any,
+        { [key]: value, ...args }, returnDocument,
     );
-    return res.value;
-}
-
-export async function setStatusIfNotCondition<T extends keyof DocStatusType>(
-    domainId: string, docType: T, docId: DocStatusType[T]['docId'], uid: number,
-    filter: Filter<DocStatusType[T]>, args: Partial<DocStatusType[T]>,
-): Promise<DocStatusType[T]> {
-    const match = await collStatus.findOne({ domainId, docType, docId, uid, ...filter });
-    if (match) return null;
-    const res = await collStatus.findOneAndUpdate(
-        { domainId, docType, docId, uid },
-        { $set: args },
-        { upsert: true, returnDocument: 'after' },
-    );
-    return res.value;
 }
 
 export async function cappedIncStatus<T extends keyof DocStatusType>(
@@ -431,15 +430,14 @@ export async function apply(ctx: Context) {
         coll.deleteMany({ domainId }),
         collStatus.deleteMany({ domainId }),
     ]));
+    await db.clearIndexes(coll, ['tag', 'hidden']);
     await db.ensureIndexes(
         coll,
         { key: { domainId: 1, docType: 1, docId: 1 }, name: 'basic', unique: true },
         { key: { domainId: 1, docType: 1, owner: 1, docId: -1 }, name: 'owner' },
         // For problem
         { key: { domainId: 1, docType: 1, search: 'text', title: 'text' }, name: 'search', sparse: true },
-        { key: { domainId: 1, docType: 1, sort: 1 }, name: 'sort', sparse: true },
-        { key: { domainId: 1, docType: 1, tag: 1, sort: 1 }, name: 'tag', sparse: true },
-        { key: { domainId: 1, docType: 1, hidden: 1, tag: 1, sort: 1 }, name: 'hidden', sparse: true },
+        { key: { domainId: 1, docType: 1, sort: 1, docId: 1 }, name: 'sort' },
         // For problem solution
         { key: { domainId: 1, docType: 1, parentType: 1, parentId: 1, vote: -1, docId: -1 }, name: 'solution', sparse: true },
         // For discussion
@@ -498,6 +496,7 @@ global.Hydro.model.document = {
     setSub,
 
     TYPE_CONTEST,
+    TYPE_CONTEST_CLARIFICATION,
     TYPE_DISCUSSION,
     TYPE_DISCUSSION_NODE,
     TYPE_DISCUSSION_REPLY,

@@ -10,64 +10,38 @@ import { VERDICT } from '../verdict';
 
 const logger = new Logger('remote/poj');
 
-/* langs
-poj:
-  display: POJ
-  execute: /bin/echo Invalid
-  domain:
-  - poj
-poj.0:
-  display: G++
-  monaco: cpp
-  highlight: cpp astyle-c
-  comment: //
-poj.1:
-  display: GCC
-  monaco: c
-  highlight: c astyle-c
-  comment: //
-poj.2:
-  display: Java
-  monaco: java
-  highlight: java astyle-java
-  comment: //
-poj.3:
-  display: Pascal
-  monaco: pascal
-  highlight: pascal
-  comment: //
-poj.4:
-  display: C++
-  monaco: cpp
-  highlight: cpp astyle-c
-  comment: //
-poj.5:
-  display: C
-  monaco: c
-  highlight: c astyle-c
-  comment: //
-poj.6:
-  display: Fortran
-  monaco: plain
-  highlight: plain
-*/
-
 const langs = {
     default: 'en',
     'zh-CN': 'zh',
 };
 
 export default class POJProvider extends BasicFetcher implements IBasicProvider {
+    static Langs = {
+        'cc.cc98': {
+            display: 'C++',
+            key: '0',
+        },
+        c: {
+            display: 'C',
+            key: '1',
+        },
+        java: {
+            display: 'Java',
+            key: '2',
+        },
+        pas: {
+            display: 'Pascal',
+            key: '3',
+        },
+    };
+
     constructor(public account: RemoteAccount, private save: (data: any) => Promise<void>) {
         super(account, 'http://poj.org', 'form', logger);
     }
 
     async getCsrfToken(url: string) {
         const { header } = await this.get(url);
-        if (header['set-cookie']) {
-            await this.save({ cookie: header['set-cookie'] });
-            this.cookie = header['set-cookie'];
-        }
+        if (header['set-cookie']) await this.setCookie(header['set-cookie']);
         return '';
     }
 
@@ -113,11 +87,11 @@ export default class POJProvider extends BasicFetcher implements IBasicProvider 
             content.children[0].remove();
             content.children[0].remove();
             content.children[0].remove();
-            content.querySelectorAll('img[src]').forEach((ele) => {
+            for (const ele of content.querySelectorAll('img[src]')) {
                 const src = ele.getAttribute('src');
                 if (images[src]) {
                     ele.setAttribute('src', `file://${images[src]}.png`);
-                    return;
+                    continue;
                 }
                 const file = new PassThrough();
                 this.get(src).pipe(file);
@@ -125,7 +99,7 @@ export default class POJProvider extends BasicFetcher implements IBasicProvider 
                 images[src] = fid;
                 files[`${fid}.png`] = file;
                 ele.setAttribute('src', `file://${fid}.png`);
-            });
+            }
             let lastId = 0;
             let markNext = '';
             let html = '';
@@ -195,9 +169,8 @@ export default class POJProvider extends BasicFetcher implements IBasicProvider 
             .map((i) => `P${+i.children[0].innerHTML ? i.children[0].innerHTML : i.children[1].innerHTML}`);
     }
 
-    async submitProblem(id: string, lang: string, code: string) {
+    async submitProblem(id: string, language: string, code: string) {
         await this.ensureLogin();
-        const language = lang.includes('poj.') ? lang.split('poj.')[1] : '0';
         code = Buffer.from(code).toString('base64');
         const { text } = await this.post('/submit').send({
             problem_id: id.split('P')[1],

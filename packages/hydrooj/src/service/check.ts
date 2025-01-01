@@ -13,9 +13,11 @@ export class CheckService extends Service {
     checkers: Dictionary<CheckItem> = {};
     c = {};
     addChecker(type: string, checkFunc: CheckItem) {
-        this.checkers[`check${type}`] = checkFunc;
-        this.caller?.on('dispose', () => {
-            delete this.checkers[`check${type}`];
+        this.ctx.effect(() => {
+            this.checkers[`check${type}`] = checkFunc;
+            return () => {
+                delete this.checkers[`check${type}`];
+            };
         });
     }
 
@@ -73,6 +75,6 @@ check.addChecker('Setting', async (ctx, log, warn) => {
 });
 
 export async function apply(ctx: Context) {
-    Context.service('check', CheckService);
+    ctx.provide('check', CheckService, true);
     ctx.check = check;
 }

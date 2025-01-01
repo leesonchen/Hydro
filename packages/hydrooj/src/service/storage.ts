@@ -2,8 +2,8 @@ import { dirname, resolve } from 'path';
 import { PassThrough, Readable } from 'stream';
 import { URL } from 'url';
 import {
-    CopyObjectCommand, DeleteObjectCommand, DeleteObjectsCommand,
-    GetObjectCommand, HeadObjectCommand, PutObjectCommand, PutObjectCommandInput, S3Client,
+    DeleteObjectCommand, DeleteObjectsCommand, GetObjectCommand,
+    HeadObjectCommand, PutObjectCommand, PutObjectCommandInput, S3Client,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
@@ -209,7 +209,8 @@ class RemoteStorageService {
             Key: target,
             ResponseContentDisposition: filename ? `attachment; filename="${encodeRFC5987ValueChars(filename)}"` : '',
         }), {
-            expiresIn: noExpire ? 24 * 60 * 60 * 7 : 10 * 60,
+            // aliyun s3 will reject download if expires >= 7 days
+            expiresIn: noExpire ? 24 * 60 * 60 * 7 - 1 : 30 * 60,
         });
         // using something like /fs/
         if (useAlternativeEndpointFor && this.replaceWithAlternativeUrlFor[useAlternativeEndpointFor]) {
@@ -243,20 +244,10 @@ class RemoteStorageService {
         return { url, fields };
     }
 
-    async copy(src: string, target: string) {
-        src = convertPath(src);
-        target = convertPath(target);
-        return await this.client.send(new CopyObjectCommand({
-            Bucket: this.bucket,
-            Key: target,
-            CopySource: src,
-        }));
-    }
-
     async status() {
         return {
             type: 'S3',
-            status: !!this.error,
+            status: !this.error,
             error: this.error,
             bucket: this.bucket,
         };
@@ -265,7 +256,7 @@ class RemoteStorageService {
 
 class LocalStorageService {
     client: null;
-    error: null;
+    error = '';
     dir: string;
     opts: null;
     private replaceWithAlternativeUrlFor: Record<'user' | 'judge', (originalUrl: string) => string>;
@@ -284,7 +275,7 @@ class LocalStorageService {
         target = resolve(this.dir, convertPath(target));
         await ensureDir(dirname(target));
         if (typeof file === 'string') await copyFile(file, target);
-        else if (file instanceof Buffer) await writeFile(target, file);
+        else if (Buffer.isBuffer(file)) await writeFile(target, file);
         else await writeFile(target, await streamToBuffer(file));
     }
 
@@ -332,17 +323,10 @@ class LocalStorageService {
         throw new Error('Not implemented');
     }
 
-    async copy(src: string, target: string) {
-        src = resolve(this.dir, convertPath(src));
-        target = resolve(this.dir, convertPath(target));
-        await copyFile(src, target);
-        return { etag: target, lastModified: new Date() };
-    }
-
     async status() {
         return {
             type: 'Local',
-            status: !!this.error,
+            status: !this.error,
             error: this.error,
             bucket: 'Hydro',
         };

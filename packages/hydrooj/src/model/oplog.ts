@@ -19,7 +19,7 @@ export async function add(data: Partial<OplogDoc> & { type: string }): Promise<O
 
 function safeKeys(data: any) {
     if (['string', 'number', 'boolean'].includes(typeof data)) return data;
-    if (data instanceof Array) data.forEach(safeKeys);
+    if (data instanceof Array) for (const d of data) safeKeys(d);
     else if (data instanceof ObjectId) return data;
     else if (data instanceof Object) {
         for (const key in data) {
@@ -48,6 +48,7 @@ export async function log<T extends Handler>(handler: T, type: string, data: any
         domainId: handler.args.domainId,
         ua: handler.request.headers?.['user-agent'],
         referer: handler.request.headers?.referer,
+        path: handler.request.path,
         args,
         operator: handler.user?._id,
         operateIp: handler.request.ip,

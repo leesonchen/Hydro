@@ -1,6 +1,8 @@
 import { hostname } from 'os';
 import { AggregatorRegistry, Metric } from 'prom-client';
-import { Context, Handler, SystemModel } from 'hydrooj';
+import {
+    Context, Handler, superagent, SystemModel,
+} from 'hydrooj';
 import { createRegistry } from './metrics';
 
 declare module 'hydrooj' {
@@ -10,6 +12,7 @@ declare module 'hydrooj' {
     interface SystemKeys {
         'prom-client.name': string;
         'prom-client.password': string;
+        'prom-client.gateway': string;
         'prom-client.collect_rate': number;
     }
 }
@@ -43,8 +46,29 @@ export function apply(ctx: Context) {
     if (process.env.HYDRO_CLI) return;
     const registry = createRegistry(ctx);
     ctx.on('metrics', (id, metrics) => { instances[id] = metrics; });
+    let pushError = '';
     ctx.setInterval(async () => {
-        ctx.broadcast('metrics', `${hostname()}/${process.env.NODE_APP_INSTANCE}`, await registry.getMetricsAsJSON());
+        try {
+            const [gateway, name, pass] = SystemModel.getMany(['prom-client.gateway', 'prom-client.name', 'prom-client.password']);
+            if (gateway) {
+                const prefix = gateway.endsWith('/') ? gateway : `${gateway}/`;
+                const endpoint = `${prefix}metrics/job/hydro-web/instance/${encodeURIComponent(hostname())}:${process.env.NODE_APP_INSTANCE}`;
+                let req = superagent.post(endpoint);
+                if (name) req = req.auth(name, pass, { type: 'basic' });
+                await req.send(await registry.metrics());
+            } else ctx.broadcast('metrics', `${hostname()}/${process.env.NODE_APP_INSTANCE}`, await registry.getMetricsAsJSON());
+            pushError = '';
+        } catch (e) {
+            pushError = e.message;
+        }
     }, 5000 * (+SystemModel.get('prom-client.collect_rate') || 1));
+    ctx.inject(['check'], (c) => {
+        const gateway = SystemModel.get('prom-client.gateway');
+        c.check.addChecker('prom-client', async (_, log, warn, error) => {
+            if (pushError) error(`Prometheus push error: ${pushError}`);
+            else if (gateway) log(`Prometheus pushed to gateway: ${gateway}`);
+            else log('Prometheus metrics server running.');
+        });
+    });
     ctx.Route('metrics', '/metrics', MetricsHandler);
 }

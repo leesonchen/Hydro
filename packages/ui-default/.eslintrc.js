@@ -54,11 +54,12 @@ module.exports = {
     // FIXME A bug with eslint-parser
     // 'template-curly-spacing': 'off',
 
-    '@typescript-eslint/indent': [
+    '@stylistic/indent': [
       'warn',
       2,
       { SwitchCase: 1 },
     ],
+    'github/array-foreach': 'off',
     'function-paren-newline': 'off',
     'no-mixed-operators': 'off',
     'no-await-in-loop': 'off',
