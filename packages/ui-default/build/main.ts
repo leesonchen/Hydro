@@ -19,7 +19,7 @@ async function runWebpack({
   const compiler = webpack(await webpackConfig({ watch, production, measure }));
   if (dev) {
     const server = new WebpackDevServer({
-      port: https ? 8001 : 8000,
+      port: https ? 8001 : 8001,
       compress: true,
       hot: true,
       server: https ? 'https' : 'http',
