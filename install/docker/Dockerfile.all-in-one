@@ -1,0 +1,41 @@
+FROM node:20
+
+# Install system dependencies and MongoDB
+RUN apt-get update && \
+    apt-get install -y \
+    # Basic tools
+    wget gnupg ca-certificates supervisor curl \
+    # Programming languages for judge
+    gcc python3 python-is-python3 g++ fp-compiler \
+    openjdk-17-jdk-headless php-cli rustc ghc \
+    libjavascriptcoregtk-4.0-bin golang ruby \
+    mono-runtime mono-mcs && \
+    # Install MongoDB - using official MongoDB repository
+    curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor && \
+    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list && \
+    apt-get update && \
+    apt-get install -y mongodb-org mongodb-database-tools && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Node.js packages
+RUN yarn global add pm2 hydrooj @hydrooj/ui-default @hydrooj/hydrojudge
+
+# Download go-judge for sandboxing
+RUN wget https://github.com/criyle/go-judge/releases/download/v1.8.0/go-judge_1.8.0_linux_amd64 -O /usr/bin/sandbox && \
+    chmod +x /usr/bin/sandbox
+
+# Create directories
+RUN mkdir -p /root/.hydro /root/.config/hydro /data/db /data/file
+
+# Copy configuration files
+COPY ./all-in-one-entrypoint.sh /root/entrypoint.sh
+COPY ./supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY ./judge.yaml /root/judge.yaml
+
+RUN chmod +x /root/entrypoint.sh
+
+# Expose ports
+EXPOSE 8888 27017
+
+# Use supervisor to manage multiple services
+ENTRYPOINT ["/root/entrypoint.sh"] 

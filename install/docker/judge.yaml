@@ -1,0 +1,14 @@
+hosts:
+  localhost:
+    server_url: ws://localhost:8888
+    uname: HydroJudge
+    password: HydroJudge
+    detail: true
+parallelism: 1
+tmp_dir: /data/file/temp
+cache_dir: /data/file/cache
+config:
+  testlib_max_stack: 128
+  stdio_size_limit: 33554432
+  memcheck_max_stack: 128
+  strict_memory_limit: false

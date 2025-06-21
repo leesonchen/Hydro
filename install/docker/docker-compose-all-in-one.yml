@@ -1,0 +1,21 @@
+version: '3.7'
+
+services:
+  hydro-all-in-one:
+    build:
+      context: .
+      dockerfile: Dockerfile.all-in-one
+    container_name: hydro-all-in-one
+    restart: always
+    privileged: true
+    volumes:
+      - ./data/db:/data/db
+      - ./data/file:/data/file
+      - ./data/hydro:/root/.hydro
+      - ./data/judge:/root/.config/hydro
+    ports:
+      - "0.0.0.0:8080:8888"
+      - "0.0.0.0:27017:27017"  # MongoDB port (optional, for external access)
+    environment:
+      - HYDRO_HOST=0.0.0.0
+      - HYDRO_PORT=8888 

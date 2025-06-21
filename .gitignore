@@ -63,3 +63,4 @@ __*
 .monokle
 
 packages/*/public/assets
+/install/docker/data

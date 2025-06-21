@@ -1,0 +1,17 @@
+version: '3.7'
+
+services:
+  hydro-simple:
+    build:
+      context: .
+      dockerfile: Dockerfile.simple-all-in-one
+    container_name: hydro-simple
+    restart: always
+    volumes:
+      - ./data/db:/data/db
+      - ./data/file:/data/file
+    ports:
+      - "0.0.0.0:8080:8888"
+    environment:
+      - HYDRO_HOST=0.0.0.0
+      - HYDRO_PORT=8888 

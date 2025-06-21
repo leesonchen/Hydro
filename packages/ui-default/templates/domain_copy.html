@@ -1,0 +1,389 @@
+{% set page_name = "domain_copy" %}
+{% extends "layout/basic.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <h1>{{ _('Copy Domain') }}</h1>
+    <p>{{ _('Create a copy of an existing domain with its content.') }}</p>
+    
+    <form id="domain-copy-form" method="post">
+      <div class="section">
+        <h2>{{ _('Basic Settings') }}</h2>
+        
+        <div class="row">
+          <div class="medium-6 columns">
+            <label>{{ _('Source Domain') }}
+              <select name="sourceDomainId" required>
+                <option value="">{{ _('Select source domain') }}</option>
+                {% for domain in domains %}
+                <option value="{{ domain._id }}">{{ domain._id }} - {{ domain.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+          
+          <div class="medium-6 columns">
+            <label>{{ _('Target Domain ID') }}
+              <input type="text" name="targetDomainId" required
+                     pattern="^[a-zA-Z0-9_-]+$"
+                     placeholder="{{ _('Enter new domain ID') }}"
+                     data-validation-endpoint="/domain/copy/validate">
+              <span class="validation-message"></span>
+            </label>
+          </div>
+        </div>
+        
+        <div class="row">
+          <div class="medium-12 columns">
+            <label>{{ _('Target Domain Name') }}
+              <input type="text" name="targetDomainName" required
+                     placeholder="{{ _('Enter new domain name') }}">
+            </label>
+          </div>
+        </div>
+      </div>
+      
+      <div class="section">
+        <h2>{{ _('Copy Options') }}</h2>
+        
+        <div class="row">
+          <div class="medium-6 columns">
+            <fieldset>
+              <legend>{{ _('Content to Copy') }}</legend>
+              
+              <label>
+                <input type="checkbox" name="copyProblems" checked>
+                {{ _('Problems and Test Data') }}
+              </label>
+              
+              <label>
+                <input type="checkbox" name="copyContests" checked>
+                {{ _('Contests and Homework') }}
+              </label>
+              
+              <label>
+                <input type="checkbox" name="copyTrainings" checked>
+                {{ _('Training Plans') }}
+              </label>
+              
+              <label>
+                <input type="checkbox" name="copyDiscussions">
+                {{ _('Discussions') }}
+              </label>
+              
+              <label>
+                <input type="checkbox" name="copyProblemSolutions">
+                {{ _('Problem Solutions') }}
+              </label>
+            </fieldset>
+          </div>
+          
+          <div class="medium-6 columns">
+            <fieldset>
+              <legend>{{ _('User Data') }}</legend>
+              
+              <label>
+                <input type="checkbox" name="copyUsers">
+                {{ _('User Roles and Permissions') }}
+              </label>
+              
+              <label>
+                <input type="checkbox" name="copyGroups">
+                {{ _('User Groups') }}
+              </label>
+            </fieldset>
+            
+            <fieldset>
+              <legend>{{ _('Advanced Options') }}</legend>
+              
+              <label>
+                <input type="checkbox" name="preserveIds">
+                {{ _('Preserve Problem IDs') }}
+              </label>
+            </fieldset>
+          </div>
+        </div>
+      </div>
+      
+      <div class="section">
+        <h2>{{ _('Problem ID Mapping') }}</h2>
+        <p class="text-muted">{{ _('Optional: Map problem IDs from source to target domain') }}</p>
+        
+        <div id="problem-mapping">
+          <div class="row problem-mapping-row template" style="display: none;">
+            <div class="medium-5 columns">
+              <input type="text" name="sourceProblems[]" placeholder="{{ _('Source Problem ID') }}">
+            </div>
+            <div class="medium-5 columns">
+              <input type="text" name="targetProblems[]" placeholder="{{ _('Target Problem ID') }}">
+            </div>
+            <div class="medium-2 columns">
+              <button type="button" class="button alert small remove-mapping">{{ _('Remove') }}</button>
+            </div>
+          </div>
+        </div>
+        
+        <button type="button" id="add-mapping" class="button secondary small">
+          {{ _('Add Problem Mapping') }}
+        </button>
+      </div>
+      
+      <div class="section">
+        <button type="submit" class="button primary">
+          <i class="icon icon-copy"></i>
+          {{ _('Start Domain Copy') }}
+        </button>
+        
+        <button type="button" class="button secondary" onclick="history.back()">
+          {{ _('Cancel') }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Progress Modal -->
+<div id="progress-modal" class="reveal" data-reveal>
+  <div class="row">
+    <div class="medium-12 columns">
+      <h3>{{ _('Copying Domain') }}</h3>
+      
+      <div id="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 0%"></div>
+        </div>
+        
+        <div class="progress-info">
+          <p id="progress-stage">{{ _('Initializing...') }}</p>
+          <p id="progress-detail"></p>
+          <p id="progress-text">0 / 0</p>
+        </div>
+      </div>
+      
+      <div id="result-container" style="display: none;">
+        <div id="success-result" class="callout success" style="display: none;">
+          <h4>{{ _('Domain Copy Completed Successfully') }}</h4>
+          <div id="copy-summary"></div>
+        </div>
+        
+        <div id="error-result" class="callout alert" style="display: none;">
+          <h4>{{ _('Domain Copy Failed') }}</h4>
+          <p id="error-message"></p>
+        </div>
+      </div>
+      
+      <button class="close-button" data-close aria-label="{{ _('Close') }}" type="button">
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+.progress-bar {
+  width: 100%;
+  height: 20px;
+  background-color: #e6e6e6;
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #1779ba;
+  transition: width 0.3s ease;
+}
+
+.progress-info {
+  text-align: center;
+  margin: 10px 0;
+}
+
+.validation-message {
+  display: block;
+  font-size: 0.875em;
+  margin-top: 0.25rem;
+}
+
+.validation-message.success {
+  color: #3adb76;
+}
+
+.validation-message.error {
+  color: #cc4b37;
+}
+
+.problem-mapping-row {
+  margin-bottom: 10px;
+}
+
+.section {
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e6e6e6;
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+</style>
+
+<script>
+$(document).ready(function() {
+  // Domain ID validation
+  let validationTimeout;
+  $('input[name="targetDomainId"]').on('input', function() {
+    const domainId = $(this).val().trim();
+    const messageEl = $(this).siblings('.validation-message');
+    
+    if (!domainId) {
+      messageEl.removeClass('success error').text('');
+      return;
+    }
+    
+    clearTimeout(validationTimeout);
+    validationTimeout = setTimeout(() => {
+      $.get('/domain/copy/validate', { domainId })
+        .done(function(data) {
+          if (data.available) {
+            messageEl.removeClass('error').addClass('success')
+              .text('{{ _("Domain ID is available") }}');
+          } else {
+            messageEl.removeClass('success').addClass('error')
+              .text('{{ _("Domain ID already exists") }}');
+          }
+        })
+        .fail(function() {
+          messageEl.removeClass('success').addClass('error')
+            .text('{{ _("Failed to validate domain ID") }}');
+        });
+    }, 500);
+  });
+  
+  // Problem mapping management
+  $('#add-mapping').click(function() {
+    const template = $('.problem-mapping-row.template').clone();
+    template.removeClass('template').show();
+    $('#problem-mapping').append(template);
+  });
+  
+  $(document).on('click', '.remove-mapping', function() {
+    $(this).closest('.problem-mapping-row').remove();
+  });
+  
+  // Form submission
+  $('#domain-copy-form').submit(function(e) {
+    e.preventDefault();
+    
+    // Validate required fields
+    const sourceDomainId = $('select[name="sourceDomainId"]').val();
+    const targetDomainId = $('input[name="targetDomainId"]').val();
+    const targetDomainName = $('input[name="targetDomainName"]').val();
+    
+    if (!sourceDomainId || !targetDomainId || !targetDomainName) {
+      alert('{{ _("Please fill in all required fields") }}');
+      return;
+    }
+    
+    // Check domain availability
+    const messageEl = $('input[name="targetDomainId"]').siblings('.validation-message');
+    if (messageEl.hasClass('error')) {
+      alert('{{ _("Target domain ID is not available") }}');
+      return;
+    }
+    
+    // Collect form data
+    const formData = new FormData(this);
+    
+    // Collect problem mappings
+    const nameMapping = {};
+    $('.problem-mapping-row:not(.template)').each(function() {
+      const source = $(this).find('input[name="sourceProblems[]"]').val().trim();
+      const target = $(this).find('input[name="targetProblems[]"]').val().trim();
+      if (source && target) {
+        nameMapping[source] = target;
+      }
+    });
+    formData.append('nameMapping', JSON.stringify(nameMapping));
+    
+    // Show progress modal
+    $('#progress-modal').foundation('open');
+    $('#progress-container').show();
+    $('#result-container').hide();
+    
+    // Start copy process
+    startDomainCopy(formData);
+  });
+  
+  function startDomainCopy(formData) {
+    // Connect to WebSocket for progress updates
+    const wsUrl = `ws${location.protocol === 'https:' ? 's' : ''}://${location.host}/ws`;
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onmessage = function(event) {
+      const data = JSON.parse(event.data);
+      if (data.type === 'progress') {
+        updateProgress(data.payload);
+      }
+    };
+    
+    // Submit form
+    $.ajax({
+      url: '/domain/copy',
+      method: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      success: function(response) {
+        ws.close();
+        showResult(response);
+      },
+      error: function(xhr) {
+        ws.close();
+        const response = xhr.responseJSON || { success: false, error: '{{ _("Unknown error occurred") }}' };
+        showResult(response);
+      }
+    });
+  }
+  
+  function updateProgress(progress) {
+    const percentage = progress.total > 0 ? (progress.current / progress.total * 100) : 0;
+    $('.progress-fill').css('width', percentage + '%');
+    $('#progress-stage').text(progress.stage);
+    $('#progress-detail').text(progress.detail || '');
+    $('#progress-text').text(`${progress.current} / ${progress.total}`);
+  }
+  
+  function showResult(response) {
+    $('#progress-container').hide();
+    $('#result-container').show();
+    
+    if (response.success) {
+      $('#success-result').show();
+      $('#error-result').hide();
+      
+      // Show summary
+      const summary = response.summary;
+      let summaryHtml = '<ul>';
+      if (summary.domain) summaryHtml += '<li>{{ _("Domain created successfully") }}</li>';
+      if (summary.problems > 0) summaryHtml += `<li>{{ _("Problems copied") }}: ${summary.problems}</li>`;
+      if (summary.contests > 0) summaryHtml += `<li>{{ _("Contests copied") }}: ${summary.contests}</li>`;
+      if (summary.trainings > 0) summaryHtml += `<li>{{ _("Trainings copied") }}: ${summary.trainings}</li>`;
+      if (summary.users > 0) summaryHtml += `<li>{{ _("Users copied") }}: ${summary.users}</li>`;
+      if (summary.groups > 0) summaryHtml += `<li>{{ _("Groups copied") }}: ${summary.groups}</li>`;
+      if (summary.discussions > 0) summaryHtml += `<li>{{ _("Discussions copied") }}: ${summary.discussions}</li>`;
+      if (summary.problemSolutions > 0) summaryHtml += `<li>{{ _("Problem solutions copied") }}: ${summary.problemSolutions}</li>`;
+      summaryHtml += '</ul>';
+      
+      $('#copy-summary').html(summaryHtml);
+    } else {
+      $('#success-result').hide();
+      $('#error-result').show();
+      $('#error-message').text(response.error);
+    }
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,24 @@
+version: '3.7'
+
+services:
+  hydro-complete:
+    build:
+      context: .
+      dockerfile: Dockerfile.complete-allinone
+    container_name: hydro-complete
+    restart: always
+    privileged: true
+    volumes:
+      - ./data/db:/data/db
+      - ./data/file:/data/file
+      - ./data/hydro:/root/.hydro
+      - ./data/judge:/root/.config/hydro
+    ports:
+      - "0.0.0.0:8080:8888"
+      - "0.0.0.0:27017:27017"  # MongoDB port (optional)
+    environment:
+      - HYDRO_HOST=0.0.0.0
+      - HYDRO_PORT=8888
+      - TMPDIR=/data/file/temp
+      - TMP=/data/file/temp
+      - TEMP=/data/file/temp 
