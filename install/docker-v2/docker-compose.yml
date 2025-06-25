@@ -1,0 +1,54 @@
+services:
+  hydro-debug:
+    build:
+      context: .
+      dockerfile: Dockerfile.ubuntu-base
+    container_name: hydro-debug
+    hostname: hydro-debug
+    privileged: true
+    ports:
+      - "80:80"       # Web 界面
+      - "8888:8888"   # 管理界面
+      - "27017:27017" # MongoDB
+    volumes:
+      # 持久化数据
+      - hydro-debug-data:/data
+      - hydro-debug-config:/root/.hydro
+      - hydro-debug-nix:/nix
+      # 系统资源
+      - /dev/shm:/dev/shm
+    environment:
+      - LANG=zh_CN.UTF-8
+      - LC_ALL=zh_CN.UTF-8
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    tmpfs:
+      - /run
+      - /run/lock
+    # 内存限制
+    mem_limit: 4g
+    memswap_limit: 4g
+    # CPU限制
+    cpu_count: 2
+    # 必要的capabilities
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
+      - SYS_PTRACE
+    # 安全选项
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+
+volumes:
+  hydro-debug-data:
+    name: hydro-debug-data
+  hydro-debug-config:
+    name: hydro-debug-config
+  hydro-debug-nix:
+    name: hydro-debug-nix
+
+networks:
+  default:
+    name: hydro-debug-network
+    driver: bridge 
