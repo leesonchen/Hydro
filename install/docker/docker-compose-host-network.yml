@@ -28,11 +28,10 @@ services:
     volumes:
       - ./data/file:/data/file
       - ./data/backend:/root/.hydro
-    ports:
-      - "0.0.0.0:8080:8888"
+    network_mode: "host"
     environment:
       - HYDRO_HOST=0.0.0.0
-      - HYDRO_PORT=8888
+      - HYDRO_PORT=2333
 
   oj-judge:
     build: ./judge
@@ -43,3 +42,4 @@ services:
       - oj-backend
     volumes:
       - ./data/judge:/root/.config/hydro
+    network_mode: "host" 
