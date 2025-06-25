@@ -7,7 +7,7 @@ services:
     hostname: hydro
     privileged: true
     ports:
-      - "80:80"       # Web 界面
+      - "8080:80"       # Web 界面
       - "8888:8888"   # 管理界面
       - "27017:27017" # MongoDB (外部访问)
     volumes:
