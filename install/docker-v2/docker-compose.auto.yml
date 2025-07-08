@@ -1,0 +1,69 @@
+services:
+  hydro-auto:
+    build:
+      context: .
+      dockerfile: Dockerfile.hydro-auto
+    container_name: hydro-auto
+    hostname: hydro-auto
+    privileged: true
+    ports:
+      - "80:80"       # Web 界面
+      - "8888:8888"   # 管理界面
+      - "27017:27017" # MongoDB
+    volumes:
+      # 持久化数据 - Named volumes
+      - hydro-auto-data:/data
+      - hydro-auto-config:/root/.hydro
+      - hydro-auto-nix:/nix
+      # 本地目录映射 - 方便容器外访问
+      - ./hydro-data:/data-host            # 数据文件
+      - ./hydro-config:/root/.hydro-host   # 配置文件
+      - ./hydro-logs:/var/log/hydro        # 日志文件
+      - ./hydro-problems:/data/file        # 题目文件
+      - ./hydro-db:/var/lib/mongodb        # MongoDB数据库文件
+      # 系统资源
+      - /dev/shm:/dev/shm
+    environment:
+      - LANG=zh_CN.UTF-8
+      - LC_ALL=zh_CN.UTF-8
+      - TZ=Asia/Shanghai
+      - HOME=/root
+      - USER=root
+      - IGNORE_BT=1
+      - IGNORE_CENTOS=1
+      - REGION=CN
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 600s
+    tmpfs:
+      - /run
+      - /run/lock
+    # 内存限制
+    mem_limit: 4g
+    memswap_limit: 4g
+    # CPU限制
+    cpu_count: 2
+    # 必要的capabilities
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
+      - SYS_PTRACE
+    # 安全选项
+    security_opt:
+      - seccomp:unconfined
+
+volumes:
+  hydro-auto-data:
+    name: hydro-auto-data
+  hydro-auto-config:
+    name: hydro-auto-config
+  hydro-auto-nix:
+    name: hydro-auto-nix
+
+networks:
+  default:
+    name: hydro-auto-network 

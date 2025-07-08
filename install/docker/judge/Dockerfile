@@ -1,16 +1,22 @@
 FROM node:20
 
-RUN apt-get -qq update && \
+# Configure apt sources and install packages
+RUN rm -rf /etc/apt/sources.list.d/* && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free" > /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free" >> /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian-security bookworm-security main contrib non-free" >> /etc/apt/sources.list && \
+    apt-get clean && \
+    apt-get update --fix-missing && \
     apt-get install -y \
     gcc \
     python3 \
+    python-is-python3 \
     g++ \
     fp-compiler \
-    openjdk-8-jdk-headless \
-    python \
-    php7.0-cli \
+    openjdk-17-jdk-headless \
+    php-cli \
     rustc \
-    haskell-platform \
+    ghc \
     libjavascriptcoregtk-4.0-bin \
     golang \
     ruby \
