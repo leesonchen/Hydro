@@ -1,0 +1,63 @@
+FROM ubuntu:22.04
+
+# 设置环境变量
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=zh_CN.UTF-8
+ENV LC_ALL=zh_CN.UTF-8
+ENV TZ=Asia/Shanghai
+ENV HOME=/root
+ENV USER=root
+
+# 配置国内镜像源
+RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak && \
+    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
+    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list
+
+# 只安装最基础的工具
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    ca-certificates \
+    locales \
+    tzdata \
+    sudo \
+    systemd \
+    init \
+    procps \
+    git \
+    vim \
+    net-tools \
+    htop \
+    tree \
+    && rm -rf /var/lib/apt/lists/*
+
+# 设置中文locale
+RUN sed -i '/zh_CN.UTF-8/s/^# //g' /etc/locale.gen && \
+    locale-gen
+
+# 创建基础目录
+RUN mkdir -p /data/db /data/file /tmp /root/.hydro
+
+# 创建一个简单的保持运行的脚本
+RUN echo '#!/bin/bash' > /keep-alive.sh && \
+    echo 'echo "=== Ubuntu 22.04 Base Container Started ==="' >> /keep-alive.sh && \
+    echo 'echo "=== Ready for manual Hydro installation ==="' >> /keep-alive.sh && \
+    echo 'echo "=== Use: docker exec -it <container-name> bash ==="' >> /keep-alive.sh && \
+    echo 'echo "=== Then run: curl -fsSL https://hydro.ac/setup.sh | bash ==="' >> /keep-alive.sh && \
+    echo '' >> /keep-alive.sh && \
+    echo 'while true; do' >> /keep-alive.sh && \
+    echo '    echo "=== $(date): Container is alive and ready ==="' >> /keep-alive.sh && \
+    echo '    sleep 300  # 每5分钟打印一次状态' >> /keep-alive.sh && \
+    echo 'done' >> /keep-alive.sh && \
+    chmod +x /keep-alive.sh
+
+# 暴露可能需要的端口
+EXPOSE 80 8888 27017
+
+# 设置工作目录
+WORKDIR /root
+
+# 启动保持运行的脚本
+CMD ["/keep-alive.sh"] 

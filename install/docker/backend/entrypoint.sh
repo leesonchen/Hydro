@@ -14,12 +14,6 @@ fi
 export HYDRO_HOST=0.0.0.0
 export HYDRO_PORT=8888
 
-# 设置临时目录到数据目录，避免跨文件系统移动问题
-mkdir -p /data/file/temp
-export TMPDIR=/data/file/temp
-export TMP=/data/file/temp
-export TEMP=/data/file/temp
-
 if [ ! -f "$ROOT/first" ]; then
     echo "for marking use only!" > "$ROOT/first"
 
