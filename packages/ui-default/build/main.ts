@@ -26,7 +26,7 @@ async function runWebpack({
       allowedHosts: 'all',
       proxy: [{
         context: (p) => p !== '/ws',
-        target: 'http://localhost:2333',
+        target: 'http://localhost:8080',
         ws: true,
       }],
       client: {

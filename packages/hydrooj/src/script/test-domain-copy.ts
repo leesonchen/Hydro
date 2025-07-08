@@ -399,4 +399,12 @@ if (require.main === module) {
     main().catch(console.error);
 }
 
+// Plugin export for Hydro
+export default {
+    apply() {
+        // This is just a CLI tool, not a plugin
+        // Empty apply method to satisfy plugin system
+    }
+};
+
 export { DomainCopyTester };
