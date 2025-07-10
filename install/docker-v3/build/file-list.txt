@@ -1,0 +1,24 @@
+# 域复制功能文件清单
+# 生成时间: Thu Jul 10 14:22:54 CST 2025
+
+## 后端文件
+src/handler/domain-copy.ts    # 域复制处理器
+src/lib/ui.ts                 # UI 菜单配置
+
+## 前端文件
+templates/domain_copy.html    # 域复制页面模板
+components/DomainCopyModal.tsx    # 域复制组件
+
+## 语言文件
+locales/zh.yaml               # 中文翻译文件
+
+## 测试文件
+test/domain-copy.test.ts      # 域复制测试用例
+
+## 总计文件数
+5 个文件
+
+## 构建信息
+- 构建模式: 简化模式（跳过 npm 构建）
+- 构建时间: Thu Jul 10 14:22:55 CST 2025
+- 源码直接部署: 是

@@ -16,16 +16,47 @@ export REGION=CN
 INSTALL_FLAG="/root/.hydro/installed"
 if [ -f "$INSTALL_FLAG" ]; then
     echo "✅ Hydro 已安装，启动服务..."
-    
+
     # 加载Nix环境
     [ -f /root/.nix-profile/etc/profile.d/nix.sh ] && source /root/.nix-profile/etc/profile.d/nix.sh
-    
+
     # 恢复PM2进程
     if command -v pm2 >/dev/null 2>&1; then
         pm2 list | grep -q 'online' || pm2 resurrect 2>/dev/null || echo "⚠️ 恢复PM2进程失败"
     fi
 else
     echo "🆕 首次安装 Hydro..."
+    # 配置国内镜像源
+    cp /etc/apt/sources.list /etc/apt/sources.list.bak && \
+    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
+    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list
+
+    # 安装基础工具
+    apt-get update && apt-get install -y \
+    curl \
+    wget \
+    ca-certificates \
+    locales \
+    tzdata \
+    sudo \
+    systemd \
+    init \
+    procps \
+    git \
+    vim \
+    net-tools \
+    htop \
+    tree \
+    build-essential \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+
+    # 设置中文locale
+    sed -i '/zh_CN.UTF-8/s/^# //g' /etc/locale.gen && \
+    locale-gen
 
     # 创建必要目录
     echo "📁 创建必要目录..."
@@ -90,4 +121,4 @@ if command -v pm2 >/dev/null 2>&1; then
 else
     echo "⚠️ PM2 不可用，使用 sleep 保持容器运行"
     exec sleep infinity
-fi 
+fi

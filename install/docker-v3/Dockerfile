@@ -8,36 +8,36 @@ ENV TZ=Asia/Shanghai
 ENV HOME=/root
 ENV USER=root
 
-# 配置国内镜像源
-RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak && \
-    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list
+# # 配置国内镜像源
+# RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak && \
+#     echo "deb http://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
+#     echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse" >> /etc/apt/sources.list && \
+#     echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+#     echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list
 
-# 安装基础工具
-RUN apt-get update && apt-get install -y \
-    curl \
-    wget \
-    ca-certificates \
-    locales \
-    tzdata \
-    sudo \
-    systemd \
-    init \
-    procps \
-    git \
-    vim \
-    net-tools \
-    htop \
-    tree \
-    build-essential \
-    jq \
-    && rm -rf /var/lib/apt/lists/*
+# # 安装基础工具
+# RUN apt-get update && apt-get install -y \
+#     curl \
+#     wget \
+#     ca-certificates \
+#     locales \
+#     tzdata \
+#     sudo \
+#     systemd \
+#     init \
+#     procps \
+#     git \
+#     vim \
+#     net-tools \
+#     htop \
+#     tree \
+#     build-essential \
+#     jq \
+#     && rm -rf /var/lib/apt/lists/*
 
-# 设置中文locale
-RUN sed -i '/zh_CN.UTF-8/s/^# //g' /etc/locale.gen && \
-    locale-gen
+# # 设置中文locale
+# RUN sed -i '/zh_CN.UTF-8/s/^# //g' /etc/locale.gen && \
+#     locale-gen
 
 # 创建必要目录
 RUN mkdir -p /data/db /data/file /tmp /root/.hydro \
@@ -54,4 +54,4 @@ EXPOSE 80 8888 27017
 WORKDIR /root
 
 # 启动脚本
-CMD ["/start.sh"] 
+CMD ["/start.sh"]
