@@ -1,0 +1,16 @@
+{
+  "name": "@hydrooj/hydro-typing-game",
+  "version": "1.0.0",
+  "description": "Typing practice and competition game plugin for Hydro",
+  "main": "index.ts",
+  "repository": "https://github.com/hydro-dev/Hydro.git",
+  "author": "Hydro Contributors",
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "hydrooj": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  },
+  "preferUnplugged": true
+}
