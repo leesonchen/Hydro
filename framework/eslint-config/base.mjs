@@ -20,8 +20,9 @@ export default defineConfig([
     ]),
     {
         extends: [
-            compat.extends('airbnb-base'),
-            compat.extends('airbnb/hooks'),
+            // Removed due to ESLint v9 incompatibility
+            // compat.extends('airbnb-base'),
+            // compat.extends('airbnb/hooks'),
             github.getFlatConfigs().react,
             deMorgan.configs.recommended,
             eslintReact.configs['recommended-typescript'],
