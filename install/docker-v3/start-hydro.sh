@@ -12,108 +12,32 @@ export IGNORE_BT=1
 export IGNORE_CENTOS=1
 export REGION=CN
 
-# 检查是否已经安装过Hydro
-INSTALL_FLAG="/root/.hydro/installed"
-if [ -f "$INSTALL_FLAG" ]; then
-    echo "✅ Hydro 已安装，启动服务..."
+# 加载Nix环境 (Nix 已在 Dockerfile 中安装)
+[ -f /root/.nix-profile/etc/profile.d/nix.sh ] && source /root/.nix-profile/etc/profile.d/nix.sh
+echo "✅ Nix 环境加载尝试完成."
 
-    # 加载Nix环境
-    [ -f /root/.nix-profile/etc/profile.d/nix.sh ] && source /root/.nix-profile/etc/profile.d/nix.sh
-
-    # 恢复PM2进程
-    if command -v pm2 >/dev/null 2>&1; then
-        pm2 list | grep -q 'online' || pm2 resurrect 2>/dev/null || echo "⚠️ 恢复PM2进程失败"
-    fi
+# 恢复PM2进程 (如果pm2可用)
+if command -v pm2 >/dev/null 2>&1; then
+    echo "✅ PM2 已安装，尝试恢复进程..."
+    pm2 resurrect 2>/dev/null || echo "⚠️ 恢复PM2进程失败或无进程可恢复."
 else
-    echo "🆕 首次安装 Hydro..."
-    # 配置国内镜像源
-    cp /etc/apt/sources.list /etc/apt/sources.list.bak && \
-    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list
-
-    # 安装基础工具
-    apt-get update && apt-get install -y \
-    curl \
-    wget \
-    ca-certificates \
-    locales \
-    tzdata \
-    sudo \
-    systemd \
-    init \
-    procps \
-    git \
-    vim \
-    net-tools \
-    htop \
-    tree \
-    build-essential \
-    jq \
-    && rm -rf /var/lib/apt/lists/*
-
-
-    # 设置中文locale
-    sed -i '/zh_CN.UTF-8/s/^# //g' /etc/locale.gen && \
-    locale-gen
-
-    # 创建必要目录
-    echo "📁 创建必要目录..."
-    mkdir -p ~/.hydro /data/db /data/file
-    mkdir -p /data-host /root/.hydro-host /var/log/hydro /var/lib/mongodb
-    chmod 755 /data-host /root/.hydro-host /var/log/hydro /var/lib/mongodb
-
-    echo "⬇️ 下载并运行 Hydro 安装脚本..."
-    curl -fsSL https://hydro.ac/setup.sh -o /tmp/hydro-setup.sh
-    chmod +x /tmp/hydro-setup.sh
-
-    echo "🔧 开始安装 Hydro..."
-    LANG=zh bash /tmp/hydro-setup.sh
-
-    echo "🔧 设置 Nix 环境..."
-    if [ -f /root/.nix-profile/etc/profile.d/nix.sh ]; then
-        source /root/.nix-profile/etc/profile.d/nix.sh
-        echo "✅ Nix 环境加载成功"
-    else
-        echo "⚠️ Nix 环境文件未找到"
-    fi
-
-    echo "🔍 检查安装结果..."
-    if command -v pm2 >/dev/null 2>&1; then
-        echo "🔧 配置 MongoDB 外部访问..."
-        pm2 stop mongodb 2>/dev/null || true
-        pm2 start /root/.nix-profile/bin/mongod --name mongodb -- \
-            --auth \
-            --wiredTigerCacheSizeGB=2.59 \
-            --bind_ip 0.0.0.0 \
-            --port 27017 \
-            --dbpath /data/db
-        pm2 save
-    else
-        echo "❌ PM2 未找到"
-    fi
-
-    # 标记安装完成
-    echo "$(date): Hydro installation completed" > "$INSTALL_FLAG"
-    echo "✅ Hydro 安装完成！"
-    # 最终网络状态显示
-    echo "🌐 当前网络监听状态:"
-    netstat -tlnp 2>/dev/null | grep -E ':(80|8888|27017)' || echo "服务可能仍在启动中..."
+    echo "❌ PM2 未找到，无法恢复进程。"
 fi
+
 echo "================================="
 echo "🌐 访问地址:"
 echo "  • Web界面: http://localhost:80"
 echo "  • 管理界面: http://localhost:8888"
 echo "  • MongoDB: mongodb://localhost:27017"
 echo ""
-echo "📁 本地数据目录:"
+echo "📁 本地数据目录 (通过卷挂载，不会包含在镜像中):"
 echo "  • ./hydro-data/    - 数据文件"
-echo "  • ./hydro-config/  - 配置文件"
+echo "  • ./hydro-config/  - 配置文件 (通过卷挂载)"
 echo "  • ./hydro-logs/    - 日志文件"
 echo "  • ./hydro-problems/- 题目文件"
 echo "  • ./hydro-db/      - 数据库文件"
 echo "================================="
+
 # 保持容器运行
 if command -v pm2 >/dev/null 2>&1; then
     echo "🎯 通过 PM2 保持服务运行..."
