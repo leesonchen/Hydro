@@ -1,4 +1,4 @@
-import { Handler, param, Types } from 'hydrooj/src/handler';
+import { Handler, param, Types } from 'hydrooj';
 import * as TypingModel from '../model/typing';
 import UserModel from 'hydrooj/src/model/user';
 

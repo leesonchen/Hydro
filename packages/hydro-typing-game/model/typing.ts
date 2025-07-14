@@ -1,5 +1,5 @@
 import { ObjectId } from 'mongodb';
-import { db } from 'hydrooj/src/service/db';
+import db from 'hydrooj/src/service/db';
 
 export interface TypingRecord {
     _id?: ObjectId;

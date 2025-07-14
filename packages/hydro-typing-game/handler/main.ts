@@ -1,4 +1,4 @@
-import { Handler } from 'hydrooj/src/handler';
+import { Handler } from 'hydrooj';
 import * as TypingModel from '../model/typing';
 
 export default class TypingMainHandler extends Handler {

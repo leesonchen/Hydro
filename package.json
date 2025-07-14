@@ -35,6 +35,7 @@
         "@types/autocannon": "^7.12.7",
         "@types/chai": "^5.2.2",
         "@types/cross-spawn": "^6.0.6",
+        "@types/geojson": "^7946.0.16",
         "@types/node": "22.14.1",
         "@types/semver": "^7.7.0",
         "autocannon": "^8.0.0",
@@ -57,13 +58,10 @@
         "package-json": "^10.0.1",
         "semver": "^7.7.2",
         "simple-git": "^3.28.0",
-        "stylus": "0.49.0",
-        "stylus-loader": "^8.1.0",
         "supertest": "^7.1.1",
         "supports-hyperlinks": "^4.1.0",
         "typescript": "5.8.3",
-        "wtfnode": "^0.10.0",
-        "yargs": "^18.0.0"
+        "wtfnode": "^0.10.0"
     },
     "packageManager": "yarn@4.9.1"
 }

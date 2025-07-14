@@ -20,7 +20,7 @@ declare module 'hydrooj' {
 
 export async function apply(ctx: Context) {
     // 注册模型
-    ctx.model.typing = TypingModel;
+    Hydro.model.typing = TypingModel;
     
     // 注册路由
     ctx.Route('typing_main', '/typing', MainHandler);

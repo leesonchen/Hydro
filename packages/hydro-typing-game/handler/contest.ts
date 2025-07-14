@@ -1,5 +1,5 @@
 import { ObjectId } from 'mongodb';
-import { Handler, param, Types } from 'hydrooj/src/handler';
+import { Handler, param, Types } from 'hydrooj';
 import { NotFoundError, PermissionError } from 'hydrooj/src/error';
 import * as TypingModel from '../model/typing';
 
