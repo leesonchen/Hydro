@@ -1,6 +1,6 @@
-import { Context } from 'vj/context';
 import { NamedPage } from 'vj/misc/Page';
-import { request } from 'vj/utils';
+import { request, i18n } from 'vj/utils';
+import Notification from 'vj/components/notification';
 import DOMAttachedObject from 'vj/components/DOMAttachedObject';
 
 interface CopyProgress {
@@ -74,14 +74,14 @@ export default class DomainCopyModal extends DOMAttachedObject {
           const response = await request.get('/domain/copy/validate', { domainId });
           if (response.available) {
             $messageEl.removeClass('error').addClass('success')
-              .text(Context.i18n('Domain ID is available'));
+              .text(i18n('Domain ID is available'));
           } else {
             $messageEl.removeClass('success').addClass('error')
-              .text(Context.i18n('Domain ID already exists'));
+              .text(i18n('Domain ID already exists'));
           }
         } catch {
           $messageEl.removeClass('success').addClass('error')
-            .text(Context.i18n('Failed to validate domain ID'));
+            .text(i18n('Failed to validate domain ID'));
         }
       }, 500);
     });
@@ -117,14 +117,14 @@ export default class DomainCopyModal extends DOMAttachedObject {
     
     if (!sourceDomainId || !targetDomainId || !targetDomainName) {
       // Show error toast
-      Context.toast('error', Context.i18n('Please fill in all required fields'));
+      Notification.error(i18n('Please fill in all required fields'));
       return;
     }
     
     // Check domain availability
     const $messageEl = this.$form.find('input[name="targetDomainId"]').siblings('.validation-message');
     if ($messageEl.hasClass('error')) {
-      Context.toast('error', Context.i18n('Target domain ID is not available'));
+      Notification.error(i18n('Target domain ID is not available'));
       return;
     }
 
@@ -176,7 +176,7 @@ export default class DomainCopyModal extends DOMAttachedObject {
   showProgress() {
     this.$progressContainer.show();
     this.$resultContainer.hide();
-    this.updateProgress({ current: 0, total: 1, stage: Context.i18n('Initializing...') });
+    this.updateProgress({ current: 0, total: 1, stage: i18n('Initializing...') });
   }
 
   updateProgress(progress: CopyProgress) {
@@ -198,7 +198,7 @@ export default class DomainCopyModal extends DOMAttachedObject {
     } catch (error) {
       this.showResult({
         success: false,
-        error: error.message || Context.i18n('Unknown error occurred')
+        error: error.message || i18n('Unknown error occurred')
       });
     } finally {
       this.disconnectWebSocket();
@@ -244,28 +244,28 @@ export default class DomainCopyModal extends DOMAttachedObject {
       if (response.summary) {
         const summary = response.summary;
         let summaryHtml = '<ul>';
-        if (summary.domain) summaryHtml += `<li>${Context.i18n('Domain created successfully')}</li>`;
-        if (summary.problems > 0) summaryHtml += `<li>${Context.i18n('Problems copied')}: ${summary.problems}</li>`;
-        if (summary.contests > 0) summaryHtml += `<li>${Context.i18n('Contests copied')}: ${summary.contests}</li>`;
-        if (summary.trainings > 0) summaryHtml += `<li>${Context.i18n('Trainings copied')}: ${summary.trainings}</li>`;
-        if (summary.users > 0) summaryHtml += `<li>${Context.i18n('Users copied')}: ${summary.users}</li>`;
-        if (summary.groups > 0) summaryHtml += `<li>${Context.i18n('Groups copied')}: ${summary.groups}</li>`;
-        if (summary.discussions > 0) summaryHtml += `<li>${Context.i18n('Discussions copied')}: ${summary.discussions}</li>`;
-        if (summary.problemSolutions > 0) summaryHtml += `<li>${Context.i18n('Problem solutions copied')}: ${summary.problemSolutions}</li>`;
+        if (summary.domain) summaryHtml += `<li>${i18n('Domain created successfully')}</li>`;
+        if (summary.problems > 0) summaryHtml += `<li>${i18n('Problems copied')}: ${summary.problems}</li>`;
+        if (summary.contests > 0) summaryHtml += `<li>${i18n('Contests copied')}: ${summary.contests}</li>`;
+        if (summary.trainings > 0) summaryHtml += `<li>${i18n('Trainings copied')}: ${summary.trainings}</li>`;
+        if (summary.users > 0) summaryHtml += `<li>${i18n('Users copied')}: ${summary.users}</li>`;
+        if (summary.groups > 0) summaryHtml += `<li>${i18n('Groups copied')}: ${summary.groups}</li>`;
+        if (summary.discussions > 0) summaryHtml += `<li>${i18n('Discussions copied')}: ${summary.discussions}</li>`;
+        if (summary.problemSolutions > 0) summaryHtml += `<li>${i18n('Problem solutions copied')}: ${summary.problemSolutions}</li>`;
         summaryHtml += '</ul>';
         
         this.$resultContainer.find('#copy-summary').html(summaryHtml);
       }
       
       // Show success toast
-      Context.toast('success', Context.i18n('Domain copied successfully'));
+      Notification.success(i18n('Domain copied successfully'));
     } else {
       this.$resultContainer.find('#success-result').hide();
       this.$resultContainer.find('#error-result').show();
-      this.$resultContainer.find('#error-message').text(response.error || Context.i18n('Unknown error'));
+      this.$resultContainer.find('#error-message').text(response.error || i18n('Unknown error'));
       
       // Show error toast
-      Context.toast('error', response.error || Context.i18n('Domain copy failed'));
+      Notification.error(response.error || i18n('Domain copy failed'));
     }
   }
 
@@ -273,7 +273,7 @@ export default class DomainCopyModal extends DOMAttachedObject {
     this.disconnectWebSocket();
     
     // Reset form
-    this.$form[0].reset();
+    (this.$form[0] as HTMLFormElement).reset();
     this.$dom.find('.validation-message').removeClass('success error').text('');
     this.$dom.find('.problem-mapping-row:not(.template)').remove();
     
