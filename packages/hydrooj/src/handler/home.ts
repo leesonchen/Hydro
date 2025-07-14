@@ -17,17 +17,18 @@ import * as mail from '../lib/mail';
 import { verifyTFA } from '../lib/verifyTFA';
 import BlackListModel from '../model/blacklist';
 import { PERM, PRIV } from '../model/builtin';
-import * as contest from '../model/contest';
-import * as discussion from '../model/discussion';
-import * as document from '../model/document';
+// TODO: Temporarily commented out unused imports for domain copy feature
+// import * as contest from '../model/contest';
+// import * as discussion from '../model/discussion';
+// import * as document from '../model/document';
 import domain from '../model/domain';
 import message from '../model/message';
-import ProblemModel from '../model/problem';
+// import ProblemModel from '../model/problem';
 import * as setting from '../model/setting';
 import storage from '../model/storage';
 import * as system from '../model/system';
 import token from '../model/token';
-import * as training from '../model/training';
+// import * as training from '../model/training';
 import user from '../model/user';
 import {
     ConnectionHandler, Handler, param, query, requireSudo, subscribe, Types,
@@ -529,141 +530,42 @@ class HomeDomainHandler extends Handler {
 class HomeDomainCreateHandler extends Handler {
     async get() {
         this.response.template = 'domain_create.html';
-        this.response.body = {
-            domains: await domain.getMulti().toArray(),
-        };
+        // TODO: Temporarily commented out domain copy feature
+        // this.response.body = {
+        //     domains: await domain.getMulti().toArray(),
+        // };
     }
 
     @param('id', Types.DomainId)
     @param('name', Types.Title)
     @param('bulletin', Types.Content)
     @param('avatar', Types.Content, true)
-    @param('copyFrom', Types.DomainId, true)
-    @param('copyProblems', Types.Boolean, true)
-    @param('copyContests', Types.Boolean, true)
-    @param('copyTrainings', Types.Boolean, true)
-    @param('copyUsers', Types.Boolean, true)
-    @param('copyGroups', Types.Boolean, true)
-    @param('copyDiscussions', Types.Boolean, true)
-    @param('copyProblemSolutions', Types.Boolean, true)
+    // TODO: Temporarily commented out domain copy parameters
+    // @param('copyFrom', Types.DomainId, true)
+    // @param('copyProblems', Types.Boolean, true)
+    // @param('copyContests', Types.Boolean, true)
+    // @param('copyTrainings', Types.Boolean, true)
+    // @param('copyUsers', Types.Boolean, true)
+    // @param('copyGroups', Types.Boolean, true)
+    // @param('copyDiscussions', Types.Boolean, true)
+    // @param('copyProblemSolutions', Types.Boolean, true)
     // eslint-disable-next-line @typescript-eslint/no-shadow
-    async post(
-        _: string, 
-        id: string, 
-        name: string, 
-        bulletin: string, 
-        avatar: string,
-        copyFrom: string,
-        copyProblems: boolean = true,
-        copyContests: boolean = true,
-        copyTrainings: boolean = true,
-        copyUsers: boolean = false,
-        copyGroups: boolean = false,
-        copyDiscussions: boolean = false,
-        copyProblemSolutions: boolean = false,
-    ) {
+    async post(_: string, id: string, name: string, bulletin: string, avatar: string) {
         const doc = await domain.get(id);
         if (doc) throw new DomainAlreadyExistsError(id);
-        
-        // If copying from another domain
-        if (copyFrom) {
-            const sourceDomain = await domain.get(copyFrom);
-            if (!sourceDomain) throw new BadRequestError('Source domain not found');
-            
-            // Create new domain first
-            avatar ||= sourceDomain.avatar || this.user.avatar || `gravatar:${this.user.mail}`;
-            const domainId = await domain.add(id, this.user._id, name, sourceDomain.bulletin || bulletin || '');
-            
-            // Set avatar and user role
-            await Promise.all([
-                domain.edit(domainId, { avatar }),
-                domain.setUserRole(domainId, this.user._id, 'root'),
-            ]);
-            
-            try {
-                // Copy problems if requested
-                if (copyProblems) {
-                    const problems = await ProblemModel.getMulti(copyFrom, {}).toArray();
-                    for (const prob of problems) {
-                        const newProb = { ...prob };
-                        delete newProb._id;
-                        delete newProb.domainId;
-                        delete newProb.docId;
-                        newProb.owner = this.user._id;
-                        
-                        await ProblemModel.add(domainId, newProb.pid, newProb.title, newProb.content, 
-                            newProb.owner, newProb.tag || [], newProb.hidden || false);
-                    }
-                }
-                
-                // Copy contests if requested
-                if (copyContests) {
-                    const contests = await contest.getMulti(copyFrom).toArray();
-                    for (const c of contests) {
-                        const newContest = { ...c };
-                        delete newContest._id;
-                        delete newContest.domainId;
-                        newContest.owner = this.user._id;
-                        
-                        await contest.add(domainId, newContest.title, newContest.content,
-                            newContest.owner, newContest.rule, newContest.beginAt, newContest.endAt,
-                            newContest.pids, newContest.rated || false, newContest);
-                    }
-                }
-                
-                // Copy trainings if requested
-                if (copyTrainings) {
-                    const trainings = await training.getMulti(copyFrom).toArray();
-                    for (const t of trainings) {
-                        const newTraining = { ...t };
-                        delete newTraining._id;
-                        delete newTraining.domainId;
-                        newTraining.owner = this.user._id;
-                        
-                        await training.add(domainId, newTraining.title, newTraining.content,
-                            newTraining.owner, newTraining.dag || [], newTraining.desc || '');
-                    }
-                }
-                
-                // Copy user roles if requested
-                if (copyUsers) {
-                    const users = await domain.getDomainUser(copyFrom);
-                    for (const u of users) {
-                        if (u.uid !== this.user._id) {
-                            await domain.setUserRole(domainId, u.uid, u.role);
-                        }
-                    }
-                }
-                
-                // Add to pinned domains if not already there
-                const push = !this.user.pinnedDomains?.includes(domainId);
-                if (push) {
-                    await user.setById(this.user._id, undefined, undefined, { pinnedDomains: domainId });
-                }
-                
-                this.response.redirect = this.url('domain_dashboard', { domainId });
-                this.response.body = { domainId };
-            } catch (error) {
-                // If copy fails, we should probably clean up the created domain
-                // But for now, just throw the error
-                throw new BadRequestError(`Failed to copy domain content: ${error.message}`);
-            }
-        } else {
-            // Original create domain logic
-            avatar ||= this.user.avatar || `gravatar:${this.user.mail}`;
-            const domainId = await domain.add(id, this.user._id, name, bulletin);
-            // When this domain is deleted but previously added to user's list we shouldn't push it again
-            const push = !this.user.pinnedDomains?.includes(domainId);
-            await Promise.all([
-                domain.edit(domainId, { avatar }),
-                domain.setUserRole(domainId, this.user._id, 'root'),
-                push
-                    ? user.setById(this.user._id, undefined, undefined, { pinnedDomains: domainId })
-                    : Promise.resolve(),
-            ]);
-            this.response.redirect = this.url('domain_dashboard', { domainId });
-            this.response.body = { domainId };
-        }
+        avatar ||= this.user.avatar || `gravatar:${this.user.mail}`;
+        const domainId = await domain.add(id, this.user._id, name, bulletin);
+        // When this domain is deleted but previously added to user's list we shouldn't push it again
+        const push = !this.user.pinnedDomains?.includes(domainId);
+        await Promise.all([
+            domain.edit(domainId, { avatar }),
+            domain.setUserRole(domainId, this.user._id, 'root'),
+            push
+                ? user.setById(this.user._id, undefined, undefined, { pinnedDomains: domainId })
+                : Promise.resolve(),
+        ]);
+        this.response.redirect = this.url('domain_dashboard', { domainId });
+        this.response.body = { domainId };
     }
 }
 

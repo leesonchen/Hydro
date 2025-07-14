@@ -1,59 +1,4 @@
 {% extends "layout/basic.html" %}
-
-{% block page_css %}
-<style>
-.section__tab-container {
-  margin-bottom: 20px;
-}
-
-.section__tab-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  border-bottom: 2px solid #e6e6e6;
-}
-
-.section__tab-item {
-  margin: 0;
-}
-
-.section__tab-link {
-  display: block;
-  padding: 10px 20px;
-  text-decoration: none;
-  color: #666;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  transition: all 0.3s;
-}
-
-.section__tab-link:hover {
-  color: #333;
-}
-
-.section__tab-link.active {
-  color: #1779ba;
-  border-bottom-color: #1779ba;
-}
-
-.section__tab-content {
-  padding-top: 20px;
-}
-
-fieldset {
-  border: 1px solid #e6e6e6;
-  padding: 15px;
-  margin-bottom: 15px;
-}
-
-fieldset legend {
-  padding: 0 10px;
-  font-weight: bold;
-}
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="row">
   <div class="medium-9 columns">
@@ -72,18 +17,7 @@ fieldset legend {
             <li>{{ _('Only A-Z, a-z, 0-9 and _ are accepted') }}</li>
           </ul>
         </blockquote>
-        <div class="section__tab-container">
-          <ul class="section__tab-list">
-            <li class="section__tab-item">
-              <a class="section__tab-link active" href="#create-new" data-tab="create-new">{{ _('Create New Domain') }}</a>
-            </li>
-            <li class="section__tab-item">
-              <a class="section__tab-link" href="#copy-from" data-tab="copy-from">{{ _('Copy from Existing Domain') }}</a>
-            </li>
-          </ul>
-        </div>
-        <form method="post" id="domain-create-form">
-          <div class="section__tab-content active" data-tab-content="create-new">
+        <form method="post">
             {{ form.form_text({
                 label:'ID',
                 name:'id',
@@ -105,77 +39,6 @@ fieldset legend {
                 label:'Avatar',
                 name:'avatar'
             }) }}
-          </div>
-          
-          <div class="section__tab-content" data-tab-content="copy-from" style="display: none;">
-            <div class="row">
-              <div class="columns">
-                <label>{{ _('Source Domain') }}
-                  <select name="copyFrom" id="copyFrom">
-                    <option value="">{{ _('-- Do not copy --') }}</option>
-                    {% for domain in domains %}
-                    <option value="{{ domain._id }}">{{ domain._id }} - {{ domain.name }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-              </div>
-            </div>
-            
-            {{ form.form_text({
-                label:'New Domain ID',
-                name:'id',
-                required:true
-            }) }}
-            {{ form.form_text({
-                label:'New Domain Name',
-                name:'name',
-                required:true
-            }) }}
-            
-            <div class="section">
-              <h4>{{ _('Copy Options') }}</h4>
-              <div class="row">
-                <div class="medium-6 columns">
-                  <fieldset>
-                    <legend>{{ _('Content to Copy') }}</legend>
-                    <label>
-                      <input type="checkbox" name="copyProblems" checked>
-                      {{ _('Problems and Test Data') }}
-                    </label>
-                    <label>
-                      <input type="checkbox" name="copyContests" checked>
-                      {{ _('Contests and Homework') }}
-                    </label>
-                    <label>
-                      <input type="checkbox" name="copyTrainings" checked>
-                      {{ _('Training Plans') }}
-                    </label>
-                    <label>
-                      <input type="checkbox" name="copyDiscussions">
-                      {{ _('Discussions') }}
-                    </label>
-                    <label>
-                      <input type="checkbox" name="copyProblemSolutions">
-                      {{ _('Problem Solutions') }}
-                    </label>
-                  </fieldset>
-                </div>
-                <div class="medium-6 columns">
-                  <fieldset>
-                    <legend>{{ _('User Data') }}</legend>
-                    <label>
-                      <input type="checkbox" name="copyUsers">
-                      {{ _('User Roles and Permissions') }}
-                    </label>
-                    <label>
-                      <input type="checkbox" name="copyGroups">
-                      {{ _('User Groups') }}
-                    </label>
-                  </fieldset>
-                </div>
-              </div>
-            </div>
-          </div>
           <div class="row"><div class="columns">
             <button type="submit" class="rounded primary button">
               {{ _('Create') }}
@@ -189,54 +52,4 @@ fieldset legend {
     </div>
   </div>
 </div>
-{% endblock %}
-
-{% block page_js %}
-<script>
-$(document).ready(function() {
-  // Tab switching
-  $('.section__tab-link').click(function(e) {
-    e.preventDefault();
-    var targetTab = $(this).data('tab');
-    
-    // Update active tab
-    $('.section__tab-link').removeClass('active');
-    $(this).addClass('active');
-    
-    // Show/hide content
-    $('.section__tab-content').hide();
-    $('[data-tab-content="' + targetTab + '"]').show();
-    
-    // Clear opposite form fields when switching tabs
-    if (targetTab === 'create-new') {
-      $('#copyFrom').val('');
-      $('[data-tab-content="copy-from"] input[type="checkbox"]').prop('checked', false);
-    } else {
-      $('[data-tab-content="create-new"] textarea[name="bulletin"]').val('');
-      $('[data-tab-content="create-new"] input[name="avatar"]').val('');
-    }
-  });
-  
-  // Form validation before submit
-  $('#domain-create-form').submit(function(e) {
-    var activeTab = $('.section__tab-link.active').data('tab');
-    
-    if (activeTab === 'copy-from') {
-      var copyFrom = $('#copyFrom').val();
-      if (!copyFrom) {
-        alert('{{ _("Please select a source domain to copy from") }}');
-        e.preventDefault();
-        return false;
-      }
-      
-      // Clear non-copy fields
-      $('[data-tab-content="create-new"] textarea[name="bulletin"]').val('N/A');
-      $('[data-tab-content="create-new"] input[name="avatar"]').val('');
-    } else {
-      // Clear copy fields
-      $('#copyFrom').val('');
-    }
-  });
-});
-</script>
 {% endblock %}
