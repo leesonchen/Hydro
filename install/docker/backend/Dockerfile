@@ -9,8 +9,10 @@ RUN apt-get update && \
     apt-get install -y mongodb-database-tools && \
     rm -rf /var/lib/apt/lists/*
 
-ADD ./entrypoint.sh /root/entrypoint.sh
-RUN yarn global add pm2 hydrooj @hydrooj/ui-default
-RUN chmod +x /root/entrypoint.sh && \
+COPY ./entrypoint.sh /root/entrypoint.sh
+
+RUN yarn global add pm2 hydrooj @hydrooj/ui-default && \
+    chmod +x /root/entrypoint.sh && \
     mkdir -p /root/.hydro
-ENTRYPOINT /root/entrypoint.sh
+
+ENTRYPOINT ["/root/entrypoint.sh"]

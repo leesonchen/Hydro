@@ -1,7 +1,7 @@
 {
     "name": "@hydrooj/hydrojudge",
     "bin": "bin/hydrojudge.js",
-    "version": "3.5.0-beta.3",
+    "version": "3.5.0-beta.4",
     "main": "./src/index.ts",
     "author": "undefined <i@undefined.moe>",
     "repository": "https://github.com/hydro-dev/Hydro.git",
@@ -15,7 +15,7 @@
         "semver": "^7.7.2",
         "shell-quote": "^1.8.3",
         "superagent": "^10.2.1",
-        "ws": "^8.18.2"
+        "ws": "^8.18.3"
     },
     "preferUnplugged": true,
     "license": "AGPL-3.0-or-later",

@@ -12,7 +12,7 @@ import pwhash from '../lib/hash.hydro';
 import bus from '../service/bus';
 import db from '../service/db';
 import { Value } from '../typeutils';
-import { ArgMethod, buildProjection } from '../utils';
+import { ArgMethod, buildProjection, randomstring } from '../utils';
 import { PERM, PRIV } from './builtin';
 import domain from './domain';
 import * as setting from './setting';
@@ -285,7 +285,7 @@ class UserModel {
 
     @ArgMethod
     static async setPassword(uid: number, password: string): Promise<Udoc> {
-        const salt = String.random();
+        const salt = randomstring();
         const res = await coll.findOneAndUpdate(
             { _id: uid },
             { $set: { salt, hash: await pwhash(password, salt), hashType: 'hydro' } },
@@ -296,13 +296,14 @@ class UserModel {
     }
 
     @ArgMethod
-    static async inc(_id: number, field: string, n: number = 1) {
-        if (_id < -999) return null;
-        const udoc = await coll.findOne({ _id });
-        if (!udoc) throw new UserNotFoundError(_id);
-        await coll.updateOne({ _id }, { $inc: { [field]: n } });
-        deleteUserCache(udoc);
-        return udoc;
+    static async inc(_id: number | number[], field: string, n: number = 1) {
+        const ids = (Array.isArray(_id) ? _id : [_id]).filter((i) => i >= -999);
+        if (!ids.length) return null;
+        const udocs = await coll.find({ _id: { $in: ids } }).toArray();
+        if (udocs.length !== ids.length) throw new UserNotFoundError(_id);
+        await coll.updateMany({ _id: { $in: ids } }, { $inc: { [field]: n } });
+        for (const udoc of udocs) deleteUserCache(udoc);
+        return udocs;
     }
 
     @ArgMethod
@@ -316,7 +317,7 @@ class UserModel {
             uid = Math.max((udoc?._id || 0) + 1, 2);
             autoAlloc = true;
         }
-        const salt = String.random();
+        const salt = randomstring();
         while (true) {
             try {
                 // eslint-disable-next-line no-await-in-loop

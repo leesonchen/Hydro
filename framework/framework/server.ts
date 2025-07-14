@@ -214,7 +214,6 @@ export class Handler<C = CordisContext> extends HandlerCommon<C> {
     static [kHandler] = 'Handler';
 
     loginMethods: any;
-    noCheckPermView = false;
     notUsage = false;
     allowCors = false;
     __param: Record<string, decorators.ParamOption<any>[]>;
@@ -248,6 +247,7 @@ export class Handler<C = CordisContext> extends HandlerCommon<C> {
 
     async onerror(error: HydroError) {
         error.msg ||= () => error.message;
+        console.error(`Error on user request: ${error.msg()}\n`, error);
         if (error instanceof UserFacingError && !process.env.DEV) error.stack = '';
         this.response.status = error instanceof UserFacingError ? error.code : 500;
         this.response.template = error instanceof UserFacingError ? 'error.html' : 'bsod.html';
@@ -287,6 +287,7 @@ export class ConnectionHandler<C> extends HandlerCommon<C> {
 
     onerror(err: HydroError) {
         if (err instanceof UserFacingError) err.stack = this.request.path;
+        else console.error('Error on user websocket:', err);
         this.send({
             error: {
                 name: err.name,

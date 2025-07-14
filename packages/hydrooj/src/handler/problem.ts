@@ -10,7 +10,7 @@ import { nanoid } from 'nanoid';
 import sanitize from 'sanitize-filename';
 import Schema from 'schemastery';
 import parser from '@hydrooj/utils/lib/search';
-import { sortFiles, streamToBuffer } from '@hydrooj/utils/lib/utils';
+import { randomstring, sortFiles, streamToBuffer } from '@hydrooj/utils/lib/utils';
 import type { Context } from '../context';
 import {
     BadRequestError, ContestNotAttendedError, ContestNotEndedError, ContestNotFoundError, ContestNotLiveError,
@@ -334,6 +334,10 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             discussionCount: dcnt,
             tdoc: this.tdoc,
             owner_udoc: (tid && this.tdoc.owner !== this.pdoc.owner) ? await user.getById(domainId, this.tdoc.owner) : null,
+            mode: !tid ? 'normal'
+                : !this.tsdoc?.attend ? 'view'
+                    : !contest.isDone(this.tdoc) ? 'contest'
+                        : problem.canViewBy(this.pdoc, this.user) ? 'correction' : 'none',
         };
         if (this.tdoc && this.tsdoc) {
             const fields = ['attend', 'startAt'];
@@ -387,7 +391,9 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             [this.response.body.ctdocs, this.response.body.htdocs] = (await Promise.all([
                 contest.getRelated(this.args.domainId, this.pdoc.docId),
                 contest.getRelated(this.args.domainId, this.pdoc.docId, 'homework'),
-            ])).map((tdocs) => tdocs.filter((tdoc) => !tdoc.assign?.length || Set.intersection(tdoc.assign, this.user.group).size));
+            ])).map((tdocs) => tdocs.filter((tdoc) =>
+                this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST) || !tdoc.assign?.length || Set.intersection(tdoc.assign, this.user.group).size,
+            ));
         }
     }
 
@@ -709,7 +715,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
     async postUploadFile(domainId: string, filename: string, type = 'testdata') {
         const file = this.request.files.file;
         if (!file) throw new ValidationError('file');
-        filename ||= file.originalFilename || String.random(16);
+        filename ||= file.originalFilename || randomstring(16);
         const files = [];
         if (filename.endsWith('.zip') && type === 'testdata') {
             const zip = new ZipReader(Readable.toWeb(createReadStream(file.filepath)));
@@ -802,7 +808,7 @@ export class ProblemFileDownloadHandler extends ProblemDetailHandler {
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
     @query('tid', Types.ObjectId, true)
-    async get(domainId: string, type = 'additional_file', filename: string, noDisposition = false, tid: ObjectId) {
+    async get({ }, type = 'additional_file', filename: string, noDisposition = false, tid: ObjectId) {
         if (!tid) this.checkPerm(PERM.PERM_VIEW_PROBLEM);
         if (this.pdoc.reference) {
             if (type === 'testdata') throw new ProblemIsReferencedError('download testdata');

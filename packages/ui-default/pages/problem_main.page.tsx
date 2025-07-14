@@ -1,4 +1,5 @@
 import parser, { SearchParserResult } from '@hydrooj/utils/lib/search';
+import Clipboard from 'clipboard';
 import $ from 'jquery';
 import _ from 'lodash';
 import React from 'react';
@@ -288,6 +289,9 @@ function processElement(ele) {
 function ProblemSelectionDisplay(props) { // eslint-disable-line
   const [pids, setPids] = React.useState<string[]>([]);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [copyIdRef, setCopyIdRef] = React.useState(null);
+  const [copyPidRef, setCopyPidRef] = React.useState(null);
+  const problemSelectAutoCompleteRef = React.useRef(null);
 
   React.useEffect(() => {
     props.onClear?.(() => {
@@ -315,6 +319,34 @@ function ProblemSelectionDisplay(props) { // eslint-disable-line
       setPids((o) => o.filter((i) => !all.includes(i)));
     });
   }, []);
+  React.useEffect(() => {
+    (window as any).__getPids = () => pids;
+    (window as any).__setPids = (newIds: string[]) => setPids(newIds);
+  }, [pids]);
+  React.useEffect(() => {
+    if (!copyIdRef) return;
+    const clip = new Clipboard(copyIdRef, {
+      text: () => problemSelectAutoCompleteRef.current.getSelectedItems().map((i) => i.docId).join(','),
+    });
+    clip.on('success', () => {
+      Notification.success(i18n('Problem ids copied to clipboard!'));
+    });
+    clip.on('error', () => {
+      Notification.error(i18n('Copy failed :('));
+    });
+  }, [copyIdRef]);
+  React.useEffect(() => {
+    if (!copyPidRef) return;
+    const clip = new Clipboard(copyPidRef, {
+      text: () => problemSelectAutoCompleteRef.current.getSelectedItems().map((i) => i.pid || i.docId).join(','),
+    });
+    clip.on('success', () => {
+      Notification.success(i18n('Problem ids copied to clipboard!'));
+    });
+    clip.on('error', () => {
+      Notification.error(i18n('Copy failed :('));
+    });
+  }, [copyPidRef]);
 
   const updateCheckboxSelection = React.useCallback(() => {
     for (const i of $('[data-checkbox-group="problem"]:checked')) {
@@ -353,6 +385,7 @@ function ProblemSelectionDisplay(props) { // eslint-disable-line
             <div className="columns">
               <ProblemSelectAutoComplete
                 multi
+                ref={problemSelectAutoCompleteRef}
                 onChange={(v) => setPids(v.split(',').filter((i) => i.trim()))}
                 selectedKeys={pids}
               />
@@ -363,6 +396,8 @@ function ProblemSelectionDisplay(props) { // eslint-disable-line
         <div className="row">
           <div className="columns clearfix">
             <div className="float-right dialog__action">
+              <button className="rounded button" ref={setCopyIdRef}>{i18n('Copy IDs')}</button>{' '}
+              <button className="rounded button" ref={setCopyPidRef}>{i18n('Copy pids')}</button>{' '}
               <button className="rounded button" onClick={() => setPids([])}>{i18n('Clear')}</button>{' '}
               <button className="primary rounded button" onClick={() => setDialogOpen(false)}>{i18n('Ok')}</button>
             </div>
@@ -435,11 +470,14 @@ const page = new NamedPage(['problem_main'], () => {
   $(document).on('vjContentNew', (e) => processElement(e.target));
   processElement(document);
 
-  ReactDOM.createRoot(document.getElementById('problem_selection'))
-    .render(<ProblemSelectionDisplay
-      onChange={(pids) => { selectedPids = pids; }}
-      onClear={(handler) => { clearSelectionHandler = handler; }}
-    />);
+  const selection = document.getElementById('problem_selection');
+  if (selection) {
+    ReactDOM.createRoot(selection)
+      .render(<ProblemSelectionDisplay
+        onChange={(pids) => { selectedPids = pids; }}
+        onClear={(handler) => { clearSelectionHandler = handler; }}
+      />);
+  }
 
   addSpeculationRules({
     prerender: [{

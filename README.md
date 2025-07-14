@@ -140,8 +140,13 @@ Hydro 用户群：1085853538
 - core: 支持设置加域时自动加入小组
 - core: 添加 `--disable-worker` 启动选项
 - ui: 支持使用自定义字体
-- framework: 添加 Subscription API
+- framework&core: 重构 Subscription API
 - core: 添加 fixStorage 脚本
+- ui: 允许跨页选择题目，支持批量选择题目
+- judge: 重构 config.detail 设置
+- core: 自动清理多余的静态文件
+- ui: 优化比赛题目列表显示
+- core: 添加比赛补题模式
 
 ### Bug Fixes
 
@@ -155,6 +160,8 @@ Hydro 用户群：1085853538
 - ui: 修复高亮行号显示
 - core: 修复 `User.serialize()` 参数
 - ui: 修复更换邮箱功能
+- ui: 修复比赛侧栏
+- ui: 修复文档链接
 
 ### Breaking API Changes
 
@@ -174,6 +181,7 @@ Hydro 用户群：1085853538
 - framework: 移除 ready 与 dispose 事件 (使用 ctx.effect 代替)
 - core: 最低要求 node 22
 - core: 弃用 AdmZip
+- utils: 移除 String.random 与 Array.isDiff
 
 ## Hydro 4.19.0 / UI 4.57.0
 

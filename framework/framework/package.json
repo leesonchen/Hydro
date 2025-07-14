@@ -1,8 +1,9 @@
 {
     "name": "@hydrooj/framework",
-    "version": "0.2.0-beta.3",
+    "version": "0.2.0",
     "main": "index.ts",
     "license": "MIT",
+    "repository": "https://github.com/hydro-dev/Hydro",
     "peerDependencies": {
         "cordis": "*"
     },
@@ -19,7 +20,7 @@
         "saslprep": "^1.0.3",
         "schemastery": "^3.16.1",
         "shorty.js": "^1.0.1",
-        "ws": "^8.18.2"
+        "ws": "^8.18.3"
     },
     "devDependencies": {
         "@types/fs-extra": "^11.0.4",

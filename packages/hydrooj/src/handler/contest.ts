@@ -5,7 +5,7 @@ import { escapeRegExp, pick } from 'lodash';
 import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
 import {
-    Counter, sortFiles, Time, yaml,
+    Counter, diffArray, getAlphabeticId, randomstring, sortFiles, Time, yaml,
 } from '@hydrooj/utils/lib/utils';
 import { Context, Service } from '../context';
 import {
@@ -123,7 +123,7 @@ export class ContestDetailBaseHandler extends Handler {
             {
                 name: 'contest_problemlist',
                 args: { tid, prefix: 'contest_problemlist' },
-                checker: () => true,
+                checker: () => this.tsdoc?.attend || contest.isDone(this.tdoc),
             },
             {
                 name: 'contest_scoreboard',
@@ -132,7 +132,7 @@ export class ContestDetailBaseHandler extends Handler {
             },
             {
                 name: 'problem_detail',
-                displayName: `${String.fromCharCode(65 + this.tdoc.pids.indexOf(pdoc.docId))}. ${pdoc.title}`,
+                displayName: `${getAlphabeticId(this.tdoc.pids.indexOf(pdoc.docId))}. ${pdoc.title}`,
                 args: { query: { tid }, pid: pdoc.docId, prefix: 'contest_detail_problem' },
                 checker: () => 'pdoc' in this,
             },
@@ -207,9 +207,18 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
         const psdocs: any[] = Object.values(this.response.body.psdict);
         const canViewRecord = contest.canShowSelfRecord.call(this, this.tdoc);
         this.response.body.canViewRecord = canViewRecord;
+        const rids = psdocs.map((i) => i.rid);
+        if (contest.isDone(this.tdoc) && canViewRecord) {
+            const correction = await problem.getListStatus(domainId, this.user._id, this.tdoc.pids);
+            for (const pid in correction) {
+                if (this.tsdoc.detail?.[pid]?.rid === correction[pid].rid) delete correction[pid];
+            }
+            rids.push(...Object.values(correction).map((i) => i.rid));
+            this.response.body.correction = correction;
+        }
         [this.response.body.rdict, this.response.body.rdocs] = canViewRecord
             ? await Promise.all([
-                record.getList(domainId, psdocs.map((i: any) => i.rid)),
+                record.getList(domainId, rids),
                 record.getMulti(domainId, { contest: tid, uid: this.user._id })
                     .sort({ _id: -1 }).toArray(),
             ])
@@ -234,11 +243,11 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
         await this.limitRate('add_discussion', 3600, 60);
         await contest.addClarification(domainId, tid, this.user._id, content, this.request.ip, subject);
         if (!this.user.own(this.tdoc)) {
-            await Promise.all([this.tdoc.owner, ...this.tdoc.maintainer].map((uid) => message.send(1, uid, JSON.stringify({
+            await message.send(1, this.tdoc.maintainer.concat(this.tdoc.owner), JSON.stringify({
                 message: 'Contest {0} has a new clarification about {1}, please go to contest management to reply.',
                 params: [this.tdoc.title, subject > 0 ? `#${this.tdoc.pids.indexOf(subject) + 1}` : 'the contest'],
                 url: this.url('contest_manage', { tid }),
-            }), message.FLAG_I18N | message.FLAG_UNREAD)));
+            }), message.FLAG_I18N | message.FLAG_UNREAD);
         }
         this.back();
     }
@@ -317,7 +326,7 @@ export class ContestEditHandler extends Handler {
                 title, content, rule, beginAt, endAt, pids, rated, duration: contestDuration,
             });
             if (this.tdoc.beginAt !== beginAt || this.tdoc.endAt !== endAt
-                || Array.isDiff(this.tdoc.pids, pids) || this.tdoc.rule !== rule
+                || diffArray(this.tdoc.pids, pids) || this.tdoc.rule !== rule
                 || lockAt !== this.tdoc.lockAt) {
                 await contest.recalcStatus(domainId, this.tdoc.docId);
             }
@@ -462,11 +471,11 @@ export class ContestManagementHandler extends ContestManagementBaseHandler {
             const flag = contest.isOngoing(this.tdoc) ? message.FLAG_ALERT : message.FLAG_UNREAD;
             await Promise.all([
                 contest.addClarification(domainId, tid, 0, content, this.request.ip, subject),
-                ...uids.map((uid) => message.send(1, uid, JSON.stringify({
+                message.send(1, uids, JSON.stringify({
                     message: 'Broadcast message from contest {0}:\n{1}',
                     params: [this.tdoc.title, content],
                     url: this.url('contest_problemlist', { tid }),
-                }), flag | message.FLAG_I18N)),
+                }), flag | message.FLAG_I18N),
             ]);
         }
         this.back();
@@ -484,7 +493,7 @@ export class ContestManagementHandler extends ContestManagementBaseHandler {
         if (size >= system.get('limit.contest_files_size')) {
             throw new FileLimitExceededError('size');
         }
-        filename ||= file.originalFilename || String.random(16);
+        filename ||= file.originalFilename || randomstring(16);
         await storage.put(`contest/${domainId}/${tid}/${filename}`, file.filepath, this.user._id);
         const meta = await storage.getMeta(`contest/${domainId}/${tid}/${filename}`);
         const payload = { _id: filename, name: filename, ...pick(meta, ['size', 'lastModified', 'etag']) };
@@ -782,11 +791,11 @@ export async function apply(ctx: Context) {
                 const teamIds: Record<number, number> = {};
                 for (let i = 1; i <= teams.length; i++) teamIds[teams[i - 1].uid] = i;
                 const time = (t: ObjectId) => Math.floor((t.getTimestamp().getTime() - tdoc.beginAt.getTime()) / Time.second);
-                const pid = (i: number) => String.fromCharCode(65 + i);
+                const pid = (i: number) => getAlphabeticId(i);
                 const escape = (i: string) => i.replace(/[",]/g, '');
                 const unknownSchool = this.translate('Unknown School');
                 const statusMap = {
-                    [STATUS.STATUS_ACCEPTED]: 'AC',
+                    [STATUS.STATUS_ACCEPTED]: 'OK',
                     [STATUS.STATUS_WRONG_ANSWER]: 'WA',
                     [STATUS.STATUS_COMPILE_ERROR]: 'CE',
                     [STATUS.STATUS_TIME_LIMIT_EXCEEDED]: 'TL',
@@ -811,8 +820,10 @@ export async function apply(ctx: Context) {
                 ].concat(
                     tdoc.pids.map((i, idx) => `@p ${pid(idx)},${escape(pdict[i]?.title || 'Unknown Problem')},20,0`),
                     teams.map((i, idx) => {
-                        const teamName = `${i.rank ? '*' : ''}${escape(udict[i.uid].school || unknownSchool)}-${escape(udict[i.uid].uname)}`;
-                        return `@t ${idx + 1},0,1,${teamName}`;
+                        const showName = this.user.hasPerm(PERM.PERM_VIEW_DISPLAYNAME) && udict[i.uid].displayName
+                            ? udict[i.uid].displayName : udict[i.uid].uname;
+                        const teamName = `${i.rank ? '*' : ''}${escape(udict[i.uid].school || unknownSchool)}-${escape(showName)}`;
+                        return `@t ${idx + 1},0,1,"${teamName}"`;
                     }),
                     submissions,
                 );
