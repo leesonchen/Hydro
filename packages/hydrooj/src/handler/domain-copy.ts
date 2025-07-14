@@ -7,10 +7,11 @@ import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
 import * as document from '../model/document';
 import domain from '../model/domain';
-import * as problem from '../model/problem';
-import * as storage from '../model/storage';
+import ProblemModel from '../model/problem';
+import StorageModel from '../model/storage';
 import * as training from '../model/training';
-import * as user from '../model/user';
+import UserModel from '../model/user';
+import { Context } from '../context';
 import { Handler, param, Types } from '../service/server';
 
 interface CopyProgress {
@@ -143,9 +144,8 @@ class DomainCopyHandler extends Handler {
             this.sendProgress(progress);
             
             const sourceDomain = await domain.get(sourceDomainId);
-            await domain.add(targetDomainId, this.user._id, {
-                name: targetDomainName || sourceDomain.name,
-                bulletin: sourceDomain.bulletin || '',
+            await domain.add(targetDomainId, this.user._id, targetDomainName || sourceDomain.name, sourceDomain.bulletin || '');
+            await domain.edit(targetDomainId, {
                 roles: sourceDomain.roles || {},
                 avatar: sourceDomain.avatar || '',
             });
@@ -253,14 +253,13 @@ class DomainCopyHandler extends Handler {
                 delete newProblem._id;
                 delete newProblem.docId;
 
-                const problemId = await document.add(
+                const problemId = await ProblemModel.add(
                     targetDomainId,
+                    newProblem.pid,
+                    newProblem.title,
                     newProblem.content,
                     newProblem.owner,
-                    document.TYPE_PROBLEM,
-                    null,
-                    null,
-                    null,
+                    newProblem.tag || [],
                     newProblem,
                 );
 
@@ -269,11 +268,12 @@ class DomainCopyHandler extends Handler {
                     const newDataFiles = [];
                     for (const file of prob.data) {
                         try {
-                            const sourceFile = await storage.get(file._id);
+                            const sourceFile = await StorageModel.get(file._id);
                             if (sourceFile) {
-                                const newFileId = await storage.put(sourceFile, `${targetDomainId}/problem/${problemId}/testdata/${file.name}`);
+                                const newPath = `${targetDomainId}/problem/${problemId}/testdata/${file.name}`;
+                                await StorageModel.put(newPath, sourceFile, this.user._id);
                                 newDataFiles.push({
-                                    _id: newFileId,
+                                    _id: newPath,
                                     name: file.name,
                                     size: file.size,
                                 });
@@ -284,7 +284,7 @@ class DomainCopyHandler extends Handler {
                         }
                     }
                     if (newDataFiles.length > 0) {
-                        await document.set(targetDomainId, document.TYPE_PROBLEM, problemId, { data: newDataFiles });
+                        await ProblemModel.edit(targetDomainId, problemId, { data: newDataFiles });
                     }
                 }
 
@@ -292,11 +292,12 @@ class DomainCopyHandler extends Handler {
                     const newAdditionalFiles = [];
                     for (const file of prob.additional_file) {
                         try {
-                            const sourceFile = await storage.get(file._id);
+                            const sourceFile = await StorageModel.get(file._id);
                             if (sourceFile) {
-                                const newFileId = await storage.put(sourceFile, `${targetDomainId}/problem/${problemId}/additional/${file.name}`);
+                                const newPath = `${targetDomainId}/problem/${problemId}/additional/${file.name}`;
+                                await StorageModel.put(newPath, sourceFile, this.user._id);
                                 newAdditionalFiles.push({
-                                    _id: newFileId,
+                                    _id: newPath,
                                     name: file.name,
                                     size: file.size,
                                 });
@@ -306,7 +307,7 @@ class DomainCopyHandler extends Handler {
                         }
                     }
                     if (newAdditionalFiles.length > 0) {
-                        await document.set(targetDomainId, document.TYPE_PROBLEM, problemId, { additional_file: newAdditionalFiles });
+                        await ProblemModel.edit(targetDomainId, problemId, { additional_file: newAdditionalFiles });
                     }
                 }
 
@@ -338,18 +339,23 @@ class DomainCopyHandler extends Handler {
 
                 // Map problem IDs if needed
                 if (newContest.pids && options.nameMapping) {
-                    newContest.pids = newContest.pids.map((pid: string) => options.nameMapping[pid] || pid);
+                    newContest.pids = newContest.pids.map((pid: number) => Number(options.nameMapping[pid.toString()] || pid));
                 }
 
-                await document.add(
+                // Remove fields that contest.add doesn't expect in the data parameter
+                const { title, content, owner, rule, beginAt, endAt, pids, rated, domainId, docId, _id, attend, docType, ...contestData } = newContest;
+                
+                await contest.add(
                     targetDomainId,
-                    newContest.content,
-                    newContest.owner,
-                    document.TYPE_CONTEST,
-                    null,
-                    null,
-                    null,
-                    newContest,
+                    title,
+                    content,
+                    owner,
+                    rule,
+                    beginAt,
+                    endAt,
+                    pids,
+                    rated || false,
+                    contestData,
                 );
 
                 copiedCount++;
@@ -382,19 +388,17 @@ class DomainCopyHandler extends Handler {
                 if (newTraining.dag && options.nameMapping) {
                     newTraining.dag = newTraining.dag.map((node: any) => ({
                         ...node,
-                        pids: node.pids?.map((pid: string) => options.nameMapping[pid] || pid),
+                        pids: node.pids?.map((pid: number) => Number(options.nameMapping[pid.toString()] || pid)),
                     }));
                 }
 
-                await document.add(
+                await training.add(
                     targetDomainId,
+                    newTraining.title,
                     newTraining.content,
                     newTraining.owner,
-                    document.TYPE_TRAINING,
-                    null,
-                    null,
-                    null,
-                    newTraining,
+                    newTraining.dag || [],
+                    newTraining.description || '',
                 );
 
                 copiedCount++;
@@ -427,12 +431,14 @@ class DomainCopyHandler extends Handler {
     }
 
     private async copyGroups(sourceDomainId: string, targetDomainId: string, options: CopyOptions): Promise<number> {
-        const groups = await domain.listGroup(sourceDomainId);
+        const groups = await UserModel.listGroup(sourceDomainId);
         let copiedCount = 0;
 
         for (const group of groups) {
             try {
-                await domain.addGroup(targetDomainId, group.name, group.uids);
+                // Skip auto-generated user groups (those with numeric names)
+                if (!isNaN(Number(group.name))) continue;
+                await UserModel.updateGroup(targetDomainId, group.name, group.uids);
                 copiedCount++;
             } catch (groupError) {
                 console.warn(`Failed to copy group ${group.name}:`, groupError);
@@ -463,6 +469,7 @@ class DomainCopyHandler extends Handler {
                     newDiscussion.content,
                     newDiscussion.owner,
                     document.TYPE_DISCUSSION,
+                    null,
                     newDiscussion.parentType,
                     newDiscussion.parentId,
                     newDiscussion,
@@ -503,6 +510,7 @@ class DomainCopyHandler extends Handler {
                     newSolution.content,
                     newSolution.owner,
                     document.TYPE_PROBLEM_SOLUTION,
+                    null,
                     newSolution.parentType,
                     newSolution.parentId,
                     newSolution,
@@ -518,9 +526,9 @@ class DomainCopyHandler extends Handler {
     }
 
     private sendProgress(progress: CopyProgress) {
-        if (this.ctx.session.sockId) {
-            this.ctx.send('progress', progress);
-        }
+        // Progress sending can be implemented if WebSocket support is added
+        // For now, we just log the progress
+        console.log(`Domain copy progress: ${progress.stage} - ${progress.current}/${progress.total}`);
     }
 }
 

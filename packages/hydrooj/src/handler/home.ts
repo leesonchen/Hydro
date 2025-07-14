@@ -592,7 +592,7 @@ class HomeDomainCreateHandler extends Handler {
                         newProb.owner = this.user._id;
                         
                         await ProblemModel.add(domainId, newProb.pid, newProb.title, newProb.content, 
-                            newProb.owner, newProb.tag || [], newProb.hidden || false);
+                            newProb.owner, newProb.tag || [], newProb);
                     }
                 }
                 
@@ -621,13 +621,13 @@ class HomeDomainCreateHandler extends Handler {
                         newTraining.owner = this.user._id;
                         
                         await training.add(domainId, newTraining.title, newTraining.content,
-                            newTraining.owner, newTraining.dag || [], newTraining.desc || '');
+                            newTraining.owner, newTraining.dag || [], newTraining.description || '');
                     }
                 }
                 
                 // Copy user roles if requested
                 if (copyUsers) {
-                    const users = await domain.getDomainUser(copyFrom);
+                    const users = await domain.getMultiUserInDomain(copyFrom).toArray();
                     for (const u of users) {
                         if (u.uid !== this.user._id) {
                             await domain.setUserRole(domainId, u.uid, u.role);
