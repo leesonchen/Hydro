@@ -35,6 +35,7 @@
         "@types/autocannon": "^7.12.7",
         "@types/chai": "^5.2.2",
         "@types/cross-spawn": "^6.0.6",
+        "@types/geojson": "^7946.0.16",
         "@types/node": "22.14.1",
         "@types/semver": "^7.7.0",
         "autocannon": "^8.0.0",
