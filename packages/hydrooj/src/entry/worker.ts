@@ -67,7 +67,9 @@ export async function apply(ctx: Context) {
     await addon(pending, fail, ctx);
     await loadDir(path.resolve(__dirname, '..', 'script'));
     await ctx.parallel('app/started');
+    logger.info(`NODE_APP_INSTANCE value: ${process.env.NODE_APP_INSTANCE ?? 'undefined'}`);
     if (process.env.NODE_APP_INSTANCE === '0') {
+        logger.info('Starting to empty and rebuild .hydro/static directory');
         const staticDir = path.join(os.homedir(), '.hydro/static');
         await fs.emptyDir(staticDir);
         // Use ordered copy to allow resource override

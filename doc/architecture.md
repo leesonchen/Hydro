@@ -63,7 +63,7 @@ Hydro 是一个高效的信息学在线测评系统，具有易安装、跨平�
 
 #### 3.1.1 Cordis 框架
 - **功能**：基于 Koishi 的 Cordis 框架，提供插件生命周期管理、依赖注入（DI）、和事件系统。它是 Hydro 模块化设计的核心。
-- **核心文件**：`framework/framework/src/context.ts`
+- **核心文件**：`packages/hydrooj/src/context.ts` (核心上下文实现) 及 `framework/framework/` (框架基础)
 - **代码流程与关键特性**：
   - **上下文 (Context)**：`Context` 是框架的核心，它作为容器管理所有服务和插件。
   - **服务 (Service)**：服务是可以被注入到其他服务或插件中的可复用组件。例如，`DatabaseService`。服务在启动时通过 `ctx.plugin(ServiceClass, config)` 进行注册。
