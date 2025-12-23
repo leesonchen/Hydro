@@ -99,8 +99,8 @@
                 {{ nothing.render("This person is lazy and didn't write anything.") }}
               {% else %}
                 {% set displayBio = bio %}
-                {% if bio|length > 20 %}
-                  {% set displayBio = bio|truncate(20, true, '') %}
+                {% if bio|length > 10 %}
+                  {% set displayBio = bio|truncate(10, true, '') %}
                 {% endif %}
                 <div class="section__body typo richmedia">
                   {{ displayBio|markdown|safe }}
