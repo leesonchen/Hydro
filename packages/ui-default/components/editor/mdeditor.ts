@@ -3,7 +3,6 @@ import 'md-editor-rt/lib/style.css';
 import Anchor from 'markdown-it-anchor';
 import Footnote from 'markdown-it-footnote';
 import Mark from 'markdown-it-mark';
-import MergeCells from 'markdown-it-merge-cells';
 import TOC from 'markdown-it-table-of-contents';
 import { config, MdEditor } from 'md-editor-rt';
 import Imsize from '../../backendlib/markdown-it-imsize';
@@ -27,7 +26,6 @@ config({
     mdit.use(Imsize);
     mdit.use(Anchor);
     mdit.use(TOC);
-    mdit.use(MergeCells);
     mdit.use(xssProtector);
     mdit.use(katex);
     if (isProblemPage) {
