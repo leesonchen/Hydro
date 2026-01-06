@@ -103,12 +103,14 @@ export class ProblemMainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('q', Types.Content, true)
     @param('limit', Types.PositiveInt, true)
+    @param('global', Types.Boolean, true)
     @param('pjax', Types.Boolean)
     @param('quick', Types.Boolean)
     @param('sort', Types.Range(['default', 'recent']), true)
-    async get(domainId: string, page = 1, q = '', limit: number, pjax = false, quick = false, sortStrategy = 'default') {
+    async get(domainId: string, page = 1, q = '', limit: number, global = false, pjax = false, quick = false, sortStrategy = 'default') {
         this.response.template = 'problem_main.html';
-        if (!limit || limit > this.ctx.setting.get('pagination.problem') || page > 1) limit = this.ctx.setting.get('pagination.problem');
+        const paginationDefault = this.ctx.setting.get('pagination.problem') ?? system.get('pagination.problem') ?? 50;
+        if (!Number.isSafeInteger(limit) || limit <= 0 || limit > paginationDefault || page > 1) limit = paginationDefault;
         this.queryContext.query = buildQuery(this.user);
         if (sortStrategy === 'recent') this.queryContext.hint = 'basic';
         // eslint-disable-next-line ts/no-shadow
@@ -137,11 +139,21 @@ export class ProblemMainHandler extends Handler {
         if (category.length) this.UiContext.extraTitleContent = category.join(',');
         let total = 0;
         if (text) {
-            const result = await search(domainId, q, { skip: (page - 1) * limit, limit });
+            const isGlobalSearch = domainId === 'system' && global;
+            const effectiveDomainId = isGlobalSearch ? '*' : domainId;
+            const result = await search(effectiveDomainId, q, { skip: (page - 1) * limit, limit });
             total = result.total;
             this.queryContext.pcountRelation = result.countRelation;
             if (!result.hits.length) this.queryContext.fail = true;
-            query.docId = { $in: result.hits.map((t) => +t.split('/')[1]) };
+            if (isGlobalSearch) {
+                const pairs = result.hits
+                    .map((t) => t.split('/'))
+                    .filter((t) => t.length === 2)
+                    .map((t) => ({ domainId: t[0], docId: +t[1] }));
+                query.$or = pairs;
+            } else {
+                query.docId = { $in: result.hits.map((t) => +t.split('/')[1]) };
+            }
             this.queryContext.hint = 'basic';
             this.queryContext.sort = result.hits;
         }

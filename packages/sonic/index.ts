@@ -45,6 +45,7 @@ export class SonicService extends Service {
         host: Schema.string().default('::1'),
         port: Schema.number().default(1491),
         auth: Schema.string().default(''),
+        maxQueryLimit: Schema.number().default(100),
     });
 
     constructor(ctx: Context, private config: ReturnType<typeof SonicService.Config>) {
@@ -62,6 +63,8 @@ export class SonicService extends Service {
             Promise.all([
                 this.push('problem', `${doc.domainId}@title`, `${doc.domainId}/${docId}`, `${doc.pid || ''} ${doc.title} ${doc.tag?.join(' ')}`),
                 this.push('problem', `${doc.domainId}@content`, `${doc.domainId}/${docId}`, doc.content.toString()),
+                this.push('problem', 'global@title', `${doc.domainId}/${docId}`, `${doc.pid || ''} ${doc.title} ${doc.tag?.join(' ')}`),
+                this.push('problem', 'global@content', `${doc.domainId}/${docId}`, doc.content.toString()),
             ]).catch((e) => logger.error(e));
         });
         yield this.ctx.on('problem/edit', async (pdoc) => {
@@ -71,6 +74,10 @@ export class SonicService extends Service {
                     .then(() => this.push('problem', `${pdoc.domainId}@title`, id, `${pdoc.pid || ''} ${pdoc.title} ${pdoc.tag?.join(' ')}`)),
                 this.flusho('problem', `${pdoc.domainId}@content`, id)
                     .then(() => this.push('problem', `${pdoc.domainId}@content`, id, pdoc.content.toString())),
+                this.flusho('problem', 'global@title', id)
+                    .then(() => this.push('problem', 'global@title', id, `${pdoc.pid || ''} ${pdoc.title} ${pdoc.tag?.join(' ')}`)),
+                this.flusho('problem', 'global@content', id)
+                    .then(() => this.push('problem', 'global@content', id, pdoc.content.toString())),
             ]).catch((e) => logger.error(e));
         });
         yield this.ctx.on('problem/delete', async (domainId, docId) => {
@@ -78,22 +85,28 @@ export class SonicService extends Service {
             await Promise.all([
                 this.flusho('problem', `${domainId}@title`, id),
                 this.flusho('problem', `${domainId}@content`, id),
+                this.flusho('problem', 'global@title', id),
+                this.flusho('problem', 'global@content', id),
             ]);
         });
         yield this.ctx.provideModule('problemSearch', 'sonic', async (domainId, query, opts) => {
-            const limit = opts?.limit || SystemModel.get('pagination.problem');
-            let hits = await this.query('problem', `${domainId}@title`, query, { limit });
+            const maxQueryLimit = this.config.maxQueryLimit;
+            const limit = Math.min(opts?.limit || SystemModel.get('pagination.problem'), maxQueryLimit);
+            const bucketPrefix = domainId === '*' ? 'global' : domainId;
+            let hits = await this.query('problem', `${bucketPrefix}@title`, query, { limit });
             if (!opts.skip) {
-                let pdoc = await ProblemModel.get(domainId, +query || query, ProblemModel.PROJECTION_LIST);
-                if (pdoc) {
-                    hits = hits.filter((i) => i !== `${pdoc.domainId}/${pdoc.docId}`);
-                    hits.unshift(`${pdoc.domainId}/${pdoc.docId}`);
-                } else if (/^P\d+$/.test(query)) {
-                    pdoc = await ProblemModel.get(domainId, +query.substring(1), ProblemModel.PROJECTION_LIST);
-                    if (pdoc) hits.unshift(`${pdoc.domainId}/${pdoc.docId}`);
+                if (domainId !== '*') {
+                    let pdoc = await ProblemModel.get(domainId, +query || query, ProblemModel.PROJECTION_LIST);
+                    if (pdoc) {
+                        hits = hits.filter((i) => i !== `${pdoc.domainId}/${pdoc.docId}`);
+                        hits.unshift(`${pdoc.domainId}/${pdoc.docId}`);
+                    } else if (/^P\d+$/.test(query)) {
+                        pdoc = await ProblemModel.get(domainId, +query.substring(1), ProblemModel.PROJECTION_LIST);
+                        if (pdoc) hits.unshift(`${pdoc.domainId}/${pdoc.docId}`);
+                    }
                 }
             }
-            if (limit - hits.length > 0) hits.push(...await this.query('problem', `${domainId}@content`, query, { limit: limit - hits.length }));
+            if (limit - hits.length > 0) hits.push(...await this.query('problem', `${bucketPrefix}@content`, query, { limit: limit - hits.length }));
             return {
                 countRelation: hits.length >= limit ? 'gte' : 'eq',
                 total: hits.length,
@@ -119,6 +132,12 @@ export class SonicService extends Service {
                         ),
                         pdoc.content.toString()
                         && this.push('problem', `${pdoc.domainId}@content`, `${pdoc.domainId}/${pdoc.docId}`, pdoc.content.toString()),
+                        pdoc.title && this.push(
+                            'problem', 'global@title', `${pdoc.domainId}/${pdoc.docId}`,
+                            `${pdoc.pid || ''} ${pdoc.title} ${pdoc.tag.join(' ')}`,
+                        ),
+                        pdoc.content.toString()
+                        && this.push('problem', 'global@content', `${pdoc.domainId}/${pdoc.docId}`, pdoc.content.toString()),
                     ]).catch((e) => console.log(`${pdoc.domainId}/${pdoc.docId}`, e));
                 };
                 if (domainId) await iterateAllProblemInDomain(domainId, ['title', 'content'], cb);
@@ -163,4 +182,10 @@ export class SonicService extends Service {
     async flushc(collection: string) {
         return await this.ingest.flushc(collection);
     }
+}
+
+export const Config = SonicService.Config;
+
+export function apply(ctx: Context, config: ReturnType<typeof SonicService.Config>) {
+    ctx.plugin(SonicService, config);
 }
