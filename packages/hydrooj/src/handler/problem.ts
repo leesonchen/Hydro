@@ -12,7 +12,6 @@ import Schema from 'schemastery';
 import parser from '@hydrooj/utils/lib/search';
 import { randomstring, sortFiles, streamToBuffer } from '@hydrooj/utils/lib/utils';
 import type { Context } from '../context';
-import type { HydroGlobal } from '../interface';
 import { Logger } from '../logger';
 import {
     BadRequestError, ContestNotAttendedError, ContestNotEndedError, ContestNotFoundError, ContestNotLiveError,
@@ -63,12 +62,20 @@ function buildQuery(udoc: User) {
 }
 
 const defaultSearch = async (domainId: string, q: string, options?: ExtendedProblemSearchOptions) => {
-    const escaped = escapeRegExp(q.toLowerCase());
     const projection: (keyof ProblemDoc)[] = ['domainId', 'docId', 'pid'];
-    const $regex = new RegExp(q.length >= 2 ? escaped : `\\A${escaped}`, 'gim');
-    const orFilters: Filter<ProblemDoc>[] = [{ pid: { $regex } }, { title: { $regex } }, { tag: q }];
-    if (options?.scope !== 'title') orFilters.push({ content: { $regex } });
-    const filter: Filter<ProblemDoc> = { $or: orFilters };
+    const terms = q.split(/[\s,]+/).map((term) => term.trim()).filter(Boolean);
+    const termFilters = terms.map((term) => {
+        const escaped = escapeRegExp(term.toLowerCase());
+        const $regex = new RegExp(term.length >= 2 ? escaped : `\\A${escaped}`, 'gim');
+        const orFilters: Filter<ProblemDoc>[] = [{ pid: { $regex } }, { title: { $regex } }, { tag: { $regex } }];
+        if (options?.scope !== 'title') orFilters.push({ content: { $regex } });
+        return { $or: orFilters };
+    });
+    const filter: Filter<ProblemDoc> = termFilters.length === 1
+        ? termFilters[0]
+        : termFilters.length
+            ? { $and: termFilters }
+            : {};
     if (options?.global) filter.domainId = { $exists: true };
     const pdocs = await problem.getMulti(domainId, filter, projection)
         .skip(options?.skip || 0).limit(options?.limit || system.get('pagination.problem')).toArray();
@@ -114,6 +121,7 @@ export class ProblemMainHandler extends Handler {
 
     @param('page', Types.PositiveInt, true)
     @param('q', Types.Content, true)
+    @param('tag', Types.Content, true)
     @param('limit', Types.PositiveInt, true)
     @param('global', Types.Boolean, true)
     @param('scope', Types.Range(['all', 'title']), true)
@@ -121,7 +129,7 @@ export class ProblemMainHandler extends Handler {
     @param('pjax', Types.Boolean)
     @param('quick', Types.Boolean)
     @param('sort', Types.Range(['default', 'recent']), true)
-    async get(domainId: string, page = 1, q = '', limit: number, global = false, scope: 'all' | 'title' = 'all', mode: 'sonic' | 'regex' = 'regex', pjax = false, quick = false, sortStrategy = 'default') {
+    async get(domainId: string, page = 1, q = '', tag = '', limit: number, global = false, scope: 'all' | 'title' = 'all', mode: 'sonic' | 'regex' = 'regex', pjax = false, quick = false, sortStrategy = 'default') {
         this.response.template = 'problem_main.html';
         const paginationDefault = this.ctx.setting.get('pagination.problem') ?? system.get('pagination.problem') ?? 50;
         if (!Number.isSafeInteger(limit) || limit <= 0 || limit > paginationDefault || page > 1) limit = paginationDefault;
@@ -130,12 +138,8 @@ export class ProblemMainHandler extends Handler {
         // eslint-disable-next-line ts/no-shadow
         const query = this.queryContext.query;
         const psdict = {};
-        const hydroGlobal = (globalThis as typeof globalThis & { Hydro?: HydroGlobal })?.Hydro;
-        const moduleSearch = hydroGlobal?.module?.problemSearch
-            ? Object.values(hydroGlobal.module.problemSearch)[0]
-            : undefined;
-        const useRegex = mode === 'regex' || !moduleSearch;
-        const search = useRegex ? defaultSearch : moduleSearch;
+        const useRegex = true;
+        const search = defaultSearch;
         const parsed = parser.parse(q, {
             keywords: ['category', 'difficulty', 'namespace'],
             offsets: false,
@@ -143,24 +147,29 @@ export class ProblemMainHandler extends Handler {
             tokenize: true,
         });
         const category = parsed.category || [];
+        const tagFilters = tag
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean);
         const text = (parsed.text || []).join(' ');
         if (parsed.difficulty?.every((i) => Number.isSafeInteger(+i))) {
             query.difficulty = { $in: parsed.difficulty.flatMap((i) => +i === 0 ? [0, undefined] : [+i]) };
         }
-        if (category.length) query.$and = category.map((tag) => ({ tag }));
+        const queryTags = [...category, ...tagFilters];
+        if (queryTags.length) query.$and = queryTags.map((tagItem) => ({ tag: new RegExp(escapeRegExp(tagItem), 'i') }));
         if (parsed.namespace?.length) {
             const mappedPrefix = this.domain.namespaces?.[parsed.namespace[0]];
             query.$and ||= [];
             if (mappedPrefix) query.$and.push({ sort: new RegExp(`^${mappedPrefix}-`) });
-            else query.$and.push({ tag: parsed.namespace[0] });
+            else query.$and.push({ tag: new RegExp(escapeRegExp(parsed.namespace[0]), 'i') });
         }
-        if (text) category.push(text);
-        if (category.length) this.UiContext.extraTitleContent = category.join(',');
+        const displayTags = [...queryTags];
+        if (text) displayTags.push(text);
+        if (displayTags.length) this.UiContext.extraTitleContent = displayTags.join(',');
         let total = 0;
+        const isGlobalSearch = domainId === 'system' && global;
         if (text) {
-            const isGlobalSearch = domainId === 'system' && global;
             const effectiveDomainId = isGlobalSearch && !useRegex ? '*' : domainId;
-            if (isGlobalSearch && useRegex) logger.warn('Regex mode does not support global=1; fallback to domain=%s', domainId);
             logger.debug('problem list search: domain=%s global=%s mode=%s scope=%s query=%s text=%s',
                 domainId,
                 global,
@@ -175,7 +184,7 @@ export class ProblemMainHandler extends Handler {
                 scope,
             };
             if (isGlobalSearch && useRegex) searchOptions.global = true;
-            const result = await search(effectiveDomainId, q, searchOptions);
+            const result = await search(effectiveDomainId, text, searchOptions);
             total = result.total;
             this.queryContext.pcountRelation = result.countRelation;
             if (!result.hits.length) this.queryContext.fail = true;
@@ -192,6 +201,8 @@ export class ProblemMainHandler extends Handler {
             }
             this.queryContext.hint = 'basic';
             this.queryContext.sort = result.hits;
+        } else if (isGlobalSearch) {
+            query.domainId = { $exists: true };
         }
         const sort = this.queryContext.sort;
         await this.ctx.parallel('problem/list', query, this, sort);
