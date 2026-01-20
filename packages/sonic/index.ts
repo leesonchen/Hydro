@@ -7,6 +7,8 @@ import {
     Logger, ProblemModel, Schema, Service, SystemModel,
 } from 'hydrooj';
 
+// HydroOJ 的 Context 在运行时会被各个插件扩展；这里显式声明
+// `ctx.sonic` 的存在，方便 TypeScript 在其他模块中引用该服务。
 declare module 'hydrooj' {
     interface Context {
         sonic?: SonicService;
@@ -15,6 +17,8 @@ declare module 'hydrooj' {
 
 const logger = new Logger('sonic');
 
+// Sonic Channel 客户端会在连接/断线等状态回调此 handler；
+// 由于 Hydro addon 生命周期通常需要把状态写入日志，因此统一封装在一个函数里。
 function getHandler(type: string, that: any) {
     return {
         connected() {
@@ -36,11 +40,15 @@ function getHandler(type: string, that: any) {
     };
 }
 
+// Hydro addon 的核心逻辑通常放在 Service 类里，
+// 通过 ctx.plugin(SonicService) 注入后，Cordis 会管理其生命周期。
 export class SonicService extends Service {
     public search: Search;
     public ingest: Ingest;
     public error = '';
 
+    // Schema 用于自动生成系统设置和校验；
+    // HydroOJ 会读取 `export const Config = SonicService.Config` 自动注册配置项。
     static Config = Schema.object({
         host: Schema.string().default('::1'),
         port: Schema.number().default(1491),
@@ -49,16 +57,21 @@ export class SonicService extends Service {
     });
 
     constructor(ctx: Context, private config: ReturnType<typeof SonicService.Config>) {
+        // 第二个参数是 Service 名称，便于调试和热重载。
         super(ctx, 'sonic');
     }
 
     *[Context.init]() {
+        // Hydro addon 在 ctx.plugin 时会执行 Context.init 生成器：
+        // 1) 在 generator 启动阶段做资源初始化；
+        // 2) yield 出的函数会在插件卸载/重启时依次调用，实现清理逻辑。
         this.search = new Search(this.config);
         this.ingest = new Ingest(this.config);
         this.search.connect(getHandler('search', this));
         yield () => this.search.close();
         this.ingest.connect(getHandler('ingest', this));
         yield () => this.ingest.close();
+        // 监听题目增删改事件，同步数据到 Sonic。
         yield this.ctx.on('problem/add', async (doc, docId) => {
             Promise.all([
                 this.push('problem', `${doc.domainId}@title`, `${doc.domainId}/${docId}`, `${doc.pid || ''} ${doc.title} ${doc.tag?.join(' ')}`),
@@ -89,6 +102,8 @@ export class SonicService extends Service {
                 this.flusho('problem', 'global@content', id),
             ]);
         });
+        // 向 HydroOJ 注册 problemSearch 模块；
+        // 其他核心模块调用 `global.Hydro.module.problemSearch` 时会落到这里。
         yield this.ctx.provideModule('problemSearch', 'sonic', async (domainId, query, opts) => {
             const maxQueryLimit = this.config.maxQueryLimit;
             const limit = Math.min(opts?.limit || SystemModel.get('pagination.problem'), maxQueryLimit);
@@ -151,6 +166,7 @@ export class SonicService extends Service {
         });
     }
 
+    // 以下封装了 sonic-channel 的常用指令，方便在其他 Hydro 模块中复用。
     async query(collection: string, bucket: string, terms: string, options?: QueryOptions) {
         return await this.search.query(collection, bucket, terms, options);
     }
@@ -186,6 +202,8 @@ export class SonicService extends Service {
 
 export const Config = SonicService.Config;
 
+// 每个 Hydro addon 必须导出 apply(ctx, config) 供 loader 调用；
+// ctx.plugin 会实例化 Service 并自动注入配置。
 export function apply(ctx: Context, config: ReturnType<typeof SonicService.Config>) {
     ctx.plugin(SonicService, config);
 }
