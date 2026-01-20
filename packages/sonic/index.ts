@@ -2,6 +2,7 @@ import {
     Ingest, PushOptions, QueryOptions,
     Search, SuggestOptions,
 } from 'sonic-channel';
+import * as nodejieba from 'nodejieba';
 import {
     Context, iterateAllProblem, iterateAllProblemInDomain,
     Logger, ProblemModel, Schema, Service, SystemModel,
@@ -16,6 +17,34 @@ declare module 'hydrooj' {
 }
 
 const logger = new Logger('sonic');
+const chineseCharRegex = /[\u4e00-\u9fff]/;
+
+function segmentTokens(text: string) {
+    if (!text || !chineseCharRegex.test(text)) return null;
+    try {
+        return nodejieba.cutForSearch(text);
+    } catch (error) {
+        logger.warn('Failed to segment Chinese text for Sonic, fallback to raw text.', error);
+        return null;
+    }
+}
+
+function segmentText(text: string) {
+    const words = segmentTokens(text);
+    return words?.length ? words.join(' ') : text;
+}
+
+function segmentQuery(text: string) {
+    const words = segmentTokens(text);
+    if (!words?.length) return text;
+    const filtered = words.filter((word: string) => word.length > 1);
+    return (filtered.length ? filtered : words).join(' ');
+}
+
+function buildTitleText(pid: string, title: string, tag?: string[]) {
+    const raw = `${pid || ''} ${title} ${tag?.join(' ') ?? ''}`.trim();
+    return segmentText(raw);
+}
 
 // Sonic Channel 客户端会在连接/断线等状态回调此 handler；
 // 由于 Hydro addon 生命周期通常需要把状态写入日志，因此统一封装在一个函数里。
@@ -73,24 +102,28 @@ export class SonicService extends Service {
         yield () => this.ingest.close();
         // 监听题目增删改事件，同步数据到 Sonic。
         yield this.ctx.on('problem/add', async (doc, docId) => {
+            const titleText = buildTitleText(doc.pid || '', doc.title, doc.tag);
+            const contentText = segmentText(doc.content.toString());
             Promise.all([
-                this.push('problem', `${doc.domainId}@title`, `${doc.domainId}/${docId}`, `${doc.pid || ''} ${doc.title} ${doc.tag?.join(' ')}`),
-                this.push('problem', `${doc.domainId}@content`, `${doc.domainId}/${docId}`, doc.content.toString()),
-                this.push('problem', 'global@title', `${doc.domainId}/${docId}`, `${doc.pid || ''} ${doc.title} ${doc.tag?.join(' ')}`),
-                this.push('problem', 'global@content', `${doc.domainId}/${docId}`, doc.content.toString()),
+                this.push('problem', `${doc.domainId}@title`, `${doc.domainId}/${docId}`, titleText),
+                this.push('problem', `${doc.domainId}@content`, `${doc.domainId}/${docId}`, contentText),
+                this.push('problem', 'global@title', `${doc.domainId}/${docId}`, titleText),
+                this.push('problem', 'global@content', `${doc.domainId}/${docId}`, contentText),
             ]).catch((e) => logger.error(e));
         });
         yield this.ctx.on('problem/edit', async (pdoc) => {
             const id = `${pdoc.domainId}/${pdoc.docId}`;
+            const titleText = buildTitleText(pdoc.pid || '', pdoc.title, pdoc.tag);
+            const contentText = segmentText(pdoc.content.toString());
             Promise.all([
                 this.flusho('problem', `${pdoc.domainId}@title`, id)
-                    .then(() => this.push('problem', `${pdoc.domainId}@title`, id, `${pdoc.pid || ''} ${pdoc.title} ${pdoc.tag?.join(' ')}`)),
+                    .then(() => this.push('problem', `${pdoc.domainId}@title`, id, titleText)),
                 this.flusho('problem', `${pdoc.domainId}@content`, id)
-                    .then(() => this.push('problem', `${pdoc.domainId}@content`, id, pdoc.content.toString())),
+                    .then(() => this.push('problem', `${pdoc.domainId}@content`, id, contentText)),
                 this.flusho('problem', 'global@title', id)
-                    .then(() => this.push('problem', 'global@title', id, `${pdoc.pid || ''} ${pdoc.title} ${pdoc.tag?.join(' ')}`)),
+                    .then(() => this.push('problem', 'global@title', id, titleText)),
                 this.flusho('problem', 'global@content', id)
-                    .then(() => this.push('problem', 'global@content', id, pdoc.content.toString())),
+                    .then(() => this.push('problem', 'global@content', id, contentText)),
             ]).catch((e) => logger.error(e));
         });
         yield this.ctx.on('problem/delete', async (domainId, docId) => {
@@ -107,8 +140,19 @@ export class SonicService extends Service {
         yield this.ctx.provideModule('problemSearch', 'sonic', async (domainId, query, opts) => {
             const maxQueryLimit = this.config.maxQueryLimit;
             const limit = Math.min(opts?.limit || SystemModel.get('pagination.problem'), maxQueryLimit);
+            const scope = opts?.scope ?? 'all';
             const bucketPrefix = domainId === '*' ? 'global' : domainId;
-            let hits = await this.query('problem', `${bucketPrefix}@title`, query, { limit });
+            const terms = segmentQuery(query);
+            logger.debug('problemSearch: domain=%s bucket=%s scope=%s limit=%d skip=%d query=%s terms=%s',
+                domainId,
+                bucketPrefix,
+                scope,
+                limit,
+                opts?.skip || 0,
+                query,
+                terms,
+            );
+            let hits = await this.query('problem', `${bucketPrefix}@title`, terms, { limit });
             if (!opts.skip) {
                 if (domainId !== '*') {
                     let pdoc = await ProblemModel.get(domainId, +query || query, ProblemModel.PROJECTION_LIST);
@@ -121,7 +165,9 @@ export class SonicService extends Service {
                     }
                 }
             }
-            if (limit - hits.length > 0) hits.push(...await this.query('problem', `${bucketPrefix}@content`, query, { limit: limit - hits.length }));
+            if (scope === 'all' && limit - hits.length > 0) {
+                hits.push(...await this.query('problem', `${bucketPrefix}@content`, terms, { limit: limit - hits.length }));
+            }
             return {
                 countRelation: hits.length >= limit ? 'gte' : 'eq',
                 total: hits.length,
@@ -140,19 +186,21 @@ export class SonicService extends Service {
                 const cb = async (pdoc) => {
                     i++;
                     if (!(i % 1000)) report({ message: `${i} problems indexed` });
+                    const titleText = buildTitleText(pdoc.pid || '', pdoc.title, pdoc.tag);
+                    const contentText = segmentText(pdoc.content.toString());
                     await Promise.all([
                         pdoc.title && this.push(
-                            'problem', `${pdoc.domainid}@title`, `${pdoc.domainId}/${pdoc.docId}`,
-                            `${pdoc.pid || ''} ${pdoc.title} ${pdoc.tag.join(' ')}`,
+                            'problem', `${pdoc.domainId}@title`, `${pdoc.domainId}/${pdoc.docId}`,
+                            titleText,
                         ),
                         pdoc.content.toString()
-                        && this.push('problem', `${pdoc.domainId}@content`, `${pdoc.domainId}/${pdoc.docId}`, pdoc.content.toString()),
+                        && this.push('problem', `${pdoc.domainId}@content`, `${pdoc.domainId}/${pdoc.docId}`, contentText),
                         pdoc.title && this.push(
                             'problem', 'global@title', `${pdoc.domainId}/${pdoc.docId}`,
-                            `${pdoc.pid || ''} ${pdoc.title} ${pdoc.tag.join(' ')}`,
+                            titleText,
                         ),
                         pdoc.content.toString()
-                        && this.push('problem', 'global@content', `${pdoc.domainId}/${pdoc.docId}`, pdoc.content.toString()),
+                        && this.push('problem', 'global@content', `${pdoc.domainId}/${pdoc.docId}`, contentText),
                     ]).catch((e) => console.log(`${pdoc.domainId}/${pdoc.docId}`, e));
                 };
                 if (domainId) await iterateAllProblemInDomain(domainId, ['title', 'content'], cb);

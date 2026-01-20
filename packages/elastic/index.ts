@@ -33,6 +33,10 @@ export default class ElasticSearchService extends Service {
     async problemSearch(domainId: string, q: string, opts: Parameters<ProblemSearch>[2] = {}): ReturnType<ProblemSearch> {
         const size = opts?.limit || SystemModel.get('pagination.problem');
         const from = Math.min(this.config.indexSize - size, opts?.skip || 0);
+        const scope = opts?.scope ?? 'all';
+        const fields = scope === 'title'
+            ? ['tag^5', 'pid^4', 'title^3']
+            : ['tag^5', 'pid^4', 'title^3', 'content'];
         const res = await this.client.search({
             index: 'problem',
             size,
@@ -40,7 +44,7 @@ export default class ElasticSearchService extends Service {
             query: {
                 simple_query_string: {
                     query: q.replace(/([a-z0-9]{2,})/gi, (i) => `${i}~5`),
-                    fields: ['tag^5', 'pid^4', 'title^3', 'content'],
+                    fields,
                 },
             },
             post_filter: {

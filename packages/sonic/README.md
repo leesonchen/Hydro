@@ -8,6 +8,7 @@
 - **增量同步**：监听题目新增 / 编辑 / 删除事件，实时更新 Sonic。
 - **全局桶**：自动维护 `global@title`、`global@content`，支持一次查询全域题目。
 - **可调查询上限**：`maxQueryLimit` 可与 Sonic 的 `query_limit_maximum` 对齐，避免报错。
+- **中文分词**：使用 `nodejieba` 分词，提升中文多字词搜索精度（改动后请重建索引）。
 - **重建脚本**：提供 `ensureSonicSearch`，一键重建索引。
 
 ## 前置条件
@@ -108,17 +109,22 @@
    ```bash
    cp -r packages/sonic /opt/hydro/addons/sonic
    ```
-2. 若 HydroOJ 运行在 Docker 中，将其挂载/复制进容器：
+2. 在插件目录安装依赖：
+   ```bash
+   cd /opt/hydro/addons/sonic
+   yarn install  # 或 npm install
+   ```
+3. 若 HydroOJ 运行在 Docker 中，将其挂载/复制进容器：
    ```bash
    docker run ... -v /opt/hydro/addons/sonic:/root/.hydro/addons/sonic:ro ...
    ```
-3. 在 HydroOJ 内注册该 addon：
+4. 在 HydroOJ 内注册该 addon：
    ```bash
    hydrooj addon add /root/.hydro/addons/sonic
    # 如之前安装过 npm 版本，建议卸载
    hydrooj addon remove @hydrooj/sonic
    ```
-4. 重启 HydroOJ（`pm2 restart hydrooj`）。
+5. 重启 HydroOJ（`pm2 restart hydrooj`）。
 
 ## 配置项
 
@@ -136,6 +142,17 @@
 - 若需要全域搜索，请在题库列表请求中添加 `global=1`，例如：
   `https://your-oj/d/system/p?q=keyword&global=1`
 - 当 `domainId !== 'system'` 或未传 `global` 时，仍只搜索当前域。
+
+### 搜索范围（可选）
+- 默认搜索标题 + 标签 + 正文：`scope=all`（默认值）。
+- 若仅搜索标题 + 标签，使用：
+  `https://your-oj/d/system/p?q=keyword&scope=title`
+
+### 搜索模式（可选）
+- 默认使用 Sonic：`mode=sonic`（默认值）。
+- 若使用 MongoDB 正则回退（标题/标签，或配合 `scope=all` 搜索正文）：
+  `https://your-oj/d/system/p?q=keyword&mode=regex`
+- **注意**：`mode=regex` 下不支持 `global=1` 的跨域搜索。
 
 ## 重建索引
 
