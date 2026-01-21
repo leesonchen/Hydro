@@ -5,7 +5,6 @@
  * 与 CSV 导出。大部分逻辑集中在同一个文件中，方便审计与部署。
  */
 import { stringify as toCSV } from 'csv-stringify/sync';
-import { escapeRegExp } from 'lodash';
 import {
     BadRequestError,
     ContestModel,
@@ -33,12 +32,14 @@ interface StatRow {
 interface TableHeader {
     label: string;
     url?: string;
+    scoreboardUrl?: string;
 }
 
 // 统计表格行（行标题 + 单元格文本）。
 interface TableRow {
     label: string;
     url?: string;
+    scoreboardUrl?: string;
     cells: string[];
 }
 
@@ -137,12 +138,14 @@ const buildTableData = (
     options: {
         itemLabel: string;
         itemUrl: (tdoc: any) => string;
+        itemScoreboardUrl: (tdoc: any) => string;
         userUrl: (user: any) => string;
     },
 ): TableData => {
     const itemHeaders = tdocs.map((tdoc) => ({
         label: tdoc.title,
         url: options.itemUrl(tdoc),
+        scoreboardUrl: options.itemScoreboardUrl(tdoc),
     }));
     const userHeaders = users.map((user) => ({
         label: user.uname,
@@ -165,6 +168,7 @@ const buildTableData = (
         rows: rows.map((row, index) => ({
             label: row.tdoc.title,
             url: itemHeaders[index]?.url,
+            scoreboardUrl: itemHeaders[index]?.scoreboardUrl,
             cells: row.cells.map((cell) => cell.display),
         })),
     };
@@ -223,15 +227,16 @@ class ContestStatsHandler extends Handler {
             .map((uid) => udict[uid])
             .filter(Boolean)
             .sort((a, b) => a.uname.localeCompare(b.uname));
-        const userIds = users.map((user) => user._id);
+        const normalizedQuery = q.trim().toLowerCase();
+        const filteredUsers = normalizedQuery
+            ? users.filter((user) => user.uname.toLowerCase().includes(normalizedQuery))
+            : users;
+        const userIds = filteredUsers.map((user) => user._id);
 
         const rules = Object.keys(ContestModel.RULES).filter((key) => !ContestModel.RULES[key].hidden);
-        const escaped = escapeRegExp(q.toLowerCase());
-        const $regex = new RegExp(q.length >= 2 ? escaped : `\\A${escaped}`, 'gim');
         const filter = {
             assign: { $in: [selectedGroup] },
             ...(rule ? { rule } : { rule: { $in: rules } }),
-            ...(q ? { title: { $regex } } : {}),
         };
         const sort = { endAt: -1, beginAt: -1, _id: -1 };
         const cursor = ContestModel.getMulti(domainId, filter).sort(sort);
@@ -240,12 +245,19 @@ class ContestStatsHandler extends Handler {
             ? await ContestModel.getMulti(domainId, filter).sort(sort).toArray()
             : tdocs;
         const rows = await buildRows(domainId, exportDocs, userIds);
-        const resolvedLayout = (layout === 'user' || layout === 'item')
-            ? layout
-            : (users.length > exportDocs.length ? 'user' : 'item');
-        const table = buildTableData(resolvedLayout, exportDocs, users, rows, {
+        const hasExplicitLayout = layout === 'user' || layout === 'item';
+        let resolvedLayout: 'user' | 'item';
+        if (hasExplicitLayout) {
+            resolvedLayout = layout as 'user' | 'item';
+        } else if (normalizedQuery) {
+            resolvedLayout = 'item';
+        } else {
+            resolvedLayout = 'item';
+        }
+        const table = buildTableData(resolvedLayout, exportDocs, filteredUsers, rows, {
             itemLabel: '比赛',
             itemUrl: (tdoc) => (this as any).url('contest_detail', { tid: tdoc.docId }),
+            itemScoreboardUrl: (tdoc) => (this as any).url('contest_scoreboard', { tid: tdoc.docId }),
             userUrl: (user) => (this as any).url('user_detail', { uid: user._id }),
         });
         if (download) {
@@ -261,7 +273,7 @@ class ContestStatsHandler extends Handler {
         this.response.template = 'contest_statistics.html';
         this.response.body = {
             rows,
-            users,
+            users: filteredUsers,
             groups,
             group: selectedGroup,
             rule,
@@ -314,14 +326,15 @@ class HomeworkStatsHandler extends Handler {
             .map((uid) => udict[uid])
             .filter(Boolean)
             .sort((a, b) => a.uname.localeCompare(b.uname));
-        const userIds = users.map((user) => user._id);
+        const normalizedQuery = q.trim().toLowerCase();
+        const filteredUsers = normalizedQuery
+            ? users.filter((user) => user.uname.toLowerCase().includes(normalizedQuery))
+            : users;
+        const userIds = filteredUsers.map((user) => user._id);
 
-        const escaped = escapeRegExp(q.toLowerCase());
-        const $regex = new RegExp(q.length >= 2 ? escaped : `\\A${escaped}`, 'gim');
         const filter = {
             rule: 'homework',
             assign: { $in: [selectedGroup] },
-            ...(q ? { title: { $regex } } : {}),
         };
         const sort = { penaltySince: -1, endAt: -1, beginAt: -1, _id: -1 };
         const cursor = ContestModel.getMulti(domainId, filter).sort(sort);
@@ -330,12 +343,19 @@ class HomeworkStatsHandler extends Handler {
             ? await ContestModel.getMulti(domainId, filter).sort(sort).toArray()
             : tdocs;
         const rows = await buildRows(domainId, exportDocs, userIds);
-        const resolvedLayout = (layout === 'user' || layout === 'item')
-            ? layout
-            : (users.length > exportDocs.length ? 'user' : 'item');
-        const table = buildTableData(resolvedLayout, exportDocs, users, rows, {
+        const hasExplicitLayout = layout === 'user' || layout === 'item';
+        let resolvedLayout: 'user' | 'item';
+        if (hasExplicitLayout) {
+            resolvedLayout = layout as 'user' | 'item';
+        } else if (normalizedQuery) {
+            resolvedLayout = 'item';
+        } else {
+            resolvedLayout = (filteredUsers.length > exportDocs.length ? 'user' : 'item');
+        }
+        const table = buildTableData(resolvedLayout, exportDocs, filteredUsers, rows, {
             itemLabel: '作业',
             itemUrl: (tdoc) => (this as any).url('homework_detail', { tid: tdoc.docId }),
+            itemScoreboardUrl: (tdoc) => (this as any).url('homework_scoreboard', { tid: tdoc.docId }),
             userUrl: (user) => (this as any).url('user_detail', { uid: user._id }),
         });
         if (download) {
@@ -349,7 +369,7 @@ class HomeworkStatsHandler extends Handler {
         this.response.template = 'homework_statistics.html';
         this.response.body = {
             rows,
-            users,
+            users: filteredUsers,
             groups,
             group: selectedGroup,
             q,

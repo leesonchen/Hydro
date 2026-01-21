@@ -2,15 +2,77 @@
 {% import "components/paginator.html" as paginator with context %}
 {% import "components/nothing.html" as nothing with context %}
 {% block content %}
+<style>
+.stats__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.stats__controls .filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-right: auto;
+}
+.stats__controls .filter-form select,
+.stats__controls .filter-form input {
+  min-width: 140px;
+}
+.stats__controls .compact.button,
+.stats__controls .primary.button,
+.stats__controls .primary.rounded.button {
+  white-space: nowrap;
+}
+.stats-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.stats-table-wrapper table {
+  min-width: max(100%, 960px);
+  width: max-content;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+.stats-table-wrapper th,
+.stats-table-wrapper td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.stats-table-wrapper .col--title {
+  min-width: 220px;
+  text-align: center;
+}
+.stats-table-wrapper .col--stat {
+  min-width: 140px;
+  padding: 0;
+  text-align: center;
+}
+.stats__cell-link,
+.stats__cell-text {
+  display: block;
+  padding: 0.4rem 0.6rem;
+  line-height: 1.4;
+}
+.stats__cell-link {
+  color: inherit;
+  text-decoration: none;
+}
+.stats__cell-link:hover,
+.stats__cell-link:focus {
+  text-decoration: underline;
+}
+</style>
 <div class="row">
   <div class="medium-12 columns">
     <div class="section">
       <div class="section__header">
         <h1 class="section__title">作业统计</h1>
-        <div class="section__tools">
+        <div class="section__tools stats__controls">
           <form method="get" class="filter-form" name="filter-form">
             <input type="hidden" name="layout" value="{{ layout }}">
-            <input type="text" class="inline compact textbox" name="q" value="{{ q }}" placeholder="搜索作业...">
+            <input type="text" class="inline compact textbox" name="q" value="{{ q }}" placeholder="搜索用户...">
             <select class="inline compact select" name="group">
               {%- for g in groups -%}
                 <option value="{{ g }}"{% if group == g %} selected{% endif %}>{{ g }}</option>
@@ -24,26 +86,32 @@
             </button>
           </form>
           <a class="compact button{% if layout == 'item' %} primary{% endif %}" href="{{ url('homework_statistics', query={group: group, q: q, layout: 'item'}) }}">
-            作业为行
+            用户在列
           </a>
           <a class="compact button{% if layout == 'user' %} primary{% endif %}" href="{{ url('homework_statistics', query={group: group, q: q, layout: 'user'}) }}">
-            用户为行
+            用户在行
           </a>
-          <a class="primary rounded button" href="{{ url('homework_statistics', query={group: group, q: q, layout: layout, download: true}) }}">
+          <!-- <a class="primary rounded button" href="{{ url('homework_statistics', query={group: group, q: q, layout: layout, download: true}) }}">
             <span class="icon icon-download"></span>
             导出 CSV
-          </a>
+          </a> -->
         </div>
       </div>
       <div class="section__body no-padding">
         <div class="typo">
-          <blockquote class="note">总分 (AC/未AC/未提交)，CE/FE 计入未AC。</blockquote>
+          <blockquote class="note">总分 (AC/未AC/未提交)，CE 计入未AC。</blockquote>
         </div>
         {% if not table.rows|length %}
           {{ nothing.render('暂无作业数据 ╰(*°▽°*)╯') }}
         {% else %}
-          <div class="table-responsive" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
+          <div class="stats-table-wrapper" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
             <table class="data-table">
+              <colgroup>
+                <col class="col--title">
+                {%- for header in table.headers -%}
+                  <col class="col--stat">
+                {%- endfor -%}
+              </colgroup>
               <thead>
                 <tr>
                   <th class="col--title">{{ table.rowHeaderLabel }}</th>
@@ -69,7 +137,19 @@
                       {%- endif -%}
                     </td>
                     {%- for cell in row.cells -%}
-                      <td class="col--stat">{{ cell }}</td>
+                      {% set column_index = loop.index0 %}
+                      {% if layout == 'item' %}
+                        {% set scoreboard_link = row.scoreboardUrl %}
+                      {% else %}
+                        {% set scoreboard_link = table.headers[column_index].scoreboardUrl %}
+                      {% endif %}
+                      <td class="col--stat">
+                        {% if scoreboard_link %}
+                          <a class="stats__cell-link" href="{{ scoreboard_link }}">{{ cell }}</a>
+                        {% else %}
+                          <span class="stats__cell-text">{{ cell }}</span>
+                        {% endif %}
+                      </td>
                     {%- endfor -%}
                   </tr>
                 {%- endfor -%}
