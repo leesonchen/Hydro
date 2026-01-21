@@ -1,0 +1,93 @@
+{% extends "layout/basic.html" %}
+{% import "components/paginator.html" as paginator with context %}
+{% import "components/nothing.html" as nothing with context %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">比赛统计</h1>
+        <div class="section__tools">
+          <form method="get" class="filter-form" name="filter-form">
+            <input type="hidden" name="layout" value="{{ layout }}">
+            <input type="text" class="inline compact textbox" name="q" value="{{ q }}" placeholder="搜索比赛...">
+            <select class="inline compact select" name="group">
+              {%- for g in groups -%}
+                <option value="{{ g }}"{% if group == g %} selected{% endif %}>{{ g }}</option>
+              {%- endfor -%}
+              {%- if not groups|length -%}
+                <option disabled>暂无可选分组</option>
+              {%- endif -%}
+            </select>
+            <select class="inline compact select" name="rule">
+              <option value=""{% if not rule %} selected{% endif %}>全部赛制</option>
+              {%- for k, v in model.contest.RULES -%}
+                {% if not v.hidden %}
+                  <option value="{{ k }}"{% if rule == k %} selected{% endif %}>{{ _(v.TEXT) }}</option>
+                {% endif %}
+              {%- endfor -%}
+            </select>
+            <button type="submit" class="compact button">
+              搜索
+            </button>
+          </form>
+          <a class="compact button{% if layout == 'item' %} primary{% endif %}" href="{{ url('contest_statistics', query={group: group, rule: rule, q: q, layout: 'item'}) }}">
+            比赛为行
+          </a>
+          <a class="compact button{% if layout == 'user' %} primary{% endif %}" href="{{ url('contest_statistics', query={group: group, rule: rule, q: q, layout: 'user'}) }}">
+            用户为行
+          </a>
+          <a class="primary rounded button" href="{{ url('contest_statistics', query={group: group, rule: rule, q: q, layout: layout, download: true}) }}">
+            <span class="icon icon-download"></span>
+            导出 CSV
+          </a>
+        </div>
+      </div>
+      <div class="section__body no-padding">
+        <div class="typo">
+          <blockquote class="note">ACM：AC/未AC/未提交；其他赛制：总分 (AC/未AC/未提交)。</blockquote>
+        </div>
+        {% if not table.rows|length %}
+          {{ nothing.render('暂无比赛数据') }}
+        {% else %}
+          <div class="table-responsive" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th class="col--title">{{ table.rowHeaderLabel }}</th>
+                  {%- for header in table.headers -%}
+                    <th class="col--user">
+                      {%- if header.url -%}
+                        <a href="{{ header.url }}">{{ header.label }}</a>
+                      {%- else -%}
+                        {{ header.label }}
+                      {%- endif -%}
+                    </th>
+                  {%- endfor -%}
+                </tr>
+              </thead>
+              <tbody>
+                {%- for row in table.rows -%}
+                  <tr>
+                    <td class="col--title">
+                      {%- if row.url -%}
+                        <a href="{{ row.url }}"{% if layout == 'item' %} data-emoji-enabled{% endif %}>{{ row.label }}</a>
+                      {%- else -%}
+                        {{ row.label }}
+                      {%- endif -%}
+                    </td>
+                    {%- for cell in row.cells -%}
+                      <td class="col--stat">{{ cell }}</td>
+                    {%- endfor -%}
+                  </tr>
+                {%- endfor -%}
+              </tbody>
+            </table>
+          </div>
+          {{ paginator.render(page, tpcount, add_qs=qs) }}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
