@@ -88,6 +88,23 @@ const resolveScore = (tsdoc: any) => {
     return 0;
 };
 
+const buildActivityStats = (tdoc: any, tsdoc: any) => {
+    const { acCount, submitNotAc, notSubmitted } = buildCounts(tdoc, tsdoc);
+    let lastSubmitAt: Date | null = null;
+    for (const j of tsdoc?.journal || []) {
+        if (!tdoc.pids?.includes(j.pid)) continue;
+        const submitAt = j.rid?.getTimestamp?.();
+        if (submitAt && (!lastSubmitAt || submitAt > lastSubmitAt)) lastSubmitAt = submitAt;
+    }
+    return {
+        totalScore: resolveScore(tsdoc),
+        acCount,
+        submitNotAc,
+        notSubmitted,
+        lastSubmitAt,
+    };
+};
+
 /**
  * 构造表格中的单个单元格：ACM 赛制直接显示 "AC/未AC/未提交"；
  * 其他赛制则显示总分并附带同样的计数，便于非 ACM 场景理解。
@@ -389,4 +406,38 @@ class HomeworkStatsHandler extends Handler {
 export async function apply(ctx: Context) {
     ctx.Route('contest_statistics', '/contest-statistics', ContestStatsHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('homework_statistics', '/homework-statistics', HomeworkStatsHandler, PERM.PERM_VIEW_HOMEWORK);
+    ctx.on('handler/after/UserDetail#get', async (handler: Handler) => {
+        if (handler.response?.template !== 'user_detail.html') return;
+        const body = handler.response.body as any;
+        if (!body?.tdocs?.length) return;
+        const showActivityStats = handler.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
+        body.showActivityStats = showActivityStats;
+        if (!showActivityStats) return;
+        const domainId = handler.args?.domainId;
+        const uid = body?.udoc?._id ?? handler.args?.uid;
+        if (!domainId || !uid) return;
+        const docIds = body.tdocs.map((tdoc: any) => tdoc.docId).filter(Boolean);
+        if (!docIds.length) return;
+        const [tsdocs, fullTdocs] = await Promise.all([
+            ContestModel.getMultiStatus(domainId, { docId: { $in: docIds }, uid }).toArray(),
+            ContestModel.getMulti(domainId, { docId: { $in: docIds } })
+                .project({ docId: 1, title: 1, rule: 1, pids: 1 })
+                .toArray(),
+        ]);
+        const statusMap = new Map<string, any>();
+        for (const tsdoc of tsdocs) {
+            const key = typeof tsdoc.docId === 'string' ? tsdoc.docId : tsdoc.docId.toHexString();
+            statusMap.set(key, tsdoc);
+        }
+        const tdocMap = new Map<string, any>();
+        for (const tdoc of fullTdocs) {
+            const key = typeof tdoc.docId === 'string' ? tdoc.docId : tdoc.docId.toHexString();
+            tdocMap.set(key, tdoc);
+        }
+        for (const tdoc of body.tdocs) {
+            const key = typeof tdoc.docId === 'string' ? tdoc.docId : tdoc.docId.toHexString();
+            const fullTdoc = tdocMap.get(key) || tdoc;
+            tdoc.activityStats = buildActivityStats(fullTdoc, statusMap.get(key));
+        }
+    });
 }

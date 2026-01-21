@@ -1,0 +1,98 @@
+<li class="section__tab-item">
+  <h1 class="section__tab-title">{{ _('Recent Activities') }}</h1>
+  <div class="section__tab-main">
+    {% if not tdocs.length %}
+      {{ nothing.render("This person is lazy and didn't join any contests or homework.") }}
+    {% else %}
+    <div class="typo section__body no-media">
+      {% if showActivityStats %}
+      <style>
+        .recent-activity-table-wrapper {
+          overflow-x: auto;
+        }
+        .recent-activity-table {
+          width: 100%;
+          min-width: 720px;
+          border-collapse: collapse;
+          font-size: 0.9rem;
+        }
+        .recent-activity-table th,
+        .recent-activity-table td {
+          padding: 0.5rem 0.75rem;
+          border-bottom: 1px solid var(--border-color, #ebebeb);
+          vertical-align: top;
+          text-align: left;
+        }
+        .recent-activity-table th {
+          font-weight: 600;
+          color: var(--text-color-strong, #333);
+          background: var(--table-head-bg, rgba(0, 0, 0, 0.02));
+        }
+        .recent-activity-meta {
+          line-height: 1.6;
+        }
+        .recent-activity-meta span {
+          display: inline-block;
+          margin-right: 0.75rem;
+        }
+      </style>
+      <div class="recent-activity-table-wrapper">
+        <table class="recent-activity-table">
+          <thead>
+            <tr>
+              <th>比赛 / 作业</th>
+              <th>赛制</th>
+              <th>统计</th>
+              <th>最后提交时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tdoc in tdocs %}
+            {% set stats = tdoc.activityStats %}
+            <tr>
+              <td>
+                <a class="contest-type--{{ tdoc.rule }}" href="{{ url('contest_detail' if tdoc.rule !== 'homework' else 'homework_detail', tid=tdoc.docId) }}">
+                  {{ tdoc.title }}
+                  <span class="contest-type-tag"><span class="icon icon-award"></span>{{ _(model.contest.RULES[tdoc['rule']].TEXT) }}</span>
+                </a>
+              </td>
+              <td>{{ _(model.contest.RULES[tdoc['rule']].TEXT) }}</td>
+              <td>
+                {% if stats %}
+                <div class="recent-activity-meta">
+                  {% if tdoc.rule != 'acm' %}
+                  <span>总分：{{ stats.totalScore }}</span>
+                  {% endif %}
+                  <span>AC：{{ stats.acCount }}</span>
+                  <span>未AC：{{ stats.submitNotAc }}</span>
+                  <span>未提交：{{ stats.notSubmitted }}</span>
+                </div>
+                {% else %}
+                -
+                {% endif %}
+              </td>
+              <td>
+                {% if stats and stats.lastSubmitAt %}
+                  {{ datetimeSpan(stats.lastSubmitAt, false, 'YYYY-MM-DD HH:mm')|safe }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <ul>
+        {% for tdoc in tdocs %}
+        <li><a class="contest-type--{{ tdoc.rule }}" href="{{ url('contest_detail' if tdoc.rule !== 'homework' else 'homework_detail', tid=tdoc.docId) }}">
+          {{ tdoc.title }} <span class="contest-type-tag"><span class="icon icon-award"></span>{{ _(model.contest.RULES[tdoc['rule']].TEXT) }}</span>
+        </a></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</li>
