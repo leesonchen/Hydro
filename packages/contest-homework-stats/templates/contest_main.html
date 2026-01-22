@@ -137,7 +137,9 @@
         </h1>
       </div>
       <div class="section__body">
+        {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
         <p><a href="{{ url('contest_statistics', query={group: group, rule: rule, q: q}) }}" class="expanded primary button">比赛统计</a></p>
+        {% endif %}
         <p><a href="{{ url('contest_create') }}" class="expanded primary button">{{ _('Create a contest') }}</a></p>
       </div>
     </div>

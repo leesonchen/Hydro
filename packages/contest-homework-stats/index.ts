@@ -12,6 +12,7 @@ import {
     Handler,
     NotAssignedError,
     PERM,
+    PRIV,
     STATUS,
     Types,
     UserModel,
@@ -410,7 +411,8 @@ export async function apply(ctx: Context) {
         if (handler.response?.template !== 'user_detail.html') return;
         const body = handler.response.body as any;
         if (!body?.tdocs?.length) return;
-        const showActivityStats = handler.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
+        // const showActivityStats = handler.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
+        const showActivityStats = handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM);
         body.showActivityStats = showActivityStats;
         if (!showActivityStats) return;
         const domainId = handler.args?.domainId;
