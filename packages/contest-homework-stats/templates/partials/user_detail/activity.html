@@ -66,6 +66,11 @@
                   <span>AC：{{ stats.acCount }}</span>
                   <span>未AC：{{ stats.submitNotAc }}</span>
                   <span>未提交：{{ stats.notSubmitted }}</span>
+                  <span>
+                    <a class="inline-link" href="{{ url('homework_scoreboard' if tdoc.rule === 'homework' else 'contest_scoreboard', tid=tdoc.docId) }}" target="_blank">
+                      详情
+                    </a>
+                  </span>
                 </div>
                 {% else %}
                 -
