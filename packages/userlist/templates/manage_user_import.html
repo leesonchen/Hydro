@@ -1,0 +1,91 @@
+{% import "components/user.html" as user %}
+{% extends "manage_base.html" %}
+
+{% block manage_content %}
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title" data-heading>{{ _('Import User') }}</h1>
+  </div>
+  <div class="section__body">
+    <blockquote class="note">
+      <p>每行一个用户，格式：邮箱, 用户名, 密码, 显示名, 扩展信息(JSON)</p>
+      <p>扩展信息示例：{"group":"class1,class2","role":"default","school":"XX学校","studentId":"20250001"}</p>
+      <p>支持 Tab 或逗号分隔</p>
+    </blockquote>
+    {{ noscript_note.render() }}
+
+    {% if messages and messages.length %}
+    <div class="messages">
+      {% for msg in messages %}
+      <p class="{{ 'text-red' if 'Invalid' in msg or 'error' in msg or 'exists' in msg else 'text-green' }}">{{ msg }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post">
+      {{ form.form_textarea({
+        columns: null,
+        label: 'Users',
+        name: 'users',
+        rows: 15
+      }) }}
+      <div class="row">
+        <div class="column">
+          <button type="submit" name="draft" value="true" class="rounded primary button">{{ _('Preview') }}</button>
+          <button type="submit" class="rounded button">{{ _('Submit') }}</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if users and users.length %}
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title" data-heading>预览（{{ users.length }} 个用户）</h1>
+  </div>
+  <div class="section__body no-padding">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>邮箱</th>
+          <th>用户名</th>
+          <th>密码</th>
+          <th>显示名</th>
+          <th>学校</th>
+          <th>学号</th>
+          <th>角色</th>
+          <th>用户组</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.email }}</td>
+          <td>{{ u.username }}</td>
+          <td>{{ u.password }}</td>
+          <td>{{ u.displayName or '-' }}</td>
+          <td>{{ u.school or '-' }}</td>
+          <td>{{ u.studentId or '-' }}</td>
+          <td>{{ u.role or 'default' }}</td>
+          <td>{{ u.group or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<style>
+.messages p {
+  margin: 4px 0;
+}
+.text-red {
+  color: #d32f2f;
+}
+.text-green {
+  color: #388e3c;
+}
+</style>
+{% endblock %}

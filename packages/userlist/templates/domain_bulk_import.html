@@ -1,0 +1,48 @@
+{% import "components/user.html" as user %}
+{% extends "domain_base.html" %}
+{% block domain_content %}
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title" data-heading>{{ _('Import Group') }}</h1>
+  </div>
+  <div class="section__body">
+    <blockquote class="note">
+      <p>从Excel或csv中复制[用户名],[角色],[小组]来添加到域内。如：student1,default,class1</p>
+    </blockquote>
+    {{ noscript_note.render() }}
+    <p name="messages"></p>
+    {{ form.form_textarea({
+        columns:null,
+        label:'Users',
+        name:'users'
+        }) }}
+    <div class="row"><div class="column">
+      <button name="group_preview" class="rounded primary button">{{ _('Preview') }}</button>
+      <button name="group_submit" class="rounded button">{{ _('Submit') }}</button>
+    </div></div>
+  </div>
+</div>
+{% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title" data-heading>{{ _('Edit User Password') }}</h1>
+  </div>
+  <div class="section__body">
+    <blockquote class="note">
+      <p>从Excel或csv中复制[用户名],[密码]来批量设置用户密码。如：student1,123456</p>
+    </blockquote>
+    {{ noscript_note.render() }}
+    <p name="messages"></p>
+    {{ form.form_textarea({
+        columns:null,
+        label:'Users',
+        name:'users'
+        }) }}
+    <div class="row"><div class="column">
+      <button name="password_preview" class="rounded primary button">{{ _('Preview') }}</button>
+      <button name="password_submit" class="rounded button">{{ _('Submit') }}</button>
+    </div></div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

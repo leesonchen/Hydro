@@ -1,0 +1,286 @@
+{{ set(UiContext, 'ddocs', ddocs) }}
+{{ set(UiContext, 'dudict', dudict) }}
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title">用户信息</h1>
+    <div class="section__tools">
+      <form method="post" action="{{ url('manage_user_edit' if handler.domain._id == 'system' else 'domain_user_edit', { uid: current._id }) }}">
+        <button class="primary rounded button" type="submit" name="operation" value="reset_password" onclick="return confirm('是否要重置{{ current.uname }}的密码为123456？')">重置密码</button>
+        <button class="primary rounded button" type="submit" name="operation" value="ban" onclick="return confirm('是否要{{'解封' if current.priv==0 else '封禁'}}{{ current.uname }}？')">{{'解封' if current.priv==0 else '封禁'}}</button>
+        <button class="primary rounded button" type="submit" name="operation" value="logout" onclick="return confirm('是否要强制登出 {{ current.uname }}？')">强制登出</button>
+      </form>
+    </div>
+  </div>
+  <div class="section__body">
+    <div class="media">
+      <div class="media__left">
+        <img src="{{ avatarUrl(current.avatar, 80) }}" width="80" height="80" class="large user-profile-avatar">
+      </div>
+      <div class="media__body profile-header__main typo">
+        <h2>{{ current.uname }}<small>(UID: {{ current._id }})</small></h2>
+        <div class="profile-header__meta">
+          <p>Email: {{ current.mail }}</p>
+          <p>{{ _('Phone') }}: {{ current.phone }}</p>
+          <p>{{ _('Display Name') }}: {{ current.displayName }}</p>
+          <p>{{ _('School') }}: {{ current.school }}</p>
+          {% if hasRealname %}
+          <p>真实姓名: {{ current.realname }}</p>
+          {% endif %}
+          <p>{{ _('Student ID') }}: {{ current.studentId }}</p>
+          <p>状态：{{ '已封禁' if current.priv==0 else '未封禁' }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section" data-heading-extract-to="#menu-item-home_{{ category }}">
+  <div class="section__header">
+    <h1 class="section__title" id="profile_edit">{{ _("Edit Profile") }}</h1>
+  </div>
+  <div class="section__body row">
+    <div class="medium-6 columns">
+      <form method="post">
+        <input type="hidden" name="operation" value="set_info">
+        <div class="columns form__item end">
+          <label>
+            手机
+            <div name="form_item_phone" class="textbox-container">
+              <input name="phone" type="text" value="{{ current.phone }}" class="textbox">
+            </div>
+          </label>
+        </div>
+        <div class="columns form__item end">
+          <label>
+            邮箱
+            <div name="form_item_mail" class="textbox-container">
+              <input name="mail" type="text" value="{{ current.mail }}" class="textbox">
+            </div>
+          </label>
+        </div>
+        {% if hasRealname %}
+        <div class="columns form__item end">
+          <label>
+            真实姓名
+            <div name="form_item_phone" class="textbox-container">
+              <input name="realname" type="text" value="{{ current.realname }}" class="textbox">
+            </div>
+          </label>
+        </div>
+        {% endif %}
+        <div class="columns form__item end">
+          <button class="primary rounded button" type="submit" onclick="return confirm('是否要修改{{ current.uname }}的信息？')">修改信息</button>
+        </div>
+      </form>
+    </div>
+    <div class="medium-6 columns">
+      {% if page_name === 'manage_user_edit' %}
+      <form method="post">
+        <input type="hidden" name="operation" value="set_username">
+        <div class="columns form__item end">
+          <label>
+          用户名
+            <div name="form_item_uname" class="textbox-container">
+              <input name="uname" type="text" value="{{ current.uname }}" class="textbox">
+            </div>
+          </label>
+          <button class="primary rounded button" type="submit" onclick="return confirm('是否要修改{{ current.uname }}的用户名？')">修改用户名</button>
+        </div>
+      </form>
+      <form method="post">
+        <input type="hidden" name="operation" value="set_displayname">
+        <div class="columns form__item end">
+          <label>
+          显示名({{ handler.args.domainId }})
+            <div name="form_item_displayname" class="textbox-container">
+              <input name="displayName" type="text" value="{{ current.displayName }}" class="textbox">
+            </div>
+          </label>
+          <button class="primary rounded button" type="submit" onclick="return confirm('是否要修改{{ current.displayName }}的显示名？')">修改显示名</button>
+        </div>
+      </form>
+      {% else %}
+      <form method="post">
+        <input type="hidden" name="operation" value="set_displayname">
+        <div class="medium-5 columns form__item end">
+          <label>
+          显示名({{ handler.args.domainId }})
+            <div name="form_item_displayname" class="textbox-container">
+              <input name="displayName" type="text" value="{{ current.displayName }}" class="textbox">
+            </div>
+          </label>
+          <button class="primary rounded button" type="submit" onclick="return confirm('是否要修改{{ current.displayName }}的显示名？')">修改显示名</button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  <form method="post">
+{# TODO: move setting_storage check to core #}
+{%- for family, family_settings in settings|groupby('family') -%}
+  <div class="section__header">
+    <h1 class="section__title" id="{{ family }}" data-heading>{{ _(family) }}</h1>
+  </div>
+  <div class="section__body">
+  {%- for setting in family_settings -%}
+  {% if not setting.flag|bitand(model.setting.FLAG_HIDDEN) %}
+  {% set secret = setting.flag|bitand(model.setting.FLAG_SECRET) != 0 %}
+  {% if setting.type == 'text' or setting.type == 'password' or setting.type == 'number' or setting.type == 'float' %}
+    {{ form.form_text({
+          type:setting.type,
+          label:setting.name,
+          help_text:setting.desc,
+          name:setting.key,
+          value:'' if (secret or isFileConfig) else (current[setting.key]|default(setting.value)),
+          disabled:setting.flag|bitand(2),
+          placeholder:_('(Not changed)') if secret else ''
+        }) }}
+  {% elif setting.type == 'select' %}
+    {{ form.form_select({
+          options:setting.range,
+          label:setting.name,
+          help_text:setting.desc,
+          name:setting.key,
+          value:current[setting.key] or setting.value,
+          disabled:setting.flag|bitand(2)
+        }) }}
+  {% elif setting.type == 'radio' %}
+    {{ form.form_radio({
+          options:setting.range,
+          label:setting.name,
+          help_text:setting.desc,
+          name:setting.key,
+          value:current[setting.key] or setting.value,
+          disabled:setting.flag|bitand(2)
+        }) }}
+  {% elif setting.type == 'image_radio' %}
+    {{ form.form_image_radio({
+          options:setting.range,
+          image_class:setting.image_class,
+          label:setting.name,
+          help_text:setting.desc,
+          name:setting.key,
+          value:current[setting.key] or setting.value,
+          disabled:setting.flag|bitand(2)
+        }) }}
+  {% elif setting.type == 'textarea' %}
+    {{ form.form_textarea({
+          label:setting.name,
+          help_text:setting.desc,
+          name:setting.key,
+          value:'' if secret else (current[setting.key]|default(setting.value)),
+          disabled:setting.flag|bitand(2),
+          placeholder:_('(Not changed)') if secret else '',
+          extra_attr: 'data-yaml' if setting.subType == 'yaml' else ''
+        }) }}
+  {% elif setting.type == 'markdown' %}
+    {{ form.form_textarea({
+          label:setting.name,
+          help_text:setting.desc,
+          name:setting.key,
+          value:'' if secret else (current[setting.key]|default(setting.value)),
+          markdown:true,
+          disabled:setting.flag|bitand(2),
+          placeholder:_('(Not changed)') if secret else ''
+        }) }}
+  {% elif setting.type == 'boolean' %}
+    {% set _val = current[setting.key] %}
+    {{ form.form_checkbox({
+          label:setting.name,
+          placeholder:setting.desc,
+          name:setting.key,
+          value:setting.value if (_val === undefined or _val === null) else _val,
+          disabled:setting.flag|bitand(2)
+    })}}
+    {{ form.form_checkbox({
+          label:setting.name,
+          name:'booleanKeys.' + setting.key,
+          value:true,
+          extra_class:'display-hidden',
+          no_label:true
+    })}}
+  {% endif %}
+  {% endif %}
+  {%- endfor -%}
+  </div>
+{%- endfor -%}
+  <div class="section__body">
+    <input type="submit" class="rounded primary button" value="{{ _('Save All Changes') }}">
+  </div>
+  {% if page_name === 'manage_user_edit' %}
+  <div class="section__body no-padding">
+    <table class="data-table">
+      <colgroup>
+        <col class="col--icon">
+        <col class="col--name">
+        <col class="col--role">
+        <col class="col--displayname">
+        <col class="col--group">
+        <col class="col--action">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="col--icon">&nbsp;</th>
+          <th class="col--name">{{ _('Name') }} ({{ _('ID') }})</th>
+          <th class="col--role">{{ _('Role') }}</th>
+          <th class="col--displayname">{{ _('Display Name') }}</th>
+          <th class="col--group">{{ _('Group') }}</th>
+          <th class="col--action">{{ _('Action') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {%- for ddoc in ddocs -%}
+        <tr>
+          <td class="col--icon">
+            <img src="{{ avatarUrl(ddoc.avatar, 32) }}" width="32" height="32">
+          </td>
+          <td class="col--name">
+            {{ ddoc['name'] }} ({{ ddoc['_id'] }})
+          </td>
+          <td class="col--role">
+            {{ dudict[ddoc._id].role|default('default') }}
+            <a class="typo-a" name="edit_domain_role" data-did="{{ddoc._id}}">{{ _('Edit') }}</a>
+          </td>
+          <td class="col--displayname">
+            {{ dudict[ddoc._id].displayName }}
+            <a class="typo-a" name="edit_displayname" data-did="{{ddoc._id}}">{{ _('Edit') }}</a>
+          </td>
+          <td class="col--group">
+            {{ groups[ddoc._id]|default([])|join(', ') }}
+          </td>
+          <td class="col--action">
+            <a class="typo-a" href="{{ url('homepage', domainId=ddoc['_id']) }}">{{ _('Visit') }}</a>
+            · <a class="typo-a" href="{{ url('domain_dashboard', domainId=ddoc['_id']) }}">{{ _('Manage') }}</a>
+          </td>
+        </tr>
+      {%- endfor -%}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</form>
+</div>
+
+<style>
+  .profile-header__meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-gap: 10px;
+  }
+  .profile-header__meta p {
+    padding: 0;
+  }
+  .col--icon {
+    width: 60px;
+    line-height: 1;
+  }
+  .data-table img {
+    border-radius: 50%;
+  }
+  .col--role {
+    width: 160px;
+    border-left: 1px solid #c8c8c8;
+  }
+  .col--action {
+    width: 135px;
+  }
+</style>

@@ -1,0 +1,365 @@
+{% extends "manage_base.html" if page_name === 'manage_users_list' else "domain_base.html" %}
+{% import "components/user.html" as user %}
+
+{#
+  Render the shared page content once, then place it into both manage_content and domain_content blocks
+  so the correct block is used depending on the chosen base template.
+#}
+{% macro users_content() %}
+{% macro sort_query(field) %}
+  {% set nextOrder = 'desc' if sortBy === field and sortOrder !== 'desc' else 'asc' %}
+  ?page=1&sortBy={{ field }}&sortOrder={{ nextOrder }}{% if filterUidOrName %}&uidOrName={{ filterUidOrName }}{% endif %}{% if filterSchool %}&school={{ filterSchool }}{% endif %}{% if filterStudentId %}&studentId={{ filterStudentId }}{% endif %}{% if filterPhone %}&phone={{ filterPhone }}{% endif %}{% if group %}&group={{ group }}{% endif %}{% if filterLoginAt %}&loginAt={{ filterLoginAt }}{% endif %}{% if banStatus %}&banStatus={{ banStatus }}{% endif %}
+{% endmacro %}
+<style>
+.user-list-filters .form__item { margin-bottom: 1rem; }
+.user-list-filters .textbox, .user-list-filters .select { width: 100%; }
+.column-visibility { margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--color-form-border); padding-bottom: 12px; }
+.column-visibility label { font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 4px; border: 1px solid var(--color-form-border); padding: 2px 10px; border-radius: 4px; font-size: 0.9rem; transition: all 0.2s; }
+.column-visibility label:hover { background: var(--color-table-row-hover); border-color: var(--color-primary); }
+.column-visibility input[type="checkbox"] { margin: 0; }
+.section__tools .button { margin-left: 8px; }
+.col--ban { width: 80px; text-align: center; }
+.col--action { width: 100px; text-align: center; }
+.action-icons { display: flex; justify-content: center; gap: 15px; }
+.action-icons .icon { font-size: 1.2rem; cursor: pointer; }
+.action-icons a { color: inherit; }
+.action-icons a:hover { color: var(--color-primary); }
+.domain-badges a { display: inline-block; margin: 2px 6px 2px 0; padding: 2px 10px; border-radius: 999px; background: var(--color-table-row-hover); border: 1px solid var(--color-form-border); }
+.domain-badges a:hover { border-color: var(--color-primary); }
+.full-screen-mode { position: fixed; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1000; background: var(--color-background); overflow: auto; padding: 12px 16px; }
+.full-screen-mode .main, .full-screen-mode .main__content, .full-screen-mode .main__container { width: 100% !important; max-width: none !important; }
+.full-screen-mode .section__body.no-padding { overflow-x: auto; }
+.full-screen-mode table.data-table { min-width: 1400px; }
+</style>
+
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title" data-heading>{{ _('Filter') }}</h1>
+    <div class="section__tools">
+      {% if hasSystemWidePerm %}
+      <a class="primary rounded button" href="{{ url('manage_users_import') if page_name === 'manage_users_list' else url('domain_bulk_import') }}">{{ _('Import User') }}</a>
+      {% endif %}
+      <button type="button" class="rounded button" name="batch_reset_password" disabled>{{ _('Bulk Reset Password') }}</button>
+      <button type="button" class="rounded button" id="toggle-full-screen">{{ _('Full Screen') }}</button>
+      <button type="button" class="rounded button" onclick="location.href=location.pathname">{{ _('Reset') }}</button>
+    </div>
+  </div>
+  <div class="section__body user-list-filters">
+    <form method="get" class="row" id="filter-form">
+      <div class="medium-3 columns form__item">
+        <label>
+          {{ _('By Username or UID') }}
+          <div class="textbox-container">
+            <input name="uidOrName" type="text" value="{{ filterUidOrName or '' }}" class="textbox" placeholder="{{ _('UID / Username / Email') }}">
+          </div>
+        </label>
+      </div>
+      <div class="medium-3 columns form__item">
+        <label>
+          {{ _('By School') }}
+          <div class="textbox-container">
+            <input name="school" type="text" value="{{ filterSchool or '' }}" class="textbox">
+          </div>
+        </label>
+      </div>
+      <!-- <div class="medium-3 columns form__item">
+        <label>
+          {{ _('By Student ID') }}
+          <div class="textbox-container">
+            <input name="studentId" type="text" value="{{ filterStudentId or '' }}" class="textbox">
+          </div>
+        </label>
+      </div> -->
+      <div class="medium-3 columns form__item">
+        <label>
+          {{ _('By Phone') }}
+          <div class="textbox-container">
+            <input name="phone" type="text" value="{{ filterPhone or '' }}" class="textbox">
+          </div>
+        </label>
+      </div>
+      <div class="medium-4 columns form__item">
+        <label>
+          {{ _('Login Time') }}
+          <div class="textbox-container">
+            <select name="loginAt" class="select">
+              <option value="">{{ _('All') }}</option>
+              <option value="1d" {{ 'selected' if filterLoginAt === '1d' }}>{{ _('Within 1 Day') }}</option>
+              <option value="1w" {{ 'selected' if filterLoginAt === '1w' }}>{{ _('Within 1 Week') }}</option>
+              <option value="1m" {{ 'selected' if filterLoginAt === '1m' }}>{{ _('Within 1 Month') }}</option>
+              <option value="6m" {{ 'selected' if filterLoginAt === '6m' }}>{{ _('Within 6 Months') }}</option>
+              <option value="-1d" {{ 'selected' if filterLoginAt === '-1d' }}>{{ _('More than 1 Day') }}</option>
+              <option value="-1w" {{ 'selected' if filterLoginAt === '-1w' }}>{{ _('More than 1 Week') }}</option>
+              <option value="-1m" {{ 'selected' if filterLoginAt === '-1m' }}>{{ _('More than 1 Month') }}</option>
+              <option value="-6m" {{ 'selected' if filterLoginAt === '-6m' }}>{{ _('More than 6 Months') }}</option>
+            </select>
+          </div>
+        </label>
+      </div>
+      <div class="medium-4 columns form__item">
+        <label>
+          {{ _('Ban Status') }}
+          <div class="textbox-container">
+            <select name="banStatus" class="select">
+              <option value="">{{ _('All') }}</option>
+              <option value="active" {{ 'selected' if banStatus === 'active' }}>{{ _('Active') }}</option>
+              <option value="banned" {{ 'selected' if banStatus === 'banned' }}>{{ _('Banned') }}</option>
+            </select>
+          </div>
+        </label>
+      </div>
+      <div class="medium-4 columns form__item">
+        <label>
+          {{ _('Group') }}
+          <div class="textbox-container">
+            <select name="group" class="select">
+              <option value="">{{ _('All') }}</option>
+              {% for g in groups %}
+              <option value="{{ g.name }}" {{ 'selected' if group === g.name else '' }}>{{ g.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </label>
+      </div>
+      <div class="medium-12 columns form__item">
+        <div class="column-visibility">
+          <label><input type="checkbox" data-column="email" checked> {{ _('Email') }}</label>
+          <label><input type="checkbox" data-column="school" checked> {{ _('School') }}</label>
+          <label><input type="checkbox" data-column="studentid" checked> {{ _('Student ID') }}</label>
+          <label><input type="checkbox" data-column="phone" checked> {{ _('Phone') }}</label>
+          <label><input type="checkbox" data-column="loginat"> {{ _('Last Login Time') }}</label>
+          <label><input type="checkbox" data-column="loginip"> {{ _('Last Login IP') }}</label>
+          <label><input type="checkbox" data-column="lastsubmit"> {{ _('Last Submit Time') }}</label>
+          <label><input type="checkbox" data-column="domains" checked> {{ _('Joined Domains') }}</label>
+          <label><input type="checkbox" data-column="ban" checked> {{ _('Ban') }}</label>
+        </div>
+      </div>
+      <div class="medium-12 columns form__item text-right">
+        <button type="submit" class="rounded primary button">{{ _('Search') }}</button>
+      </div>
+      <input type="hidden" name="page" value="1">
+    </form>
+  </div>
+</div>
+
+{% if uids and (uids | length) %}
+<div class="section">
+  <div class="section__body no-padding">
+    <table class="data-table">
+      <colgroup>
+        <col class="col--checkbox" style="width: 40px;">
+        <col class="col--id" style="width: 80px;">
+        <col class="col--user" style="min-width: 150px;">
+        <col class="col--email" style="min-width: 200px;">
+        <col class="col--school" style="width: 120px;">
+        <col class="col--studentid" style="width: 100px;">
+        <col class="col--phone" style="width: 120px;">
+        <col class="col--loginat" style="width: 150px; display: none;">
+        <col class="col--loginip" style="width: 150px; display: none;">
+        <col class="col--lastsubmit" style="width: 150px; display: none;">
+        <col class="col--domains" style="min-width: 200px;">
+        <col class="col--ban" style="width: 80px;">
+        <col class="col--action" style="width: 100px;">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="col--checkbox"><input type="checkbox" name="select_all"></th>
+          <th class="col--id"><a class="typo-a" href="{{ sort_query('_id') }}">UID</a></th>
+          <th class="col--user"><a class="typo-a" href="{{ sort_query('unameLower') }}">{{ _('User') }}</a></th>
+          <th class="col--email"><a class="typo-a" href="{{ sort_query('mailLower') }}">{{ _('Email') }}</a></th>
+          <th class="col--school"><a class="typo-a" href="{{ sort_query('school') }}">{{ _('School') }}</a></th>
+          <th class="col--studentid"><a class="typo-a" href="{{ sort_query('studentId') }}">{{ _('Student ID') }}</a></th>
+          <th class="col--phone"><a class="typo-a" href="{{ sort_query('phone') }}">{{ _('Phone') }}</a></th>
+          <th class="col--loginat" style="display: none;"><a class="typo-a" href="{{ sort_query('loginat') }}">{{ _('Last Login Time') }}</a></th>
+          <th class="col--loginip" style="display: none;">{{ _('Last Login IP') }}</th>
+          <th class="col--lastsubmit" style="display: none;"><a class="typo-a" href="{{ sort_query('lastSubmitAt') }}">{{ _('Last Submit Time') }}</a></th>
+          <th class="col--domains">{{ _('Domains') }}</th>
+          <th class="col--ban"><a class="typo-a" href="{{ sort_query('priv') }}">{{ _('Ban') }}</a></th>
+          <th class="col--action">{{ _('Action') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for uid in uids %}
+        {% set u = udict[uid] %}
+        {% if u %}
+        <tr>
+          <td class="col--checkbox"><input type="checkbox" name="uid" value="{{ uid }}" class="user-checkbox"></td>
+          <td class="col--id">{{ uid }}</td>
+          <td class="col--user">
+            {{ user.render_inline(u, true) }}
+            {% if u.displayName %}
+            <br><small class="supplementary">{{ u.displayName }}</small>
+            {% endif %}
+          </td>
+          <td class="col--email">{{ u.mail }}</td>
+          <td class="col--school">{{ u.school or '-' }}</td>
+          <td class="col--studentid">{{ u.studentId or '-' }}</td>
+          <td class="col--phone">{{ u.phone or '-' }}</td>
+          <td class="col--loginat" style="display: none;">{{ datetimeSpan(u.loginat)|safe if u.loginat else '-' }}</td>
+          <td class="col--loginip" style="display: none;">{{ u._loginip or '-' }}</td>
+          <td class="col--lastsubmit" style="display: none;">{{ datetimeSpan(lastSubmitAtDict[uid])|safe if lastSubmitAtDict and lastSubmitAtDict[uid] else '-' }}</td>
+          <td class="col--domains">
+            {% set domains = userDomainMap[uid] or [] %}
+            <div class="domain-badges">
+              {% for domainId in domains %}
+                <a href="{{ url('homepage', domainId=domainId) }}" class="typo-a">{{ ddict[domainId] or domainId }}</a>
+              {% endfor %}
+            </div>
+          </td>
+          <td class="col--ban">
+            {{ _('Banned') if u.priv == 0 else _('Active') }}
+          </td>
+          <td class="col--action">
+            <div class="action-icons">
+              <a href="{{ url('manage_user_edit' if page_name === 'manage_users_list' else 'domain_user_edit', uid=uid) }}" data-tooltip="{{ _('Edit') }}"><span class="icon icon-edit"></span></a>
+              <a href="javascript:;" onclick="resetPassword({{ uid }}, '{{ u.uname | escape }}')" data-tooltip="{{ _('Reset Password') }}"><span class="icon icon-settings"></span></a>
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="section__body">
+    <div class="row">
+      <div class="medium-6 columns">
+        <div class="batch-operations">
+          <button name="batch_logout" class="rounded button" disabled>{{ _('Bulk Force Logout') }}</button>
+          <button name="batch_ban" class="rounded button" disabled>{{ _('Bulk Ban') }}</button>
+          <button name="batch_unban" class="rounded button" disabled>{{ _('Bulk Unban') }}</button>
+        </div>
+      </div>
+      <div class="medium-6 columns text-right">
+        <span class="supplementary">
+          {{ _('{0} records, Page {1}/{2}').format(total, page, totalPages) }}
+        </span>
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}&sortBy={{ sortBy }}&sortOrder={{ sortOrder }}{% if filterUidOrName %}&uidOrName={{ filterUidOrName }}{% endif %}{% if filterSchool %}&school={{ filterSchool }}{% endif %}{% if filterStudentId %}&studentId={{ filterStudentId }}{% endif %}{% if filterPhone %}&phone={{ filterPhone }}{% endif %}{% if group %}&group={{ group }}{% endif %}{% if filterLoginAt %}&loginAt={{ filterLoginAt }}{% endif %}{% if banStatus %}&banStatus={{ banStatus }}{% endif %}" class="typo-a">{{ _('Previous Page') }}</a>
+        {% endif %}
+        {% if page < totalPages %}
+        <a href="?page={{ page + 1 }}&sortBy={{ sortBy }}&sortOrder={{ sortOrder }}{% if filterUidOrName %}&uidOrName={{ filterUidOrName }}{% endif %}{% if filterSchool %}&school={{ filterSchool }}{% endif %}{% if filterStudentId %}&studentId={{ filterStudentId }}{% endif %}{% if filterPhone %}&phone={{ filterPhone }}{% endif %}{% if group %}&group={{ group }}{% endif %}{% if filterLoginAt %}&loginAt={{ filterLoginAt }}{% endif %}{% if banStatus %}&banStatus={{ banStatus }}{% endif %}" class="typo-a">{{ _('Next Page') }}</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="section">
+  <div class="section__body">
+    <p class="supplementary">{{ _('No data. Please input filter conditions and click search.') }}</p>
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function() {
+  // Column visibility logic
+  document.querySelectorAll('.column-visibility input').forEach(function(cb) {
+    var colClass = '.col--' + cb.dataset.column;
+    
+    cb.addEventListener('change', function() {
+      var display = this.checked ? '' : 'none';
+      document.querySelectorAll(colClass).forEach(function(el) {
+        el.style.display = display;
+      });
+      localStorage.setItem('userlist_col_' + this.dataset.column, this.checked);
+    });
+
+    // Load saved state
+    var saved = localStorage.getItem('userlist_col_' + cb.dataset.column);
+    if (saved !== null) {
+      cb.checked = saved === 'true';
+    }
+    
+    // Initial sync
+    var initialDisplay = cb.checked ? '' : 'none';
+    document.querySelectorAll(colClass).forEach(function(el) {
+      el.style.display = initialDisplay;
+    });
+  });
+
+  // Full screen toggle
+  document.getElementById('toggle-full-screen').addEventListener('click', function() {
+    document.body.classList.toggle('full-screen-mode');
+    this.textContent = document.body.classList.contains('full-screen-mode') ? '{{ _('Exit Full Screen') }}' : '{{ _('Full Screen') }}';
+  });
+
+  // Quick Reset Password
+  window.resetPassword = function(uid, uname) {
+    var password = prompt('{{ _('Please input new password for {0}:').format('{0}') }}'.replace('{0}', uname), '123456');
+    if (!password) return;
+    fetch('{{ url("manage_user_batch_operation") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ operation: 'reset_password', uids: [uid], password: password })
+    }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.ok) { alert('{{ _('Reset succeeded.') }}'); }
+      else { alert('{{ _('Reset failed: {0}').format('{0}') }}'.replace('{0}', (data.error || '{{ _('Unknown error') }}'))); }
+    }).catch(function(err) { alert('{{ _('Operation failed: {0}').format('{0}') }}'.replace('{0}', err.message)); });
+  };
+
+  var selectAll = document.querySelector('input[name="select_all"]');
+  var checkboxes = document.querySelectorAll('.user-checkbox');
+  var batchButtons = document.querySelectorAll('.batch-operations button, button[name="batch_reset_password"]');
+
+  function updateBatchButtons() {
+    var checkedCount = document.querySelectorAll('.user-checkbox:checked').length;
+    batchButtons.forEach(function(btn) {
+      btn.disabled = checkedCount === 0;
+    });
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function() {
+      checkboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+      updateBatchButtons();
+    });
+  }
+
+  checkboxes.forEach(function(cb) {
+    cb.addEventListener('change', updateBatchButtons);
+  });
+
+  function getSelectedUids() {
+    return Array.from(document.querySelectorAll('.user-checkbox:checked')).map(function(cb) { return parseInt(cb.value); });
+  }
+
+  function batchOperation(operation) {
+    var uids = getSelectedUids();
+    if (uids.length === 0) return;
+
+    var payload = { operation: operation, uids: uids };
+    if (operation === 'reset_password') {
+      var password = prompt('{{ _('Please input a unified new password for selected users:') }}', '123456');
+      if (!password) return;
+      payload.password = password;
+    }
+
+    fetch('{{ url("manage_user_batch_operation") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.ok) { alert('{{ _('Batch operation succeeded.') }}'); location.reload(); }
+      else { alert('{{ _('Operation failed: {0}').format('{0}') }}'.replace('{0}', (data.error || '{{ _('Unknown error') }}'))); }
+    }).catch(function(err) { alert('{{ _('Operation failed: {0}').format('{0}') }}'.replace('{0}', err.message)); });
+  }
+
+  document.querySelector('button[name="batch_reset_password"]')?.addEventListener('click', function() { batchOperation('reset_password'); });
+  document.querySelector('button[name="batch_logout"]')?.addEventListener('click', function() { batchOperation('logout'); });
+  document.querySelector('button[name="batch_ban"]')?.addEventListener('click', function() { batchOperation('ban'); });
+  document.querySelector('button[name="batch_unban"]')?.addEventListener('click', function() { batchOperation('unban'); });
+})();
+</script>
+{% endmacro %}
+
+{% block manage_content %}
+  {{ users_content() }}
+{% endblock %}
+
+{% block domain_content %}
+  {{ users_content() }}
+{% endblock %}
