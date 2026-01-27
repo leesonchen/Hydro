@@ -404,8 +404,8 @@ class HomeworkStatsHandler extends Handler {
  * 指向这里定义的统计页。
  */
 export async function apply(ctx: Context) {
-    ctx.Route('contest_statistics', '/contest-statistics', ContestStatsHandler, PERM.PERM_VIEW_CONTEST);
-    ctx.Route('homework_statistics', '/homework-statistics', HomeworkStatsHandler, PERM.PERM_VIEW_HOMEWORK);
+    ctx.Route('contest_statistics', '/contest-statistics', ContestStatsHandler, PERM.PERM_CREATE_CONTEST);
+    ctx.Route('homework_statistics', '/homework-statistics', HomeworkStatsHandler, PERM.PERM_CREATE_HOMEWORK);
     ctx.on('handler/after/UserDetail#get', async (handler: Handler) => {
         if (handler.response?.template !== 'user_detail.html') return;
         const body = handler.response.body as any;
