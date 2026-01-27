@@ -30,11 +30,9 @@
             </button>
           </form>
         {% if handler.user.hasPerm(perm.PERM_CREATE_HOMEWORK) %}
-          {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
           <a class="compact button" href="{{ url('homework_statistics', query={group: group, q: q}) }}">
             作业统计
           </a>
-          {% endif %}
           <a class="compact button" href="{{ url('homework_create') }}">{{ _('Create Homework') }}</a>
         {% endif %}
         </div>
