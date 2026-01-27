@@ -71,19 +71,14 @@ export async function apply(ctx: Context, config: typeof Config) {
     ctx.Route('manage_users_list', '/manage/users', UserListHandler);
     ctx.Route('manage_users_import', '/manage/users/import', SystemUserImportHandler);
     ctx.Route('manage_user_edit', '/manage/user/:uid/edit', UserEditHandler);
-    ctx.Route('manage_user_batch_operation', '/manage/users/batch_operation', UserBatchOperationHandler, PRIV.PRIV_EDIT_SYSTEM);
-
-    // 域级路由（始终注册，使用域管理权限）
-    // NOTE: 必须包含域前缀 /d/:domainId，否则访问 /d/<domain>/manage/users 会命中不到本插件导致空白。
-    ctx.Route('domain_users_list', '/manage/users', UserListHandler, PERM.PERM_EDIT_DOMAIN);
-    ctx.Route('domain_user_edit', '/manage/user/:uid/edit', UserEditHandler, PERM.PERM_EDIT_DOMAIN);
-    ctx.Route('domain_bulk_import', '/domain/bulk_import', BulkImportHandler, PERM.PERM_EDIT_DOMAIN);
+    ctx.Route('manage_user_batch_operation', '/manage/users/batch_operation', UserBatchOperationHandler);
 
     // UI 注入（控制面板、用户下拉菜单）
-    ctx.injectUI('ControlPanel', 'manage_users_list');
+    ctx.injectUI('ControlPanel', 'manage_users_list', { domainId: 'system' });
     ctx.injectUI('UserDropdown', 'manage_users_list', {
         family: 'Moderate',
         icon: 'user',
+        domainId: 'system',
     }, (h) => h.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)
         || `,${SystemModel.get('user-list.admin') || ''},`.includes(`,${h.user._id},`));
 
@@ -115,15 +110,5 @@ export async function apply(ctx: Context, config: typeof Config) {
         });
     });
 
-    // 域用户列表 UI 注入（域管理侧边栏）
-    ctx.injectUI('DomainManage', 'domain_users_list', {
-        family: 'Access Control',
-        icon: 'user',
-    });
-
-    // 域批量导入 UI 注入
-    ctx.injectUI('DomainManage', 'domain_bulk_import', {
-        family: 'Access Control',
-        icon: 'copy',
-    });
+    // NOTE: 不再注入域管理侧边栏菜单，仅保留系统级用户列表管理入口。
 }

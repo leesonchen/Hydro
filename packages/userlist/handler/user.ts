@@ -8,6 +8,10 @@ let hasStore = false;
 let hasYsr = false;
 let banMode: 'allPrivilege' | 'noLogin' = 'allPrivilege';
 
+function hasUserListAdmin(uid: number) {
+    return `,${SystemModel.get('user-list.admin') || ''},`.includes(`,${uid},`);
+}
+
 export function setHasStore(v: boolean) { hasStore = v; }
 export function setHasYsr(v: boolean) { hasYsr = v; }
 export function setBanMode(v: 'allPrivilege' | 'noLogin') { banMode = v; }
@@ -78,9 +82,9 @@ export class UserListHandler extends UserBaseHandler {
         sortBy = '_id',
         sortOrder = 'asc',
     ) {
-        // 非系统管理员访问 manage_users_list 时，重定向到域用户列表
-        if (hasStore && !this.hasSystemPriv() && this.context.routerName === 'manage_users_list') {
-            this.response.redirect = `/manage/users`;
+        const originalPath = ((this.context as any).originalPath || (this.request as any).originalPath) as string | undefined;
+        if (originalPath && /^\/d\/[^/]+\/manage\/users(?:\/|$)/.test(originalPath)) {
+            this.response.redirect = `/manage/users${this.context.search || ''}`;
             return;
         }
 
@@ -174,27 +178,65 @@ export class UserListHandler extends UserBaseHandler {
                 .project({ _id: 1 })
                 .toArray()).map((u: any) => u._id);
         } else {
-            const rows = await UserModel.coll.aggregate([
-                { $match: filter },
-                { $project: { _id: 1 } },
-                {
-                    $lookup: {
-                        from: 'record',
-                        localField: '_id',
-                        foreignField: 'uid',
-                        as: '_records',
-                        pipeline: [
-                            { $group: { _id: null, lastSubmitAt: { $max: '$_id' } } },
-                            { $project: { _id: 0, lastSubmitAt: 1 } },
-                        ],
+            // Performance: derive uid constraint from user filter if possible, then sort by record time.
+            const recordMatch: any = {};
+            const uidFilter = filter._id;
+            if (uidFilter && typeof uidFilter === 'object') {
+                if (uidFilter.$in) recordMatch.uid = { $in: uidFilter.$in };
+                else if (uidFilter.$gt) recordMatch.uid = { $gt: uidFilter.$gt };
+                else if (uidFilter.$gte) recordMatch.uid = { $gte: uidFilter.$gte };
+            } else if (typeof uidFilter === 'number') {
+                recordMatch.uid = uidFilter;
+            }
+
+            const userFilterForLookup = { ...filter };
+            // _id is matched via uid; move other constraints into lookup filter.
+            delete userFilterForLookup._id;
+
+            const isSimpleUserFilter = Object.keys(userFilterForLookup).length === 0;
+            const basePipeline: any[] = [];
+            if (Object.keys(recordMatch).length) basePipeline.push({ $match: recordMatch });
+
+            // Fast path: when there is no extra user filter, stream records by _id order.
+            if (isSimpleUserFilter) {
+                basePipeline.push(
+                    { $sort: { _id: normalizedSortOrder === 'desc' ? -1 : 1 } },
+                    { $group: { _id: '$uid', lastSubmitAt: { $first: '$_id' } } },
+                    // Ensure stable ordering
+                    { $sort: { lastSubmitAt: normalizedSortOrder === 'desc' ? -1 : 1, _id: 1 } },
+                    { $skip: (page - 1) * pageSize },
+                    { $limit: pageSize },
+                    { $project: { _id: 1 } },
+                );
+            } else {
+                // Correct path: keep only users matched by user filter, but still compute lastSubmitAt from record.
+                basePipeline.push(
+                    { $group: { _id: '$uid', lastSubmitAt: { $max: '$_id' } } },
+                    { $sort: { lastSubmitAt: normalizedSortOrder === 'desc' ? -1 : 1, _id: 1 } },
+                    {
+                        $lookup: {
+                            from: 'user',
+                            let: { uid: '$_id' },
+                            pipeline: [
+                                {
+                                    $match: {
+                                        $expr: { $eq: ['$_id', '$$uid'] },
+                                        ...userFilterForLookup,
+                                    },
+                                },
+                                { $project: { _id: 1 } },
+                            ],
+                            as: '_udoc',
+                        },
                     },
-                },
-                { $addFields: { lastSubmitAt: { $arrayElemAt: ['$_records.lastSubmitAt', 0] } } },
-                { $sort: { lastSubmitAt: normalizedSortOrder === 'desc' ? -1 : 1, _id: 1 } },
-                { $skip: (page - 1) * pageSize },
-                { $limit: pageSize },
-                { $project: { _id: 1 } },
-            ]).toArray();
+                    { $match: { _udoc: { $ne: [] } } },
+                    { $skip: (page - 1) * pageSize },
+                    { $limit: pageSize },
+                    { $project: { _id: 1 } },
+                );
+            }
+
+            const rows = await RecordModel.coll.aggregate(basePipeline, { allowDiskUse: true } as any).toArray();
             uids = rows.map((r: any) => r._id);
         }
 
@@ -347,7 +389,7 @@ export class UserEditHandler extends UserBaseHandler {
     @param('uid', Types.Int)
     @param('password', Types.Password, true)
     async postResetPassword(domainId: string, uid: number, password = '123456') {
-        if (!hasStore) this.checkSystemWidePerm();
+        if (!hasStore && !this.hasSystemPriv()) this.checkSystemWidePerm();
         await UserModel.setPassword(uid, password);
         this.back();
     }
@@ -420,7 +462,9 @@ export class UserEditHandler extends UserBaseHandler {
 export class UserBatchOperationHandler extends Handler {
     @requireSudo
     async prepare() {
-        this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
+        if (this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) return;
+        if (hasUserListAdmin(this.user._id)) return;
+        throw new PrivilegeError(PRIV.PRIV_EDIT_SYSTEM);
     }
 
     @param('uids', Types.NumericArray)

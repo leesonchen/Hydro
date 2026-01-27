@@ -28,6 +28,8 @@
 .domain-badges a:hover { border-color: var(--color-primary); }
 .full-screen-mode { position: fixed; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1000; background: var(--color-background); overflow: auto; padding: 12px 16px; }
 .full-screen-mode .main, .full-screen-mode .main__content, .full-screen-mode .main__container { width: 100% !important; max-width: none !important; }
+.full-screen-mode .main__sidebar { display: none !important; }
+.full-screen-mode .main__content { margin-left: 0 !important; }
 .full-screen-mode .section__body.no-padding { overflow-x: auto; }
 .full-screen-mode table.data-table { min-width: 1400px; }
 </style>
@@ -37,10 +39,10 @@
     <h1 class="section__title" data-heading>{{ _('Filter') }}</h1>
     <div class="section__tools">
       {% if hasSystemWidePerm %}
-      <a class="primary rounded button" href="{{ url('manage_users_import') if page_name === 'manage_users_list' else url('domain_bulk_import') }}">{{ _('Import User') }}</a>
+      <a class="primary rounded button" href="{{ url('manage_users_import') }}">{{ _('Import User') }}</a>
       {% endif %}
       <button type="button" class="rounded button" name="batch_reset_password" disabled>{{ _('Bulk Reset Password') }}</button>
-      <button type="button" class="rounded button" id="toggle-full-screen">{{ _('Full Screen') }}</button>
+      <button type="button" class="rounded button" id="toggle-full-screen" style="display:none">{{ _('Full Screen') }}</button>
       <button type="button" class="rounded button" onclick="location.href=location.pathname">{{ _('Reset') }}</button>
     </div>
   </div>
@@ -62,14 +64,14 @@
           </div>
         </label>
       </div>
-      <!-- <div class="medium-3 columns form__item">
+      <div class="medium-3 columns form__item">
         <label>
           {{ _('By Student ID') }}
           <div class="textbox-container">
             <input name="studentId" type="text" value="{{ filterStudentId or '' }}" class="textbox">
           </div>
         </label>
-      </div> -->
+      </div>
       <div class="medium-3 columns form__item">
         <label>
           {{ _('By Phone') }}
@@ -124,14 +126,14 @@
       <div class="medium-12 columns form__item">
         <div class="column-visibility">
           <label><input type="checkbox" data-column="email" checked> {{ _('Email') }}</label>
-          <label><input type="checkbox" data-column="school" checked> {{ _('School') }}</label>
-          <label><input type="checkbox" data-column="studentid" checked> {{ _('Student ID') }}</label>
-          <label><input type="checkbox" data-column="phone" checked> {{ _('Phone') }}</label>
+          <label><input type="checkbox" data-column="school"> {{ _('School') }}</label>
+          <label><input type="checkbox" data-column="studentid"> {{ _('Student ID') }}</label>
+          <label><input type="checkbox" data-column="phone"> {{ _('Phone') }}</label>
           <label><input type="checkbox" data-column="loginat"> {{ _('Last Login Time') }}</label>
           <label><input type="checkbox" data-column="loginip"> {{ _('Last Login IP') }}</label>
           <label><input type="checkbox" data-column="lastsubmit"> {{ _('Last Submit Time') }}</label>
-          <label><input type="checkbox" data-column="domains" checked> {{ _('Joined Domains') }}</label>
-          <label><input type="checkbox" data-column="ban" checked> {{ _('Ban') }}</label>
+          <label><input type="checkbox" data-column="domains"> {{ _('Joined Domains') }}</label>
+          <label><input type="checkbox" data-column="ban"> {{ _('Ban') }}</label>
         </div>
       </div>
       <div class="medium-12 columns form__item text-right">
@@ -254,6 +256,8 @@
 
 <script>
 (function() {
+  var tUnknownError = "{{ _('Unknown error')|escape }}";
+  var tResetFailedTpl = "{{ _('Reset failed: {0}')|escape }}";
   // Column visibility logic
   document.querySelectorAll('.column-visibility input').forEach(function(cb) {
     var colClass = '.col--' + cb.dataset.column;
@@ -279,11 +283,7 @@
     });
   });
 
-  // Full screen toggle
-  document.getElementById('toggle-full-screen').addEventListener('click', function() {
-    document.body.classList.toggle('full-screen-mode');
-    this.textContent = document.body.classList.contains('full-screen-mode') ? '{{ _('Exit Full Screen') }}' : '{{ _('Full Screen') }}';
-  });
+  // Full screen disabled: no toggle handler
 
   // Quick Reset Password
   window.resetPassword = function(uid, uname) {
@@ -296,7 +296,12 @@
     }).then(function(res) { return res.json(); })
     .then(function(data) {
       if (data.ok) { alert('{{ _('Reset succeeded.') }}'); }
-      else { alert('{{ _('Reset failed: {0}').format('{0}') }}'.replace('{0}', (data.error || '{{ _('Unknown error') }}'))); }
+      else {
+        var msg = (data && data.error && data.error.message)
+          ? data.error.message
+          : (data && data.error ? String(data.error) : tUnknownError);
+        alert(tResetFailedTpl.replace('{0}', msg));
+      }
     }).catch(function(err) { alert('{{ _('Operation failed: {0}').format('{0}') }}'.replace('{0}', err.message)); });
   };
 
@@ -344,7 +349,12 @@
     }).then(function(res) { return res.json(); })
     .then(function(data) {
       if (data.ok) { alert('{{ _('Batch operation succeeded.') }}'); location.reload(); }
-      else { alert('{{ _('Operation failed: {0}').format('{0}') }}'.replace('{0}', (data.error || '{{ _('Unknown error') }}'))); }
+      else {
+        var msg = (data && data.error && data.error.message)
+          ? data.error.message
+          : (data && data.error ? String(data.error) : tUnknownError);
+        alert('{{ _('Operation failed: {0}').format('{0}') }}'.replace('{0}', msg));
+      }
     }).catch(function(err) { alert('{{ _('Operation failed: {0}').format('{0}') }}'.replace('{0}', err.message)); });
   }
 
@@ -352,6 +362,13 @@
   document.querySelector('button[name="batch_logout"]')?.addEventListener('click', function() { batchOperation('logout'); });
   document.querySelector('button[name="batch_ban"]')?.addEventListener('click', function() { batchOperation('ban'); });
   document.querySelector('button[name="batch_unban"]')?.addEventListener('click', function() { batchOperation('unban'); });
+
+  (function fixManageUsersLink() {
+    var links = document.querySelectorAll('.menu__link[href*="/manage/users"]');
+    links.forEach(function(link) {
+      link.setAttribute('href', '/manage/users');
+    });
+  })();
 })();
 </script>
 {% endmacro %}
