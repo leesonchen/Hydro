@@ -33,6 +33,7 @@ export class ClassEditHandler extends Handler {
     async get(domainId: string, id?: ObjectId) {
         this.response.body = {
             page_name: id ? 'domain_class_edit' : 'domain_class_create',
+            domain: this.domain,
         };
 
         let beginAt = moment().add(1, 'day').tz(this.user.timeZone).hour(0).minute(0).millisecond(0);
