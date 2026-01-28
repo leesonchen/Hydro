@@ -1,0 +1,169 @@
+{% import "components/contest.html" as contest with context %}
+{% import "components/nothing.html" as nothing with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{{ set(UiContext, 'tdocs', tdocs) }}
+{{ set(UiContext, 'tsdocs', tsdocs) }}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('All Courses') }}</h1>
+        <div class="section__tools">
+        {% if handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+          <a class="compact button" href="{{ url('domain_class') }}">{{ _('Classes Manage') }}</a>
+          {% if handler.domain._id === 'system' %}
+          <a class="compact button" href="{{ url('course_create', query={isTemplate:'true'}) }}">{{ _('Create Course Template') }}</a>
+          {% endif %}
+        {% endif %}
+        {% if handler.user.hasPerm(perm.PERM_CREATE_HOMEWORK) %}
+          <a class="compact button" href="{{ url('course_create') }}">{{ _('Create Course') }}</a>
+        {% endif %}
+        </div>
+      </div>
+      <div class="section__body no-padding">
+      {% if not Object.keys(tdocs)|length %}
+        {{ nothing.render('There is no course so far ╰(*°▽°*)╯') }}
+      {% else %}
+        <div class="section__tab-container memo">
+          <div class="tab-layout">
+            <ul class="vertical-tabs">
+            {%- for assignGroup, ttdocs in tdocs -%}
+              <li class="section__tab-item">
+                <h1 class="section__tab-title">
+                  {% if assignGroup.startsWith('templates::') %}
+                    {{ _('Course Templates') }}{% if assignGroup.split('::')[1] %}: {{ assignGroup.split('::')[1] }}{% endif %}
+                  {% elif assignGroup == 'unassigned' %}
+                    {{ _('Unassigned') }}
+                  {% else %}
+                    {{ assignGroup }}
+                  {% endif %}
+                </h1>
+              </li>
+            {%- endfor -%}
+            </ul>
+            <div class="tab-content">
+            {%- for assignGroup, ttdocs in tdocs -%}
+              <div class="section__tab-main">
+                <ol class="section__list homework__list">
+                {%- for tdoc in ttdocs -%}
+                  <li class="section__list__item homework__item">
+                    <div class="media">
+                      <div class="media__body medium">
+                        <h1 class="homework__title"><a href="{{ url('course_detail', tid=tdoc.docId) }}" data-emoji-enabled>{{ tdoc.title }}</a></h1>
+                        <ul class="supplementary list">
+                          <li>{{ tdoc.assign[0] if tdoc.assign else '未知班级' }}</li>
+                          <li>{{ _('Begin at') }}: {{ contest.render_time(tdoc.beginAt) }}</li>
+                          <li>{{ _('End at') }}: {{ contest.render_time(tdoc.endAt) }}</li>
+                          {% if tsdict[tdoc.docId] %}
+                          <li>{{ _('Progress') }}: {{ tsdict[tdoc.docId].progress|default(0) }}%</li>
+                          {% endif %}
+                          {% if tsdict[tdoc.docId] and tsdict[tdoc.docId].startAt %}
+                          <li>{{ _('Join at') }}: {{ contest.render_time(tsdict[tdoc.docId].startAt) }}</li>
+                          {% endif %}
+                        </ul>
+                        {% if tsdict[tdoc.docId] %}
+                        <div class="bp6-progress-bar bp6-intent-primary bp6-no-stripes">
+                          <div class="file-progress bp6-progress-meter" style="width: {{ tsdict[tdoc.docId].progress|default(0) }}%"></div>
+                        </div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </li>
+                {%- endfor -%}
+                </ol>
+              </div>
+            {%- endfor -%}
+            </div>
+          </div>
+        </div>
+      {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+.homework__title {
+  line-height: 1.2em; 
+  margin-bottom: 0.625rem;
+  font-size: 1.25rem;
+}
+.homework__info-attended {
+  color: #25ad40;
+}
+.section__tab-header-item {
+    border-top: 3px solid transparent;
+    transition: border-color .2s,background .2s,color .2s;
+    transition-timing-function: cubic-bezier(.215,.61,.355,1);
+    margin-right: 0;
+    color: #182026!important;
+    text-decoration: none
+}
+.section__tab-header-item:hover {
+    border-color: #5f9fd6;
+    background: #f8f8f8
+}
+.section__tab-header-item.selected {
+    border-color: #ed5f82
+}
+.tab-layout {
+  display: flex;
+  gap: 15px;
+}
+.vertical-tabs {
+  min-width: 180px;
+  border-right: 1px solid #eee;
+  padding-right: 15px;
+}
+.section__tab-item {
+  margin-bottom: 8px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-left: 3px solid transparent;
+  transition: all 0.2s;
+}
+.section__tab-item:hover {
+  background: #f8f8f8;
+  border-left-color: #5f9fd6;
+}
+.section__tab-item.active {
+  border-left-color: #ed5f82;
+  background: #f8f8f8;
+}
+.tab-content {
+  flex: 1;
+}
+.section__tab-main {
+  display: none;
+}
+.section__tab-main.active {
+  display: block;
+}
+.section__tab-title {
+  font-size: 14px;
+  margin: 0;
+}
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const tabItems = document.querySelectorAll('.section__tab-item');
+  const tabContents = document.querySelectorAll('.section__tab-main');
+  
+  // 默认显示第一个tab
+  tabItems[0]?.classList.add('active');
+  tabContents[0]?.classList.add('active');
+  
+  tabItems.forEach((tab, index) => {
+    tab.addEventListener('click', () => {
+      // 移除所有active类
+      tabItems.forEach(item => item.classList.remove('active'));
+      tabContents.forEach(content => content.classList.remove('active'));
+      
+      // 添加active类到当前选中的tab
+      tab.classList.add('active');
+      tabContents[index]?.classList.add('active');
+    });
+  });
+});
+</script>
+{% endblock %}

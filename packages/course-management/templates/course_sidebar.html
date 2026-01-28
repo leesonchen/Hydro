@@ -1,0 +1,64 @@
+{% import "components/user.html" as user with context %}
+{% import "components/contest.html" as contest with context %}
+<div class="section side">
+{% if page_name != 'training_detail' %}
+  <a class="contest-sidebar__bg" href="{{ url('course_detail', tid=tdoc.docId) }}">
+    <div class="section__body">
+      <h1>{{ tdoc['title'] }}</h1>
+      <div class="contest-sidebar__status">
+      {% if tsdoc.attend %}
+        <span class="icon icon-check"></span> {{ _('Claimed') }}
+      {% else %}
+        <span class="icon icon-schedule"></span> {{ _('Not Claimed') }}
+      {% endif %}
+      </div>
+    </div>
+  </a>
+{% endif %}
+  <div>
+    <ol class="menu">
+    {% if page_name != 'course_detail' %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('course_detail', tid=tdoc.docId) }}">
+        <span class="icon icon-homework"></span> {{ _('View Course') }}
+      </a></li>
+    {% endif %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('course_scoreboard', tid=tdoc.docId, id=0) }}">
+        <span class="icon icon-statistics"></span> {{ _('Scoreboard') }}
+      </a></li>
+    {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('course_edit', tid=tdoc.docId) }}">
+        <span class="icon icon-edit"></span> {{ _('Edit') }}
+      </a></li>
+      <li class="menu__item"><a class="menu__link" href="{{ url('course_manage', tid=tdoc.docId) }}">
+        <span class="icon icon-settings"></span> {{ _('Manage') }}
+      </a></li>
+    {% endif %}
+    {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={tid:tdoc.docId}) }}">
+        <span class="icon icon-flag"></span> {{ _('All Submissions') }}
+      </a></li>
+    {% elif tsdoc.attend %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={uidOrName:handler.user._id, tid:tdoc.docId}) }}">
+        <span class="icon icon-flag"></span> {{ _('My Recent Submissions') }}
+      </a></li>
+    {% endif %}
+      <li class="menu__seperator"></li>
+    </ol>
+  </div>
+  <div class="section__body typo">
+    <dl class="large horizontal">
+      <dt>{{ _('Plan') }}</dt><dd>{{ tdoc['dag']|length }}</dd>
+      <dt>{{ _('Begin at') }}</dt><dd>{{ contest.render_time(tdoc.beginAt) }}</dd>
+      <dt>{{ _('End at') }}</dt><dd>{{ contest.render_time(tdoc.endAt) }}</dd>
+      {% if tsdoc['startAt'] %}
+        <dt>{{ _('Join at') }}</dt><dd>{{ contest.render_time(tsdoc.startAt) }}</dd>
+      {% endif %}
+      {% if tsdoc['progress'] %}
+        <dt>{{ _('Progress') }}</dt><dd>{{ _('Completed') }} {{ tsdoc['progress'] }}%</dd>
+        <div class="bp6-progress-bar bp6-intent-primary bp6-no-stripes">
+          <div class="file-progress bp6-progress-meter" style="width: {{ tsdoc['progress']|default(0) }}%"></div>
+        </div>
+      {% endif %}
+    </dl>
+  </div>
+</div>

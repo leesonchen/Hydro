@@ -1,0 +1,46 @@
+__id: zh
+__langname: 简体中文
+
+# 页面标题
+course_create: 创建课程
+course_main: 课程
+course_detail: 课程详情
+course_edit: 编辑课程
+course_lecture: 课程讲义
+course_manage: 课程管理
+course_scoreboard: 课程成绩
+course_detail_problem: 题目详情
+domain_class: 管理班级
+domain_class_create: 创建班级
+domain_class_edit: 编辑班级
+
+# 界面文字
+Create Course Template: 创建课程模板
+Class Name: 班级名称
+Classes Manage: 班级管理
+Edit Class: 编辑班级
+Create Class: 创建班级
+All Courses: 所有课程
+Create Course: 创建课程
+Course Templates: 课程模板
+Add Course: 添加课程
+View Course: 查看课程
+Course Name: 课程名称
+Join at: 进入于
+Teachers: 教师
+Students: 学生
+Lecture: 讲义
+Section: 章节
+Archive: 归档
+Visit: 访问
+Enable Course: 启用课程功能
+Begin Date: 开始日期
+Begin Time: 开始时间
+End Date: 结束日期
+End Time: 结束时间
+Plan: 课程计划
+Total Score: 总分
+Solved: 通过题数
+Tries: 尝试次数
+Time: 时间
+Scoreboard: 成绩板

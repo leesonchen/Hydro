@@ -7,7 +7,7 @@ import {
     UserEditHandler, UserListHandler,
 } from './handler/user';
 import { BulkImportHandler } from './handler/bulkimport';
-import { registerStorePurchaseHandler, setImportHasStore, SystemUserImportHandler } from './handler/import';
+import { registerStorePurchaseHandler, setImportHasStore, UserlistSystemUserImportHandler } from './handler/import';
 
 export const name = 'userlist';
 export const Config = Schema.object({
@@ -69,7 +69,7 @@ export async function apply(ctx: Context, config: typeof Config) {
 
     // 基本路由（始终注册）
     ctx.Route('manage_users_list', '/manage/users', UserListHandler);
-    ctx.Route('manage_users_import', '/manage/users/import', SystemUserImportHandler);
+    ctx.Route('manage_users_import', '/manage/users/import', UserlistSystemUserImportHandler);
     ctx.Route('manage_user_edit', '/manage/user/:uid/edit', UserEditHandler);
     ctx.Route('manage_user_batch_operation', '/manage/users/batch_operation', UserBatchOperationHandler);
 

@@ -1,0 +1,10 @@
+{% extends "manage_base.html" if page_name === 'manage_users_list' else "domain_base.html" %}
+{% if page_name === 'manage_users_list' %}
+{% block manage_content %}
+<div id="user-list-container"></div>
+{% endblock %}
+{% else %}
+{% block domain_content %}
+<div id="user-list-container"></div>
+{% endblock %}
+{% endif %}

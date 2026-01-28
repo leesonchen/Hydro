@@ -1,0 +1,135 @@
+{% extends "domain_base.html" %}
+{% block domain_content %}
+{{ set(UiContext, 'templates', templates) }}
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title">{{ _('Edit Class') }}</h2>
+  </div>
+  <div class="section__body">
+    <form method="post">
+      {{ form.form_text({
+        columns:12,
+        label:'Name',
+        name:'name',
+        placeholder:_('Name'),
+        value:gdoc.name|default(''),
+        autofocus:true,
+        row:true
+      }) }}
+      {{ form.form_text({
+        columns:12,
+        label:'Teachers',
+        name:'teachers',
+        placeholder:_('Teachers'),
+        value:gdoc.teachers|default(''),
+        row:true
+      }) }}
+      {{ form.form_text({
+        columns:12,
+        label:'Students',
+        name:'students',
+        placeholder:_('Students'),
+        value:gdoc.students|default(''),
+        row:true
+      }) }}
+      <div class="row">
+            {{ form.form_text({
+                columns:3,
+                label:'Begin Date',
+                name:'beginAtDate',
+                placeholder:'YYYY-mm-dd',
+                value:dateBeginText,
+                date:true,
+                row:false
+            }) }}
+            {{ form.form_text({
+                columns:2,
+                label:'Begin Time',
+                name:'beginAtTime',
+                placeholder:'HH:MM',
+                value:timeBeginText,
+                time:true,
+                row:false
+            }) }}
+            {{ form.form_text({
+                columns:3,
+                label:'End Date',
+                name:'EndAtDate',
+                placeholder:'YYYY-mm-dd',
+                value:dateEndText,
+                date:true,
+                row:false
+            }) }}
+            {{ form.form_text({
+                columns:2,
+                label:'End Time',
+                name:'EndAtTime',
+                placeholder:'HH:MM',
+                value:timeEndText,
+                time:true,
+                row:false
+            }) }}
+            {{ form.form_checkbox({
+                columns:2,
+                label:'Archive',
+                name:'archive',
+                value:gdoc.archive|default(false),
+                row:false
+            }) }}
+      </div>
+      <div class="row">
+        <div class="columns">
+          {% if page_name == 'domain_class_edit' %}
+            <button name="operation" value="update" type="submit" class="rounded primary button">
+              {{ _('Update') }}
+            </button>
+            <button name="operation" value="delete" type="submit" class="rounded button">
+              {{ _('Delete') }}
+            </button>
+          {% else %}
+            <button name="operation" value="update" type="submit" class="rounded primary button">
+              {{ _('Create') }}
+            </button>
+          {% endif %}
+          <button type="button" class="rounded button" onclick="window.history.go(-1)">
+            {{ _('Cancel') }}
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+  {% if gdoc %}
+  <div class="section__header">
+    <h1 class="section__title">分配的课程</h1>
+    <div class="section__tools">
+      <button class="primary rounded button" name="add_course">{{ _('Add Course') }}</button>
+    </div>
+  </div>
+  <div class="section__body">
+    <table class="data-table">
+      <colgroup>
+        <col class="col--course">
+        <col class="col--action">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="col--course">{{ _('Course Name') }}</th>
+          <th class="col--action">{{ _('Action') }}</th>
+        </tr>
+      </thead>
+      <tbody class="course-tbody">
+        {%- for tdoc in tdocs -%}
+        <tr>
+          <td class="col--course">{{ tdoc.title }}</td>
+          <td class="col--action">
+            <a class="typo-a" href="{{ url('course_detail', tid=tdoc._id) }}">{{ _('Visit') }}</a>
+            · <a class="typo-a" href="{{ url('course_edit', tid=tdoc._id) }}">{{ _('Edit') }}</a>
+          </td>
+        </tr>
+        {%- endfor -%}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

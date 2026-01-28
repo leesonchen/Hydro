@@ -56,7 +56,7 @@ async function bulkCreateUsers(
 }
 
 // 系统用户导入
-export class SystemUserImportHandler extends UserBaseHandler {
+export class UserlistSystemUserImportHandler extends UserBaseHandler {
     async prepare() {
         if (hasStore) {
             this.checkPerm(PERM.PERM_EDIT_DOMAIN);
