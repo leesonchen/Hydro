@@ -7,34 +7,25 @@ import {
 } from '@hydrooj/ui-default';
 import { api } from '@hydrooj/ui-default/utils';
 
-console.log('course_edit.page module loaded');
-
 const page = new NamedPage(['course_edit', 'course_create'], () => {
-  console.log('course_edit.page handler invoked');
   (async () => {
-    console.log('course_edit.page async block started');
     const $assign = $('[name="assign"]');
     if ($assign.length) {
       // Force replace existing autocomplete if any (contest_edit might have attached one)
       if ($assign.data('autocomplete')) {
-        console.log('Replacing existing autocomplete on assign');
         $assign.data('autocomplete')?.destroy?.();
         $assign.removeData('autocomplete');
         $('.autocomplete-dummy[data-name="assign"]').remove();
         $assign.show();
       }
 
-      console.log('Fetching groups for assign autocomplete');
       const groups: any[] = await api('groups', {}, ['name', 'uids', 'students', 'class']);
-      console.log('Groups fetched:', groups?.length);
       const classes = (groups || [])
         .filter((g: any) => g && g.class)
         .map((g: any) => ({
           _id: g.name,
           name: `${g.name} (${(g.students || g.uids || []).length} users)`,
         }));
-
-      console.log('Constructing CustomSelectAutoComplete for classes:', classes.length);
       CustomSelectAutoComplete.getOrConstruct($assign, {
         multi: false,
         data: classes,
@@ -45,8 +36,21 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     }
   })().catch(err => console.error('course_edit.page async error:', err));
 
+  // Local datetime picker to avoid touching ui-default
+  const flatpickr = (window as any).flatpickr;
+  if (flatpickr) $('[data-pick-datetime]').each(function () {
+    const $input = $(this);
+    if ($input.data('fp-initialized')) return;
+    flatpickr(this, {
+      allowInput: true,
+      enableTime: true,
+      time_24hr: true,
+      dateFormat: 'Y-m-d H:i',
+    });
+    $input.data('fp-initialized', true);
+  });
+
   // DAG Visual Editor (default)
-  console.log('Initializing DAG visual editor');
   const $dag = $('textarea[name="dag"]');
   if ($dag.length) {
     const $dagRow = $dag.closest('.row');
@@ -114,26 +118,33 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       }
     };
 
-    const normalizeNodes = (data: any[]) => (data || []).map((node: any, idx: number) => {
-      const normalized = { ...node };
-      normalized._id = Number.isFinite(+normalized._id) ? +normalized._id : idx + 1;
-      normalized.title = (normalized.title ?? `章节 ${normalized._id}`) as string;
-      normalized.pids = Array.from(new Set((normalized.pids || [])
-        .map((p: any) => +p)
-        .filter((p: any) => Number.isFinite(p))));
-      if (normalized.requireNids) {
+    const normalizeNodes = (data: any[]) => (Array.isArray(data) ? data : [])
+      .map((node: any, idx: number) => {
+        if (!node || typeof node !== 'object') return null;
+        const normalized = node;
+        normalized._id = Number.isFinite(+normalized._id) ? +normalized._id : idx + 1;
+        normalized.title = (normalized.title ?? `章节 ${normalized._id}`) as string;
+        normalized.pids = Array.from(new Set((normalized.pids || [])
+          .map((p: any) => +p)
+          .filter((p: any) => Number.isFinite(p) && p > 0)));
         normalized.requireNids = Array.from(new Set((normalized.requireNids || [])
           .map((n: any) => +n)
-          .filter((n: any) => Number.isFinite(n))));
-      }
-      return normalized;
-    });
+          .filter((n: any) => Number.isFinite(n) && n > 0)));
+        return normalized;
+      })
+      .filter(Boolean) as any[];
 
     let nodes = normalizeNodes(parseDag() || []);
 
-    const commit = (opts: { rerender?: boolean } = {}) => {
+    const commit = (opts: { rerender?: boolean; source?: string } = {}) => {
       nodes = normalizeNodes(nodes).sort((a, b) => a._id - b._id);
-      $dag.val(JSON.stringify(nodes, null, 2));
+      const nextJson = JSON.stringify(nodes, null, 2);
+      const editorInstance = $dag.data('vjEditorInstance');
+      const prevJson = editorInstance?.value ? editorInstance.value() : ($dag.val() as string);
+      $dag.val(nextJson);
+      if (editorInstance?.value) {
+        editorInstance.value(nextJson);
+      }
       $dag.trigger('input');
       updateStatus('JSON 已同步', true);
       if (opts.rerender) render();
@@ -166,7 +177,10 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
                 + '<label>章节标题<input class="textbox dag-title" /></label>'
               + '</div></div>'
               + '<div class="row"><div class="columns">'
-                + '<label>前置章节<input class="textbox dag-deps" placeholder="例如: 1,2" /></label>'
+                + '<label>讲义标题（可选）<input class="textbox dag-lecture" placeholder="（无）" /></label>'
+              + '</div></div>'
+              + '<div class="row"><div class="columns">'
+                + '<label>前置章节（可选）<input class="textbox dag-deps" placeholder="（无）" /></label>'
               + '</div></div>'
               + '<div class="row"><div class="columns">'
                 + '<label>前置章节完成条件'
@@ -193,6 +207,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         const $problemInput = $section.find('.dag-problem-input');
         const $completeType = $section.find('.dag-complete-type');
         const $completeValue = $section.find('.dag-complete-value');
+        const $lecture = $section.find('.dag-lecture');
 
         $headerTitle.text(`章节 ${node._id}. ${node.title}`);
         $title.val(node.title);
@@ -200,32 +215,55 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           const nextTitle = String($title.val() || '').trim();
           $headerTitle.text(`章节 ${node._id}. ${nextTitle || ''}`);
         });
-        $title.on('blur', () => {
+        const commitTitle = () => {
           node.title = String($title.val() || '').trim();
-          commit();
-        });
+          commit({ source: 'title' });
+        };
+        $title.on('blur', commitTitle);
+        $title.on('change', commitTitle);
+
+        $lecture.val(typeof node.lecture === 'string' ? node.lecture : '');
+        const commitLecture = () => {
+          const nextLecture = String($lecture.val() || '').trim();
+          if (nextLecture) {
+            node.lecture = nextLecture;
+          } else {
+            delete node.lecture;
+          }
+          commit({ source: 'lecture' });
+        };
+        $lecture.on('blur', commitLecture);
+        $lecture.on('change', commitLecture);
 
         $deps.val((node.requireNids || []).join(','));
         const updateDeps = (val: any) => {
           const ids = String(val || '')
             .split(',')
-            .map((v) => +v.trim())
-            .filter((v) => Number.isFinite(v));
+            .map((v) => v.trim())
+            .filter((v) => v.length)
+            .map((v) => +v)
+            .filter((v) => Number.isFinite(v) && v > 0);
           node.requireNids = Array.from(new Set(ids));
         };
-        CustomSelectAutoComplete.getOrConstruct($deps, {
+        $list.append($section);
+        const depsSelect = CustomSelectAutoComplete.getOrConstruct($deps, {
           multi: true,
           data: nodeOptions.filter((n) => `${n._id}` !== `${node._id}`),
           allowEmptyQuery: true,
           freeSolo: true,
           clearDefaultValue: false,
-          onChange: (val: any) => {
-            updateDeps(val);
-          },
+        });
+        depsSelect?.onChange?.((val: any) => {
+          updateDeps(val);
+          commit({ source: 'deps' });
         });
         $deps.on('blur', () => {
           updateDeps($deps.val());
-          commit();
+          commit({ source: 'deps' });
+        });
+        $deps.on('change', () => {
+          updateDeps($deps.val());
+          commit({ source: 'deps' });
         });
 
         const condition = node.completeCondition || { type: 'all' };
@@ -249,29 +287,42 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
             const val = Number($completeValue.val());
             if (Number.isFinite(val)) node.completeCondition.value = val;
           }
-          commit();
+          commit({ source: 'complete type' });
         });
-        $completeValue.on('blur', () => {
+        const commitCompleteValue = () => {
           const type = String($completeType.val());
           const val = Number($completeValue.val());
           node.completeCondition = { type } as any;
           if (type !== 'all' && Number.isFinite(val)) node.completeCondition.value = val;
-          commit();
-        });
+          commit({ source: 'complete value' });
+        };
+        $completeValue.on('blur', commitCompleteValue);
+        $completeValue.on('change', commitCompleteValue);
 
-        ProblemSelectAutoComplete.getOrConstruct($problemInput, {
+        let lastProblemQuery = '';
+        $problemInput.val((node.pids || []).join(','));
+        const problemSelect = ProblemSelectAutoComplete.getOrConstruct($problemInput, {
           multi: true,
           allowEmptyQuery: true,
           freeSolo: false,
-          selectedKeys: (node.pids || []).map((pid: any) => String(pid)),
-          onChange: (val: any) => {
-            const ids = String(val || '')
-              .split(',')
-              .map((v) => +v.trim())
-              .filter((v) => Number.isFinite(v));
-            node.pids = Array.from(new Set(ids));
-            commit();
-          },
+        });
+        problemSelect?.onChange?.((val: any) => {
+          const query = problemSelect?.ref?.getQuery?.() || '';
+          if (query.trim()) lastProblemQuery = query.trim();
+          const keys = Array.isArray(val) ? val : String(val || '').split(',');
+          const ids = (keys as any[])
+            .map((v) => +String(v).trim())
+            .filter((v) => Number.isFinite(v));
+          const next = (Array.from(new Set(ids)) as number[]).sort((a, b) => a - b);
+          const current = (Array.from(new Set(node.pids || [])) as number[]).sort((a, b) => a - b);
+          const same = next.length === current.length && next.every((v, i) => v === current[i]);
+          if (same) return;
+          node.pids = next;
+          commit({ source: 'problem select' });
+          if (lastProblemQuery) {
+            problemSelect?.ref?.setQuery?.(lastProblemQuery);
+          }
+          problemSelect?.open?.();
         });
 
         $section.find('.dag-remove').on('click', () => {
@@ -279,7 +330,6 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           commit({ rerender: true });
         });
 
-        $list.append($section);
       });
     };
 
@@ -305,6 +355,16 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       if (!parsed) return;
       nodes = normalizeNodes(parsed);
       render();
+    });
+
+    const $form = $dag.closest('form');
+    $form.on('submit', (ev) => {
+      commit({ source: 'submit' });
+      if (!nodes.length) {
+        ev.preventDefault();
+        updateStatus('请至少保留一个章节', false);
+        window.alert('请至少保留一个章节');
+      }
     });
 
     $dag.on('input', updateStatusFromRaw);

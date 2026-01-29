@@ -85,7 +85,6 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
             assert(node._id, 'each node should have a _id');
             assert(node.title, 'each node shoule have a title');
             assert(node.pids instanceof Array);
-            assert(node.pids.length, 'each node must contain at lease one problem');
 
             if (node.completeCondition) {
                 assert(typeof node.completeCondition === 'object', 'completeCondition must be an object');
@@ -387,7 +386,6 @@ export class CourseEditHandler extends Handler {
 
         const dag = await parseDag(domainId, dagJson);
         const pids = Array.from(new Set(dag.flatMap((n) => n.pids)));
-        assert(pids.length, new ValidationError('dag', null, 'Please specify at least one problem'));
 
         const beginAt = moment.tz(beginAtStr, 'YYYY-M-D H:mm', this.user.timeZone);
         if (!beginAt.isValid()) throw new ValidationError('beginAt');
