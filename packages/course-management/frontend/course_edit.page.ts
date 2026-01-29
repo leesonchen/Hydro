@@ -166,9 +166,9 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       nodes.forEach((node) => {
         const $section = $(
           '<div class="training__section expanded dag-node">'
-            + '<div class="section__header clearfix">'
-              + '<h3 class="section__title dag-node-title"></h3>'
-              + '<div class="button-group" style="float: right;">'
+            + '<div class="section__header dag-node-header" style="display:flex; align-items:center; justify-content:space-between;">'
+              + '<h3 class="section__title dag-node-title" style="margin:0;"></h3>'
+              + '<div class="button-group" style="margin:0;">'
                 + '<button type="button" class="rounded button small dag-remove">删除</button>'
               + '</div>'
             + '</div>'
@@ -180,9 +180,12 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
                 + '<label>讲义标题（可选）<input class="textbox dag-lecture" placeholder="（无）" /></label>'
               + '</div></div>'
               + '<div class="row"><div class="columns">'
-                + '<label>前置章节（可选）<input class="textbox dag-deps" placeholder="（无）" /></label>'
+                + '<label>题目（点击选择）<input class="textbox dag-problem-input" placeholder="搜索题目 (ID/标题)" /></label>'
               + '</div></div>'
               + '<div class="row"><div class="columns">'
+                + '<label>前置章节（可选）<input class="textbox dag-deps" placeholder="（无）" /></label>'
+              + '</div></div>'
+              + '<div class="row dag-complete-row"><div class="columns">'
                 + '<label>前置章节完成条件'
                   + '<div class="input-group" style="display: flex; gap: 8px; align-items: center;">'
                     + '<select class="select dag-complete-type">'
@@ -194,9 +197,6 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
                   + '</div>'
                 + '</label>'
               + '</div></div>'
-              + '<div class="row"><div class="columns">'
-                + '<label>题目（点击选择）<input class="textbox dag-problem-input" placeholder="搜索题目 (ID/标题)" /></label>'
-              + '</div></div>'
             + '</div>'
           + '</div>'
         );
@@ -205,6 +205,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         const $deps = $section.find('.dag-deps');
         const $headerTitle = $section.find('.dag-node-title');
         const $problemInput = $section.find('.dag-problem-input');
+        const $completeRow = $section.find('.dag-complete-row');
         const $completeType = $section.find('.dag-complete-type');
         const $completeValue = $section.find('.dag-complete-value');
         const $lecture = $section.find('.dag-lecture');
@@ -235,6 +236,22 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         $lecture.on('blur', commitLecture);
         $lecture.on('change', commitLecture);
 
+        const updateCompleteVisibility = () => {
+          const hasDeps = (node.requireNids || []).length > 0;
+          if (!hasDeps) {
+            $completeRow.hide();
+            return;
+          }
+          $completeRow.show();
+          const type = String($completeType.val());
+          if (type === 'all') {
+            $completeValue.val('');
+            $completeValue.hide();
+          } else {
+            $completeValue.show();
+          }
+        };
+
         $deps.val((node.requireNids || []).join(','));
         const updateDeps = (val: any) => {
           const ids = String(val || '')
@@ -244,6 +261,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
             .map((v) => +v)
             .filter((v) => Number.isFinite(v) && v > 0);
           node.requireNids = Array.from(new Set(ids));
+          updateCompleteVisibility();
         };
         $list.append($section);
         const depsSelect = CustomSelectAutoComplete.getOrConstruct($deps, {
@@ -269,15 +287,6 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         const condition = node.completeCondition || { type: 'all' };
         $completeType.val(condition.type || 'all');
         $completeValue.val(condition.value ?? '');
-        const updateCompleteVisibility = () => {
-          const type = String($completeType.val());
-          if (type === 'all') {
-            $completeValue.val('');
-            $completeValue.hide();
-          } else {
-            $completeValue.show();
-          }
-        };
         updateCompleteVisibility();
         $completeType.on('change', () => {
           const type = String($completeType.val());
