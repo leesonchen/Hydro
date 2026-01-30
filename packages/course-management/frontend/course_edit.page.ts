@@ -19,9 +19,9 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         $assign.show();
       }
 
-      const groups: any[] = await api('groups', {}, ['name', 'uids', 'students', 'class']);
+      const groups: any[] = await api('groups', {}, ['name', 'uids', 'students', 'class', 'archive']);
       const classes = (groups || [])
-        .filter((g: any) => g && g.class)
+        .filter((g: any) => g && g.class && !g.archive && g.name !== 'teachers')
         .map((g: any) => ({
           _id: g.name,
           name: `${g.name} (${(g.students || g.uids || []).length} users)`,
@@ -34,7 +34,11 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         clearDefaultValue: false,
       });
     }
-  })().catch(err => console.error('course_edit.page async error:', err));
+
+    if ($('[name="isTemplate"]').length && $assign.length) {
+      $assign.val('teachers');
+    }
+  })().catch(() => undefined);
 
   // Local datetime picker to avoid touching ui-default
   const flatpickr = (window as any).flatpickr;
@@ -123,7 +127,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         if (!node || typeof node !== 'object') return null;
         const normalized = node;
         normalized._id = Number.isFinite(+normalized._id) ? +normalized._id : idx + 1;
-        normalized.title = (normalized.title ?? `章节 ${normalized._id}`) as string;
+        normalized.title = (normalized.title ?? `标题 ${normalized._id}`) as string;
         normalized.pids = Array.from(new Set((normalized.pids || [])
           .map((p: any) => +p)
           .filter((p: any) => Number.isFinite(p) && p > 0)));
@@ -180,7 +184,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
                 + '<label>讲义标题（可选）<input class="textbox dag-lecture" placeholder="（无）" /></label>'
               + '</div></div>'
               + '<div class="row"><div class="columns">'
-                + '<label>题目（点击选择）<input class="textbox dag-problem-input" placeholder="搜索题目 (ID/标题)" /></label>'
+                + '<label>题目（必填，点击选择）<input class="textbox dag-problem-input" placeholder="搜索题目 (ID/标题)" /></label>'
               + '</div></div>'
               + '<div class="row"><div class="columns">'
                 + '<label>前置章节（可选）<input class="textbox dag-deps" placeholder="（无）" /></label>'
@@ -346,7 +350,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       const maxId = Math.max(0, ...nodes.map((n) => n._id));
       nodes.push({
         _id: maxId + 1,
-        title: `新章节 ${maxId + 1}`,
+        title: `标题 ${maxId + 1}`,
         pids: [],
         requireNids: [],
         completeCondition: { type: 'all' },
@@ -373,6 +377,13 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         ev.preventDefault();
         updateStatus('请至少保留一个章节', false);
         window.alert('请至少保留一个章节');
+        return;
+      }
+      const emptyProblems = nodes.filter((n) => !(n.pids || []).length);
+      if (emptyProblems.length) {
+        ev.preventDefault();
+        updateStatus('请为每个章节选择至少一道题目', false);
+        window.alert('请为每个章节选择至少一道题目');
       }
     });
 

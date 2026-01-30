@@ -50,8 +50,8 @@ export class ClassEditHandler extends Handler {
                 assign: { $in: [gdoc.name] },
             }).toArray();
 
-            // 获取可用的课程模板
-            const templates = await ContestModel.getMulti('system', {
+            // 获取可用的课程模板（当前域下 assign=teachers）
+            const templates = await ContestModel.getMulti(domainId, {
                 rule: 'course',
                 assign: { $elemMatch: { $eq: 'teachers' } },
             }).sort({ title: 1 }).toArray();
@@ -182,48 +182,15 @@ export class ClassEditHandler extends Handler {
         const tdocs: any[] = [];
 
         for (const templateId of templateIds) {
-            const template = await ContestModel.get('system', new ObjectId(templateId)) as CourseTdoc;
+            const template = await ContestModel.get(domainId, new ObjectId(templateId)) as CourseTdoc;
             if (!template) continue;
 
             const { title, content, dag } = template;
 
             // 解析并复制题目
-            const parsedDag = await parseDag('system', JSON.stringify(dag));
-            const newDag: any[] = [];
-            let allPids: number[] = [];
-
-            for (const node of parsedDag) {
-                const newPids: number[] = [];
-
-                for (const pid of node.pids) {
-                    if (domainId === 'system') {
-                        newPids.push(pid);
-                    } else {
-                        // 查找题目引用
-                        const pdoc = await ProblemModel.get('system', pid);
-                        const [refDomain, refPid] = pdoc?.reference
-                            ? [pdoc.reference.domainId, pdoc.reference.pid]
-                            : ['system', pid];
-
-                        // 检查是否已经有引用这道题的问题
-                        const existing = await ProblemModel.getMulti(domainId, {
-                            'reference.pid': refPid,
-                            'reference.domainId': refDomain,
-                        }).toArray();
-
-                        if (existing.length) {
-                            newPids.push(existing[0].docId);
-                        } else {
-                            // 复制题目到当前域
-                            const newPid = await ProblemModel.copy(refDomain, refPid, domainId);
-                            newPids.push(newPid);
-                        }
-                    }
-                }
-
-                newDag.push({ ...node, pids: newPids });
-                allPids = allPids.concat(newPids);
-            }
+            const parsedDag = await parseDag(domainId, JSON.stringify(dag));
+            const newDag = parsedDag.map((node) => ({ ...node }));
+            const allPids = Array.from(new Set(parsedDag.flatMap((node) => node.pids)));
 
             // 创建新课程
             const newTid = await ContestModel.add(
@@ -248,7 +215,7 @@ export class ClassEditHandler extends Handler {
             // 复制文件
             if (template.files?.length) {
                 await Promise.all(template.files.map((f) => StorageModel.copy(
-                    `contest/system/${templateId}/public/${f.name}`,
+                    `contest/${domainId}/${templateId}/public/${f.name}`,
                     `contest/${domainId}/${newTid}/public/${f.name}`,
                 )));
             }

@@ -110,7 +110,7 @@ export interface ClassGDoc {
   uids: number[];            // 所有成员（teachers + students）
   beginAt: Date;             // 班级开始时间
   endAt: Date;               // 班级结束时间
-  archive: boolean;          // 是否归档（归档后不显示）
+  archive: boolean;          // 是否归档（仅手动归档；用于过滤班级选择）
   class: true;               // 标识为班级（与普通组区分）
 }
 
@@ -144,6 +144,7 @@ export const ClassModel = {
 - 使用 `user.group` 集合存储班级数据
 - 通过 `class: true` 字段区分班级和普通用户组
 - 每次更新时调用 `deleteUserCache()` 清除用户缓存
+- 归档不做自动化，仅用于 UI 选择/列表过滤
 - `listGroup()` 支持按用户过滤，自动添加用户自己作为单人班级
 
 #### 3.1.2 Course Rule（课程规则）
@@ -277,13 +278,14 @@ if (tdoc.assign?.length) {
 - **关键逻辑**：
   - 权限检查（`PERM_CREATE_HOMEWORK` / `PERM_EDIT_HOMEWORK`）
   - DAG 验证和解析（调用 `parseDag`）
-  - 模板创建（isTemplate 参数）
-  - 班级分配
+  - 模板创建（isTemplate 参数，模板=assign 到 TEACHERS 班级）
+  - 仅允许选择未归档班级进行分配
+  - 维护者豁免（maintainer 可查看题目/讲义）
 
 **DAG 验证规则**：
 - 必须是数组，且非空
 - 每个节点的 `_id` 必须唯一
-- 每个节点必须有 `title` 和 `pids`
+- 每个节点必须有 `title` 和 `pids`（题目必填）
 - 所有题目必须存在
 - 前置条件 `requireNids` 的节点必须存在
 - 完成条件 `completeCondition` 的 type 必须是 'all'/'problem'/'score'

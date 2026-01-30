@@ -21,6 +21,8 @@ export interface CourseTdoc extends Tdoc {
     dag: DagNode[];
     assign?: string[];
     lecture?: Record<number, string>;
+    editor?: number;
+    updateAt?: Date;
 }
 
 export interface CourseStatus {

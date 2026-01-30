@@ -1,26 +1,29 @@
 {% import "components/record.html" as record with context %}
 {% import "components/problem.html" as problem with context %}
+{% import "components/user.html" as user with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
+{% set isTemplate = tdoc.assign and ('teachers' in tdoc.assign) %}
+{% set isTeacherEditor = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
 <div class="row" data-sticky-parent>
   <div class="medium-9 columns">
     <div class="section">
       <div class="section__header" style="align: center">
-        <h1 class="section__title">{{ tdoc.title }}</h1>
+        <h1 class="section__title">{% if isTemplate %}【模板】{% endif %}{{ tdoc.title }}</h1>
       </div>
       <div class="section__body typo richmedia">
         {{ tdoc['content']|default('')|markdown|safe }}
       </div>
     </div>
     <div class="section">
-      {% if not tsdoc %}
+      {% if not isTemplate and not tsdoc %}
       <div class="section__body">
         <blockquote class="typo note">
           <p>请联系教师开放此课程。</p>
         </blockquote>
       </div>
       {% endif %}
-      {% if not model.contest.isOngoing(tdoc, tsdoc) %}
+      {% if not isTemplate and not model.contest.isOngoing(tdoc, tsdoc) %}
       <div class="section__body">
         <blockquote class="typo note">
           <p>此课程尚未开始。</p>
@@ -28,7 +31,7 @@
       </div>
       {% else %}
       {%- for node in tdoc['dag'] -%}
-        {% set _canView = pdict and (tsdoc.allow[node['_id']] or tsdoc.lectureAllow[node['_id']] or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
+        {% set _canView = pdict and (isTeacherEditor or (not isTemplate and (tsdoc.allow[node['_id']] or tsdoc.lectureAllow[node['_id']]))) %}
         {% if _canView %}
         <div data-heading-extract-to="#menu-item-course_detail" class="training__section expanded">
           <div class="section__header clearfix">
@@ -40,7 +43,9 @@
               <li>
                 <a href="javascript:;" name="training__section__expand" class="expanded--hidden"><span class="icon icon-expand_more"></span> {{ _('expand') }}</a>
                 <a href="javascript:;" name="training__section__collapse" class="collapsed--hidden"><span class="icon icon-expand_less"></span> {{ _('collapse') }}</a>
+                {% if not isTemplate %}
                 <a href="{{ url('course_scoreboard', tid=tdoc.docId, id=node._id)}}"><span class="icon icon-statistics"></span> {{ _('Scoreboard') }}</a>
+                {% endif %}
               </li>
             </ul>
           </div>
@@ -70,7 +75,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    {% if tsdoc.allow[node['_id']] %}
+                    {% if isTeacherEditor or (not isTemplate and tsdoc.allow[node['_id']]) %}
                     {%- for pid in node['pids'] -%}
                       {% set pdoc=pdict[pid] %}
                       {% set psdoc=psdict[pid] %}
@@ -81,7 +86,11 @@
                           <td class="col--status record-status--border"></td>
                         {% endif %}
                         <td class="col--name col--problem-name">
-                          {{ problem.render_problem_title(pdoc, tdoc=tdoc, show_tags=false) }}
+                          {% if isTemplate %}
+                            {{ problem.render_problem_title(pdoc, show_tags=false) }}
+                          {% else %}
+                            {{ problem.render_problem_title(pdoc, tdoc=tdoc, show_tags=false) }}
+                          {% endif %}
                         </td>
                       </tr>
                     {%- endfor -%}

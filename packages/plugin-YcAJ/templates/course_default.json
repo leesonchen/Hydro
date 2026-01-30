@@ -1,0 +1,14 @@
+[
+  {
+    "_id": 1,
+    "title": "最初的最初 - A+B Problem",
+    "lecture": false,
+    "pids": [1]
+  },
+  {
+    "_id": 2,
+    "title": "最初的进阶",
+    "lecture": "讲义标题",
+    "pids": [2, 3]
+  }
+]

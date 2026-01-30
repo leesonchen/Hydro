@@ -42,9 +42,7 @@ function sortStudents(uids: number[], udict: Record<string, any>) {
 function CourseManageApp() {
   const [loading, setLoading] = React.useState(true);
   const [payload, setPayload] = React.useState<CourseManagePayload | null>(null);
-  const [tab, setTab] = React.useState<'students' | 'chapters' | 'lectures'>('students');
-  const [selectedNode, setSelectedNode] = React.useState<number | null>(null);
-  const [selectedLectureNode, setSelectedLectureNode] = React.useState<number | null>(null);
+  const [tab, setTab] = React.useState<'students' | 'chapters'>('students');
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -60,9 +58,9 @@ function CourseManageApp() {
       } else {
         setPayload(data);
         const dag: any[] = data?.tdoc?.dag || [];
-        if (!selectedNode && dag.length) setSelectedNode(+dag[0]._id);
-        const lectureNodes = dag.filter((n) => n?.lecture || data?.tdoc?.lecture?.[n._id]);
-        if (!selectedLectureNode && lectureNodes.length) setSelectedLectureNode(+lectureNodes[0]._id);
+        if (!dag.length) {
+          Notification.error('课程暂无章节');
+        }
       }
     } catch (e: any) {
       Notification.error(e?.message || '加载失败');
@@ -70,7 +68,7 @@ function CourseManageApp() {
     } finally {
       setLoading(false);
     }
-  }, [selectedNode, selectedLectureNode]);
+  }, []);
 
   React.useEffect(() => {
     load();
@@ -117,21 +115,25 @@ function CourseManageApp() {
   const { tdoc, tsdict, udict, group } = payload;
   const students = sortStudents(group?.students || [], udict);
   const dag: any[] = tdoc?.dag || [];
-  const lectureNodes = dag.filter((n) => n?.lecture || tdoc?.lecture?.[n._id]);
+  const studentUids = group?.students || [];
+  const basePath = window.location.pathname.replace(/\/manage$/, '');
 
   const renderTabs = () => (
     <div className="row">
       <div className="columns">
-        <div className="button-group">
-          <button type="button" className={`rounded button ${tab === 'students' ? 'primary' : ''}`} onClick={() => setTab('students')}>
-            学生
-          </button>
-          <button type="button" className={`rounded button ${tab === 'chapters' ? 'primary' : ''}`} onClick={() => setTab('chapters')}>
-            章节
-          </button>
-          <button type="button" className={`rounded button ${tab === 'lectures' ? 'primary' : ''}`} onClick={() => setTab('lectures')}>
-            讲义
-          </button>
+        <div className="course-manage-tabs">
+          <span
+            className={`course-manage-tab ${tab === 'students' ? 'active' : ''}`}
+            onClick={() => setTab('students')}
+          >
+            班级成员管理
+          </span>
+          <span
+            className={`course-manage-tab ${tab === 'chapters' ? 'active' : ''}`}
+            onClick={() => setTab('chapters')}
+          >
+            课程节点管理
+          </span>
         </div>
       </div>
     </div>
@@ -153,7 +155,7 @@ function CourseManageApp() {
       </div>
       <div className="row">
         <div className="columns">
-          <table className="data-table">
+          <table className="data-table course-manage-table">
             <thead>
               <tr>
                 <th style={{ width: 100 }}>UID</th>
@@ -198,134 +200,87 @@ function CourseManageApp() {
     </div>
   );
 
-  const renderNodeTab = (mode: 'allow' | 'lectureAllow') => {
-    const isLecture = mode === 'lectureAllow';
-    const nodes = isLecture ? lectureNodes : dag;
-    const currentNode = isLecture ? selectedLectureNode : selectedNode;
-
-    return (
-      <div>
-        <div className="row">
-          <div className="columns">
-            <label>
-              选择{isLecture ? '讲义' : '章节'}
-              <div className="textbox-container">
-                <select
-                  className="select"
-                  value={currentNode ?? ''}
-                  onChange={(e) => {
-                    const v = +e.target.value;
-                    if (Number.isFinite(v)) {
-                      if (isLecture) setSelectedLectureNode(v);
-                      else setSelectedNode(v);
-                    }
-                  }}
-                >
-                  {nodes.map((n) => (
-                    <option key={n._id} value={n._id}>{n.title}</option>
-                  ))}
-                </select>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <div className="row">
-          <div className="columns">
-            <div className="button-group">
-              <button
-                type="button"
-                className="rounded primary button"
-                disabled={currentNode == null}
-                onClick={() => post({ operation: isLecture ? 'allowLecture' : 'allowUser', uid: 0, node: currentNode, allow: true })}
-              >
-                批量开放
-              </button>
-              <button
-                type="button"
-                className="rounded button"
-                disabled={currentNode == null}
-                onClick={() => post({ operation: isLecture ? 'allowLecture' : 'allowUser', uid: 0, node: currentNode, allow: false })}
-              >
-                批量关闭
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="row">
-          <div className="columns">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 100 }}>UID</th>
-                  <th>用户</th>
-                  <th style={{ width: 200 }}>{isLecture ? '讲义' : '章节'}权限</th>
-                </tr>
-              </thead>
-              <tbody>
-                {students.map((uid) => {
-                  const tsdoc = tsdict?.[uid];
-                  const attended = !!tsdoc;
-                  const allowed = !!(tsdoc?.[mode]?.[currentNode as any]);
-                  const op = isLecture ? 'allowLecture' : 'allowUser';
-                  return (
-                    <tr key={uid}>
-                      <td>{uid}</td>
-                      <td>{getUserText(udict?.[uid])}</td>
-                      <td>
-                        {attended ? (
-                          allowed ? (
-                            <button
-                              type="button"
-                              className="rounded button"
-                              disabled={currentNode == null}
-                              onClick={() => post({ operation: op, uid, node: currentNode, allow: false })}
-                            >
-                              关闭
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="rounded primary button"
-                              disabled={currentNode == null}
-                              onClick={() => post({ operation: op, uid, node: currentNode, allow: true })}
-                            >
-                              开放
-                            </button>
-                          )
-                        ) : (
-                          <span className="typo">未加入课程</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+  const renderNodeTab = () => (
+    <div>
+      <div className="row">
+        <div className="columns">
+          <table className="data-table course-manage-table">
+            <thead>
+              <tr>
+                <th style={{ width: 80 }}>节点</th>
+                <th>章节标题</th>
+                <th style={{ width: 180 }}>讲义</th>
+                <th style={{ width: 220 }}>题目</th>
+                <th style={{ width: 140 }}>题目</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dag.map((node) => {
+                const nodeId = +node._id;
+                const hasLecture = !!(node?.lecture || tdoc?.lecture?.[nodeId]);
+                const canBulk = studentUids.length > 0;
+                const lectureAllowed = canBulk && studentUids.every((uid) => !!tsdict?.[uid]?.lectureAllow?.[nodeId]);
+                const nodeAllowed = canBulk && studentUids.every((uid) => !!tsdict?.[uid]?.allow?.[nodeId]);
+                const lectureEditUrl = `${basePath}/lecture/${nodeId}?edit=1`;
+                return (
+                  <tr key={nodeId}>
+                    <td>{nodeId}</td>
+                    <td>{node?.title || '-'}</td>
+                    <td>
+                      {hasLecture ? (
+                        <span>
+                          有
+                          {' '}
+                          <a href={lectureEditUrl}>编辑</a>
+                          {' | '}
+                          <a
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (!canBulk) return;
+                              post({ operation: 'allowLecture', uid: 0, node: nodeId, allow: !lectureAllowed });
+                            }}
+                          >
+                            {lectureAllowed ? '关闭' : '开放给学员'}
+                          </a>
+                        </span>
+                      ) : (
+                        '无'
+                      )}
+                    </td>
+                    <td>{(node?.pids || []).join(',')}</td>
+                    <td>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (!canBulk) return;
+                          post({ operation: 'allowUser', uid: 0, node: nodeId, allow: !nodeAllowed });
+                        }}
+                      >
+                        {nodeAllowed ? '关闭' : '开放给学员'}
+                      </a>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
 
   return (
     <div>
       <div className="row">
         <div className="columns typo">
-          <h2 style={{ marginTop: 0 }}>{tdoc?.title || '课程管理'}</h2>
+          <h2 className="course-manage-title" style={{ marginTop: 0 }}>{tdoc?.title || '课程管理'}</h2>
         </div>
       </div>
       {renderTabs()}
       {tab === 'students' ? renderStudentsTab() : null}
-      {tab === 'chapters' ? renderNodeTab('allow') : null}
-      {tab === 'lectures' ? (
-        lectureNodes.length
-          ? renderNodeTab('lectureAllow')
-          : (
-            <div className="row"><div className="columns typo"><p>该课程暂无讲义。</p></div></div>
-          )
-      ) : null}
+      {tab === 'chapters' ? renderNodeTab() : null}
     </div>
   );
 }

@@ -8,7 +8,7 @@
           <div class="row">
             <div class="medium-12 columns">
               <label>
-                {{ _('Title') }}
+                {{ _('Title') }}{% if isTemplate %}【模板】{% endif %}
                 <input name="title" placeholder="{{ _('title') }}" value="{{ tdoc.title|default('') }}" class="textbox" autofocus>
               </label>
             </div>
@@ -19,7 +19,7 @@
               <textarea name="content" class="textbox" data-markdown style="height: 200px">{{ tdoc['content']|default('') }}</textarea>
             </label>
           </div></div>
-          <div class="row">
+          <div class="row course-time-row"{% if isTemplate %} style="display:none"{% endif %}>
             {{ form.form_text({
                 columns:5,
                 label: _('Begin at'),
@@ -39,22 +39,17 @@
                 row:false
             }) }}
           </div>
-          {% if not isTemplate %}
+          {% if isTemplate %}
+            <input type="hidden" name="isTemplate" value="true">
+          {% endif %}
+          <div class="row course-assign-row"{% if isTemplate %} style="display:none"{% endif %}>
             {{ form.form_text({
               columns: 6,
               label: '分配给班级...',
               name: 'assign',
               value: tdoc.assign|default('')
             }) }}
-          {% else %}
-            <input type="hidden" name="isTemplate" value="true">
-            {{ form.form_text({
-              columns: 6,
-              label: '模板分类',
-              name: 'templateCategory',
-              value: tdoc.assign[1]|default('')
-            }) }}
-          {% endif %}
+          </div>
           <div class="row"><div class="columns">
             <label>
               {{ _('Plan') }}
@@ -66,6 +61,11 @@
             <button type="submit" class="rounded primary button">
               {{ _('Update') }}
             </button>
+            {% if not isTemplate and handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+              <button name="isTemplate" value="true" type="submit" class="rounded button">
+                {{ _('Save as Template') }}
+              </button>
+            {% endif %}
             {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
               <button name="operation" value="delete" type="submit" class="rounded button" onclick="return confirm('是否删除课程{{ tdoc.title }}?')">
                 {{ _('Delete') }}

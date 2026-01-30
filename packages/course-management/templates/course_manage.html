@@ -1,12 +1,84 @@
 {% extends "layout/basic.html" %}
 {% block content %}
+<style>
+  .course-manage-section {
+    border-radius: 14px;
+    border: 1px solid #eef0f3;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+  }
+  .course-manage-section .section__header {
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+    border-bottom: 1px solid #e5e7eb;
+    padding: 18px 20px 16px;
+  }
+  .course-manage-section .section__body {
+    padding: 18px 20px 24px;
+  }
+  .course-manage-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: #111827;
+    letter-spacing: 0.2px;
+  }
+  .course-manage-tabs {
+    display: flex;
+    gap: 28px;
+    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 18px;
+  }
+  .course-manage-tab {
+    position: relative;
+    padding: 10px 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #6b7280;
+    cursor: pointer;
+    transition: color 0.2s ease;
+  }
+  .course-manage-tab.active {
+    color: #1f2937;
+  }
+  .course-manage-tab.active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: #2563eb;
+    border-radius: 2px;
+  }
+  .course-manage-table th {
+    background: #f9fafb;
+    font-weight: 600;
+    color: #4b5563;
+  }
+  .course-manage-table th,
+  .course-manage-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #edf0f2;
+  }
+  .course-manage-table tbody tr:nth-child(even) {
+    background: #f6f7f9;
+  }
+  .course-manage-table a {
+    color: #2563eb;
+  }
+  .course-manage-table a:hover {
+    color: #1d4ed8;
+  }
+  .course-manage-body .button-group .button {
+    border-radius: 999px;
+  }
+</style>
 <div class="row">
   <div class="medium-9 columns">
-    <div class="section">
+    <div class="section course-manage-section">
       <div class="section__header">
         <h1 class="section__title">课程管理</h1>
       </div>
-      <div class="section__body" id="course"></div>
+      <div class="section__body course-manage-body" id="course"></div>
     </div>
   </div>
   <div class="medium-3 columns">

@@ -1,5 +1,6 @@
 {% import "components/contest.html" as contest with context %}
 {% import "components/nothing.html" as nothing with context %}
+{% import "components/user.html" as user with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
 {{ set(UiContext, 'tdocs', tdocs) }}
@@ -55,6 +56,9 @@
                           <li>{{ tdoc.assign[0] if tdoc.assign else '未知班级' }}</li>
                           <li>{{ _('Begin at') }}: {{ contest.render_time(tdoc.beginAt) }}</li>
                           <li>{{ _('End at') }}: {{ contest.render_time(tdoc.endAt) }}</li>
+                          {% if tdoc.updateAt %}
+                          <li>{{ _('Last Updated') }}: {{ contest.render_time(tdoc.updateAt) }}</li>
+                          {% endif %}
                           {% if tsdict[tdoc.docId] %}
                           <li>{{ _('Progress') }}: {{ tsdict[tdoc.docId].progress|default(0) }}%</li>
                           {% endif %}
