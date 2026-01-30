@@ -35,8 +35,15 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       });
     }
 
-    if ($('[name="isTemplate"]').length && $assign.length) {
-      $assign.val('teachers');
+    if ($assign.length) {
+      const isTemplate = $('[name="isTemplate"]').length > 0;
+      const currentValue = String($assign.val() || '').trim();
+      if (isTemplate && !currentValue) {
+        $assign.val('teachers');
+      }
+      if (!isTemplate && currentValue === 'teachers') {
+        $assign.val('');
+      }
     }
   })().catch(() => undefined);
 

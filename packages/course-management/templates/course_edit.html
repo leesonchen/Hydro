@@ -1,5 +1,25 @@
 {% extends "layout/basic.html" %}
 {% block content %}
+<style>
+  .course-assign-row .course-assign-card {
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .course-assign-row .course-assign-card label {
+    font-weight: 600;
+    color: #374151;
+  }
+  .course-assign-row .course-assign-card .textbox {
+    margin-top: 6px;
+  }
+  .course-assign-row .course-assign-hint {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #6b7280;
+  }
+</style>
 <div class="row">
   <div class="medium-9 columns">
     <div class="section">
@@ -43,12 +63,14 @@
             <input type="hidden" name="isTemplate" value="true">
           {% endif %}
           <div class="row course-assign-row"{% if isTemplate %} style="display:none"{% endif %}>
-            {{ form.form_text({
-              columns: 6,
-              label: '分配给班级...',
-              name: 'assign',
-              value: tdoc.assign|default('')
-            }) }}
+            <div class="columns">
+              <div class="course-assign-card">
+                <label>
+                  分配给班级
+                  <input name="assign" value="{{ tdoc.assign|default('') }}" class="textbox" placeholder="输入班级名称">
+                </label>
+              </div>
+            </div>
           </div>
           <div class="row"><div class="columns">
             <label>
