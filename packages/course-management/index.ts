@@ -1,5 +1,12 @@
 import Schema from 'schemastery';
-import { ContestModel, Context, ObjectId, PERM, SettingModel } from 'hydrooj';
+import {
+    ContestModel,
+    Context,
+    ForbiddenError,
+    ObjectId,
+    PERM,
+    SettingModel,
+} from 'hydrooj';
 import {
     CourseDetailHandler, CourseEditHandler, CourseFileDownloadHandler,
     CourseLectureHandler, CourseMainHandler, CourseManageHandler, CourseScoreboardHandler,
@@ -31,6 +38,7 @@ export async function apply(ctx: Context, config: typeof Config) {
 
         // 界面文字
         'Create Course Template': '创建课程模板',
+        'Enable Course': '启用课程功能',
         'Class Name': '班级名称',
         'Classes Manage': '班级管理',
         'Edit Class': '编辑班级',
@@ -64,6 +72,12 @@ export async function apply(ctx: Context, config: typeof Config) {
         domain_class_edit: 'Edit Class',
     });
 
+    const isCourseEnabled = (handler: any) => config.enable || handler.domain?.enableCourse;
+    const ensureCourseEnabled = async (handler: any) => {
+        if (isCourseEnabled(handler)) return;
+        throw new ForbiddenError('该域尚未启用课程功能。');
+    };
+
     // 处理 Contest 页面重定向到 Course 页面
     function redirectToCourse(routeName: string) {
         return async (handler: any) => {
@@ -87,6 +101,21 @@ export async function apply(ctx: Context, config: typeof Config) {
     ctx.on('handler/before-prepare/ContestDetail', redirectToCourse('course_detail'));
     ctx.on('handler/before-prepare/ContestEdit', redirectToCourse('course_edit'));
     ctx.on('handler/before/ContestManagement', redirectToCourse('course_manage'));
+
+    const guardedHandlers = [
+        'CourseMainHandler',
+        'CourseDetailHandler',
+        'CourseEditHandler',
+        'CourseManageHandler',
+        'CourseLectureHandler',
+        'CourseScoreboardHandler',
+        'CourseFileDownloadHandler',
+        'ClassHandler',
+        'ClassEditHandler',
+    ];
+    for (const handlerName of guardedHandlers) {
+        ctx.on(`handler/before-prepare/${handlerName}`, ensureCourseEnabled);
+    }
 
     ctx.on('handler/before-prepare/ContestScoreboard', async (handler) => {
         if (!handler.args.tid) return;
@@ -135,13 +164,13 @@ export async function apply(ctx: Context, config: typeof Config) {
         'course_main',
         { before: 'training_main', prefix: 'course' },
         PERM.PERM_VIEW_HOMEWORK,
-        (handler) => config.enable || handler.domain.enableCourse,
+        (handler) => isCourseEnabled(handler),
     );
 
     ctx.injectUI(
         'DomainManage',
         'domain_class',
         { family: 'Access Control', icon: 'user' },
-        (handler: any) => config.enable || handler.domain.enableCourse,
+        (handler: any) => isCourseEnabled(handler),
     );
 }
