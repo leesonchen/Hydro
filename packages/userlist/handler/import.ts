@@ -67,6 +67,8 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
 
     async get() {
         this.response.body.users = [];
+        this.response.body.usersText = '';
+        this.response.body.isDraft = false;
         this.response.template = 'userlist/manage_user_import.html';
     }
 
@@ -102,14 +104,6 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
                 } else if (users.find((u) => u.username === username) || await UserModel.getByUname('system', username)) {
                     messages.push(`Line ${+idx + 1}: Username ${username} already exists.`);
                 } else {
-                    // 非系统管理员只能使用 hydro.local 邮箱
-                    if (!this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
-                        if (!/^[a-zA-Z0-9_-]+@\d+\.hydro\.local$/.test(email) || !email.endsWith(`@${this.user._id}.hydro.local`)) {
-                            messages.push(`Line ${+idx + 1}: Email must ends with @${this.user._id}.hydro.local`);
-                            continue;
-                        }
-                    }
-
                     const parsed: any = {};
                     try {
                         const extraData = JSON.parse(extra);
@@ -147,7 +141,7 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
             }
         }
 
-        messages.push(`${users.length} users found.`);
+        messages.push(`${users.length} users imported.`);
         if (users.length > 100) messages.push('Too many users, max 100 at a time');
 
         if (!draft) {
@@ -172,6 +166,9 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
 
         this.response.body.users = users;
         this.response.body.messages = messages;
+        this.response.body.usersText = draft ? usersText : '';
+        this.response.body.isDraft = draft;
+        this.response.template = 'userlist/manage_user_import.html';
     }
 }
 

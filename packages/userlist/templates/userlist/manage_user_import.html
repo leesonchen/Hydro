@@ -16,6 +16,7 @@
 
     {% if messages and messages.length %}
     <div class="messages">
+      <p class="text-muted">{{ _('Preview') if isDraft else _('Submit') }}</p>
       {% for msg in messages %}
       <p class="{{ 'text-red' if 'Invalid' in msg or 'error' in msg or 'exists' in msg else 'text-green' }}">{{ msg }}</p>
       {% endfor %}
@@ -27,6 +28,7 @@
         columns: null,
         label: 'Users',
         name: 'users',
+        value: usersText or '',
         rows: 15
       }) }}
       <div class="row">
@@ -42,7 +44,7 @@
 {% if users and users.length %}
 <div class="section">
   <div class="section__header">
-    <h1 class="section__title" data-heading>预览（{{ users.length }} 个用户）</h1>
+    <h1 class="section__title" data-heading>{% if isDraft %}预览{% else %}提交{% endif %}（{{ users.length }} 个用户）</h1>
   </div>
   <div class="section__body no-padding">
     <table class="data-table">
