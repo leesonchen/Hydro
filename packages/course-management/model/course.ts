@@ -23,6 +23,7 @@ export interface CourseTdoc extends Tdoc {
     lecture?: Record<number, string>;
     editor?: number;
     updateAt?: Date;
+    extraStudents?: number[];
 }
 
 export interface CourseStatus {

@@ -8,6 +8,7 @@ type CourseManagePayload = {
   tsdict: Record<string, any>;
   udict: Record<string, any>;
   group: { students: number[] };
+  extraStudents: number[];
   error?: { message: string };
 };
 
@@ -42,7 +43,7 @@ function sortStudents(uids: number[], udict: Record<string, any>) {
 function CourseManageApp() {
   const [loading, setLoading] = React.useState(true);
   const [payload, setPayload] = React.useState<CourseManagePayload | null>(null);
-  const [tab, setTab] = React.useState<'students' | 'chapters'>('students');
+  const [tab, setTab] = React.useState<'students' | 'extraStudents' | 'chapters'>('students');
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -112,8 +113,9 @@ function CourseManageApp() {
     );
   }
 
-  const { tdoc, tsdict, udict, group } = payload;
+  const { tdoc, tsdict, udict, group, extraStudents } = payload;
   const students = sortStudents(group?.students || [], udict);
+  const extraStudentList = sortStudents(extraStudents || [], udict);
   const dag: any[] = tdoc?.dag || [];
   const studentUids = group?.students || [];
   const basePath = window.location.pathname.replace(/\/manage$/, '');
@@ -127,6 +129,12 @@ function CourseManageApp() {
             onClick={() => setTab('students')}
           >
             班级成员管理
+          </span>
+          <span
+            className={`course-manage-tab ${tab === 'extraStudents' ? 'active' : ''}`}
+            onClick={() => setTab('extraStudents')}
+          >
+            临时调课学生 ({extraStudents?.length || 0})
           </span>
           <span
             className={`course-manage-tab ${tab === 'chapters' ? 'active' : ''}`}
@@ -197,6 +205,75 @@ function CourseManageApp() {
           </table>
         </div>
       </div>
+    </div>
+  );
+
+  const renderExtraStudentsTab = () => (
+    <div>
+      <div className="row">
+        <div className="columns">
+          <div className="button-group">
+            <a
+              href={`${basePath}/edit`}
+              className="rounded primary button"
+            >
+              编辑临时学生名单
+            </a>
+          </div>
+        </div>
+      </div>
+      {extraStudentList.length === 0 ? (
+        <div className="row">
+          <div className="columns">
+            <p className="typo">暂无临时调课学生。</p>
+          </div>
+        </div>
+      ) : (
+        <div className="row">
+          <div className="columns">
+            <table className="data-table course-manage-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 100 }}>UID</th>
+                  <th>用户</th>
+                  <th style={{ width: 200 }}>课程访问</th>
+                </tr>
+              </thead>
+              <tbody>
+                {extraStudentList.map((uid) => {
+                  const tsdoc = tsdict?.[uid];
+                  const allowed = !!tsdoc;
+                  return (
+                    <tr key={uid}>
+                      <td>{uid}</td>
+                      <td>{getUserText(udict?.[uid])}</td>
+                      <td>
+                        {allowed ? (
+                          <button
+                            type="button"
+                            className="rounded button"
+                            onClick={() => post({ operation: 'visit', uid, allow: false })}
+                          >
+                            禁止访问
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="rounded primary button"
+                            onClick={() => post({ operation: 'visit', uid, allow: true })}
+                          >
+                            允许访问
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -280,6 +357,7 @@ function CourseManageApp() {
       </div>
       {renderTabs()}
       {tab === 'students' ? renderStudentsTab() : null}
+      {tab === 'extraStudents' ? renderExtraStudentsTab() : null}
       {tab === 'chapters' ? renderNodeTab() : null}
     </div>
   );

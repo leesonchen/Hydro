@@ -72,6 +72,17 @@
               </div>
             </div>
           </div>
+          <div class="row course-extra-students-row"{% if isTemplate %} style="display:none"{% endif %}>
+            <div class="columns">
+              <div class="course-assign-card">
+                <label>
+                  临时调课学生
+                  <input name="extraStudents" value="{{ tdoc.extraStudents|default([])|join(',') }}" class="textbox" placeholder="输入用户UID，多个用逗号分隔">
+                </label>
+                <div class="course-assign-hint">输入学生UID，多个用逗号分隔。这些学生可以临时访问本课程，不影响其所属班级。</div>
+              </div>
+            </div>
+          </div>
           <div class="row"><div class="columns">
             <label>
               {{ _('Plan') }}

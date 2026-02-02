@@ -174,6 +174,7 @@ export class CourseMainHandler extends Handler {
         if (this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK)) {
             groups.push('teachers');
         }
+        const userId = this.user._id;
 
         // 查询条件：匹配分配给用户组的课程，或未分配的课程（assign 为空数组、null 或不存在）
         const tdocs = await ContestModel.getMulti(domainId, {
@@ -184,6 +185,7 @@ export class CourseMainHandler extends Handler {
                     { assign: { $size: 0 } },
                     { assign: null },
                     { assign: { $exists: false } },
+                    { extraStudents: userId },
                 ],
             }),
         })
@@ -248,9 +250,10 @@ export class CourseDetailHandler extends Handler {
             PERM.PERM_EDIT_HOMEWORK_SELF,
             PERM.PERM_VIEW_HIDDEN_HOMEWORK,
         );
+        const isExtraStudent = this.tdoc.extraStudents?.includes(this.user._id);
         if (!isTemplate && this.tdoc.assign?.length && !this.user.own(this.tdoc)
             && !Set.intersection(this.tdoc.assign, this.user.group).size
-            && !canBypassAssign) {
+            && !canBypassAssign && !isExtraStudent) {
             throw new NotAssignedError('course', this.tdoc.docId);
         }
     }
@@ -264,6 +267,29 @@ export class CourseDetailHandler extends Handler {
         const isTeacherEditor = this.user.own(this.tdoc)
             || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK);
         const canViewAllProblems = isTeacherEditor || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
+
+        // 如果是临时学生且尚未建状态，自动加入并复制当前开放的章节/讲义状态
+        const isExtraStudent = this.tdoc.extraStudents?.includes(this.user._id);
+        if (!tsdoc && isExtraStudent) {
+            const tsdocs = await ContestModel.getMultiStatus(domainId, { docId: tid }).toArray();
+            const mergedAllow: Record<number, boolean> = {};
+            const mergedLectureAllow: Record<number, boolean> = {};
+            for (const t of tsdocs) {
+                Object.entries(t.allow || {}).forEach(([k, v]) => {
+                    if (v) mergedAllow[+k] = true;
+                });
+                Object.entries(t.lectureAllow || {}).forEach(([k, v]) => {
+                    if (v) mergedLectureAllow[+k] = true;
+                });
+            }
+            await ContestModel.attend(domainId, tid, this.user._id, { unrank: true });
+            await ContestModel.setStatus(domainId, tid, this.user._id, {
+                attend: true,
+                allow: mergedAllow,
+                lectureAllow: mergedLectureAllow,
+            });
+            tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
+        }
 
         // 如果用户未加入且有编辑权限，自动加入
         if (!tsdoc && this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF)) {
@@ -379,6 +405,7 @@ export class CourseEditHandler extends Handler {
     @param('isTemplate', Types.Boolean)
     @param('templateCategory', Types.String, true)
     @param('assign', Types.CommaSeperatedArray, true)
+    @param('extraStudents', Types.CommaSeperatedArray, true)
     async post(
         domainId: string,
         tid: ObjectId | undefined,
@@ -390,8 +417,12 @@ export class CourseEditHandler extends Handler {
         isTemplate = false,
         templateCategory = '',
         assign: string[] = [],
+        extraStudentsStr: string[] = [],
     ) {
         assign = Array.from(new Set((assign || []).map((s) => (s || '').trim()).filter(Boolean)));
+        const extraStudents = Array.from(new Set((extraStudentsStr || [])
+            .map((s) => parseInt(s, 10))
+            .filter((n) => Number.isFinite(n) && n > 0)));
         if (!isTemplate && assign.includes('teachers')) {
             throw new BadRequestError('不能分配课程给 teachers 组');
         }
@@ -457,6 +488,7 @@ export class CourseEditHandler extends Handler {
             assign: isTemplate ? (templateCategory ? ['teachers', templateCategory] : ['teachers']) : assign,
             editor,
             updateAt,
+            extraStudents: isTemplate ? [] : extraStudents,
         });
 
         this.response.body = { tid };
@@ -503,9 +535,11 @@ export class CourseManageHandler extends Handler {
         }
 
         const group = await ClassModel.getGroupByName(domainId, (tdoc as CourseTdoc).assign?.[0] || '');
+        const extraStudents = (tdoc as CourseTdoc).extraStudents || [];
         const allUids = Array.from(new Set([
             ...tsdocs.map((t) => t.uid),
             ...(group?.students || []),
+            ...(extraStudents),
             (tdoc as CourseTdoc).owner,
             (tdoc as any).editor,
         ].filter(Boolean)));
@@ -518,6 +552,7 @@ export class CourseManageHandler extends Handler {
             tsdict,
             udict,
             group: group || { students: [] },
+            extraStudents,
         };
     }
 
@@ -529,6 +564,13 @@ export class CourseManageHandler extends Handler {
         const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
 
         if (group && group.students.includes(uid)) {
+            if (allow) {
+                await ContestModel.attend(domainId, tid, uid);
+            } else {
+                await DocumentModel.deleteMultiStatus(domainId, DocumentModel.TYPE_CONTEST, { docId: tid, uid });
+            }
+        } else if (tdoc.extraStudents?.includes(uid)) {
+            // 处理临时学生
             if (allow) {
                 await ContestModel.attend(domainId, tid, uid);
             } else {
@@ -631,8 +673,10 @@ export class CourseLectureHandler extends Handler {
             PERM.PERM_EDIT_HOMEWORK_SELF,
             PERM.PERM_VIEW_HIDDEN_HOMEWORK,
         );
-        if (!isTemplate && tdoc.assign?.length && !this.user.own(tdoc) && !Set.intersection(tdoc.assign, this.user.group).size
-            && !canBypassAssign) {
+        const isExtraStudent = tdoc.extraStudents?.includes(this.user._id);
+        if (!isTemplate && tdoc.assign?.length && !this.user.own(tdoc)
+            && !Set.intersection(tdoc.assign, this.user.group).size
+            && !canBypassAssign && !isExtraStudent) {
             throw new NotAssignedError('course', tdoc.docId);
         }
     }

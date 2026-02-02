@@ -4,6 +4,7 @@ import {
   CustomSelectAutoComplete,
   NamedPage,
   ProblemSelectAutoComplete,
+  UserSelectAutoComplete,
 } from '@hydrooj/ui-default';
 import { api } from '@hydrooj/ui-default/utils';
 
@@ -44,6 +45,14 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       if (!isTemplate && currentValue === 'teachers') {
         $assign.val('');
       }
+    }
+    const $extraStudents = $('[name="extraStudents"]');
+    if ($extraStudents.length) {
+      UserSelectAutoComplete.getOrConstruct($extraStudents, {
+        multi: true,
+        allowEmptyQuery: true,
+        freeSolo: false,
+      });
     }
   })().catch(() => undefined);
 

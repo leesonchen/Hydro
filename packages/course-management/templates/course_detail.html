@@ -23,7 +23,7 @@
         </blockquote>
       </div>
       {% endif %}
-      {% if not isTemplate and not model.contest.isOngoing(tdoc, tsdoc) %}
+      {% if not isTemplate and not model.contest.isOngoing(tdoc, tsdoc) and not isTeacherEditor %}
       <div class="section__body">
         <blockquote class="typo note">
           <p>此课程尚未开始。</p>

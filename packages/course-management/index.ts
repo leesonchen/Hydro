@@ -56,6 +56,8 @@ export async function apply(ctx: Context, config: typeof Config) {
         Section: '章节',
         Archive: '归档',
         Visit: '访问',
+        'Extra Students': '临时调课学生',
+        'Extra Students Hint': '输入学生UID，多个用逗号分隔。这些学生可以临时访问本课程，不影响其所属班级。',
     });
 
     ctx.i18n.load('en', {
