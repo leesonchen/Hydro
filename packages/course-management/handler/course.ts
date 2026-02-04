@@ -189,7 +189,7 @@ export class CourseMainHandler extends Handler {
                 ],
             }),
         })
-            .sort({ endAt: -1 })
+            .sort({ beginAt: -1 })
             .project({ _id: 1, docId: 1, title: 1, beginAt: 1, endAt: 1, assign: 1, rule: 1, owner: 1, editor: 1, updateAt: 1 })
             .toArray();
 

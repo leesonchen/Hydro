@@ -342,8 +342,18 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           const ids = (keys as any[])
             .map((v) => +String(v).trim())
             .filter((v) => Number.isFinite(v));
-          const next = (Array.from(new Set(ids)) as number[]).sort((a, b) => a - b);
-          const current = (Array.from(new Set(node.pids || [])) as number[]).sort((a, b) => a - b);
+
+          // 保留用户添加的顺序，去重但不排序
+          const seen = new Set<number>();
+          const next: number[] = [];
+          for (const id of ids) {
+            if (!seen.has(id)) {
+              seen.add(id);
+              next.push(id);
+            }
+          }
+
+          const current = Array.isArray(node.pids) ? node.pids : [];
           const same = next.length === current.length && next.every((v, i) => v === current[i]);
           if (same) return;
           node.pids = next;

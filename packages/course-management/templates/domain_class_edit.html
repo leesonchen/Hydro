@@ -1,6 +1,7 @@
 {% extends "domain_base.html" %}
 {% block domain_content %}
 {{ set(UiContext, 'templates', templates) }}
+{{ set(UiContext, 'groups', groups) }}
 <div class="section">
   <div class="section__header">
     <h1 class="section__title">{{ _('Edit Class') }}</h2>
@@ -26,10 +27,26 @@
       }) }}
       {{ form.form_text({
         columns:12,
+        label:'Teacher Groups',
+        name:'teacherGroups',
+        placeholder:_('Teacher Groups'),
+        value:'',
+        row:true
+      }) }}
+      {{ form.form_text({
+        columns:12,
         label:'Students',
         name:'students',
         placeholder:_('Students'),
         value:gdoc.students|default(''),
+        row:true
+      }) }}
+      {{ form.form_text({
+        columns:12,
+        label:'Student Groups',
+        name:'studentGroups',
+        placeholder:_('Student Groups'),
+        value:'',
         row:true
       }) }}
       <div class="row">

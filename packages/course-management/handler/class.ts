@@ -1,6 +1,6 @@
 import {
     ContestModel, Handler, moment, NotFoundError, ObjectId, param, PERM, PermissionError,
-    ProblemModel, StorageModel, Types, ValidationError,
+    ProblemModel, StorageModel, Types, UserModel, ValidationError,
 } from 'hydrooj';
 import { ClassModel } from '../model/class';
 import type { CourseTdoc } from '../model/course';
@@ -40,6 +40,8 @@ export class ClassEditHandler extends Handler {
         let endAt = beginAt.clone().add(7, 'days').tz(this.user.timeZone).hour(23).minute(59).millisecond(0);
 
         const extra: any = {};
+        const groups = (await UserModel.listGroup(domainId)).filter((g: any) => !g?.class);
+        extra.groups = groups;
 
         if (id) {
             const gdoc = await ClassModel.getGroupById(domainId, id);
@@ -108,6 +110,8 @@ export class ClassEditHandler extends Handler {
     @param('name', Types.String)
     @param('teachers', Types.NumericArray)
     @param('students', Types.NumericArray)
+    @param('teacherGroups', Types.CommaSeperatedArray, true)
+    @param('studentGroups', Types.CommaSeperatedArray, true)
     @param('beginAtDate', Types.String)
     @param('beginAtTime', Types.String)
     @param('EndAtDate', Types.String)
@@ -119,6 +123,8 @@ export class ClassEditHandler extends Handler {
         name: string,
         teachers: number[],
         students: number[],
+        teacherGroups: string[] = [],
+        studentGroups: string[] = [],
         beginAtDate: string,
         beginAtTime: string,
         endAtDate: string,
@@ -148,11 +154,17 @@ export class ClassEditHandler extends Handler {
             await ClassModel.delGroup(domainId, id);
         }
 
+        const groupDocs = (await UserModel.listGroup(domainId)).filter((g: any) => !g?.class);
+        const groupMap = new Map<string, number[]>(groupDocs.map((g: any) => [g.name, (g.uids || []) as number[]]));
+        const collectGroupUids = (groupNames: string[]) => groupNames.flatMap((groupName) => groupMap.get(groupName) || []);
+        const mergedTeachers = Array.from(new Set([...teachers, ...collectGroupUids(teacherGroups)]));
+        const mergedStudents = Array.from(new Set([...students, ...collectGroupUids(studentGroups)]));
+
         await ClassModel.updateGroup(
             domainId,
             name,
-            teachers,
-            students,
+            mergedTeachers,
+            mergedStudents,
             beginAt.toDate(),
             endAt.toDate(),
             archive,
@@ -167,7 +179,7 @@ export class ClassEditHandler extends Handler {
         await Promise.all(tdocs.map((t) => ContestModel.edit(domainId, t._id, {
             beginAt: beginAt.toDate(),
             endAt: endAt.toDate(),
-            maintainer: teachers,
+            maintainer: mergedTeachers,
         })));
 
         this.response.redirect = this.url('domain_class');

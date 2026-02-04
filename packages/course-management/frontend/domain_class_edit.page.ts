@@ -14,12 +14,52 @@ import {
 const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
   const $teachers = $('[name="teachers"]');
   const $students = $('[name="students"]');
+  const $teacherGroups = $('[name="teacherGroups"]');
+  const $studentGroups = $('[name="studentGroups"]');
 
-  if ($teachers.length) {
-    UserSelectAutoComplete.getOrConstruct<UserSelectAutoComplete<true>>($teachers, { multi: true, clearDefaultValue: false });
+  const teacherSelect = $teachers.length
+    ? UserSelectAutoComplete.getOrConstruct<UserSelectAutoComplete<true>>($teachers, { multi: true, clearDefaultValue: false })
+    : null;
+  const studentSelect = $students.length
+    ? UserSelectAutoComplete.getOrConstruct<UserSelectAutoComplete<true>>($students, { multi: true, clearDefaultValue: false })
+    : null;
+
+  const groups = (window as any).UiContext?.groups || [];
+  const groupOptions = groups.map((g) => ({ _id: g.name, name: g.name, uids: g.uids || [] }));
+  const groupMap = new Map<string, number[]>(groupOptions.map((g) => [g._id, g.uids || []]));
+
+  const mergeGroupUids = (select: UserSelectAutoComplete<true> | null, groupNames: string[]) => {
+    if (!select) return;
+    const groupUids = groupNames.flatMap((name) => groupMap.get(String(name)) || []);
+    const current = select.value() || [];
+    const merged = Array.from(new Set([...(current as number[]), ...groupUids]));
+    (select as any).ref?.setSelectedKeys?.(merged.map((uid) => uid.toString()));
+  };
+
+  if ($teacherGroups.length) {
+    const teacherGroupSelect = CustomSelectAutoComplete.getOrConstruct($teacherGroups, {
+      multi: true,
+      data: groupOptions,
+      allowEmptyQuery: true,
+      clearDefaultValue: false,
+    });
+    teacherGroupSelect?.onChange?.(() => {
+      const names = teacherGroupSelect.value() as string[];
+      mergeGroupUids(teacherSelect, Array.isArray(names) ? names : []);
+    });
   }
-  if ($students.length) {
-    UserSelectAutoComplete.getOrConstruct<UserSelectAutoComplete<true>>($students, { multi: true, clearDefaultValue: false });
+
+  if ($studentGroups.length) {
+    const studentGroupSelect = CustomSelectAutoComplete.getOrConstruct($studentGroups, {
+      multi: true,
+      data: groupOptions,
+      allowEmptyQuery: true,
+      clearDefaultValue: false,
+    });
+    studentGroupSelect?.onChange?.(() => {
+      const names = studentGroupSelect.value() as string[];
+      mergeGroupUids(studentSelect, Array.isArray(names) ? names : []);
+    });
   }
 
   const templates = (window as any).UiContext?.templates || [];

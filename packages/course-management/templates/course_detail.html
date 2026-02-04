@@ -75,6 +75,17 @@
                     </tr>
                   </thead>
                   <tbody>
+                    {% if node['lecture'] %}
+                      <tr>
+                        <td class="col--status record-status--border"></td>
+                        <td class="col--name col--problem-name">
+                          <a href="{{ url('course_lecture', tid=tdoc.docId, id=node['_id']) }}">
+                            <span class="icon icon-book"></span>
+                            <b>L{{ node['_id'] }}</b> {{ node['lecture'] }}
+                          </a>
+                        </td>
+                      </tr>
+                    {% endif %}
                     {% if isTeacherEditor or (not isTemplate and tsdoc.allow[node['_id']]) %}
                     {%- for pid in node['pids'] -%}
                       {% set pdoc=pdict[pid] %}
@@ -94,17 +105,6 @@
                         </td>
                       </tr>
                     {%- endfor -%}
-                    {% endif %}
-                    {% if node['lecture'] %}
-                      <tr>
-                        <td class="col--status record-status--border"></td>
-                        <td class="col--name col--problem-name">
-                          <a href="{{ url('course_lecture', tid=tdoc.docId, id=node['_id']) }}">
-                            <span class="icon icon-book"></span>
-                            <b>L{{ node['_id'] }}</b> {{ node['lecture'] }}
-                          </a>
-                        </td>
-                      </tr>
                     {% endif %}
                   </tbody>
                 </table>
