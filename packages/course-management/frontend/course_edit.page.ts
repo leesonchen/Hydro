@@ -329,15 +329,41 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         $completeValue.on('change', commitCompleteValue);
 
         let lastProblemQuery = '';
+        const clearProblemQuery = () => {
+          lastProblemQuery = '';
+          problemSelect?.ref?.setQuery?.('');
+        };
         $problemInput.val((node.pids || []).join(','));
         const problemSelect = ProblemSelectAutoComplete.getOrConstruct($problemInput, {
           multi: true,
           allowEmptyQuery: true,
           freeSolo: false,
         });
+
+        // Track the real visible input inside AutoComplete React component.
+        const bindQueryTracker = () => {
+          const input = problemSelect?.container?.querySelector('input') as HTMLInputElement | null;
+          if (!input) return false;
+          if ((input as any)._cmBound) return true;
+          (input as any)._cmBound = true;
+          input.addEventListener('input', () => {
+            lastProblemQuery = input.value;
+          });
+          input.addEventListener('keydown', () => {
+            lastProblemQuery = input.value;
+          });
+          return true;
+        };
+
+        // Try binding immediately, then retry if failed
+        const tryBind = () => {
+          if (!bindQueryTracker()) {
+            setTimeout(tryBind, 100);
+          }
+        };
+        setTimeout(tryBind, 0);
+
         problemSelect?.onChange?.((val: any) => {
-          const query = problemSelect?.ref?.getQuery?.() || '';
-          if (query.trim()) lastProblemQuery = query.trim();
           const keys = Array.isArray(val) ? val : String(val || '').split(',');
           const ids = (keys as any[])
             .map((v) => +String(v).trim())
@@ -358,10 +384,28 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           if (same) return;
           node.pids = next;
           commit({ source: 'problem select' });
-          if (lastProblemQuery) {
-            problemSelect?.ref?.setQuery?.(lastProblemQuery);
+
+          // 选择后保留搜索关键字（便于连续选择）
+          const queryToRestore = lastProblemQuery;
+          if (queryToRestore) {
+            setTimeout(() => {
+              const container = problemSelect?.container;
+              const active = document.activeElement;
+              if (!container || !active || !container.contains(active)) return;
+              problemSelect?.ref?.setQuery?.(queryToRestore);
+              problemSelect?.ref?.triggerQuery?.();
+            }, 100);
           }
-          problemSelect?.open?.();
+        });
+
+        // 失焦到组件外时清除搜索关键字
+        $section.on('focusout', () => {
+          setTimeout(() => {
+            const container = problemSelect?.container;
+            const active = document.activeElement;
+            if (container && active && container.contains(active)) return;
+            clearProblemQuery();
+          }, 0);
         });
 
         $section.find('.dag-remove').on('click', () => {
@@ -398,19 +442,21 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
 
     const $form = $dag.closest('form');
     $form.on('submit', (ev) => {
-      commit({ source: 'submit' });
-      if (!nodes.length) {
+      // 提交时以 JSON textarea 的内容为准，不覆盖用户直接编辑的 JSON
+      const currentParsed = parseDag();
+      if (!currentParsed) {
+        ev.preventDefault();
+        window.alert('JSON 格式错误，请检查');
+        return;
+      }
+      if (!currentParsed.length) {
         ev.preventDefault();
         updateStatus('请至少保留一个章节', false);
         window.alert('请至少保留一个章节');
         return;
       }
-      const emptyProblems = nodes.filter((n) => !(n.pids || []).length);
-      if (emptyProblems.length) {
-        ev.preventDefault();
-        updateStatus('请为每个章节选择至少一道题目', false);
-        window.alert('请为每个章节选择至少一道题目');
-      }
+      // 同步到内存中的 nodes（但不写回 textarea）
+      nodes = normalizeNodes(currentParsed);
     });
 
     $dag.on('input', updateStatusFromRaw);

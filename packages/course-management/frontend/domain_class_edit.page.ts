@@ -16,6 +16,9 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
   const $students = $('[name="students"]');
   const $teacherGroups = $('[name="teacherGroups"]');
   const $studentGroups = $('[name="studentGroups"]');
+  const $intervalPreset = $('[name="intervalPreset"]');
+  const $intervalDays = $('[name="intervalDays"]');
+  const $intervalDaysContainer = $('#intervalDaysContainer');
 
   const teacherSelect = $teachers.length
     ? UserSelectAutoComplete.getOrConstruct<UserSelectAutoComplete<true>>($teachers, { multi: true, clearDefaultValue: false })
@@ -60,6 +63,38 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       const names = studentGroupSelect.value() as string[];
       mergeGroupUids(studentSelect, Array.isArray(names) ? names : []);
     });
+  }
+
+  const syncInterval = () => {
+    if (!$intervalPreset.length) return;
+    const preset = String($intervalPreset.val() || '1');
+    if (preset === 'custom') {
+      if ($intervalDaysContainer.length) $intervalDaysContainer.show();
+      if ($intervalDays.length) {
+        $intervalDays.prop('readonly', false);
+        if (!$intervalDays.val()) $intervalDays.val('1');
+      }
+      return;
+    }
+    if ($intervalDaysContainer.length) $intervalDaysContainer.hide();
+    if ($intervalDays.length) {
+      $intervalDays.val(preset || '1');
+      $intervalDays.prop('readonly', true);
+    }
+  };
+
+  if ($intervalPreset.length) {
+    syncInterval();
+    $intervalPreset.on('change', syncInterval);
+    if ($intervalDays.length) {
+      $intervalDays.on('input', () => {
+        if ($intervalPreset.val() !== 'custom') {
+          $intervalPreset.val('custom');
+          if ($intervalDaysContainer.length) $intervalDaysContainer.show();
+          $intervalDays.prop('readonly', false);
+        }
+      });
+    }
   }
 
   const templates = (window as any).UiContext?.templates || [];

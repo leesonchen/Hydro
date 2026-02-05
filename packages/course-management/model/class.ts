@@ -12,6 +12,7 @@ export interface ClassGDoc {
     uids: number[];
     beginAt: Date;
     endAt: Date;
+    intervalDays?: number;
     archive: boolean;
     class: true;
 }
@@ -62,6 +63,7 @@ export const ClassModel = {
         beginAt: Date,
         endAt: Date,
         archive = false,
+        intervalDays = 1,
     ) {
         deleteUserCache(domainId);
         return coll.updateOne(
@@ -76,6 +78,7 @@ export const ClassModel = {
                     class: true as const,
                     beginAt,
                     endAt,
+                    intervalDays,
                     archive,
                 },
             },

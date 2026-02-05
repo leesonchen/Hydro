@@ -58,6 +58,9 @@ export async function apply(ctx: Context, config: typeof Config) {
         Visit: '访问',
         'Extra Students': '临时调课学生',
         'Extra Students Hint': '输入学生UID，多个用逗号分隔。这些学生可以临时访问本课程，不影响其所属班级。',
+
+        // 题目详情页关联课程
+        'In following courses': '在以下课程中',
     });
 
     ctx.i18n.load('en', {
@@ -135,6 +138,40 @@ export async function apply(ctx: Context, config: typeof Config) {
                 { tid, id: 0, ...extra },
             );
             return 'cleanup';
+        }
+    });
+
+    // 题目详情页：查询关联的课程
+    ctx.on('handler/after/ProblemDetail', async (handler) => {
+        // 只在非课程/作业/比赛模式下查询（即普通题目详情页）
+        if (handler.tdoc) return;
+        const domainId = handler.args.domainId;
+        const pid = handler.pdoc?.docId;
+        if (!pid) return;
+
+        try {
+            // 查询包含此题目的课程
+            const courses = await ContestModel.getMulti(domainId, {
+                rule: 'course',
+                pids: pid,
+            }).toArray();
+
+            // 过滤用户有权限查看的课程
+            const visibleCourses = courses.filter((tdoc: any) => {
+                // 教师或管理员可见
+                if (handler.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)) return true;
+                // 分配了班级的课程，检查用户是否在班级中
+                if (!tdoc.assign?.length) return true;
+                const userGroups = new Set(handler.user.group || []);
+                return tdoc.assign.some((g: string) => userGroups.has(g));
+            });
+
+            if (visibleCourses.length) {
+                handler.response.body.cdocs = visibleCourses;
+            }
+        } catch (e) {
+            // 忽略错误，不影响页面正常显示
+            console.error('[Course Management] Failed to query related courses:', e);
         }
     });
 

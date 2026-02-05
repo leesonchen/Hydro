@@ -32,7 +32,11 @@
       {% else %}
       {%- for node in tdoc['dag'] -%}
         {% set _canView = pdict and (isTeacherEditor or (not isTemplate and (tsdoc.allow[node['_id']] or tsdoc.lectureAllow[node['_id']]))) %}
-        {% if _canView %}
+        {% set _hasLecture = node['lecture'] %}
+        {% set _hasProblems = node['pids'] and node['pids']|length > 0 %}
+        {% set _canViewProblems = isTeacherEditor or (not isTemplate and tsdoc.allow[node['_id']]) %}
+        {% set _shouldShow = _canView and (_hasLecture or (_hasProblems and _canViewProblems)) %}
+        {% if _shouldShow %}
         <div data-heading-extract-to="#menu-item-course_detail" class="training__section expanded">
           <div class="section__header clearfix">
             <h1 data-heading id="node-{{ node._id }}" class="section__title">{{ _('Section') }} {{ node['_id'] }}. {{ node['title'].split('\n')[0] }}</h1>

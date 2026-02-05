@@ -78,7 +78,7 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
             assert(node._id, 'each node should have a _id');
             assert(node.title, 'each node shoule have a title');
             assert(node.pids instanceof Array);
-            assert(node.pids.length, 'each node should have at least one problem');
+            // 允许空题目：如果 pids 为空数组，则不强制要求有题目
 
             if (node.completeCondition) {
                 assert(typeof node.completeCondition === 'object', 'completeCondition must be an object');
@@ -211,6 +211,7 @@ export class CourseMainHandler extends Handler {
                 ...t,
                 assignGroup: t.assign?.[0],
                 category: `templates::${t.assign?.[1] || ''}`,
+                isTemplate: t.assign?.includes('teachers') || false,
             }));
 
         const templates = courses.filter((c) => c.assignGroup === 'teachers');
@@ -220,13 +221,25 @@ export class CourseMainHandler extends Handler {
             (c) => !templates.includes(c) && !unassigned.includes(c) && !archived.includes(c),
         );
 
+        const templateGroups = templates.length ? _.groupBy(templates, 'category') : {};
+        const activeGroups = _.groupBy(active, 'assignGroup');
+        const archivedGroups = _.groupBy(archived, 'assignGroup');
+        const unassignedGroups = unassigned.length ? { unassigned } : {};
+        const tdocGroups = [
+            ...Object.entries(activeGroups).map(([key, list]) => ({ key, tdocs: list })),
+            ...Object.entries(unassignedGroups).map(([key, list]) => ({ key, tdocs: list })),
+            ...Object.entries(archivedGroups).map(([key, list]) => ({ key, tdocs: list })),
+            ...Object.entries(templateGroups).map(([key, list]) => ({ key, tdocs: list })),
+        ];
+
         this.response.body = {
             tdocs: {
-                ...(templates.length ? _.groupBy(templates, 'category') : {}),
-                ...(unassigned.length ? { unassigned } : {}),
-                ..._.groupBy(active, 'assignGroup'),
-                ..._.groupBy(archived, 'assignGroup'),
+                ...templateGroups,
+                ...unassignedGroups,
+                ...activeGroups,
+                ...archivedGroups,
             },
+            tdocGroups,
             tsdict,
             udict,
         };

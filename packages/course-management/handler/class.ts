@@ -38,6 +38,7 @@ export class ClassEditHandler extends Handler {
 
         let beginAt = moment().add(1, 'day').tz(this.user.timeZone).hour(0).minute(0).millisecond(0);
         let endAt = beginAt.clone().add(7, 'days').tz(this.user.timeZone).hour(23).minute(59).millisecond(0);
+        let intervalDays = 1;
 
         const extra: any = {};
         const groups = (await UserModel.listGroup(domainId)).filter((g: any) => !g?.class);
@@ -70,6 +71,9 @@ export class ClassEditHandler extends Handler {
             if (gdoc.endAt) {
                 endAt = moment(gdoc.endAt).tz(this.user.timeZone);
             }
+            if (typeof gdoc.intervalDays === 'number') {
+                intervalDays = gdoc.intervalDays;
+            }
 
             // 如果没有设置时间但有课程，使用课程的时间范围
             if (!gdoc.beginAt && tdocs.length) {
@@ -78,11 +82,14 @@ export class ClassEditHandler extends Handler {
             }
         }
 
+        const intervalPreset = intervalDays === 1 ? '1' : intervalDays === 7 ? '7' : 'custom';
         Object.assign(this.response.body, {
             dateBeginText: beginAt.format('YYYY-M-D'),
             timeBeginText: beginAt.format('H:mm'),
             dateEndText: endAt.format('YYYY-M-D'),
             timeEndText: endAt.format('H:mm'),
+            intervalDays,
+            intervalPreset,
             ...extra,
         });
 
@@ -116,6 +123,7 @@ export class ClassEditHandler extends Handler {
     @param('beginAtTime', Types.String)
     @param('EndAtDate', Types.String)
     @param('EndAtTime', Types.String)
+    @param('intervalDays', Types.Int, true)
     @param('archive', Types.Boolean)
     async postUpdate(
         domainId: string,
@@ -129,6 +137,7 @@ export class ClassEditHandler extends Handler {
         beginAtTime: string,
         endAtDate: string,
         endAtTime: string,
+        intervalDays = 1,
         archive = false,
     ) {
         const beginAt = moment.tz(`${beginAtDate} ${beginAtTime}`, this.user.timeZone);
@@ -136,6 +145,8 @@ export class ClassEditHandler extends Handler {
 
         const endAt = moment.tz(`${endAtDate} ${endAtTime}`, this.user.timeZone);
         if (!endAt.isValid()) throw new ValidationError('endAtDate', 'endAtTime');
+
+        if (!intervalDays || intervalDays < 1) intervalDays = 1;
 
         if (id) {
             const gdoc = await ClassModel.getGroupById(domainId, id);
@@ -168,6 +179,7 @@ export class ClassEditHandler extends Handler {
             beginAt.toDate(),
             endAt.toDate(),
             archive,
+            intervalDays,
         );
 
         // 更新所有关联课程的时间和维护者

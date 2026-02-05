@@ -95,6 +95,31 @@
             }) }}
       </div>
       <div class="row">
+            {{ form.form_select({
+                columns:3,
+                label:_('Interval'),
+                name:'intervalPreset',
+                options:{
+                  '1': _('Every day'),
+                  '7': _('Every week (7 days)'),
+                  'custom': _('Custom days')
+                },
+                value:intervalPreset|default('1'),
+                row:false
+            }) }}
+            <div id="intervalDaysContainer" class="{{ 'show' if intervalPreset == 'custom' else 'hide' }}">
+              {{ form.form_text({
+                  columns:2,
+                  label:_('Interval Days'),
+                  name:'intervalDays',
+                  type:'number',
+                  extra_attr:'min="1" step="1"',
+                  value:intervalDays|default(1),
+                  row:false
+              }) }}
+            </div>
+      </div>
+      <div class="row">
         <div class="columns">
           {% if page_name == 'domain_class_edit' %}
             <button name="operation" value="update" type="submit" class="rounded primary button">
