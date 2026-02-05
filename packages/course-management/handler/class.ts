@@ -13,10 +13,23 @@ export class ClassHandler extends Handler {
     }
 
     async get({ domainId }: { domainId: string }) {
+        const groups = await ClassModel.listGroup(domainId);
+        
+        // 获取每个班级的课程数量
+        const groupsWithCourseCount = await Promise.all(
+            groups.map(async (g) => {
+                const count = await ContestModel.getMulti(domainId, {
+                    rule: 'course',
+                    assign: { $in: [g.name] },
+                }).count();
+                return { ...g, courseCount: count };
+            })
+        );
+        
         this.response.template = 'domain_class.html';
         this.response.body = {
             domain: this.domain,
-            groups: await ClassModel.listGroup(domainId),
+            groups: groupsWithCourseCount,
         };
     }
 }
@@ -182,17 +195,21 @@ export class ClassEditHandler extends Handler {
             intervalDays,
         );
 
-        // 更新所有关联课程的时间和维护者
+        // 更新所有关联课程的时间和维护者，按间隔顺序分配
         const tdocs = await ContestModel.getMulti(domainId, {
             rule: 'course',
             assign: { $in: [name] },
-        }).toArray();
+        }).sort({ beginAt: 1, _id: 1 }).toArray();
 
-        await Promise.all(tdocs.map((t) => ContestModel.edit(domainId, t._id, {
-            beginAt: beginAt.toDate(),
-            endAt: endAt.toDate(),
-            maintainer: mergedTeachers,
-        })));
+        await Promise.all(tdocs.map((t, index) => {
+            const courseBeginAt = beginAt.clone().add(index * intervalDays, 'days');
+            const courseEndAt = courseBeginAt.clone().add(endAt.diff(beginAt), 'milliseconds');
+            return ContestModel.edit(domainId, t._id, {
+                beginAt: courseBeginAt.toDate(),
+                endAt: courseEndAt.toDate(),
+                maintainer: mergedTeachers,
+            });
+        }));
 
         this.response.redirect = this.url('domain_class');
     }
