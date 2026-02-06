@@ -9,23 +9,52 @@ import bus from 'hydrooj/src/service/bus';
 import type { CourseTdoc, DagNode } from '../model/course';
 import { ClassModel } from '../model/class';
 
-// 检查章节是否完成
-function checkNodeComplete(tsdoc: any, node: DagNode): boolean {
-    if (!tsdoc) return false;
-    if (!node.pids?.length) return false;
+// 检查前置章节完成情况（按当前节点 completeCondition 聚合判断）
+function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc): boolean {
+    if (!tsdoc) {
+        console.log(`[checkPrerequisitesComplete] tsdoc is null/undefined`);
+        return false;
+    }
+    const requireNids = node.requireNids || [];
+    if (!requireNids.length) {
+        console.log(`[checkPrerequisitesComplete] node ${node._id} has no requirements`);
+        return true;
+    }
 
-    const acceptCount = tsdoc.accept?.[node._id] ?? 0;
-    const totalScore = tsdoc.score?.[node._id] ?? 0;
+    let acceptCount = 0;
+    let totalScore = 0;
+    let totalPids = 0;
 
-    if (node.completeCondition?.type === 'all') {
-        return acceptCount >= node.pids.length;
+    for (const nid of requireNids) {
+        const reqNode = tdoc.dag.find((n) => n._id === nid);
+        if (!reqNode) {
+            console.log(`[checkPrerequisitesComplete] required node ${nid} not found in dag`);
+            return false;
+        }
+        acceptCount += tsdoc.accept?.[nid] ?? 0;
+        totalScore += tsdoc.score?.[nid] ?? 0;
+        totalPids += reqNode.pids?.length || 0;
     }
-    if (node.completeCondition?.type === 'problem') {
-        return acceptCount >= (node.completeCondition.value || 0);
+
+    const condition = node.completeCondition || { type: 'all' };
+    console.log(`[checkPrerequisitesComplete] node ${node._id}: acceptCount=${acceptCount}, totalScore=${totalScore}, totalPids=${totalPids}, condition=${JSON.stringify(condition)}`);
+
+    if (condition.type === 'all') {
+        const result = acceptCount >= totalPids;
+        console.log(`[checkPrerequisitesComplete] node ${node._id} type=all: ${acceptCount} >= ${totalPids} = ${result}`);
+        return result;
     }
-    if (node.completeCondition?.type === 'score') {
-        return totalScore >= (node.completeCondition.value || 0);
+    if (condition.type === 'problem') {
+        const result = acceptCount >= (condition.value || 0);
+        console.log(`[checkPrerequisitesComplete] node ${node._id} type=problem: ${acceptCount} >= ${condition.value || 0} = ${result}`);
+        return result;
     }
+    if (condition.type === 'score') {
+        const result = totalScore >= (condition.value || 0);
+        console.log(`[checkPrerequisitesComplete] node ${node._id} type=score: ${totalScore} >= ${condition.value || 0} = ${result}`);
+        return result;
+    }
+    console.log(`[checkPrerequisitesComplete] node ${node._id}: no matching condition type, returning false`);
     return false;
 }
 
@@ -35,31 +64,104 @@ export async function updateAllowedNodes(
     tid: ObjectId,
     uid: number,
     tdoc: CourseTdoc,
-    tsdoc: any,
+    _tsdoc?: any,
 ) {
-    if (!tsdoc?.attend) return;
+    console.log(`[updateAllowedNodes] called: domainId=${domainId}, tid=${tid}, uid=${uid}`);
+    
+    // 重新获取最新的 tsdoc，确保 accept 数据是最新的
+    const tsdoc = await ContestModel.getStatus(domainId, tid, uid);
+    console.log(`[updateAllowedNodes] tsdoc:`, JSON.stringify({
+        attend: tsdoc?.attend,
+        accept: tsdoc?.accept,
+        allow: tsdoc?.allow,
+        uid: tsdoc?.uid,
+    }));
+    
+    if (!tsdoc?.attend) {
+        console.log(`[updateAllowedNodes] tsdoc not found or not attended, returning`);
+        return;
+    }
+    
     const allow = tsdoc?.allow || {};
     let updated = false;
 
-    for (const node of tdoc.dag) {
-        if (allow[node._id]) continue;
-        if (!node.requireNids || !node.requireNids.length) continue;
+    // 如果没有DAG，所有章节默认开放（如果被手工禁止则需要手工允许）
+    if (!tdoc.dag || tdoc.dag.length === 0) {
+        console.log(`[updateAllowedNodes] no DAG, returning`);
+        return;
+    }
 
-        const allRequirementsMet = node.requireNids!.every((nid) => {
-            const reqNode = tdoc.dag.find((n) => n._id === nid);
-            if (!reqNode) return false;
-            return checkNodeComplete(tsdoc || {}, reqNode);
-        });
+    console.log(`[updateAllowedNodes] dag nodes count: ${tdoc.dag.length}`);
+
+    for (const node of tdoc.dag) {
+        console.log(`[updateAllowedNodes] checking node ${node._id}: allow=${allow[node._id]}`);
+        
+        // 如果已经有明确设置（包括禁止），不覆盖
+        if (allow[node._id] !== undefined) {
+            console.log(`[updateAllowedNodes] node ${node._id} already has allow=${allow[node._id]}, skipping`);
+            continue;
+        }
+        
+        // 没有前置条件的节点，默认开放
+        if (!node.requireNids || !node.requireNids.length) {
+            console.log(`[updateAllowedNodes] node ${node._id} has no requirements, setting to true`);
+            allow[node._id] = true;
+            updated = true;
+            continue;
+        }
+
+        console.log(`[updateAllowedNodes] node ${node._id} has requirements: ${JSON.stringify(node.requireNids)}`);
+        
+        const allRequirementsMet = checkPrerequisitesComplete(tsdoc || {}, node, tdoc);
+
+        console.log(`[updateAllowedNodes] node ${node._id} allRequirementsMet: ${allRequirementsMet}`);
 
         if (allRequirementsMet) {
+            console.log(`[updateAllowedNodes] setting node ${node._id} to true`);
             allow[node._id] = true;
             updated = true;
         }
     }
 
     if (updated) {
+        console.log(`[updateAllowedNodes] updating allow:`, JSON.stringify(allow));
         await ContestModel.setStatus(domainId, tid, uid, { allow, attend: true });
+    } else {
+        console.log(`[updateAllowedNodes] no updates needed`);
     }
+}
+
+// 检测DAG中是否存在循环依赖
+function hasCycle(dag: any[]): boolean {
+    const visited = new Set<number>();
+    const recStack = new Set<number>();
+    
+    function dfs(nodeId: number, requireNids: number[] = []): boolean {
+        visited.add(nodeId);
+        recStack.add(nodeId);
+        
+        for (const nid of requireNids) {
+            const nextNode = dag.find((n) => n._id === nid);
+            if (!nextNode) continue;
+            
+            if (!visited.has(nid)) {
+                if (dfs(nid, nextNode.requireNids)) return true;
+            } else if (recStack.has(nid)) {
+                return true;
+            }
+        }
+        
+        recStack.delete(nodeId);
+        return false;
+    }
+    
+    for (const node of dag) {
+        if (!visited.has(node._id)) {
+            if (dfs(node._id, node.requireNids || [])) return true;
+        }
+    }
+    
+    return false;
 }
 
 // 验证并解析 DAG 配置
@@ -73,6 +175,11 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
         const nodeIds = new Set(dag.map((n: any) => n._id));
         assert(dag.length, 'must have at least one node');
         assert(dag.length === nodeIds.size, '_id must be unique');
+        
+        // 检测循环依赖
+        if (hasCycle(dag)) {
+            throw new Error('DAG contains cycle dependency');
+        }
 
         for (const node of dag) {
             assert(node._id, 'each node should have a _id');
@@ -618,8 +725,9 @@ export class CourseManageHandler extends Handler {
     @param('tid', Types.ObjectId)
     @param('uid', Types.Int)
     @param('node', Types.Int)
-    @param('allow', Types.Boolean)
-    async postAllowUser(domainId: string, tid: ObjectId, uid: number, node: number, allow = false) {
+    @param('allow', Types.Boolean, true)
+    @param('reset', Types.Boolean, true)
+    async postAllowUser(domainId: string, tid: ObjectId, uid: number, node: number, allow?: boolean, reset?: boolean) {
         const [tdoc, tsdocs] = await Promise.all([
             ContestModel.get(domainId, tid) as Promise<CourseTdoc>,
             ContestModel.getMultiStatus(domainId, { docId: tid }).toArray(),
@@ -630,14 +738,43 @@ export class CourseManageHandler extends Handler {
         }
 
         if (uid === 0) {
-            await Promise.all(tsdocs.map((tsdoc) => ContestModel.setStatus(domainId, tid, tsdoc.uid, {
-                allow: { ...tsdoc?.allow || {}, [node]: allow },
-            })));
+            // 批量操作：为所有班级学生设置权限
+            const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
+            if (!group) throw new BadRequestError('没有找到班级');
+            
+            // 先确保所有学生都有课程状态（attend）
+            const existingUids = new Set(tsdocs.map((t) => t.uid));
+            const newStudents = group.students.filter((s) => !existingUids.has(s));
+            
+            // 为新学生创建状态
+            await Promise.all(newStudents.map((s) => ContestModel.attend(domainId, tid, s)));
+            
+            // 重新获取所有状态
+            const allTsdocs = await ContestModel.getMultiStatus(domainId, { docId: tid }).toArray();
+            
+            // 为所有学生设置节点权限
+            await Promise.all(allTsdocs.map((tsdoc) => {
+                let newAllow;
+                if (reset) {
+                    // 重置：删除该节点的状态
+                    const { [node]: _, ...rest } = tsdoc?.allow || {};
+                    newAllow = rest;
+                } else {
+                    newAllow = { ...tsdoc?.allow || {}, [node]: allow };
+                }
+                return ContestModel.setStatus(domainId, tid, tsdoc.uid, { allow: newAllow });
+            }));
         } else {
             const tsdoc = tsdocs.find((t) => t.uid === uid);
-            await ContestModel.setStatus(domainId, tid, uid, {
-                allow: { ...tsdoc?.allow || {}, [node]: allow },
-            });
+            let newAllow;
+            if (reset) {
+                // 重置：删除该节点的状态
+                const { [node]: _, ...rest } = tsdoc?.allow || {};
+                newAllow = rest;
+            } else {
+                newAllow = { ...tsdoc?.allow || {}, [node]: allow };
+            }
+            await ContestModel.setStatus(domainId, tid, uid, { allow: newAllow });
         }
 
         this.back();
@@ -646,8 +783,9 @@ export class CourseManageHandler extends Handler {
     @param('tid', Types.ObjectId)
     @param('node', Types.PositiveInt)
     @param('uid', Types.Int)
-    @param('allow', Types.Boolean)
-    async postAllowLecture(domainId: string, tid: ObjectId, node: number, uid: number, allow = false) {
+    @param('allow', Types.Boolean, true)
+    @param('reset', Types.Boolean, true)
+    async postAllowLecture(domainId: string, tid: ObjectId, node: number, uid: number, allow?: boolean, reset?: boolean) {
         const [tdoc, tsdocs] = await Promise.all([
             ContestModel.get(domainId, tid) as Promise<CourseTdoc>,
             ContestModel.getMultiStatus(domainId, { docId: tid }).toArray(),
@@ -658,14 +796,43 @@ export class CourseManageHandler extends Handler {
         }
 
         if (uid === 0) {
-            await Promise.all(tsdocs.map((tsdoc) => ContestModel.setStatus(domainId, tid, tsdoc.uid, {
-                lectureAllow: { ...tsdoc?.lectureAllow || {}, [node]: allow },
-            })));
+            // 批量操作：为所有班级学生设置权限
+            const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
+            if (!group) throw new BadRequestError('没有找到班级');
+            
+            // 先确保所有学生都有课程状态（attend）
+            const existingUids = new Set(tsdocs.map((t) => t.uid));
+            const newStudents = group.students.filter((s) => !existingUids.has(s));
+            
+            // 为新学生创建状态
+            await Promise.all(newStudents.map((s) => ContestModel.attend(domainId, tid, s)));
+            
+            // 重新获取所有状态
+            const allTsdocs = await ContestModel.getMultiStatus(domainId, { docId: tid }).toArray();
+            
+            // 为所有学生设置讲义权限
+            await Promise.all(allTsdocs.map((tsdoc) => {
+                let newLectureAllow;
+                if (reset) {
+                    // 重置：删除该节点的状态
+                    const { [node]: _, ...rest } = tsdoc?.lectureAllow || {};
+                    newLectureAllow = rest;
+                } else {
+                    newLectureAllow = { ...tsdoc?.lectureAllow || {}, [node]: allow };
+                }
+                return ContestModel.setStatus(domainId, tid, tsdoc.uid, { lectureAllow: newLectureAllow });
+            }));
         } else {
             const tsdoc = tsdocs.find((t) => t.uid === uid);
-            await ContestModel.setStatus(domainId, tid, uid, {
-                lectureAllow: { ...tsdoc?.lectureAllow || {}, [node]: allow },
-            });
+            let newLectureAllow;
+            if (reset) {
+                // 重置：删除该节点的状态
+                const { [node]: _, ...rest } = tsdoc?.lectureAllow || {};
+                newLectureAllow = rest;
+            } else {
+                newLectureAllow = { ...tsdoc?.lectureAllow || {}, [node]: allow };
+            }
+            await ContestModel.setStatus(domainId, tid, uid, { lectureAllow: newLectureAllow });
         }
 
         this.back();

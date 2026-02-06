@@ -26,7 +26,11 @@
       {% if not isTemplate and not model.contest.isOngoing(tdoc, tsdoc) and not isTeacherEditor %}
       <div class="section__body">
         <blockquote class="typo note">
-          <p>此课程尚未开始。</p>
+          {% if model.contest.isNotStarted(tdoc) %}
+            <p>此课程尚未开始。</p>
+          {% else %}
+            <p>此课程已结束。</p>
+          {% endif %}
         </blockquote>
       </div>
       {% else %}

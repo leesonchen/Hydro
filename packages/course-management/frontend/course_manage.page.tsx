@@ -44,6 +44,7 @@ function CourseManageApp() {
   const [loading, setLoading] = React.useState(true);
   const [payload, setPayload] = React.useState<CourseManagePayload | null>(null);
   const [tab, setTab] = React.useState<'students' | 'extraStudents' | 'chapters'>('students');
+  const [selectedNodes, setSelectedNodes] = React.useState<Set<number>>(new Set());
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -119,6 +120,36 @@ function CourseManageApp() {
   const dag: any[] = tdoc?.dag || [];
   const studentUids = group?.students || [];
   const basePath = window.location.pathname.replace(/\/manage$/, '');
+
+  const toggleNodeSelection = (nodeId: number) => {
+    const newSet = new Set(selectedNodes);
+    if (newSet.has(nodeId)) {
+      newSet.delete(nodeId);
+    } else {
+      newSet.add(nodeId);
+    }
+    setSelectedNodes(newSet);
+  };
+
+  const selectAllNodes = () => {
+    if (selectedNodes.size === dag.length) {
+      setSelectedNodes(new Set());
+    } else {
+      setSelectedNodes(new Set(dag.map((n: any) => n._id)));
+    }
+  };
+
+  const batchAllowUser = async (allow: boolean, reset?: boolean) => {
+    for (const node of dag) {
+      await post({ operation: 'allowUser', uid: 0, node: node._id, allow, reset });
+    }
+  };
+
+  const batchAllowLecture = async (allow: boolean) => {
+    for (const node of dag) {
+      await post({ operation: 'allowLecture', uid: 0, node: node._id, allow });
+    }
+  };
 
   const renderTabs = () => (
     <div className="row">
@@ -277,27 +308,56 @@ function CourseManageApp() {
     </div>
   );
 
-  const renderNodeTab = () => (
+  const renderNodeTab = () => {
+    const canBulk = studentUids.length > 0;
+    
+    return (
     <div>
       <div className="row">
         <div className="columns">
           <table className="data-table course-manage-table">
             <thead>
               <tr>
-                <th style={{ width: 80 }}>节点</th>
+                <th style={{ width: 60 }}>节点</th>
                 <th>章节标题</th>
-                <th style={{ width: 180 }}>讲义</th>
-                <th style={{ width: 220 }}>题目</th>
-                <th style={{ width: 140 }}>题目</th>
+                <th style={{ width: 220 }}>
+                  讲义
+                  {canBulk && (
+                    <span style={{ marginLeft: '8px', fontWeight: 'normal' }}>
+                      <a href="#" onClick={(e) => { e.preventDefault(); batchAllowLecture(true); }}>开放</a>
+                      {' | '}
+                      <a href="#" onClick={(e) => { e.preventDefault(); batchAllowLecture(false); }}>关闭</a>
+                    </span>
+                  )}
+                </th>
+                <th style={{ width: 120 }}>题目</th>
+                <th style={{ width: 220 }}>
+                  题目权限
+                  {canBulk && (
+                    <span style={{ marginLeft: '8px', fontWeight: 'normal' }}>
+                      <a href="#" onClick={(e) => { e.preventDefault(); batchAllowUser(true); }}>开放</a>
+                      {' | '}
+                      <a href="#" onClick={(e) => { e.preventDefault(); batchAllowUser(false); }}>关闭</a>
+                      {' | '}
+                      <a href="#" onClick={(e) => { e.preventDefault(); batchAllowUser(false, true); }}>重置</a>
+                    </span>
+                  )}
+                </th>
               </tr>
             </thead>
             <tbody>
               {dag.map((node) => {
                 const nodeId = +node._id;
                 const hasLecture = !!(node?.lecture || tdoc?.lecture?.[nodeId]);
-                const canBulk = studentUids.length > 0;
-                const lectureAllowed = canBulk && studentUids.every((uid) => !!tsdict?.[uid]?.lectureAllow?.[nodeId]);
-                const nodeAllowed = canBulk && studentUids.every((uid) => !!tsdict?.[uid]?.allow?.[nodeId]);
+                
+                const lectureAllowed = canBulk && studentUids.every((uid) => !!tsdict?.[String(uid)]?.lectureAllow?.[nodeId]);
+                const nodeAllowed = canBulk && studentUids
+                  .filter((uid) => !!tsdict?.[String(uid)])
+                  .every((uid) => !!tsdict?.[String(uid)]?.allow?.[nodeId]);
+                const hasAllowStatus = canBulk && studentUids.some((uid) => {
+                  const allow = tsdict?.[String(uid)]?.allow;
+                  return allow && Object.prototype.hasOwnProperty.call(allow, nodeId);
+                });
                 const lectureEditUrl = `${basePath}/lecture/${nodeId}?edit=1`;
                 return (
                   <tr key={nodeId}>
@@ -318,7 +378,7 @@ function CourseManageApp() {
                               post({ operation: 'allowLecture', uid: 0, node: nodeId, allow: !lectureAllowed });
                             }}
                           >
-                            {lectureAllowed ? '关闭' : '开放给学员'}
+                            {lectureAllowed ? '关闭' : '开放'}
                           </a>
                         </span>
                       ) : (
@@ -327,16 +387,59 @@ function CourseManageApp() {
                     </td>
                     <td>{(node?.pids || []).join(',')}</td>
                     <td>
-                      <a
-                        href="#"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          if (!canBulk) return;
-                          post({ operation: 'allowUser', uid: 0, node: nodeId, allow: !nodeAllowed });
-                        }}
-                      >
-                        {nodeAllowed ? '关闭' : '开放给学员'}
-                      </a>
+                      {nodeAllowed ? (
+                        <span>
+                          <a
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (!canBulk) return;
+                              post({ operation: 'allowUser', uid: 0, node: nodeId, allow: false });
+                            }}
+                          >
+                            关闭
+                          </a>
+                          {' | '}
+                          <a
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (!canBulk) return;
+                              post({ operation: 'allowUser', uid: 0, node: nodeId, reset: true });
+                            }}
+                          >
+                            重置
+                          </a>
+                        </span>
+                      ) : (
+                        <span>
+                          <a
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (!canBulk) return;
+                              post({ operation: 'allowUser', uid: 0, node: nodeId, allow: true });
+                            }}
+                          >
+                            开放
+                          </a>
+                          {hasAllowStatus ? (
+                            <>
+                              {' | '}
+                              <a
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (!canBulk) return;
+                                  post({ operation: 'allowUser', uid: 0, node: nodeId, reset: true });
+                                }}
+                              >
+                                重置
+                              </a>
+                            </>
+                          ) : null}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -347,6 +450,7 @@ function CourseManageApp() {
       </div>
     </div>
   );
+};
 
   return (
     <div>

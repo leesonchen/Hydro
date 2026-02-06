@@ -15,9 +15,12 @@ export class ClassHandler extends Handler {
     async get({ domainId }: { domainId: string }) {
         const groups = await ClassModel.listGroup(domainId);
         
+        // 过滤掉 teachers 特殊班级
+        const filteredGroups = groups.filter((g) => g.name !== 'teachers');
+        
         // 获取每个班级的课程数量
         const groupsWithCourseCount = await Promise.all(
-            groups.map(async (g) => {
+            filteredGroups.map(async (g) => {
                 const count = await ContestModel.getMulti(domainId, {
                     rule: 'course',
                     assign: { $in: [g.name] },
@@ -161,9 +164,23 @@ export class ClassEditHandler extends Handler {
 
         if (!intervalDays || intervalDays < 1) intervalDays = 1;
 
+        let shouldUpdateCourseTimes = true;
+        let existingTdocs: any[] = [];
+
         if (id) {
             const gdoc = await ClassModel.getGroupById(domainId, id);
             if (!gdoc) throw new NotFoundError(domainId, id);
+
+            // 检查时间相关字段是否发生变化
+            const oldBeginAt = moment(gdoc.beginAt).tz(this.user.timeZone);
+            const oldEndAt = moment(gdoc.endAt).tz(this.user.timeZone);
+            const oldIntervalDays = gdoc.intervalDays || 1;
+
+            const beginAtChanged = !beginAt.isSame(oldBeginAt, 'minute');
+            const endAtChanged = !endAt.isSame(oldEndAt, 'minute');
+            const intervalChanged = intervalDays !== oldIntervalDays;
+
+            shouldUpdateCourseTimes = beginAtChanged || endAtChanged || intervalChanged;
 
             // 如果班级名称改变，更新所有关联的课程
             if (gdoc.name !== name) {
@@ -195,21 +212,29 @@ export class ClassEditHandler extends Handler {
             intervalDays,
         );
 
-        // 更新所有关联课程的时间和维护者，按间隔顺序分配
+        // 更新所有关联课程的维护者（始终更新）
         const tdocs = await ContestModel.getMulti(domainId, {
             rule: 'course',
             assign: { $in: [name] },
         }).sort({ beginAt: 1, _id: 1 }).toArray();
 
-        await Promise.all(tdocs.map((t, index) => {
-            const courseBeginAt = beginAt.clone().add(index * intervalDays, 'days');
-            const courseEndAt = courseBeginAt.clone().add(endAt.diff(beginAt), 'milliseconds');
-            return ContestModel.edit(domainId, t._id, {
-                beginAt: courseBeginAt.toDate(),
-                endAt: courseEndAt.toDate(),
+        // 只有时间相关字段变化时，才更新课程时间
+        if (shouldUpdateCourseTimes) {
+            await Promise.all(tdocs.map((t, index) => {
+                const courseBeginAt = beginAt.clone().add(index * intervalDays, 'days');
+                const courseEndAt = courseBeginAt.clone().add(endAt.diff(beginAt), 'milliseconds');
+                return ContestModel.edit(domainId, t._id, {
+                    beginAt: courseBeginAt.toDate(),
+                    endAt: courseEndAt.toDate(),
+                    maintainer: mergedTeachers,
+                });
+            }));
+        } else {
+            // 仅更新维护者
+            await Promise.all(tdocs.map((t) => ContestModel.edit(domainId, t._id, {
                 maintainer: mergedTeachers,
-            });
-        }));
+            })));
+        }
 
         this.response.redirect = this.url('domain_class');
     }

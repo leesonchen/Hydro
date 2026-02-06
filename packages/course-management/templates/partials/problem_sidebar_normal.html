@@ -151,7 +151,7 @@
   {% if cdocs.length %}
     <p>{{ _('In following courses') }}: </p>
     {%- for tdoc in cdocs -%}
-      <p><a class="discussion-node-tag media-link" href="{{ url('course_detail', tid=tdoc.docId) }}">{{ tdoc.title }}</a></p>
+      <p><a class="discussion-node-tag media-link" href="{{ url('course_detail', tid=tdoc.docId) }}">{% if tdoc.isTemplate %}{{ _('【模板】') }}{% endif %}{{ tdoc.title }}</a></p>
     {%- endfor -%}
   {% endif %}
   </div>
