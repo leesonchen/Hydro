@@ -82,10 +82,10 @@ export class ClassEditHandler extends Handler {
             extra.templates = templates.filter((t) => !usedTitles.includes(t.title));
 
             if (gdoc.beginAt) {
-                beginAt = moment(gdoc.beginAt).tz(this.user.timeZone);
+                beginAt = moment.utc(gdoc.beginAt).tz(this.user.timeZone);
             }
             if (gdoc.endAt) {
-                endAt = moment(gdoc.endAt).tz(this.user.timeZone);
+                endAt = moment.utc(gdoc.endAt).tz(this.user.timeZone);
             }
             if (typeof gdoc.intervalDays === 'number') {
                 intervalDays = gdoc.intervalDays;
@@ -172,8 +172,8 @@ export class ClassEditHandler extends Handler {
             if (!gdoc) throw new NotFoundError(domainId, id);
 
             // 检查时间相关字段是否发生变化
-            const oldBeginAt = moment(gdoc.beginAt).tz(this.user.timeZone);
-            const oldEndAt = moment(gdoc.endAt).tz(this.user.timeZone);
+            const oldBeginAt = moment.utc(gdoc.beginAt).tz(this.user.timeZone);
+            const oldEndAt = moment.utc(gdoc.endAt).tz(this.user.timeZone);
             const oldIntervalDays = gdoc.intervalDays || 1;
 
             const beginAtChanged = !beginAt.isSame(oldBeginAt, 'minute');
