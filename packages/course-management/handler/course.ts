@@ -292,7 +292,7 @@ export class CourseMainHandler extends Handler {
                     { assign: { $size: 0 } },
                     { assign: null },
                     { assign: { $exists: false } },
-                    { extraStudents: userId },
+                    { assign: userId.toString() },
                 ],
             }),
         })
@@ -370,10 +370,11 @@ export class CourseDetailHandler extends Handler {
             PERM.PERM_EDIT_HOMEWORK_SELF,
             PERM.PERM_VIEW_HIDDEN_HOMEWORK,
         );
-        const isExtraStudent = this.tdoc.extraStudents?.includes(this.user._id);
+        const userIdStr = this.user._id.toString();
+        const isInAssign = this.tdoc.assign?.some((g: string) => this.user.group?.includes(g) || g === userIdStr);
         if (!isTemplate && this.tdoc.assign?.length && !this.user.own(this.tdoc)
-            && !Set.intersection(this.tdoc.assign, this.user.group).size
-            && !canBypassAssign && !isExtraStudent) {
+            && !isInAssign
+            && !canBypassAssign) {
             throw new NotAssignedError('course', this.tdoc.docId);
         }
     }
@@ -389,7 +390,8 @@ export class CourseDetailHandler extends Handler {
         const canViewAllProblems = isTeacherEditor || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
 
         // 如果是临时学生且尚未建状态，自动加入并复制当前开放的章节/讲义状态
-        const isExtraStudent = this.tdoc.extraStudents?.includes(this.user._id);
+        const userIdStr = this.user._id.toString();
+        const isExtraStudent = this.tdoc.assign?.some((g: string) => g === userIdStr);
         if (!tsdoc && isExtraStudent) {
             const tsdocs = await ContestModel.getMultiStatus(domainId, { docId: tid }).toArray();
             const mergedAllow: Record<number, boolean> = {};
@@ -496,11 +498,11 @@ export class CourseEditHandler extends Handler {
         this.response.template = 'course_edit.html';
 
         const beginAt = this.tdoc
-            ? moment(this.tdoc.beginAt).tz(this.user.timeZone)
+            ? moment.utc(this.tdoc.beginAt).tz(this.user.timeZone)
             : moment().add(1, 'day').tz(this.user.timeZone).hour(0).minute(0).millisecond(0);
 
         const endAt = this.tdoc
-            ? moment(this.tdoc.endAt).tz(this.user.timeZone)
+            ? moment.utc(this.tdoc.endAt).tz(this.user.timeZone)
             : beginAt.clone().add(7, 'days').tz(this.user.timeZone).hour(23).minute(59).millisecond(0);
 
         this.response.body = {
@@ -513,6 +515,12 @@ export class CourseEditHandler extends Handler {
 
         if (this.tdoc) {
             this.response.body.dag = JSON.stringify(this.tdoc.dag, null, 2);
+            // 从 assign 中分离出纯数字字符串作为 extraStudents
+            const allAssign = this.tdoc.assign || [];
+            this.response.body.assign = allAssign.filter((g) => !/^\d+$/.test(g));
+            this.response.body.extraStudents = allAssign
+                .filter((g) => /^\d+$/.test(g))
+                .map((s) => parseInt(s, 10));
         }
     }
 
@@ -603,13 +611,23 @@ export class CourseEditHandler extends Handler {
             );
         }
 
+        // 合并 extraStudents 到 assign（转为字符串）
+        // 先过滤掉 assign 中旧的数字字符串（之前的 extraStudents），再添加新的
+        const nonDigitAssign = isTemplate
+            ? []
+            : assign.filter((g: string) => !/^\d+$/.test(g));
+        const finalAssign = isTemplate
+            ? (templateCategory ? ['teachers', templateCategory] : ['teachers'])
+            : [...nonDigitAssign, ...extraStudents.map((s) => s.toString())];
+
         await ContestModel.edit(domainId, tid, {
             dag,
-            assign: isTemplate ? (templateCategory ? ['teachers', templateCategory] : ['teachers']) : assign,
+            assign: finalAssign,
             editor,
             updateAt,
-            extraStudents: isTemplate ? [] : extraStudents,
         });
+        // 清除旧的 extraStudents 字段（已合并到 assign）
+        await DocumentModel.set(domainId, DocumentModel.TYPE_CONTEST, tid, undefined, { extraStudents: '' as any });
 
         this.response.body = { tid };
         this.response.redirect = this.url('course_detail', { tid });
@@ -655,7 +673,11 @@ export class CourseManageHandler extends Handler {
         }
 
         const group = await ClassModel.getGroupByName(domainId, (tdoc as CourseTdoc).assign?.[0] || '');
-        const extraStudents = (tdoc as CourseTdoc).extraStudents || [];
+        // 从 assign 中分离 extraStudents（纯数字字符串）
+        const allAssign = (tdoc as CourseTdoc).assign || [];
+        const extraStudents = allAssign
+            .filter((g: string) => /^\d+$/.test(g))
+            .map((s: string) => parseInt(s, 10));
         const allUids = Array.from(new Set([
             ...tsdocs.map((t) => t.uid),
             ...(group?.students || []),
@@ -689,8 +711,8 @@ export class CourseManageHandler extends Handler {
             } else {
                 await DocumentModel.deleteMultiStatus(domainId, DocumentModel.TYPE_CONTEST, { docId: tid, uid });
             }
-        } else if (tdoc.extraStudents?.includes(uid)) {
-            // 处理临时学生
+        } else if (tdoc.assign?.includes(uid.toString())) {
+            // 处理临时学生（UID 已作为字符串存储在 assign 中）
             if (allow) {
                 await ContestModel.attend(domainId, tid, uid);
             } else {
@@ -853,10 +875,12 @@ export class CourseLectureHandler extends Handler {
             PERM.PERM_EDIT_HOMEWORK_SELF,
             PERM.PERM_VIEW_HIDDEN_HOMEWORK,
         );
-        const isExtraStudent = tdoc.extraStudents?.includes(this.user._id);
+        // 检查用户是否在 assign 中（assign 已包含 extraStudents）
+        const userIdStr = this.user._id.toString();
+        const isInAssign = tdoc.assign?.some((g: string) => this.user.group?.includes(g) || g === userIdStr);
         if (!isTemplate && tdoc.assign?.length && !this.user.own(tdoc)
-            && !Set.intersection(tdoc.assign, this.user.group).size
-            && !canBypassAssign && !isExtraStudent) {
+            && !isInAssign
+            && !canBypassAssign) {
             throw new NotAssignedError('course', tdoc.docId);
         }
     }

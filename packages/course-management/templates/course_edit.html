@@ -67,7 +67,7 @@
               <div class="course-assign-card">
                 <label>
                   分配给班级
-                  <input name="assign" value="{{ tdoc.assign|default('') }}" class="textbox" placeholder="输入班级名称">
+                  <input name="assign" value="{{ assign|default(tdoc.assign|default('')) }}" class="textbox" placeholder="输入班级名称">
                 </label>
               </div>
             </div>
@@ -77,7 +77,7 @@
               <div class="course-assign-card">
                 <label>
                   临时调课学生
-                  <input name="extraStudents" value="{{ tdoc.extraStudents|default([])|join(',') }}" class="textbox" placeholder="输入用户UID，多个用逗号分隔">
+                  <input name="extraStudents" value="{{ extraStudents|default(tdoc.extraStudents|default([]))|join(',') }}" class="textbox" placeholder="输入用户UID，多个用逗号分隔">
                 </label>
                 <div class="course-assign-hint">输入学生UID，多个用逗号分隔。这些学生可以临时访问本课程，不影响其所属班级。</div>
               </div>

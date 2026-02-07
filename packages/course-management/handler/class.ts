@@ -156,10 +156,10 @@ export class ClassEditHandler extends Handler {
         intervalDays = 1,
         archive = false,
     ) {
-        const beginAt = moment.tz(`${beginAtDate} ${beginAtTime}`, this.user.timeZone);
+        const beginAt = moment.tz(`${beginAtDate} ${beginAtTime}`, 'YYYY-M-D H:mm', this.user.timeZone);
         if (!beginAt.isValid()) throw new ValidationError('beginAtDate', 'beginAtTime');
 
-        const endAt = moment.tz(`${endAtDate} ${endAtTime}`, this.user.timeZone);
+        const endAt = moment.tz(`${endAtDate} ${endAtTime}`, 'YYYY-M-D H:mm', this.user.timeZone);
         if (!endAt.isValid()) throw new ValidationError('endAtDate', 'endAtTime');
 
         if (!intervalDays || intervalDays < 1) intervalDays = 1;

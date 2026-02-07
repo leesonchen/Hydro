@@ -175,6 +175,28 @@ export async function apply(ctx: Context, config: typeof Config) {
         }
     });
 
+    // 题目详情页权限检查：课程类型只需要检查 assign（extraStudents 已合并到 assign）
+    ctx.on('handler/before-prepare/ProblemDetail', async (handler) => {
+        const { tid } = handler.args;
+        if (!tid) return;
+
+        // 获取课程信息
+        const tdoc = await ContestModel.get(handler.args.domainId, new ObjectId(tid));
+        if (!tdoc || tdoc.rule !== 'course') return;
+
+        // 检查是否是分配的课程（assign 已包含 extraStudents）
+        if (tdoc.assign?.length && !handler.user.own(tdoc) && !handler.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)) {
+            const userGroups = new Set(handler.user.group || []);
+            // 把用户ID转为字符串进行比较（因为 assign 中可能包含数字字符串）
+            const userIdStr = handler.user._id.toString();
+            const isInAssign = tdoc.assign.some((g: string) => userGroups.has(g) || g === userIdStr);
+
+            if (!isInAssign) {
+                throw new ForbiddenError('You are not assigned to this contest.');
+            }
+        }
+    });
+
     // 域设置
     ctx.inject(['setting'], (c) => {
         c.setting.DomainSetting(
