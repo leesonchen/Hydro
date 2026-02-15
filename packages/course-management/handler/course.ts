@@ -700,6 +700,43 @@ export class CourseManageHandler extends Handler {
 
     @param('tid', Types.ObjectId)
     @param('uid', Types.Int)
+    @param('unrank', Types.Boolean, true)
+    @param('clear', Types.Boolean, true)
+    async postUnrank(domainId: string, tid: ObjectId, uid: number, unrank?: boolean, clear?: boolean) {
+        const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
+        const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
+        const allAssign = (tdoc as CourseTdoc).assign || [];
+        const extraStudents = allAssign
+            .filter((g: string) => /^\d+$/.test(g))
+            .map((s: string) => parseInt(s, 10));
+        const targets = uid === 0
+            ? Array.from(new Set([...(group?.students || []), ...extraStudents].filter(Boolean)))
+            : [uid];
+
+        if (!targets.length) {
+            this.back();
+            return;
+        }
+
+        // Ensure status exists for targets so scoreboard can read unrank consistently.
+        const existing = await ContestModel.getMultiStatus(domainId, { docId: tid, uid: { $in: targets } }).toArray();
+        const existingUids = new Set(existing.map((t) => t.uid));
+        const toAttend = targets.filter((u) => !existingUids.has(u));
+        if (toAttend.length) {
+            await Promise.all(toAttend.map((u) => ContestModel.attend(domainId, tid, u)));
+        }
+
+        if (clear) {
+            // Unset unrank so it falls back to default ranked behavior.
+            await Promise.all(targets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: null })));
+        } else {
+            await Promise.all(targets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: !!unrank })));
+        }
+        this.back();
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('uid', Types.Int)
     @param('allow', Types.Boolean)
     async postVisit(domainId: string, tid: ObjectId, uid: number, allow = false) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
@@ -1052,11 +1089,10 @@ export class CourseScoreboardHandler extends Handler {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
         const tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
 
-        // 权限检查
-        if (!tsdoc?.allow?.[id]
-            && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+        // 权限检查：学生（非编辑权限）禁止查看成绩板
+        if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
             && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
-            throw new ForbiddenError();
+            throw new ForbiddenError('无权限查看成绩板');
         }
 
         if (ext) {
@@ -1085,6 +1121,12 @@ export class CourseScoreboardHandler extends Handler {
 
     async exportScoreboard(domainId: string, tid: ObjectId, id: number, ext: string) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
+
+        // 权限检查：学生（非编辑权限）禁止导出成绩板
+        if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+            && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
+            throw new ForbiddenError('学生无权导出成绩板');
+        }
 
         await (this as any).limitRate('scoreboard_download', 60, 3);
 

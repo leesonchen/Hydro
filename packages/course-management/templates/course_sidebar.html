@@ -23,7 +23,7 @@
         <span class="icon icon-homework"></span> {{ _('View Course') }}
       </a></li>
     {% endif %}
-    {% if not isTemplate %}
+    {% if not isTemplate and (handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('course_scoreboard', tid=tdoc.docId, id=0) }}">
         <span class="icon icon-statistics"></span> {{ _('Scoreboard') }}
       </a></li>

@@ -98,6 +98,12 @@ function CourseManageApp() {
     }
   }, [load]);
 
+  const confirmAndPost = React.useCallback(async (message: string, body: Record<string, any>) => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(message)) return false;
+    return await post(body);
+  }, [post]);
+
   if (loading) {
     return (
       <div className="typo">
@@ -189,6 +195,20 @@ function CourseManageApp() {
             <button type="button" className="rounded button" onClick={() => post({ operation: 'visit', uid: 0, allow: false })}>
               批量禁止访问
             </button>
+            <button
+              type="button"
+              className="rounded button"
+              onClick={() => confirmAndPost('确认将班级所有学生设为不参与排名（unrank）？', { operation: 'unrank', uid: 0, unrank: true })}
+            >
+              批量设为不排名
+            </button>
+            <button
+              type="button"
+              className="rounded button"
+              onClick={() => confirmAndPost('确认清除班级所有学生的不排名状态（unrank）？', { operation: 'unrank', uid: 0, clear: true })}
+            >
+              批量清除不排名
+            </button>
           </div>
         </div>
       </div>
@@ -250,6 +270,20 @@ function CourseManageApp() {
             >
               编辑临时学生名单
             </a>
+            <button
+              type="button"
+              className="rounded button"
+              onClick={() => confirmAndPost('确认将所有临时调课学生设为不参与排名（unrank）？', { operation: 'unrank', uid: 0, unrank: true })}
+            >
+              批量设为不排名
+            </button>
+            <button
+              type="button"
+              className="rounded button"
+              onClick={() => confirmAndPost('确认清除所有临时调课学生的不排名状态（unrank）？', { operation: 'unrank', uid: 0, clear: true })}
+            >
+              批量清除不排名
+            </button>
           </div>
         </div>
       </div>
