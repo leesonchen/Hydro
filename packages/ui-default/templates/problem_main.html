@@ -2,13 +2,67 @@
 {% import "components/problem.html" as problem with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
+  <style>
+    /* Keep layout in-template to avoid touching styl file */
+    .search.search--with-scope {
+      display: flex;
+      align-items: stretch;
+      height: 36px;
+      border: 1px solid #ccc;
+    }
+    .search.search--with-scope > input {
+      flex: 1;
+      border: none;
+      height: 100%;
+      padding: 5px 10px;
+      outline: none;
+      font-size: 14px;
+    }
+    .search.search--with-scope > select.search-sort {
+      position: static;
+      border: none;
+      border-left: 1px solid #ddd;
+      width: 110px;
+      height: 100%;
+      padding: 0 8px;
+      font-size: 14px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .search.search--with-scope > div[data-fragment-id="problem_stat"] {
+      position: static;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border-left: 1px solid #ddd;
+      font-size: 14px;
+      color: #666;
+      white-space: nowrap;
+    }
+    .search.search--with-scope > button {
+      width: 40px;
+      height: 100%;
+      border: none;
+      background: #00B4CC;
+      color: #fff;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .search.search--with-scope > button:hover {
+      background: #0099aa;
+    }
+  </style>
   <div class="row">
     <div class="medium-9 columns">
       <div class="section display-mode">
         <div class="section__body no-padding">
           <form method="get" id="searchForm" action="{{ url('problem_main') }}">
-            <div class="search">
+            <div class="search search--with-scope">
               <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search') }}">
+              <select name="scope" class="search-sort">
+                <option value="title" {{ "selected" if scope == 'title' else '' }}>{{ _('仅标题') }}</option>
+                <option value="all" {{ "selected" if scope == 'all' else '' }}>{{ _('全文') }}</option>
+              </select>
               {% include "partials/problem_stat.html" %}
               <select name="sort" class="search-sort">
                 {%- for sortType in ["default", "recent"] -%}
@@ -97,4 +151,41 @@
       </div>
     </div>
   </div>
+  <script>
+    // 方案2：劫持 PJAX 请求，强制附加 scope 参数
+    (function() {
+      const scopeSelect = document.querySelector('[name="scope"]');
+      if (!scopeSelect) return;
+
+      // 以 URL 参数为准，避免 PJAX/模板变量不同步导致显示错误
+      const urlScope = new URL(window.location.href).searchParams.get('scope');
+      scopeSelect.value = (urlScope === 'all') ? 'all' : 'title';
+      
+      // 监听 scope 变化立即刷新
+      scopeSelect.addEventListener('change', function() {
+        const form = document.getElementById('searchForm');
+        if (form) form.submit();
+      });
+      
+      // 劫持 PJAX 请求（如果存在）
+      if (window.pjax && window.pjax.request) {
+        const originalPjax = window.pjax.request;
+        window.pjax.request = function(options) {
+          try {
+            const url = new URL(options.url, window.location.href);
+            const currentScope = scopeSelect.value;
+            if (currentScope) {
+              url.searchParams.set('scope', currentScope);
+            } else {
+              url.searchParams.delete('scope');
+            }
+            options.url = url.toString();
+          } catch (e) {
+            console.error('PJAX scope override failed:', e);
+          }
+          return originalPjax.call(this, options);
+        };
+      }
+    })();
+  </script>
 {% endblock %}

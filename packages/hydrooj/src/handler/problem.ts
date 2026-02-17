@@ -129,7 +129,7 @@ export class ProblemMainHandler extends Handler {
     @param('pjax', Types.Boolean)
     @param('quick', Types.Boolean)
     @param('sort', Types.Range(['default', 'recent']), true)
-    async get(domainId: string, page = 1, q = '', tag = '', limit: number, global = false, scope: 'all' | 'title' = 'all', mode: 'sonic' | 'regex' = 'regex', pjax = false, quick = false, sortStrategy = 'default') {
+    async get(domainId: string, page = 1, q = '', tag = '', limit: number, global = false, scope: 'all' | 'title' = 'title', mode: 'sonic' | 'regex' = 'regex', pjax = false, quick = false, sortStrategy = 'default') {
         this.response.template = 'problem_main.html';
         const paginationDefault = this.ctx.setting.get('pagination.problem') ?? system.get('pagination.problem') ?? 50;
         if (!Number.isSafeInteger(limit) || limit <= 0 || limit > paginationDefault || page > 1) limit = paginationDefault;
@@ -249,6 +249,7 @@ export class ProblemMainHandler extends Handler {
                 pdocs,
                 psdict,
                 qs: q,
+                scope,
                 sort: sortStrategy,
             };
         }
