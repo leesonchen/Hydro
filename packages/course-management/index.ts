@@ -150,12 +150,14 @@ export async function apply(ctx: Context, config: typeof Config) {
         // 课程内题目：注入“参考代码”可见性（教师可见；学生需通过）
         handler.response.body.canViewCourseReference = false;
         handler.response.body.hasReferenceCode = false;
+        handler.response.body.canEditCourseReference = false;
         if (handler.tdoc?.rule === 'course') {
             const canEdit = handler.user.own(handler.tdoc)
                 || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
                 || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
             const accepted = handler.psdoc?.status === STATUS.STATUS_ACCEPTED;
             handler.response.body.canViewCourseReference = !!(canEdit || accepted);
+            handler.response.body.canEditCourseReference = !!canEdit;
             // 检查是否存在参考代码
             const pid = handler.pdoc?.docId;
             if (pid) {

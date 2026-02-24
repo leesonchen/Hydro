@@ -105,9 +105,9 @@
         <span class="icon icon-comment--text"></span> {{ _('Discussion') }}
       </a></li>
     {% endif %}
-    {% if tdoc.rule == 'course' and pdoc and canViewCourseReference and hasReferenceCode %}
+    {% if tdoc.rule == 'course' and pdoc and canViewCourseReference and (hasReferenceCode or canEditCourseReference) %}
       <li class="menu__item"><a class="menu__link{% if page_name == 'course_problem_reference' %} active{% endif %}" href="{{ url('course_problem_reference', tid=tdoc.docId, pid=pdoc.docId) }}">
-        <span class="icon icon-comment--text"></span> 参考代码
+        <span class="icon icon-comment--text"></span> {{ hasReferenceCode and '参考代码' or '创建参考代码' }}
       </a></li>
     {% endif %}
     {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}
