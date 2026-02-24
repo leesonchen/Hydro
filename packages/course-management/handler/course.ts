@@ -3,11 +3,24 @@ import {
     _, BadRequestError, ContestModel, ContestNotFoundError, ContestScoreboardHiddenError,
     DocumentModel, ForbiddenError, Handler, moment, NotAssignedError, ObjectId, OplogModel,
     param, PERM, post, ProblemModel, ProblemNotFoundError, sortFiles, StorageModel, SystemModel,
-    Types, UserModel, ValidationError,
+    SolutionModel, STATUS, Types, UserModel, ValidationError,
 } from 'hydrooj';
 import bus from 'hydrooj/src/service/bus';
 import type { CourseTdoc, DagNode } from '../model/course';
 import { ClassModel } from '../model/class';
+
+const REFERENCE_CODE_TITLE = '【参考代码】';
+
+function isReferenceCodeSolutionByContent(content = '') {
+    const firstLine = content.split(/\r?\n/).find((line) => line.trim());
+    if (!firstLine) return false;
+    const title = firstLine.trim().replace(/^#+\s*/, '');
+    return title.startsWith(REFERENCE_CODE_TITLE);
+}
+
+function isReferenceCodeSolution(doc: any) {
+    return doc?.title === REFERENCE_CODE_TITLE || isReferenceCodeSolutionByContent(doc?.content || '');
+}
 
 // 检查前置章节完成情况（按当前节点 completeCondition 聚合判断）
 function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc): boolean {
@@ -15,6 +28,7 @@ function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc)
         console.log(`[checkPrerequisitesComplete] tsdoc is null/undefined`);
         return false;
     }
+
     const requireNids = node.requireNids || [];
     if (!requireNids.length) {
         console.log(`[checkPrerequisitesComplete] node ${node._id} has no requirements`);
@@ -1048,6 +1062,118 @@ export class CourseLectureHandler extends Handler {
             }),
         ]);
 
+        this.back();
+    }
+}
+
+export class CourseProblemReferenceHandler extends Handler {
+    tdoc!: CourseTdoc;
+    pdoc: any;
+    tsdoc: any;
+    canEdit = false;
+
+    @param('tid', Types.ObjectId)
+    @param('pid', Types.UnsignedInt)
+    async prepare(domainId: string, tid: ObjectId, pid: number) {
+        this.tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
+        if (this.tdoc.rule !== 'course') throw new ContestNotFoundError(domainId, tid);
+
+        const canBypassAssign = this.user.hasPerm(
+            PERM.PERM_EDIT_HOMEWORK,
+            PERM.PERM_EDIT_HOMEWORK_SELF,
+            PERM.PERM_VIEW_HIDDEN_HOMEWORK,
+        );
+        const userIdStr = this.user._id.toString();
+        const isInAssign = this.tdoc.assign?.some((g: string) => this.user.group?.includes(g) || g === userIdStr);
+        if (this.tdoc.assign?.length && !this.user.own(this.tdoc) && !isInAssign && !canBypassAssign) {
+            throw new NotAssignedError('course', this.tdoc.docId);
+        }
+
+        this.pdoc = await ProblemModel.get(domainId, pid);
+        if (!this.pdoc) throw new ProblemNotFoundError(domainId, pid);
+        const inCourse = this.tdoc.dag?.some((node) => node.pids?.includes(pid));
+        if (!inCourse) throw new ProblemNotFoundError(domainId, pid);
+
+        this.tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
+        this.canEdit = this.user.own(this.tdoc)
+            || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+            || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+
+        const accepted = this.tsdoc?.detail?.[pid]?.status === STATUS.STATUS_ACCEPTED;
+        if (!this.canEdit && !accepted) throw new ForbiddenError('通过后才可查看参考代码。');
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('pid', Types.UnsignedInt)
+    async get(domainId: string, tid: ObjectId, pid: number) {
+        const refs = (await SolutionModel.getMulti(domainId, pid).toArray())
+            .filter((doc: any) => isReferenceCodeSolution(doc));
+        const uids = Array.from(new Set([
+            this.pdoc.owner,
+            this.tdoc.owner,
+            ...refs.map((doc: any) => doc.owner),
+        ].filter(Boolean)));
+        const udict = uids.length ? await UserModel.getListForRender(domainId, uids, ['displayName']) : {};
+        this.response.template = 'course_problem_reference.html';
+        this.response.body = {
+            page_name: 'course_problem_reference',
+            tdoc: this.tdoc,
+            tsdoc: this.tsdoc,
+            pdoc: this.pdoc,
+            refs,
+            udict,
+            canEdit: this.canEdit,
+            canViewCourseReference: true,
+            tid,
+            pid,
+        };
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('pid', Types.UnsignedInt)
+    @param('content', Types.Content)
+    async postSubmit(domainId: string, tid: ObjectId, pid: number, content: string) {
+        if (!this.canEdit) throw new ForbiddenError('仅教师可编辑参考代码。');
+        await DocumentModel.add(
+            domainId,
+            content,
+            this.user._id,
+            DocumentModel.TYPE_PROBLEM_SOLUTION,
+            null,
+            DocumentModel.TYPE_PROBLEM,
+            pid,
+            { reply: [], vote: 0, title: REFERENCE_CODE_TITLE },
+        );
+        this.back();
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('pid', Types.UnsignedInt)
+    @param('psid', Types.ObjectId)
+    @param('content', Types.Content)
+    async postEditSolution(domainId: string, tid: ObjectId, pid: number, psid: ObjectId, content: string) {
+        if (!this.canEdit) throw new ForbiddenError('仅教师可编辑参考代码。');
+        const psdoc = await SolutionModel.get(domainId, psid);
+        if (psdoc.parentId !== pid || !isReferenceCodeSolution(psdoc)) {
+            throw new ForbiddenError('只能编辑参考代码。');
+        }
+        await SolutionModel.edit(domainId, psid, content);
+        if (psdoc.title !== REFERENCE_CODE_TITLE) {
+            await DocumentModel.set(domainId, DocumentModel.TYPE_PROBLEM_SOLUTION, psid, { title: REFERENCE_CODE_TITLE } as any);
+        }
+        this.back();
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('pid', Types.UnsignedInt)
+    @param('psid', Types.ObjectId)
+    async postDeleteSolution(domainId: string, tid: ObjectId, pid: number, psid: ObjectId) {
+        if (!this.canEdit) throw new ForbiddenError('仅教师可编辑参考代码。');
+        const psdoc = await SolutionModel.get(domainId, psid);
+        if (psdoc.parentId !== pid || !isReferenceCodeSolution(psdoc)) {
+            throw new ForbiddenError('只能删除参考代码。');
+        }
+        await SolutionModel.del(domainId, psid);
         this.back();
     }
 }

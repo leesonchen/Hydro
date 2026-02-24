@@ -2,14 +2,17 @@ import Schema from 'schemastery';
 import {
     ContestModel,
     Context,
+    DocumentModel,
     ForbiddenError,
     ObjectId,
     PERM,
+    STATUS,
     SettingModel,
+    SolutionModel,
 } from 'hydrooj';
 import {
     CourseDetailHandler, CourseEditHandler, CourseFileDownloadHandler,
-    CourseLectureHandler, CourseMainHandler, CourseManageHandler, CourseScoreboardHandler,
+    CourseLectureHandler, CourseMainHandler, CourseManageHandler, CourseProblemReferenceHandler, CourseScoreboardHandler,
 } from './handler/course';
 import { ClassEditHandler, ClassHandler } from './handler/class';
 import './model/course'; // 注册课程规则
@@ -113,6 +116,7 @@ export async function apply(ctx: Context, config: typeof Config) {
         'CourseEditHandler',
         'CourseManageHandler',
         'CourseLectureHandler',
+        'CourseProblemReferenceHandler',
         'CourseScoreboardHandler',
         'CourseFileDownloadHandler',
         'ClassHandler',
@@ -143,6 +147,26 @@ export async function apply(ctx: Context, config: typeof Config) {
 
     // 题目详情页：查询关联的课程
     ctx.on('handler/after/ProblemDetail', async (handler) => {
+        // 课程内题目：注入“参考代码”可见性（教师可见；学生需通过）
+        handler.response.body.canViewCourseReference = false;
+        handler.response.body.hasReferenceCode = false;
+        if (handler.tdoc?.rule === 'course') {
+            const canEdit = handler.user.own(handler.tdoc)
+                || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+                || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+            const accepted = handler.psdoc?.status === STATUS.STATUS_ACCEPTED;
+            handler.response.body.canViewCourseReference = !!(canEdit || accepted);
+            // 检查是否存在参考代码
+            const pid = handler.pdoc?.docId;
+            if (pid) {
+                const refs = await SolutionModel.getMulti(handler.args.domainId, pid)
+                    .project({ docId: 1, title: 1 }).toArray();
+                const REFERENCE_CODE_TITLE = '【参考代码】';
+                const hasRef = refs.some((d: any) => d.title === REFERENCE_CODE_TITLE);
+                handler.response.body.hasReferenceCode = hasRef;
+            }
+            return;
+        }
         // 只在非课程/作业/比赛模式下查询（即普通题目详情页）
         if (handler.tdoc) return;
         const domainId = handler.args.domainId;
@@ -214,6 +238,7 @@ export async function apply(ctx: Context, config: typeof Config) {
     ctx.Route('course_scoreboard', '/course/:tid/scoreboard/:id', CourseScoreboardHandler, PERM.PERM_VIEW_HOMEWORK_SCOREBOARD);
     ctx.Route('course_scoreboard_download', '/course/:tid/scoreboard/:id/:ext', CourseScoreboardHandler, PERM.PERM_VIEW_HOMEWORK_SCOREBOARD);
     ctx.Route('course_file_download', '/course/:tid/file/:filename', CourseFileDownloadHandler, PERM.PERM_VIEW_HOMEWORK);
+    ctx.Route('course_problem_reference', '/course/:tid/problem/:pid/reference', CourseProblemReferenceHandler, PERM.PERM_VIEW_HOMEWORK);
 
     ctx.Route('domain_class', '/domain/class', ClassHandler);
     ctx.Route('domain_class_create', '/domain/class/create', ClassEditHandler);
