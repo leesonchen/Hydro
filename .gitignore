@@ -40,6 +40,8 @@ packages/**/*.js
 !**/bin/*.js
 !*.page.js
 !packages/register/index.js
+!packages/plugin-YcAJ/*.js
+
 ## ui-default
 !packages/ui-default/**/*.js
 !packages/geoip/download.js
@@ -64,3 +66,5 @@ __*
 .monokle
 
 packages/*/public/assets
+cleanup-scripts/*
+.spec-workflow/*
