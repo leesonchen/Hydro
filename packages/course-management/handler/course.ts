@@ -427,6 +427,13 @@ export class CourseDetailHandler extends Handler {
             tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
         }
 
+        // 普通学生首次访问且已分配到课程时自动加入（attend）
+        const isInAssign = this.tdoc.assign?.some((g: string) => this.user.group?.includes(g) || g === userIdStr);
+        if (!tsdoc && isInAssign && !isTemplate) {
+            await ContestModel.attend(domainId, tid, this.user._id, { unrank: true });
+            tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
+        }
+
         // 如果用户未加入且有编辑权限，自动加入
         if (!tsdoc && this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF)) {
             await ContestModel.attend(domainId, tid, this.user._id, { unrank: true });
@@ -949,7 +956,8 @@ export class CourseLectureHandler extends Handler {
             && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
             && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
             if (edit) throw new ForbiddenError();
-            if (!tsdoc?.lectureAllow?.[id]) throw new ForbiddenError('讲义尚未开放。');
+            const lectureFlag = tsdoc?.lectureAllow?.[id];
+            if (lectureFlag === false || lectureFlag === 0) throw new ForbiddenError('讲义尚未开放。');
         }
 
         const node = tdoc.dag.find((n) => n._id === id);
