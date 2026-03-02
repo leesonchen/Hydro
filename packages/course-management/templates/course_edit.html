@@ -39,7 +39,7 @@
               <textarea name="content" class="textbox" data-markdown style="height: 200px">{{ tdoc['content']|default('') }}</textarea>
             </label>
           </div></div>
-          <div class="row course-time-row"{% if isTemplate %} style="display:none"{% endif %}>
+          <div class="row course-time-row">
             {{ form.form_text({
                 columns:5,
                 label: _('Begin at'),
