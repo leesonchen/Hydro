@@ -292,7 +292,8 @@ function sortCoursesByTime(a: any, b: any) {
 // 课程列表页面
 export class CourseMainHandler extends Handler {
     @param('all', Types.Boolean)
-    async get(domainId: string, all = false) {
+    @param('type', Types.Int, true)
+    async get(domainId: string, all = false, type = 1) {
         if (all && !this.user.hasPerm(PERM.PERM_MOD_BADGE)) {
             all = false;
         }
@@ -392,6 +393,7 @@ export class CourseMainHandler extends Handler {
             tsdict,
             udict,
             isTeacher,
+            layoutType: type,
         };
         this.response.template = 'course_main.html';
     }

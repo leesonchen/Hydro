@@ -14,39 +14,40 @@
 
 <div class="row">
   <div class="medium-12 columns">
-    <div class="section__tools" style="margin-bottom: 1rem;">
-    </div>
-
     <div class="section course-section unified">
-      <div class="section__header">
+      <div class="section__header course-header">
         <h1 class="section__title">{{ _('All Courses') }}</h1>
-        {% if isTeacher %}
-        <div class="header-tools">
-          <a class="compact button" href="{{ url('domain_class') }}">{{ _('Classes Manage') }}</a>
-          <a class="compact button" href="{{ url('course_create') }}">{{ _('Create Course') }}</a>
-          <a class="compact button" href="{{ url('course_create', query={isTemplate:'true'}) }}">{{ _('Create Course Template') }}</a>
-        </div>
-        {% endif %}
       </div>
       <div class="section__body no-padding">
         <div class="two-level-menu-container">
-          {% set firstCategory = null %}
-          <div class="category-tabs">
-            {% for cat in allCategories %}
-              {% set courseCount = 0 %}
-              {% for group in cat.groups %}
-                {% set courseCount = courseCount + (group.tdocs | length) %}
+          <div class="course-toolbar">
+            <div class="toolbar-left tabs">
+              {% for cat in allCategories %}
+                {% set courseCount = 0 %}
+                {% for group in cat.groups %}
+                  {% set courseCount = courseCount + (group.tdocs | length) %}
+                {% endfor %}
+                {% if courseCount > 0 %}
+                  {% if firstCategory == null %}{% set firstCategory = cat.key %}{% endif %}
+                  <button class="category-tab {% if firstCategory == cat.key %}active{% endif %}" data-category="{{ cat.key }}">
+                    {{ cat.name }}
+                    <span class="category-count">({{ courseCount }})</span>
+                  </button>
+                {% endif %}
               {% endfor %}
-              {% if courseCount > 0 %}
-                {% if firstCategory == null %}{% set firstCategory = cat.key %}{% endif %}
-                <button class="category-tab {% if firstCategory == cat.key %}active{% endif %}" data-category="{{ cat.key }}">
-                  {{ cat.name }}
-                  <span class="category-count">({{ courseCount }})</span>
-                </button>
-              {% endif %}
-            {% endfor %}
+            </div>
+            <div class="toolbar-center search">
+              <input type="text" id="courseSearchInput" placeholder="{{ _('Search courses by keyword...') }}">
+            </div>
+            {% if isTeacher %}
+            <div class="toolbar-right actions">
+              <a class="compact button" href="{{ url('domain_class') }}">{{ _('Classes Manage') }}</a>
+              <a class="compact button" href="{{ url('course_create') }}">{{ _('Create Course') }}</a>
+              <a class="compact button" href="{{ url('course_create', query={isTemplate:'true'}) }}">{{ _('Create Course Template') }}</a>
+            </div>
+            {% endif %}
           </div>
-          
+
           {% if firstCategory %}
           <div class="submenu-content-wrapper">
             {% for cat in allCategories %}
@@ -139,17 +140,37 @@
 
 <style>
 .two-level-menu-container { display: flex; flex-direction: column; }
-.category-tabs { display: flex; gap: 0; border-bottom: 1px solid #eee; background: #fafafa; padding: 0 20px; }
-.category-tab { padding: 15px 25px; border: none; background: transparent; cursor: pointer; font-size: 14px; color: #666; border-bottom: 3px solid transparent; }
+
+/* Header */
+.course-header { padding: 15px 20px; background: #fafafa; border-bottom: 1px solid #eee; }
+
+/* Toolbar: Left - Center - Right */
+.course-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: #fff; border-bottom: 1px solid #eee; }
+
+/* Left: Category tabs */
+.toolbar-left { display: flex; gap: 0; }
+.category-tab { padding: 12px 20px; border: none; background: transparent; cursor: pointer; font-size: 14px; color: #666; border-bottom: 3px solid transparent; }
 .category-tab:hover { color: #333; background: rgba(95, 159, 214, 0.05); }
 .category-tab.active { color: #5f9fd6; border-bottom-color: #5f9fd6; background: #fff; font-weight: 500; }
 .category-count { font-size: 12px; color: #999; margin-left: 4px; }
 .category-tab.active .category-count { color: #5f9fd6; }
+
+/* Center: Search */
+.toolbar-center { flex: 1; text-align: center; }
+.toolbar-center input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; width: 220px; }
+.toolbar-center input:focus { outline: none; border-color: #5f9fd6; box-shadow: 0 0 0 2px rgba(95, 159, 214, 0.2); }
+.toolbar-center input::placeholder { color: #999; }
+
+/* Right: Actions */
+.toolbar-right { display: flex; gap: 8px; }
+.toolbar-right .button.primary { background: #5f9fd6; color: white; border-color: #5f9fd6; }
+.toolbar-right .button.primary:hover { background: #4a8bc2; }
+
+/* Content area */
 .submenu-content-wrapper { padding: 20px; }
 .category-panel { display: none; }
 .category-panel.active { display: flex; gap: 20px; }
 .class-sidebar { min-width: 180px; max-width: 220px; flex-shrink: 0; background: #fafafa; border-radius: 8px; padding: 15px; }
-.sidebar-title { font-size: 12px; text-transform: uppercase; color: #999; margin: 0 0 12px 0; }
 .class-tabs { list-style: none; margin: 0; padding: 0; }
 .class-tab { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; cursor: pointer; border-radius: 6px; margin-bottom: 4px; border-left: 3px solid transparent; }
 .class-tab:hover { background: #f0f0f0; border-left-color: #5f9fd6; }
@@ -160,16 +181,20 @@
 .class-content { flex: 1; min-width: 0; }
 .class-panel { display: none; }
 .class-panel.active { display: block; }
-.unified-list { margin: 0; padding: 0; list-style: none; }
-.unified-item { padding: 20px; border-bottom: 1px solid #f0f0f0; }
-.unified-item:hover { background: #fafafa; }
-.unified-item:last-child { border-bottom: none; }
-.section__header { display: flex; justify-content: space-between; align-items: center; }
-.header-tools { display: flex; gap: 10px; }
-.section__title { font-size: 20px !important; }
+.homework__title { font-size: 20px !important; }
+.homework__title a { font-size: 20px !important; }
+
+/* No results message */
+.no-results-message { padding: 40px 20px; text-align: center; color: #999; font-size: 14px; display: none; }
+.no-results-message.visible { display: block; }
+
+/* Responsive */
 @media (max-width: 768px) {
-  .category-tabs { overflow-x: auto; padding: 0 10px; }
-  .category-tab { white-space: nowrap; padding: 12px 18px; }
+  .course-toolbar { flex-direction: column; gap: 10px; align-items: stretch; }
+  .toolbar-center { order: -1; text-align: left; }
+  .toolbar-center input { width: 100%; }
+  .toolbar-left { overflow-x: auto; }
+  .category-tab { white-space: nowrap; }
   .category-panel.active { flex-direction: column; }
   .class-sidebar { min-width: auto; max-width: none; }
   .class-tabs { display: flex; overflow-x: auto; gap: 8px; }
@@ -181,6 +206,33 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  const courseSearchInput = document.getElementById('courseSearchInput');
+  const noResultsMsg = document.createElement('div');
+  noResultsMsg.className = 'no-results-message';
+  noResultsMsg.textContent = "{{ _('No matching courses found') }}";
+  document.querySelector('.two-level-menu-container').appendChild(noResultsMsg);
+
+  if (courseSearchInput) {
+    courseSearchInput.addEventListener('input', function() {
+      const keyword = this.value.toLowerCase().trim();
+      const allCourseItems = document.querySelectorAll('.homework__item');
+      let visibleCount = 0;
+
+      allCourseItems.forEach(function(item) {
+        const titleEl = item.querySelector('.homework__title a');
+        const title = titleEl ? titleEl.textContent.toLowerCase() : '';
+        if (keyword === '' || title.includes(keyword)) {
+          item.style.display = '';
+          visibleCount++;
+        } else {
+          item.style.display = 'none';
+        }
+      });
+
+      noResultsMsg.classList.toggle('visible', visibleCount === 0 && keyword !== '');
+    });
+  }
+
   const categoryTabs = document.querySelectorAll('.category-tab');
   const categoryPanels = document.querySelectorAll('.category-panel');
   categoryTabs.forEach(tab => {
