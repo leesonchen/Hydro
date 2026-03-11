@@ -281,6 +281,14 @@ async function getScoreboard(
     return [tdoc, rows, udict, pdict] as const;
 }
 
+// 课程排序函数：按 beginAt 逆序，相同则按 endAt 逆序
+function sortCoursesByTime(a: any, b: any) {
+    if (a.beginAt.getTime() !== b.beginAt.getTime()) {
+        return b.beginAt.getTime() - a.beginAt.getTime();
+    }
+    return b.endAt.getTime() - a.endAt.getTime();
+}
+
 // 课程列表页面
 export class CourseMainHandler extends Handler {
     @param('all', Types.Boolean)
@@ -290,12 +298,16 @@ export class CourseMainHandler extends Handler {
         }
         const canViewAllCourses = this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
         const viewAll = all || canViewAllCourses;
+        const isTeacher = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+            || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
+            || this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
 
         const groups = [...this.user.group];
         if (this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK)) {
             groups.push('teachers');
         }
         const userId = this.user._id;
+        const userGroups = new Set([...this.user.group, userId.toString()]);
 
         // 查询条件：匹配分配给用户组的课程，或未分配的课程（assign 为空数组、null 或不存在）
         const tdocs = await ContestModel.getMulti(domainId, {
@@ -326,45 +338,258 @@ export class CourseMainHandler extends Handler {
             {},
         );
 
-        const courses = tdocs
-            .sort((a, b) => b.endAt.getTime() - a.endAt.getTime())
-            .map((t) => ({
-                ...t,
-                assignGroup: t.assign?.[0],
-                category: `templates::${t.assign?.[1] || ''}`,
-                isTemplate: t.assign?.includes('teachers') || false,
-            }));
+        // 判断是否为"我的课程"
+        const isMyCourse = (t: any) => t.assign?.some((g: string) => userGroups.has(g));
 
-        const templates = courses.filter((c) => c.assignGroup === 'teachers');
-        const unassigned = courses.filter((c) => !c.assignGroup);
-        const archived = courses.filter((c) => classInfo[c.assignGroup]?.archive);
-        const active = courses.filter(
-            (c) => !templates.includes(c) && !unassigned.includes(c) && !archived.includes(c),
-        );
+        // 处理课程数据
+        const courses = tdocs.map((t) => ({
+            ...t,
+            assignGroup: t.assign?.[0],
+            category: `templates::${t.assign?.[1] || ''}`,
+            isTemplate: t.assign?.includes('teachers') || false,
+        }));
 
-        const templateGroups = templates.length ? _.groupBy(templates, 'category') : {};
-        const activeGroups = _.groupBy(active, 'assignGroup');
-        const archivedGroups = _.groupBy(archived, 'assignGroup');
-        const unassignedGroups = unassigned.length ? { unassigned } : {};
-        const tdocGroups = [
-            ...Object.entries(activeGroups).map(([key, list]) => ({ key, tdocs: list })),
-            ...Object.entries(unassignedGroups).map(([key, list]) => ({ key, tdocs: list })),
-            ...Object.entries(archivedGroups).map(([key, list]) => ({ key, tdocs: list })),
-            ...Object.entries(templateGroups).map(([key, list]) => ({ key, tdocs: list })),
-        ];
+        // 过滤已归档课程（不展示）
+        const nonArchivedCourses = courses.filter((c) => !classInfo[c.assignGroup]?.archive);
+
+        // 分离模板课程和普通课程
+        const templates = nonArchivedCourses.filter((c) => c.assignGroup === 'teachers');
+        const regularCourses = nonArchivedCourses.filter((c) => c.assignGroup !== 'teachers');
+
+        // 分离"我的课程"和"其他课程"
+        const myCourses = regularCourses.filter(isMyCourse).sort(sortCoursesByTime);
+        const otherCourses = regularCourses.filter((c) => !isMyCourse(c)).sort(sortCoursesByTime);
+
+        // 按 assignGroup 分组并排序
+        const groupAndSortCourses = (courseList: any[]) => {
+            const groups = _.groupBy(courseList, 'assignGroup');
+            // 班级内课程排序
+            Object.keys(groups).forEach((key) => {
+                groups[key].sort(sortCoursesByTime);
+            });
+            // 班级排序：按班级中最新课程 beginAt 逆序
+            const sortedGroups = Object.entries(groups)
+                .map(([key, list]) => ({ key, tdocs: list }))
+                .sort((a, b) => {
+                    const aLatest = Math.max(...a.tdocs.map((t: any) => t.beginAt.getTime()));
+                    const bLatest = Math.max(...b.tdocs.map((t: any) => t.beginAt.getTime()));
+                    return bLatest - aLatest;
+                });
+            return { groups, sortedGroups };
+        };
+
+        const myCourseData = groupAndSortCourses(myCourses);
+        const otherCourseData = groupAndSortCourses(otherCourses);
+        const templateData = groupAndSortCourses(templates);
 
         this.response.body = {
-            tdocs: {
-                ...templateGroups,
-                ...unassignedGroups,
-                ...activeGroups,
-                ...archivedGroups,
-            },
-            tdocGroups,
+            myCourses: myCourseData.groups,
+            myCourseGroups: myCourseData.sortedGroups,
+            otherCourses: otherCourseData.groups,
+            otherCourseGroups: otherCourseData.sortedGroups,
+            templates: templateData.groups,
+            templateGroups: templateData.sortedGroups,
             tsdict,
             udict,
+            isTeacher,
         };
         this.response.template = 'course_main.html';
+    }
+}
+
+// 课程列表页面 - 卡片网格布局
+export class CourseMain1Handler extends Handler {
+    @param('all', Types.Boolean)
+    async get(domainId: string, all = false) {
+        if (all && !this.user.hasPerm(PERM.PERM_MOD_BADGE)) {
+            all = false;
+        }
+        const canViewAllCourses = this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
+        const viewAll = all || canViewAllCourses;
+        const isTeacher = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+            || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
+            || this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
+
+        const groups = [...this.user.group];
+        if (this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK)) {
+            groups.push('teachers');
+        }
+        const userId = this.user._id;
+        const userGroups = new Set([...this.user.group, userId.toString()]);
+
+        const tdocs = await ContestModel.getMulti(domainId, {
+            rule: 'course',
+            ...(viewAll ? {} : {
+                $or: [
+                    { assign: { $in: groups } },
+                    { assign: { $size: 0 } },
+                    { assign: null },
+                    { assign: { $exists: false } },
+                    { assign: userId.toString() },
+                ],
+            }),
+        })
+            .sort({ beginAt: -1 })
+            .project({ _id: 1, docId: 1, title: 1, beginAt: 1, endAt: 1, assign: 1, rule: 1, owner: 1, editor: 1, updateAt: 1 })
+            .toArray();
+
+        const uids = Array.from(new Set(tdocs.flatMap((t) => [t.owner, t.editor].filter(Boolean))));
+        const [tsdict, classGroups, udict] = await Promise.all([
+            ContestModel.getListStatus(domainId, this.user._id, tdocs.map((t) => t.docId)),
+            ClassModel.listGroup(domainId),
+            uids.length ? UserModel.getListForRender(domainId, uids, ['displayName']) : Promise.resolve({}),
+        ]);
+
+        const classInfo: Record<string, { archive: boolean }> = classGroups.reduce(
+            (acc, g) => ({ ...acc, [g.name]: { archive: g.archive } }),
+            {},
+        );
+
+        const isMyCourse = (t: any) => t.assign?.some((g: string) => userGroups.has(g));
+
+        const courses = tdocs.map((t) => ({
+            ...t,
+            assignGroup: t.assign?.[0],
+            category: `templates::${t.assign?.[1] || ''}`,
+            isTemplate: t.assign?.includes('teachers') || false,
+        }));
+
+        const nonArchivedCourses = courses.filter((c) => !classInfo[c.assignGroup]?.archive);
+        const templates = nonArchivedCourses.filter((c) => c.assignGroup === 'teachers');
+        const regularCourses = nonArchivedCourses.filter((c) => c.assignGroup !== 'teachers');
+
+        const myCourses = regularCourses.filter(isMyCourse).sort(sortCoursesByTime);
+        const otherCourses = regularCourses.filter((c) => !isMyCourse(c)).sort(sortCoursesByTime);
+
+        const groupAndSortCourses = (courseList: any[]) => {
+            const groups = _.groupBy(courseList, 'assignGroup');
+            Object.keys(groups).forEach((key) => {
+                groups[key].sort(sortCoursesByTime);
+            });
+            const sortedGroups = Object.entries(groups)
+                .map(([key, list]) => ({ key, tdocs: list }))
+                .sort((a, b) => {
+                    const aLatest = Math.max(...a.tdocs.map((t: any) => t.beginAt.getTime()));
+                    const bLatest = Math.max(...b.tdocs.map((t: any) => t.beginAt.getTime()));
+                    return bLatest - aLatest;
+                });
+            return { groups, sortedGroups };
+        };
+
+        const myCourseData = groupAndSortCourses(myCourses);
+        const otherCourseData = groupAndSortCourses(otherCourses);
+        const templateData = groupAndSortCourses(templates);
+
+        this.response.body = {
+            myCourses: myCourseData.groups,
+            myCourseGroups: myCourseData.sortedGroups,
+            otherCourses: otherCourseData.groups,
+            otherCourseGroups: otherCourseData.sortedGroups,
+            templates: templateData.groups,
+            templateGroups: templateData.sortedGroups,
+            tsdict,
+            udict,
+            isTeacher,
+        };
+        this.response.template = 'course_main1.html';
+    }
+}
+
+// 课程列表页面 - 优化侧边栏布局
+export class CourseMain2Handler extends Handler {
+    @param('all', Types.Boolean)
+    async get(domainId: string, all = false) {
+        if (all && !this.user.hasPerm(PERM.PERM_MOD_BADGE)) {
+            all = false;
+        }
+        const canViewAllCourses = this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
+        const viewAll = all || canViewAllCourses;
+        const isTeacher = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+            || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
+            || this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
+
+        const groups = [...this.user.group];
+        if (this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK)) {
+            groups.push('teachers');
+        }
+        const userId = this.user._id;
+        const userGroups = new Set([...this.user.group, userId.toString()]);
+
+        const tdocs = await ContestModel.getMulti(domainId, {
+            rule: 'course',
+            ...(viewAll ? {} : {
+                $or: [
+                    { assign: { $in: groups } },
+                    { assign: { $size: 0 } },
+                    { assign: null },
+                    { assign: { $exists: false } },
+                    { assign: userId.toString() },
+                ],
+            }),
+        })
+            .sort({ beginAt: -1 })
+            .project({ _id: 1, docId: 1, title: 1, beginAt: 1, endAt: 1, assign: 1, rule: 1, owner: 1, editor: 1, updateAt: 1 })
+            .toArray();
+
+        const uids = Array.from(new Set(tdocs.flatMap((t) => [t.owner, t.editor].filter(Boolean))));
+        const [tsdict, classGroups, udict] = await Promise.all([
+            ContestModel.getListStatus(domainId, this.user._id, tdocs.map((t) => t.docId)),
+            ClassModel.listGroup(domainId),
+            uids.length ? UserModel.getListForRender(domainId, uids, ['displayName']) : Promise.resolve({}),
+        ]);
+
+        const classInfo: Record<string, { archive: boolean }> = classGroups.reduce(
+            (acc, g) => ({ ...acc, [g.name]: { archive: g.archive } }),
+            {},
+        );
+
+        const isMyCourse = (t: any) => t.assign?.some((g: string) => userGroups.has(g));
+
+        const courses = tdocs.map((t) => ({
+            ...t,
+            assignGroup: t.assign?.[0],
+            category: `templates::${t.assign?.[1] || ''}`,
+            isTemplate: t.assign?.includes('teachers') || false,
+        }));
+
+        const nonArchivedCourses = courses.filter((c) => !classInfo[c.assignGroup]?.archive);
+        const templates = nonArchivedCourses.filter((c) => c.assignGroup === 'teachers');
+        const regularCourses = nonArchivedCourses.filter((c) => c.assignGroup !== 'teachers');
+
+        const myCourses = regularCourses.filter(isMyCourse).sort(sortCoursesByTime);
+        const otherCourses = regularCourses.filter((c) => !isMyCourse(c)).sort(sortCoursesByTime);
+
+        const groupAndSortCourses = (courseList: any[]) => {
+            const groups = _.groupBy(courseList, 'assignGroup');
+            Object.keys(groups).forEach((key) => {
+                groups[key].sort(sortCoursesByTime);
+            });
+            const sortedGroups = Object.entries(groups)
+                .map(([key, list]) => ({ key, tdocs: list }))
+                .sort((a, b) => {
+                    const aLatest = Math.max(...a.tdocs.map((t: any) => t.beginAt.getTime()));
+                    const bLatest = Math.max(...b.tdocs.map((t: any) => t.beginAt.getTime()));
+                    return bLatest - aLatest;
+                });
+            return { groups, sortedGroups };
+        };
+
+        const myCourseData = groupAndSortCourses(myCourses);
+        const otherCourseData = groupAndSortCourses(otherCourses);
+        const templateData = groupAndSortCourses(templates);
+
+        this.response.body = {
+            myCourses: myCourseData.groups,
+            myCourseGroups: myCourseData.sortedGroups,
+            otherCourses: otherCourseData.groups,
+            otherCourseGroups: otherCourseData.sortedGroups,
+            templates: templateData.groups,
+            templateGroups: templateData.sortedGroups,
+            tsdict,
+            udict,
+            isTeacher,
+        };
+        this.response.template = 'course_main2.html';
     }
 }
 
