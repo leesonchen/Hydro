@@ -1,0 +1,15 @@
+ai_translate: AI翻译
+ai_translation: AI题目翻译
+translate_problem: 翻译题目
+translation_status: 翻译状态
+translate_with_ai: 使用AI翻译
+ai_translated: AI已翻译
+regenerate_translation: 重新生成
+translation_in_progress: 翻译中...
+translation_failed: 翻译失败
+translation_completed: 翻译完成
+no_api_key_configured: 未配置API密钥
+translation_error: 翻译出错：{0}
+This problem has not been translated by AI yet.: 本题尚未使用AI翻译。
+Are you sure you want to regenerate AI translation?: 确定要重新生成AI翻译吗？
+View: 查看

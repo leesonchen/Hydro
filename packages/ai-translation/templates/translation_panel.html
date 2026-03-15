@@ -1,0 +1,156 @@
+{% if hasAiTranslation %}
+<div class="ai-translation-panel section">
+  <div class="section__header">
+    <h2 class="section__title">{{ _('ai_translated') }}</h2>
+    <div class="section__tools">
+      <button class="button small" onclick="toggleAiTranslation()">{{ _('View') }}</button>
+      <button class="button small" onclick="regenerateTranslation()">{{ _('regenerate_translation') }}</button>
+    </div>
+  </div>
+  <div class="section__body ai-translation-content" id="aiTranslationContent" style="display: none;">
+    {{ aiContent|markdown }}
+  </div>
+</div>
+{% else %}
+<div class="ai-translation-panel section" id="aiTranslationPanel">
+  <div class="section__header">
+    <h2 class="section__title">{{ _('ai_translation') }}</h2>
+  </div>
+  <div class="section__body">
+    <p>{{ _('This problem has not been translated by AI yet.') }}</p>
+    <button class="button primary" id="translateBtn" onclick="translateProblem()">
+      {{ _('translate_with_ai') }}
+    </button>
+    <div id="translationStatus" style="margin-top: 10px; display: none;">
+      <span class="icon loading"></span> {{ _('translation_in_progress') }}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+function toggleAiTranslation() {
+  const content = document.getElementById('aiTranslationContent');
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+  } else {
+    content.style.display = 'none';
+  }
+}
+
+async function translateProblem() {
+  const btn = document.getElementById('translateBtn');
+  const status = document.getElementById('translationStatus');
+  
+  btn.disabled = true;
+  status.style.display = 'block';
+  
+  try {
+    const response = await fetch('/api/translation/translate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        pid: {{ pdoc.docId }},
+        domainId: '{{ pdoc.domainId }}'
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.status === 'completed') {
+      window.location.reload();
+    } else if (result.status === 'failed') {
+      status.innerHTML = '<span style="color: red;">{{ _("translation_failed") }}: ' + (result.error || 'Unknown error') + '</span>';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    status.innerHTML = '<span style="color: red;">{{ _("translation_failed") }}: ' + err.message + '</span>';
+    btn.disabled = false;
+  }
+}
+
+async function regenerateTranslation() {
+  if (!confirm('{{ _("Are you sure you want to regenerate AI translation?") }}')) return;
+  
+  const btn = event.target;
+  btn.disabled = true;
+  
+  try {
+    const response = await fetch('/api/translation/translate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        pid: {{ pdoc.docId }},
+        domainId: '{{ pdoc.domainId }}',
+        force: true
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.status === 'completed') {
+      window.location.reload();
+    } else {
+      alert('{{ _("translation_failed") }}: ' + (result.error || 'Unknown error'));
+      btn.disabled = false;
+    }
+  } catch (err) {
+    alert('{{ _("translation_failed") }}: ' + err.message);
+    btn.disabled = false;
+  }
+}
+</script>
+
+<style>
+.ai-translation-panel {
+  margin-top: 20px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+
+.ai-translation-panel .section__header {
+  background: #f8f9fa;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ai-translation-panel .section__title {
+  font-size: 16px;
+  margin: 0;
+}
+
+.ai-translation-panel .section__tools {
+  display: flex;
+  gap: 8px;
+}
+
+.ai-translation-panel .section__body {
+  padding: 16px;
+}
+
+.ai-translation-content {
+  background: #fff;
+}
+
+.icon.loading {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+</style>
