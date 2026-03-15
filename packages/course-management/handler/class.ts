@@ -6,6 +6,11 @@ import { ClassModel } from '../model/class';
 import type { CourseTdoc } from '../model/course';
 import { parseDag } from './course';
 
+function calcCourseTimeRange(baseBeginAt: moment.Moment, classEndAt: moment.Moment) {
+    const beginAt = baseBeginAt.clone();
+    return { beginAt, endAt: classEndAt.clone() };
+}
+
 // 班级列表页面
 export class ClassHandler extends Handler {
     async prepare() {
@@ -221,8 +226,8 @@ export class ClassEditHandler extends Handler {
         // 只有时间相关字段变化时，才更新课程时间
         if (shouldUpdateCourseTimes) {
             await Promise.all(tdocs.map((t, index) => {
-                const courseBeginAt = beginAt.clone().add(index * intervalDays, 'days');
-                const courseEndAt = courseBeginAt.clone().add(endAt.diff(beginAt), 'milliseconds');
+                const baseBeginAt = beginAt.clone().add(index * intervalDays, 'days');
+                const { beginAt: courseBeginAt, endAt: courseEndAt } = calcCourseTimeRange(baseBeginAt, endAt);
                 return ContestModel.edit(domainId, t._id, {
                     beginAt: courseBeginAt.toDate(),
                     endAt: courseEndAt.toDate(),
@@ -245,6 +250,19 @@ export class ClassEditHandler extends Handler {
         const gdoc = await ClassModel.getGroupById(domainId, id);
         if (!gdoc) throw new NotFoundError(domainId, id);
 
+        const intervalDays = typeof gdoc.intervalDays === 'number' && gdoc.intervalDays > 0 ? gdoc.intervalDays : 1;
+        const classBeginAt = moment.utc(gdoc.beginAt).tz(this.user.timeZone);
+        const classEndAt = moment.utc(gdoc.endAt).tz(this.user.timeZone);
+
+        const lastCourse = await ContestModel.getMulti(domainId, {
+            rule: 'course',
+            assign: { $in: [gdoc.name] },
+        }).sort({ beginAt: -1, _id: -1 }).limit(1).next();
+
+        let nextBaseBeginAt = lastCourse
+            ? moment.utc(lastCourse.beginAt).tz(this.user.timeZone).add(intervalDays, 'days')
+            : classBeginAt.clone();
+
         const tdocs: any[] = [];
 
         for (const templateId of templateIds) {
@@ -258,6 +276,8 @@ export class ClassEditHandler extends Handler {
             const newDag = parsedDag.map((node) => ({ ...node }));
             const allPids = Array.from(new Set(parsedDag.flatMap((node) => node.pids)));
 
+            const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
+
             // 创建新课程
             const newTid = await ContestModel.add(
                 domainId,
@@ -265,8 +285,8 @@ export class ClassEditHandler extends Handler {
                 content,
                 this.user._id,
                 'course',
-                gdoc.beginAt,
-                gdoc.endAt,
+                beginAt.toDate(),
+                endAt.toDate(),
                 allPids,
                 false,
                 {
@@ -289,6 +309,8 @@ export class ClassEditHandler extends Handler {
             const newTdoc = await ContestModel.get(domainId, newTid);
             (newTdoc as any).url = this.url('course_detail', { tid: newTid });
             tdocs.push(newTdoc);
+
+            nextBaseBeginAt = nextBaseBeginAt.clone().add(intervalDays, 'days');
         }
 
         this.response.body = { tdocs };
