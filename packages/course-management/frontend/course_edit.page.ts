@@ -9,6 +9,16 @@ import {
 import { api } from '@hydrooj/ui-default/utils';
 
 const page = new NamedPage(['course_edit', 'course_create'], () => {
+  const ensureAutocompleteMounted = (instance: any, retries = 4, delay = 80) => {
+    if (!instance?.container || retries < 0) return;
+    setTimeout(() => {
+      if (!instance?.container?.isConnected) return;
+      if (instance.container.childElementCount > 0) return;
+      instance.attach?.();
+      ensureAutocompleteMounted(instance, retries - 1, delay);
+    }, delay);
+  };
+
   (async () => {
     const $assign = $('[name="assign"]');
     if ($assign.length) {
@@ -34,6 +44,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         freeSolo: true,
         clearDefaultValue: false,
       });
+      ensureAutocompleteMounted(CustomSelectAutoComplete.getOrConstruct($assign));
     }
 
     if ($assign.length) {
@@ -48,11 +59,12 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     }
     const $extraStudents = $('[name="extraStudents"]');
     if ($extraStudents.length) {
-      UserSelectAutoComplete.getOrConstruct($extraStudents, {
+      const extraStudentsSelect = UserSelectAutoComplete.getOrConstruct($extraStudents, {
         multi: true,
         allowEmptyQuery: true,
         freeSolo: false,
       });
+      ensureAutocompleteMounted(extraStudentsSelect);
     }
   })().catch(() => undefined);
 
@@ -291,6 +303,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           freeSolo: true,
           clearDefaultValue: false,
         });
+        ensureAutocompleteMounted(depsSelect);
         depsSelect?.onChange?.((val: any) => {
           updateDeps(val);
           commit({ source: 'deps' });
@@ -339,6 +352,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           allowEmptyQuery: true,
           freeSolo: false,
         });
+        ensureAutocompleteMounted(problemSelect);
 
         // Track the real visible input inside AutoComplete React component.
         const bindQueryTracker = () => {
@@ -358,6 +372,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         // Try binding immediately, then retry if failed
         const tryBind = () => {
           if (!bindQueryTracker()) {
+            ensureAutocompleteMounted(problemSelect, 1, 60);
             setTimeout(tryBind, 100);
           }
         };
