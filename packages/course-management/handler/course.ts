@@ -281,12 +281,52 @@ async function getScoreboard(
     return [tdoc, rows, udict, pdict] as const;
 }
 
-// 课程排序函数：按 beginAt 逆序，相同则按 endAt 逆序
-function sortCoursesByTime(a: any, b: any) {
-    if (a.beginAt.getTime() !== b.beginAt.getTime()) {
-        return b.beginAt.getTime() - a.beginAt.getTime();
+function getCourseOrderStatus(course: any, now: Date) {
+    if (course.beginAt.getTime() > now.getTime()) return 0;
+    if (course.endAt.getTime() < now.getTime()) return 2;
+    return 1;
+}
+
+function compareCourseTitle(a: any, b: any) {
+    return String(a.title || '').localeCompare(String(b.title || ''));
+}
+
+function compareCourses(a: any, b: any, now: Date) {
+    const aStatus = getCourseOrderStatus(a, now);
+    const bStatus = getCourseOrderStatus(b, now);
+    if (aStatus !== bStatus) return aStatus - bStatus;
+
+    const beginDiff = a.beginAt.getTime() - b.beginAt.getTime();
+    if (beginDiff !== 0) {
+        return aStatus === 0 ? beginDiff : -beginDiff;
     }
-    return b.endAt.getTime() - a.endAt.getTime();
+
+    const titleDiff = compareCourseTitle(a, b);
+    if (titleDiff !== 0) return titleDiff;
+
+    const endDiff = a.endAt.getTime() - b.endAt.getTime();
+    if (endDiff !== 0) {
+        return aStatus === 0 ? endDiff : -endDiff;
+    }
+
+    return String(a.docId).localeCompare(String(b.docId));
+}
+
+function groupAndSortCourses(courseList: any[], now: Date) {
+    const groups = _.groupBy(courseList, 'assignGroup');
+    Object.keys(groups).forEach((key) => {
+        groups[key].sort((a, b) => compareCourses(a, b, now));
+    });
+
+    const sortedGroups = Object.entries(groups)
+        .map(([key, list]) => ({ key, tdocs: list }))
+        .sort((a, b) => {
+            const courseDiff = compareCourses(a.tdocs[0], b.tdocs[0], now);
+            if (courseDiff !== 0) return courseDiff;
+            return a.key.localeCompare(b.key);
+        });
+
+    return { groups, sortedGroups };
 }
 
 // 课程列表页面
@@ -349,6 +389,7 @@ export class CourseMainHandler extends Handler {
             category: `templates::${t.assign?.[1] || ''}`,
             isTemplate: t.assign?.includes('teachers') || false,
         }));
+        const now = new Date();
 
         // 过滤已归档课程（不展示）
         const nonArchivedCourses = courses.filter((c) => !classInfo[c.assignGroup]?.archive);
@@ -358,30 +399,12 @@ export class CourseMainHandler extends Handler {
         const regularCourses = nonArchivedCourses.filter((c) => c.assignGroup !== 'teachers');
 
         // 分离"我的课程"和"其他课程"
-        const myCourses = regularCourses.filter(isMyCourse).sort(sortCoursesByTime);
-        const otherCourses = regularCourses.filter((c) => !isMyCourse(c)).sort(sortCoursesByTime);
+        const myCourses = regularCourses.filter(isMyCourse).sort((a, b) => compareCourses(a, b, now));
+        const otherCourses = regularCourses.filter((c) => !isMyCourse(c)).sort((a, b) => compareCourses(a, b, now));
 
-        // 按 assignGroup 分组并排序
-        const groupAndSortCourses = (courseList: any[]) => {
-            const groups = _.groupBy(courseList, 'assignGroup');
-            // 班级内课程排序
-            Object.keys(groups).forEach((key) => {
-                groups[key].sort(sortCoursesByTime);
-            });
-            // 班级排序：按班级中最新课程 beginAt 逆序
-            const sortedGroups = Object.entries(groups)
-                .map(([key, list]) => ({ key, tdocs: list }))
-                .sort((a, b) => {
-                    const aLatest = Math.max(...a.tdocs.map((t: any) => t.beginAt.getTime()));
-                    const bLatest = Math.max(...b.tdocs.map((t: any) => t.beginAt.getTime()));
-                    return bLatest - aLatest;
-                });
-            return { groups, sortedGroups };
-        };
-
-        const myCourseData = groupAndSortCourses(myCourses);
-        const otherCourseData = groupAndSortCourses(otherCourses);
-        const templateData = groupAndSortCourses(templates);
+        const myCourseData = groupAndSortCourses(myCourses, now);
+        const otherCourseData = groupAndSortCourses(otherCourses, now);
+        const templateData = groupAndSortCourses(templates.sort((a, b) => compareCourses(a, b, now)), now);
 
         this.response.body = {
             myCourses: myCourseData.groups,
@@ -455,32 +478,18 @@ export class CourseMain1Handler extends Handler {
             category: `templates::${t.assign?.[1] || ''}`,
             isTemplate: t.assign?.includes('teachers') || false,
         }));
+        const now = new Date();
 
         const nonArchivedCourses = courses.filter((c) => !classInfo[c.assignGroup]?.archive);
         const templates = nonArchivedCourses.filter((c) => c.assignGroup === 'teachers');
         const regularCourses = nonArchivedCourses.filter((c) => c.assignGroup !== 'teachers');
 
-        const myCourses = regularCourses.filter(isMyCourse).sort(sortCoursesByTime);
-        const otherCourses = regularCourses.filter((c) => !isMyCourse(c)).sort(sortCoursesByTime);
+        const myCourses = regularCourses.filter(isMyCourse).sort((a, b) => compareCourses(a, b, now));
+        const otherCourses = regularCourses.filter((c) => !isMyCourse(c)).sort((a, b) => compareCourses(a, b, now));
 
-        const groupAndSortCourses = (courseList: any[]) => {
-            const groups = _.groupBy(courseList, 'assignGroup');
-            Object.keys(groups).forEach((key) => {
-                groups[key].sort(sortCoursesByTime);
-            });
-            const sortedGroups = Object.entries(groups)
-                .map(([key, list]) => ({ key, tdocs: list }))
-                .sort((a, b) => {
-                    const aLatest = Math.max(...a.tdocs.map((t: any) => t.beginAt.getTime()));
-                    const bLatest = Math.max(...b.tdocs.map((t: any) => t.beginAt.getTime()));
-                    return bLatest - aLatest;
-                });
-            return { groups, sortedGroups };
-        };
-
-        const myCourseData = groupAndSortCourses(myCourses);
-        const otherCourseData = groupAndSortCourses(otherCourses);
-        const templateData = groupAndSortCourses(templates);
+        const myCourseData = groupAndSortCourses(myCourses, now);
+        const otherCourseData = groupAndSortCourses(otherCourses, now);
+        const templateData = groupAndSortCourses(templates.sort((a, b) => compareCourses(a, b, now)), now);
 
         this.response.body = {
             myCourses: myCourseData.groups,
@@ -553,32 +562,18 @@ export class CourseMain2Handler extends Handler {
             category: `templates::${t.assign?.[1] || ''}`,
             isTemplate: t.assign?.includes('teachers') || false,
         }));
+        const now = new Date();
 
         const nonArchivedCourses = courses.filter((c) => !classInfo[c.assignGroup]?.archive);
         const templates = nonArchivedCourses.filter((c) => c.assignGroup === 'teachers');
         const regularCourses = nonArchivedCourses.filter((c) => c.assignGroup !== 'teachers');
 
-        const myCourses = regularCourses.filter(isMyCourse).sort(sortCoursesByTime);
-        const otherCourses = regularCourses.filter((c) => !isMyCourse(c)).sort(sortCoursesByTime);
+        const myCourses = regularCourses.filter(isMyCourse).sort((a, b) => compareCourses(a, b, now));
+        const otherCourses = regularCourses.filter((c) => !isMyCourse(c)).sort((a, b) => compareCourses(a, b, now));
 
-        const groupAndSortCourses = (courseList: any[]) => {
-            const groups = _.groupBy(courseList, 'assignGroup');
-            Object.keys(groups).forEach((key) => {
-                groups[key].sort(sortCoursesByTime);
-            });
-            const sortedGroups = Object.entries(groups)
-                .map(([key, list]) => ({ key, tdocs: list }))
-                .sort((a, b) => {
-                    const aLatest = Math.max(...a.tdocs.map((t: any) => t.beginAt.getTime()));
-                    const bLatest = Math.max(...b.tdocs.map((t: any) => t.beginAt.getTime()));
-                    return bLatest - aLatest;
-                });
-            return { groups, sortedGroups };
-        };
-
-        const myCourseData = groupAndSortCourses(myCourses);
-        const otherCourseData = groupAndSortCourses(otherCourses);
-        const templateData = groupAndSortCourses(templates);
+        const myCourseData = groupAndSortCourses(myCourses, now);
+        const otherCourseData = groupAndSortCourses(otherCourses, now);
+        const templateData = groupAndSortCourses(templates.sort((a, b) => compareCourses(a, b, now)), now);
 
         this.response.body = {
             myCourses: myCourseData.groups,
