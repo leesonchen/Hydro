@@ -7,9 +7,9 @@
       <h1>{{ tdoc.title }}</h1>
       <div class="contest-sidebar__status">
       {% if tsdoc.attend %}
-        <span class="icon icon-check"></span> {{ _('Attended') }}
+        <span class="icon icon-check"></span> {{ tdoc.rule == 'course' and _('Joined Course') or _('Attended') }}
       {% else %}
-        <span class="icon icon-schedule"></span> {{ _('Not Attended') }}
+        <span class="icon icon-schedule"></span> {{ tdoc.rule == 'course' and _('Not Joined Course') or _('Not Attended') }}
       {% endif %}
       </div>
     </div>
@@ -38,7 +38,7 @@
     {% endif %}
     {% if page_name != 'contest_detail' %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_detail', tid=tdoc.docId) }}">
-        <span class="icon icon-award"></span> {{ tdoc.rule == 'course' and '查看课程' or _('View Contest') }}
+        <span class="icon icon-award"></span> {{ tdoc.rule == 'course' and _('View Course') or _('View Contest') }}
       </a></li>
     {% endif %}
     {% if not (tsdoc.attend) and not model.contest.isDone(tdoc) %}
@@ -47,20 +47,20 @@
       <form action="{{ url('contest_detail', tid=tdoc.docId) }}" method="POST">
         <input type="hidden" name="operation" value="attend">
         <button class="menu__link" {% if tdoc._code %}data-contest-code{% endif %} type="submit">
-          <span class="icon icon-add"></span> {{ _('Attend Contest') }}
+          <span class="icon icon-add"></span> {{ tdoc.rule == 'course' and _('Enter Course') or _('Attend Contest') }}
         </button>
       </form>
     {% elif not handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
         <a class="menu__link" href="javascript:showSignInDialog()">
-          <span class="icon icon-add"></span> {{ _('Login to Attend Contest') }}
+          <span class="icon icon-add"></span> {{ tdoc.rule == 'course' and _('Login to Enter Course') or _('Login to Attend Contest') }}
         </a>
     {% elif not handler.user._dudoc.join %}
         <a class="menu__link" href="/domain/join?target={{ tdoc.domainId }}">
-          <span class="icon icon-add"></span> {{ _('Join Domain to Attend Contest') }}
+          <span class="icon icon-add"></span> {{ tdoc.rule == 'course' and _('Join Domain to Enter Course') or _('Join Domain to Attend Contest') }}
         </a>
     {% else %}
         <a class="menu__link disabled" href="javascript:;">
-          <span class="icon icon-add"></span> {{ _('No Permission to Attend Contest') }}
+          <span class="icon icon-add"></span> {{ tdoc.rule == 'course' and _('No Permission to Enter Course') or _('No Permission to Attend Contest') }}
         </a>
     {% endif %}
       </li>
@@ -87,10 +87,10 @@
     {% endif %}
     {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_edit', tid=tdoc.docId) }}">
-        <span class="icon icon-edit"></span> {{ tdoc.rule == 'course' and '编辑课程' or _('Edit Contest') }}
+        <span class="icon icon-edit"></span> {{ tdoc.rule == 'course' and _('Edit Course') or _('Edit Contest') }}
       </a></li>
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_manage', tid=tdoc.docId) }}">
-        <span class="icon icon-settings"></span> {{ tdoc.rule == 'course' and '课程管理' or _('Contest Management') }}
+        <span class="icon icon-settings"></span> {{ tdoc.rule == 'course' and _('Course Management') or _('Contest Management') }}
       </a></li>
     {% endif %}
     {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}
@@ -107,7 +107,7 @@
     {% endif %}
     {% if tdoc.rule == 'course' and pdoc and canViewCourseReference and (hasReferenceCode or canEditCourseReference) %}
       <li class="menu__item"><a class="menu__link{% if page_name == 'course_problem_reference' %} active{% endif %}" href="{{ url('course_problem_reference', tid=tdoc.docId, pid=pdoc.docId) }}">
-        <span class="icon icon-comment--text"></span> {{ hasReferenceCode and '参考代码' or '创建参考代码' }}
+        <span class="icon icon-comment--text"></span> {{ hasReferenceCode and _('Reference Code') or _('Create Reference Code') }}
       </a></li>
     {% endif %}
     {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}
@@ -129,11 +129,11 @@
   </div>
   <div class="section__body typo">
     <dl class="large horizontal">
-      <dt>{{ _('Status') }}</dt>
+      <dt>{{ tdoc.rule == 'course' and _('Course Status') or _('Status') }}</dt>
       <dd>
         {{ _(model.contest.statusText(tdoc, tsdoc)) }}
         {% if tsdoc.attend %}
-          ({{ _('Attended') }})
+          ({{ tdoc.rule == 'course' and _('Joined Course') or _('Attended') }})
         {% endif %}
       </dd>
       <dt>{{ _('Rule') }}</dt><dd>{{ _(model.contest.RULES[tdoc.rule].TEXT) }}</dd>

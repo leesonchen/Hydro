@@ -51,8 +51,22 @@ export async function apply(ctx: Context, config: typeof Config) {
         'Course Templates': '课程模板',
         'Add Course': '添加课程',
         'View Course': '查看课程',
+        'Edit Course': '编辑课程',
+        'Course Management': '课程管理',
         'Course Name': '课程名称',
         'Join at': '进入于',
+        'Joined Course': '已进入课程',
+        'Not Joined Course': '未进入课程',
+        'Enter Course': '进入课程',
+        'Login to Enter Course': '登录后进入课程',
+        'Join Domain to Enter Course': '加入域后进入课程',
+        'No Permission to Enter Course': '无权限进入课程',
+        'Course Status': '课程状态',
+        'Reference Code': '参考代码',
+        'Create Reference Code': '创建参考代码',
+        'This course is not live.': '此课程尚未开始。',
+        "You haven't joined this course yet.": '你尚未进入此课程。',
+        'You are not assigned to this course.': '你未被分配到此课程。',
         Teachers: '教师',
         Students: '学生',
         Lecture: '讲义',
@@ -78,6 +92,20 @@ export async function apply(ctx: Context, config: typeof Config) {
         domain_class: 'Class Management',
         domain_class_create: 'Create Class',
         domain_class_edit: 'Edit Class',
+        'Edit Course': 'Edit Course',
+        'Course Management': 'Course Management',
+        'Joined Course': 'Joined Course',
+        'Not Joined Course': 'Not Joined Course',
+        'Enter Course': 'Enter Course',
+        'Login to Enter Course': 'Login to Enter Course',
+        'Join Domain to Enter Course': 'Join Domain to Enter Course',
+        'No Permission to Enter Course': 'No Permission to Enter Course',
+        'Course Status': 'Course Status',
+        'Reference Code': 'Reference Code',
+        'Create Reference Code': 'Create Reference Code',
+        'This course is not live.': 'This course is not live.',
+        "You haven't joined this course yet.": "You haven't joined this course yet.",
+        'You are not assigned to this course.': 'You are not assigned to this course.',
     });
 
     const isCourseEnabled = (handler: any) => config.enable || handler.domain?.enableCourse;
@@ -218,7 +246,7 @@ export async function apply(ctx: Context, config: typeof Config) {
             const isInAssign = tdoc.assign.some((g: string) => userGroups.has(g) || g === userIdStr);
 
             if (!isInAssign) {
-                throw new ForbiddenError('You are not assigned to this contest.');
+                throw new ForbiddenError('You are not assigned to this course.');
             }
         }
     });

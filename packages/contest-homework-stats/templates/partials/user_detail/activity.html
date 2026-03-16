@@ -51,7 +51,7 @@
             {% set stats = tdoc.activityStats %}
             <tr>
               <td>
-                <a class="contest-type--{{ tdoc.rule }}" href="{{ url('contest_detail' if tdoc.rule !== 'homework' else 'homework_detail', tid=tdoc.docId) }}">
+                <a class="contest-type--{{ tdoc.rule }}" href="{{ url('course_detail' if tdoc.rule === 'course' else ('homework_detail' if tdoc.rule === 'homework' else 'contest_detail'), tid=tdoc.docId) }}">
                   {{ tdoc.title }}
                   <span class="contest-type-tag"><span class="icon icon-award"></span>{{ _(model.contest.RULES[tdoc['rule']].TEXT) }}</span>
                 </a>
@@ -67,9 +67,19 @@
                   <span>未AC：{{ stats.submitNotAc }}</span>
                   <span>未提交：{{ stats.notSubmitted }}</span>
                   <span>
-                    <a class="inline-link" href="{{ url('homework_scoreboard' if tdoc.rule === 'homework' else 'contest_scoreboard', tid=tdoc.docId) }}" target="_blank">
+                    {% if tdoc.rule === 'course' %}
+                    <a class="inline-link" href="{{ url('course_scoreboard', tid=tdoc.docId, id=0) }}" target="_blank">
                       详情
                     </a>
+                    {% elif tdoc.rule === 'homework' %}
+                    <a class="inline-link" href="{{ url('homework_scoreboard', tid=tdoc.docId) }}" target="_blank">
+                      详情
+                    </a>
+                    {% else %}
+                    <a class="inline-link" href="{{ url('contest_scoreboard', tid=tdoc.docId) }}" target="_blank">
+                      详情
+                    </a>
+                    {% endif %}
                   </span>
                 </div>
                 {% else %}
@@ -91,7 +101,7 @@
       {% else %}
       <ul>
         {% for tdoc in tdocs %}
-        <li><a class="contest-type--{{ tdoc.rule }}" href="{{ url('contest_detail' if tdoc.rule !== 'homework' else 'homework_detail', tid=tdoc.docId) }}">
+        <li><a class="contest-type--{{ tdoc.rule }}" href="{{ url('course_detail' if tdoc.rule === 'course' else ('homework_detail' if tdoc.rule === 'homework' else 'contest_detail'), tid=tdoc.docId) }}">
           {{ tdoc.title }} <span class="contest-type-tag"><span class="icon icon-award"></span>{{ _(model.contest.RULES[tdoc['rule']].TEXT) }}</span>
         </a></li>
         {% endfor %}

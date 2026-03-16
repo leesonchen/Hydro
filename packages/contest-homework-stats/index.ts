@@ -80,8 +80,21 @@ const buildCounts = (tdoc: any, tsdoc: any) => {
  * 不同赛制记录的分数字段不同，此处统一转换为单一可比较的数值，
  * 便于后续展示逻辑保持简单。
  */
-const resolveScore = (tsdoc: any) => {
+const resolveScore = (tdoc: any, tsdoc: any) => {
     if (!tsdoc) return 0;
+    if (tdoc?.rule === 'course') {
+        if (typeof tsdoc.score?.[0] === 'number') return tsdoc.score[0];
+        let totalScore = 0;
+        let hasCourseScore = false;
+        for (const pid of tdoc.pids || []) {
+            const score = tsdoc.detail?.[pid]?.score;
+            if (typeof score === 'number') {
+                totalScore += score;
+                hasCourseScore = true;
+            }
+        }
+        if (hasCourseScore) return totalScore;
+    }
     if (typeof tsdoc.penaltyScore === 'number') return tsdoc.penaltyScore;
     if (typeof tsdoc.score === 'number') return tsdoc.score;
     if (typeof tsdoc.accept === 'number') return tsdoc.accept;
@@ -97,7 +110,7 @@ const buildActivityStats = (tdoc: any, tsdoc: any) => {
         if (submitAt && (!lastSubmitAt || submitAt > lastSubmitAt)) lastSubmitAt = submitAt;
     }
     return {
-        totalScore: resolveScore(tsdoc),
+        totalScore: resolveScore(tdoc, tsdoc),
         acCount,
         submitNotAc,
         notSubmitted,
@@ -114,7 +127,7 @@ const buildCell = (tdoc: any, tsdoc: any): StatCell => {
     if (tdoc.rule === 'acm') {
         return { display: `${acCount}/${submitNotAc}/${notSubmitted}` };
     }
-    const totalScore = resolveScore(tsdoc);
+    const totalScore = resolveScore(tdoc, tsdoc);
     return { display: `${totalScore} (${acCount}/${submitNotAc}/${notSubmitted})` };
 };
 
@@ -273,8 +286,14 @@ class ContestStatsHandler extends Handler {
         }
         const table = buildTableData(resolvedLayout, exportDocs, filteredUsers, rows, {
             itemLabel: '比赛',
-            itemUrl: (tdoc) => (this as any).url('contest_detail', { tid: tdoc.docId }),
-            itemScoreboardUrl: (tdoc) => (this as any).url('contest_scoreboard', { tid: tdoc.docId }),
+            itemUrl: (tdoc) => (this as any).url(
+                tdoc.rule === 'course' ? 'course_detail' : 'contest_detail',
+                { tid: tdoc.docId },
+            ),
+            itemScoreboardUrl: (tdoc) => (this as any).url(
+                tdoc.rule === 'course' ? 'course_scoreboard' : 'contest_scoreboard',
+                tdoc.rule === 'course' ? { tid: tdoc.docId, id: 0 } : { tid: tdoc.docId },
+            ),
             userUrl: (user) => (this as any).url('user_detail', { uid: user._id }),
         });
         if (download) {
