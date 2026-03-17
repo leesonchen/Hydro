@@ -68,3 +68,4 @@ __*
 packages/*/public/assets
 cleanup-scripts/*
 .spec-workflow/*
+/install/docker-v3
