@@ -15,9 +15,27 @@ function fillMessage(template: string, ...params: Array<string | number>) {
     return template.replace(/\{(\d+)\}/g, (_, index) => String(params[Number(index)] ?? ''));
 }
 
+async function ensureCourseTitleAvailable(
+    domainId: string,
+    title: string,
+    assignGroup: string,
+    translate: (value: string) => string = (value) => value,
+) {
+    const duplicated = await ContestModel.getMulti(domainId, {
+        rule: 'course',
+        title,
+        assign: { $in: [assignGroup] },
+    }).limit(1).next();
+    if (duplicated) {
+        throw new BadRequestError(fillMessage(translate('Course "{0}" already exists in this domain.'), title));
+    }
+}
+
 async function assertCourseCopyAllowed(sourceDomainId: string, targetDomainId: string, translate: (value: string) => string = (value) => value) {
     const ddoc = await DomainModel.get(sourceDomainId);
-    if (!ddoc) throw new NotFoundError(sourceDomainId);
+    if (!ddoc) {
+        throw new BadRequestError(fillMessage(translate('Source domain {0} does not exist.'), sourceDomainId));
+    }
     const t = `,${ddoc.share || ''},`;
     if (t !== ',*,' && !t.includes(`,${targetDomainId},`)) {
         throw new BadRequestError(fillMessage(translate('You are not allowed to copy this course from {0} to {1}.'), sourceDomainId, targetDomainId));
@@ -25,12 +43,28 @@ async function assertCourseCopyAllowed(sourceDomainId: string, targetDomainId: s
     return ddoc;
 }
 
-async function resolveProblemOrigin(domainId: string, pid: number) {
+async function assertProblemCopyAllowed(sourceDomainId: string, targetDomainId: string, originPid: number, translate: (value: string) => string = (value) => value) {
+    const ddoc = await DomainModel.get(sourceDomainId);
+    if (!ddoc) {
+        throw new BadRequestError(fillMessage(translate('Source domain {0} does not exist.'), sourceDomainId));
+    }
+    const t = `,${ddoc.share || ''},`;
+    if (t !== ',*,' && !t.includes(`,${targetDomainId},`)) {
+        throw new BadRequestError(fillMessage(translate('Problem {0} in {1} is not allowed to be copied to {2}.'), originPid, sourceDomainId, targetDomainId));
+    }
+    return ddoc;
+}
+
+async function resolveProblemOrigin(domainId: string, pid: number, translate: (value: string) => string = (value) => value) {
     let current = await ProblemModel.get(domainId, pid);
-    if (!current) throw new NotFoundError(domainId, pid);
+    if (!current) {
+        throw new BadRequestError(fillMessage(translate('Referenced source problem {0} in domain {1} does not exist.'), pid, domainId));
+    }
     while (current.reference) {
         current = await ProblemModel.get(current.reference.domainId, current.reference.pid);
-        if (!current) throw new NotFoundError(domainId, pid);
+        if (!current) {
+            throw new BadRequestError(fillMessage(translate('Referenced source problem {0} in domain {1} does not exist.'), pid, domainId));
+        }
     }
     return {
         originDomainId: current.domainId,
@@ -38,12 +72,17 @@ async function resolveProblemOrigin(domainId: string, pid: number) {
     };
 }
 
-async function buildPidMapping(sourceDomainId: string, targetDomainId: string, pids: number[]) {
+async function buildPidMapping(
+    sourceDomainId: string,
+    targetDomainId: string,
+    pids: number[],
+    translate: (value: string) => string = (value) => value,
+) {
     const mapping = new Map<number, number>();
     const missing: Array<{ pid: number, originDomainId: string, originPid: number }> = [];
 
     for (const pid of Array.from(new Set(pids))) {
-        const origin = await resolveProblemOrigin(sourceDomainId, pid);
+        const origin = await resolveProblemOrigin(sourceDomainId, pid, translate);
         let matched = await ProblemModel.getMulti(targetDomainId, {
             reference: { domainId: origin.originDomainId, pid: origin.originPid },
         }, ['docId', 'reference']).limit(1).next();
@@ -61,6 +100,27 @@ async function buildPidMapping(sourceDomainId: string, targetDomainId: string, p
     }
 
     return { mapping, missing };
+}
+
+async function copyMissingProblemsToTarget(
+    targetDomainId: string,
+    missing: Array<{ pid: number, originDomainId: string, originPid: number }>,
+    userId: number,
+    translate: (value: string) => string = (value) => value,
+) {
+    const targetUser = await UserModel.getById(targetDomainId, userId);
+    if (!targetUser?.hasPerm(PERM.PERM_CREATE_PROBLEM)) {
+        throw new PermissionError(PERM.PERM_CREATE_PROBLEM);
+    }
+
+    const uniqueOrigins = Array.from(new Map(
+        missing.map((item) => [`${item.originDomainId}:${item.originPid}`, item]),
+    ).values());
+
+    for (const item of uniqueOrigins) {
+        await assertProblemCopyAllowed(item.originDomainId, targetDomainId, item.originPid, translate);
+        await ProblemModel.copy(item.originDomainId, item.originPid, targetDomainId);
+    }
 }
 
 function rewriteDagPids(dag: any[], mapping: Map<number, number>) {
@@ -350,9 +410,10 @@ export class ClassEditHandler extends Handler {
     async postCopy(domainId: string, id: ObjectId, templateIds: string[]) {
         const gdoc = await ClassModel.getGroupById(domainId, id);
         if (!gdoc) throw new NotFoundError(domainId, id);
+        const user = (this as any).user;
 
         const intervalDays = typeof gdoc.intervalDays === 'number' && gdoc.intervalDays > 0 ? gdoc.intervalDays : 1;
-        const classBeginAt = moment.utc(gdoc.beginAt).tz(this.user.timeZone);
+        const classBeginAt = moment.utc(gdoc.beginAt).tz(user.timeZone);
         const classEndAt = moment.utc(gdoc.endAt).tz(this.user.timeZone);
 
         const lastCourse = await ContestModel.getMulti(domainId, {
@@ -361,7 +422,7 @@ export class ClassEditHandler extends Handler {
         }).sort({ beginAt: -1, _id: -1 }).limit(1).next();
 
         let nextBaseBeginAt = lastCourse
-            ? moment.utc(lastCourse.beginAt).tz(this.user.timeZone).add(intervalDays, 'days')
+            ? moment.utc(lastCourse.beginAt).tz(user.timeZone).add(intervalDays, 'days')
             : classBeginAt.clone();
 
         const tdocs: any[] = [];
@@ -378,13 +439,18 @@ export class ClassEditHandler extends Handler {
             if (!template) continue;
 
             const { title, content, dag } = template;
+            await ensureCourseTitleAvailable(domainId, title, gdoc.name, (this as any).translate?.bind(this));
 
             const parsedDag = await parseDag(sourceDomainId, JSON.stringify(dag));
             const sourcePids = Array.from(new Set(parsedDag.flatMap((node) => node.pids)));
-            const { mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids);
+            let { mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids, (this as any).translate?.bind(this));
             if (missing.length) {
-                const missingText = missing.map((item) => `${item.pid} -> ${item.originDomainId}:${item.originPid}`).join(', ');
-                throw new BadRequestError(fillMessage((this as any).translate?.('Missing referenced problems in target domain: {0}') || 'Missing referenced problems in target domain: {0}', missingText));
+                await copyMissingProblemsToTarget(domainId, missing, user._id, (this as any).translate?.bind(this));
+                ({ mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids, (this as any).translate?.bind(this)));
+                if (missing.length) {
+                    const missingText = missing.map((item) => `${item.pid} -> ${item.originDomainId}:${item.originPid}`).join(', ');
+                    throw new BadRequestError(fillMessage((this as any).translate?.('Missing referenced problems in target domain: {0}') || 'Missing referenced problems in target domain: {0}', missingText));
+                }
             }
             const newDag = rewriteDagPids(parsedDag, mapping);
             const allPids = Array.from(new Set(newDag.flatMap((node) => node.pids)));
@@ -396,7 +462,7 @@ export class ClassEditHandler extends Handler {
                 domainId,
                 title,
                 content,
-                this.user._id,
+                user._id,
                 'course',
                 beginAt.toDate(),
                 endAt.toDate(),
