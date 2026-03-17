@@ -112,7 +112,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
         </div></div>
         <div class="row"><div class="columns">
           <label>
-            ${i18n('Source Domain')}
+            ${i18n('Copy Source Domain')}
             <input name="sourceDomain" type="text" class="textbox" autocomplete="off">
           </label>
         </div></div>
@@ -150,6 +150,31 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
     });
     let currentTemplates: Array<{ _id: string; name: string; title?: string; sourceDomainId?: string }> = [];
     let loadedSourceDomain = '';
+    let lastTemplateLoadError = '';
+    let lastTemplateLoadErrorDomain = '';
+    let templateLoadingDomain = '';
+    let templateLoadingPromise: Promise<void> | null = null;
+
+    const normalizeErrorMessage = (error: any) => {
+      console.log('[course-copy] normalizeErrorMessage input:', error);
+      const template = String(error?.rawMessage || '').trim();
+      const params = Array.isArray(error?.params) ? error.params : [];
+      const rawMessageLooksLikeErrorName = /^[A-Za-z]+Error$/.test(template);
+      if (template && params.length && !rawMessageLooksLikeErrorName) {
+        const normalized = template.replace(/\{(\d+)\}/g, (_: string, index: string) => String(params[Number(index)] ?? ''));
+        console.log('[course-copy] normalizeErrorMessage output by rawMessage:', normalized);
+        return normalized;
+      }
+      if ((rawMessageLooksLikeErrorName || /^[A-Za-z]+Error$/.test(String(error?.message || '').trim())) && params.length) {
+        const normalized = String(params[0] || '').trim() || String(error?.message || '').trim();
+        console.log('[course-copy] normalizeErrorMessage output by params[0]:', normalized);
+        return normalized;
+      }
+      const message = String(error?.message || error || '').trim();
+      const normalized = message.replace(/^[A-Za-z]+Error:\s*/, '');
+      console.log('[course-copy] normalizeErrorMessage output by message:', normalized);
+      return normalized;
+    };
 
     const getSelectedSourceDomain = () => {
       const selected = sourceDomainSelect.value?.() as any;
@@ -177,14 +202,44 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       if (!normalized) {
         applyTemplates([]);
         loadedSourceDomain = '';
+        lastTemplateLoadError = '';
+        lastTemplateLoadErrorDomain = '';
+        templateLoadingDomain = '';
+        templateLoadingPromise = null;
         return;
       }
-      const res = await request.post('', {
-        operation: 'get_templates',
-        sourceDomain: normalized,
+      if (templateLoadingPromise && templateLoadingDomain === normalized) {
+        await templateLoadingPromise;
+        return;
+      }
+      templateLoadingDomain = normalized;
+      templateLoadingPromise = (async () => {
+        const res = await request.post('', {
+          operation: 'get_templates',
+          sourceDomain: normalized,
+        });
+        applyTemplates(Array.isArray(res.templates) ? res.templates : []);
+        loadedSourceDomain = normalized;
+        lastTemplateLoadError = '';
+        lastTemplateLoadErrorDomain = '';
+      })().catch((e: any) => {
+        console.error('[course-copy] loadTemplates failed:', e);
+        applyTemplates([]);
+        loadedSourceDomain = '';
+        lastTemplateLoadError = normalizeErrorMessage(e);
+        lastTemplateLoadErrorDomain = normalized;
+        throw e;
+      }).finally(() => {
+        if (templateLoadingDomain === normalized) {
+          templateLoadingDomain = '';
+          templateLoadingPromise = null;
+        }
       });
-      applyTemplates(Array.isArray(res.templates) ? res.templates : []);
-      loadedSourceDomain = normalized;
+      try {
+        await templateLoadingPromise;
+      } catch (e: any) {
+        throw e;
+      }
     };
 
     const addCourseDialog = new ActionDialog({
@@ -215,6 +270,10 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       addCourseDialog.$dom.find('[name="template"]').val('');
       applyTemplates([]);
       loadedSourceDomain = '';
+      lastTemplateLoadError = '';
+      lastTemplateLoadErrorDomain = '';
+      templateLoadingDomain = '';
+      templateLoadingPromise = null;
       return this;
     };
 
@@ -226,7 +285,17 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
         return false;
       }
       if (loadedSourceDomain === sourceDomain && currentTemplates.length) return true;
-      await loadTemplates(sourceDomain);
+      if (lastTemplateLoadError && lastTemplateLoadErrorDomain === sourceDomain && !templateLoadingPromise) {
+        Notification.error(lastTemplateLoadError);
+        return false;
+      }
+      try {
+        await loadTemplates(sourceDomain);
+      } catch (e: any) {
+        console.error('[course-copy] ensureTemplatesLoaded failed:', e);
+        Notification.error(normalizeErrorMessage(e));
+        return false;
+      }
       if (!currentTemplates.length) {
         Notification.error(i18n('No available course templates.'));
         return false;
@@ -240,9 +309,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       try {
         await loadTemplates(sourceDomain);
       } catch (e: any) {
-        applyTemplates([]);
-        loadedSourceDomain = '';
-        Notification.error(e.message);
+        if (sourceDomain !== getSelectedSourceDomain()) return;
       }
     });
 
@@ -253,8 +320,10 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       const value = addCourseDialog.$dom.find('[name="template"]').val() as string;
       try {
         const res = await request.post('', { operation: 'copy', template: value });
+        console.log('[course-copy] copy response:', res);
         if (res.error) {
-          Notification.error(res.error.message || res.error);
+          console.error('[course-copy] copy response error:', res.error);
+          Notification.error(normalizeErrorMessage(res.error));
           return;
         }
         Notification.success(i18n('Course added.'));
@@ -272,7 +341,8 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
           }
         }
       } catch (e: any) {
-        Notification.error(e.message);
+        console.error('[course-copy] copy request threw:', e);
+        Notification.error(normalizeErrorMessage(e));
       }
     });
   }

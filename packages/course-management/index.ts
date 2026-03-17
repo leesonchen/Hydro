@@ -50,6 +50,7 @@ export async function apply(ctx: Context, config: typeof Config) {
         'Create Course': '创建课程',
         'Course Templates': '课程模板',
         'Add Course': '添加课程',
+        'Copy Source Domain': '源域',
         'Source Domain': '源域',
         'Source Domain is required.': '必须填写源域。',
         'No available course templates.': '没有可用的课程模板。',
@@ -79,6 +80,9 @@ export async function apply(ctx: Context, config: typeof Config) {
         'Extra Students': '临时调课学生',
         'Extra Students Hint': '输入学生UID，多个用逗号分隔。这些学生可以临时访问本课程，不影响其所属班级。',
         'You are not allowed to copy this course from {0} to {1}.': '不允许将课程从 {0} 复制到 {1}。',
+        'Problem {0} in {1} is not allowed to be copied to {2}.': '题目 {0} 所在域 {1} 未向 {2} 开放复制权限。',
+        'Course "{0}" already exists in this domain.': '当前域已存在同名课程“{0}”。',
+        'Source domain {0} does not exist.': '源域 {0} 不存在。',
         'Missing referenced problems in target domain: {0}': '目标域缺少以下同源题目：{0}',
 
         // 题目详情页关联课程
@@ -99,6 +103,7 @@ export async function apply(ctx: Context, config: typeof Config) {
         domain_class_edit: 'Edit Class',
         'Edit Course': 'Edit Course',
         'Course Management': 'Course Management',
+        'Copy Source Domain': 'Source Domain',
         'Source Domain': 'Source Domain',
         'Source Domain is required.': 'Source Domain is required.',
         'No available course templates.': 'No available course templates.',
@@ -115,6 +120,9 @@ export async function apply(ctx: Context, config: typeof Config) {
         "You haven't joined this course yet.": "You haven't joined this course yet.",
         'You are not assigned to this course.': 'You are not assigned to this course.',
         'You are not allowed to copy this course from {0} to {1}.': 'You are not allowed to copy this course from {0} to {1}.',
+        'Problem {0} in {1} is not allowed to be copied to {2}.': 'Problem {0} in {1} is not allowed to be copied to {2}.',
+        'Course "{0}" already exists in this domain.': 'Course "{0}" already exists in this domain.',
+        'Source domain {0} does not exist.': 'Source domain {0} does not exist.',
         'Missing referenced problems in target domain: {0}': 'Missing referenced problems in target domain: {0}',
     });
 

@@ -11,6 +11,10 @@ import { ClassModel } from '../model/class';
 
 const REFERENCE_CODE_TITLE = '【参考代码】';
 
+function fillMessage(template: string, ...params: Array<string | number>) {
+    return template.replace(/\{(\d+)\}/g, (_, index) => String(params[Number(index)] ?? ''));
+}
+
 function isReferenceCodeSolutionByContent(content = '') {
     const firstLine = content.split(/\r?\n/).find((line) => line.trim());
     if (!firstLine) return false;
@@ -279,6 +283,7 @@ async function getScoreboard(
 
     await bus.parallel('contest/scoreboard', tdoc, rows, udict, pdict);
     return [tdoc, rows, udict, pdict] as const;
+
 }
 
 function getCourseOrderStatus(course: any, now: Date) {
@@ -287,8 +292,23 @@ function getCourseOrderStatus(course: any, now: Date) {
     return 1;
 }
 
+async function ensureCourseTitleAvailable(
+    domainId: string,
+    title: string,
+    assignGroup: string,
+    excludeTid?: ObjectId,
+    translate: (value: string) => string = (value) => value,
+) {
+    const query: any = { rule: 'course', title, assign: { $in: [assignGroup] } };
+    if (excludeTid) query._id = { $ne: excludeTid };
+    const duplicated = await ContestModel.getMulti(domainId, query).limit(1).next();
+    if (duplicated) {
+        throw new BadRequestError(fillMessage(translate('Course "{0}" already exists in this domain.'), title));
+    }
+}
+
 function compareCourseTitle(a: any, b: any) {
-    return String(a.title || '').localeCompare(String(b.title || ''));
+    return (a.title || '').localeCompare(b.title || '', 'zh-CN');
 }
 
 function compareCourses(a: any, b: any, now: Date) {
@@ -809,6 +829,9 @@ export class CourseEditHandler extends Handler {
 
         const editor = this.user._id;
         const updateAt = new Date();
+        const editingTemplate = !!this.tdoc?.assign?.includes('teachers');
+        const saveAsTemplate = !!(tid && isTemplate && !editingTemplate);
+        const assignGroup = isTemplate ? 'teachers' : (assign[0] || '');
 
         if (isTemplate) {
             assign = ['teachers'];
@@ -830,7 +853,11 @@ export class CourseEditHandler extends Handler {
             if (group.archive) throw new BadRequestError('班级已归档');
         }
 
-        if (tid) {
+        if ((!tid || saveAsTemplate) && assignGroup) {
+            await ensureCourseTitleAvailable(domainId, title, assignGroup, undefined, (this as any).translate?.bind(this));
+        }
+
+        if (tid && !saveAsTemplate) {
             await ContestModel.edit(domainId, tid, {
                 title,
                 content,
