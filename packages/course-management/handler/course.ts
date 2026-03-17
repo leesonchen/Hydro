@@ -1225,16 +1225,15 @@ export class CourseLectureHandler extends Handler {
     @param('lecture', Types.Content)
     async postUpdate(domainId: string, tid: ObjectId, id: number, lecture: string) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
+        const user = (this as any).user;
 
-        if (!this.user.own(tdoc)) {
-            if (domainId !== 'system') {
-                throw new NotAssignedError('course', tdoc.docId);
-            }
-            if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK) && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
+        if (user.own(tdoc)) {
+            if (!user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF) && !user.hasPerm(PERM.PERM_EDIT_HOMEWORK)) {
                 throw new ForbiddenError();
             }
-            if (this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK) && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
-                throw new ForbiddenError('你的权限不允许修改此课程！');
+        } else {
+            if (!user.hasPerm(PERM.PERM_EDIT_HOMEWORK)) {
+                throw new ForbiddenError();
             }
         }
 

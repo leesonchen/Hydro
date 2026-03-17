@@ -56,5 +56,10 @@ Courses: 课程数量
 My Courses: 我的课程
 Other Courses: 其他课程
 No courses: 暂无课程
+Source Domain: 源域
+Source Domain is required.: 必须填写源域。
+No available course templates.: 没有可用的课程模板。
+You are not allowed to copy this course from {0} to {1}.: 不允许将课程从 {0} 复制到 {1}。
+'Missing referenced problems in target domain: {0}': 目标域缺少以下同源题目：{0}
 Search courses by keyword...: 输入关键词搜索课程...
 No matching courses found: 没有找到匹配的课程

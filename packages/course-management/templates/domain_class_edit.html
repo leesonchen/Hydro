@@ -2,6 +2,8 @@
 {% block domain_content %}
 {{ set(UiContext, 'templates', templates) }}
 {{ set(UiContext, 'groups', groups) }}
+{{ set(UiContext, 'currentDomainId', domain._id) }}
+{{ set(UiContext, 'availableSourceDomains', availableSourceDomains) }}
 <div class="section">
   <div class="section__header">
     <h1 class="section__title">{{ _('Edit Class') }}</h2>

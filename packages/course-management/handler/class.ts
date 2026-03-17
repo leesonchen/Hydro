@@ -1,5 +1,5 @@
 import {
-    ContestModel, Handler, moment, NotFoundError, ObjectId, param, PERM, PermissionError,
+    BadRequestError, ContestModel, DomainModel, Handler, moment, NotFoundError, ObjectId, param, PERM, PermissionError,
     ProblemModel, StorageModel, Types, UserModel, ValidationError,
 } from 'hydrooj';
 import { ClassModel } from '../model/class';
@@ -9,6 +9,67 @@ import { parseDag } from './course';
 function calcCourseTimeRange(baseBeginAt: moment.Moment, classEndAt: moment.Moment) {
     const beginAt = baseBeginAt.clone();
     return { beginAt, endAt: classEndAt.clone() };
+}
+
+function fillMessage(template: string, ...params: Array<string | number>) {
+    return template.replace(/\{(\d+)\}/g, (_, index) => String(params[Number(index)] ?? ''));
+}
+
+async function assertCourseCopyAllowed(sourceDomainId: string, targetDomainId: string, translate: (value: string) => string = (value) => value) {
+    const ddoc = await DomainModel.get(sourceDomainId);
+    if (!ddoc) throw new NotFoundError(sourceDomainId);
+    const t = `,${ddoc.share || ''},`;
+    if (t !== ',*,' && !t.includes(`,${targetDomainId},`)) {
+        throw new BadRequestError(fillMessage(translate('You are not allowed to copy this course from {0} to {1}.'), sourceDomainId, targetDomainId));
+    }
+    return ddoc;
+}
+
+async function resolveProblemOrigin(domainId: string, pid: number) {
+    let current = await ProblemModel.get(domainId, pid);
+    if (!current) throw new NotFoundError(domainId, pid);
+    while (current.reference) {
+        current = await ProblemModel.get(current.reference.domainId, current.reference.pid);
+        if (!current) throw new NotFoundError(domainId, pid);
+    }
+    return {
+        originDomainId: current.domainId,
+        originPid: current.docId,
+    };
+}
+
+async function buildPidMapping(sourceDomainId: string, targetDomainId: string, pids: number[]) {
+    const mapping = new Map<number, number>();
+    const missing: Array<{ pid: number, originDomainId: string, originPid: number }> = [];
+
+    for (const pid of Array.from(new Set(pids))) {
+        const origin = await resolveProblemOrigin(sourceDomainId, pid);
+        let matched = await ProblemModel.getMulti(targetDomainId, {
+            reference: { domainId: origin.originDomainId, pid: origin.originPid },
+        }, ['docId', 'reference']).limit(1).next();
+
+        if (!matched && targetDomainId === origin.originDomainId) {
+            matched = await ProblemModel.get(targetDomainId, origin.originPid);
+        }
+
+        if (!matched) {
+            missing.push({ pid, originDomainId: origin.originDomainId, originPid: origin.originPid });
+            continue;
+        }
+
+        mapping.set(pid, matched.docId);
+    }
+
+    return { mapping, missing };
+}
+
+function rewriteDagPids(dag: any[], mapping: Map<number, number>) {
+    return dag.map((node) => ({
+        ...node,
+        pids: Array.isArray(node.pids)
+            ? node.pids.map((pid: number) => mapping.get(pid) || pid)
+            : node.pids,
+    }));
 }
 
 // 班级列表页面
@@ -64,6 +125,12 @@ export class ClassEditHandler extends Handler {
         const extra: any = {};
         const groups = (await UserModel.listGroup(domainId)).filter((g: any) => !g?.class);
         extra.groups = groups;
+        const visibleDomainIds = Object.keys(await DomainModel.getDictUserByDomainId(this.user._id));
+        extra.availableSourceDomains = visibleDomainIds.length
+            ? (await DomainModel.getMulti({ _id: { $in: visibleDomainIds } }).toArray())
+                .sort((a, b) => a.name.localeCompare(b.name) || a._id.localeCompare(b._id))
+                .map((ddoc: any) => ({ _id: ddoc._id, name: ddoc.name }))
+            : [];
 
         if (id) {
             const gdoc = await ClassModel.getGroupById(domainId, id);
@@ -245,6 +312,40 @@ export class ClassEditHandler extends Handler {
     }
 
     @param('id', Types.ObjectId)
+    @param('sourceDomain', Types.String)
+    async postGetTemplates(domainId: string, id: ObjectId, sourceDomain: string) {
+        const gdoc = await ClassModel.getGroupById(domainId, id);
+        if (!gdoc) throw new NotFoundError(domainId, id);
+        const sourceDomainId = (sourceDomain || '').trim().toLowerCase();
+        if (!sourceDomainId) throw new ValidationError('sourceDomain');
+
+        await assertCourseCopyAllowed(sourceDomainId, domainId, (this as any).translate?.bind(this));
+
+        const [templates, tdocs] = await Promise.all([
+            ContestModel.getMulti(sourceDomainId, {
+                rule: 'course',
+                assign: { $elemMatch: { $eq: 'teachers' } },
+            }).sort({ title: 1 }).toArray(),
+            ContestModel.getMulti(domainId, {
+                rule: 'course',
+                assign: { $in: [gdoc.name] },
+            }).toArray(),
+        ]);
+
+        const usedTitles = new Set(tdocs.map((t) => t.title));
+        this.response.body = {
+            templates: templates
+                .filter((t) => !usedTitles.has(t.title))
+                .map((t) => ({
+                    _id: `${sourceDomainId}:${t._id}`,
+                    name: t.title,
+                    title: t.title,
+                    sourceDomainId,
+                })),
+        };
+    }
+
+    @param('id', Types.ObjectId)
     @param('template', Types.CommaSeperatedArray)
     async postCopy(domainId: string, id: ObjectId, templateIds: string[]) {
         const gdoc = await ClassModel.getGroupById(domainId, id);
@@ -265,16 +366,28 @@ export class ClassEditHandler extends Handler {
 
         const tdocs: any[] = [];
 
-        for (const templateId of templateIds) {
-            const template = await ContestModel.get(domainId, new ObjectId(templateId)) as CourseTdoc;
+        for (const templateValue of templateIds) {
+            const [sourceDomainIdRaw, templateIdRaw] = String(templateValue || '').split(':');
+            const sourceDomainId = (sourceDomainIdRaw || '').trim().toLowerCase();
+            const templateId = (templateIdRaw || '').trim();
+            if (!sourceDomainId || !templateId) continue;
+
+            await assertCourseCopyAllowed(sourceDomainId, domainId, (this as any).translate?.bind(this));
+
+            const template = await ContestModel.get(sourceDomainId, new ObjectId(templateId)) as CourseTdoc;
             if (!template) continue;
 
             const { title, content, dag } = template;
 
-            // 解析并复制题目
-            const parsedDag = await parseDag(domainId, JSON.stringify(dag));
-            const newDag = parsedDag.map((node) => ({ ...node }));
-            const allPids = Array.from(new Set(parsedDag.flatMap((node) => node.pids)));
+            const parsedDag = await parseDag(sourceDomainId, JSON.stringify(dag));
+            const sourcePids = Array.from(new Set(parsedDag.flatMap((node) => node.pids)));
+            const { mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids);
+            if (missing.length) {
+                const missingText = missing.map((item) => `${item.pid} -> ${item.originDomainId}:${item.originPid}`).join(', ');
+                throw new BadRequestError(fillMessage((this as any).translate?.('Missing referenced problems in target domain: {0}') || 'Missing referenced problems in target domain: {0}', missingText));
+            }
+            const newDag = rewriteDagPids(parsedDag, mapping);
+            const allPids = Array.from(new Set(newDag.flatMap((node) => node.pids)));
 
             const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
 
@@ -301,7 +414,7 @@ export class ClassEditHandler extends Handler {
             // 复制文件
             if (template.files?.length) {
                 await Promise.all(template.files.map((f) => StorageModel.copy(
-                    `contest/${domainId}/${templateId}/public/${f.name}`,
+                    `contest/${sourceDomainId}/${templateId}/public/${f.name}`,
                     `contest/${domainId}/${newTid}/public/${f.name}`,
                 )));
             }

@@ -50,6 +50,9 @@ export async function apply(ctx: Context, config: typeof Config) {
         'Create Course': '创建课程',
         'Course Templates': '课程模板',
         'Add Course': '添加课程',
+        'Source Domain': '源域',
+        'Source Domain is required.': '必须填写源域。',
+        'No available course templates.': '没有可用的课程模板。',
         'View Course': '查看课程',
         'Edit Course': '编辑课程',
         'Course Management': '课程管理',
@@ -75,6 +78,8 @@ export async function apply(ctx: Context, config: typeof Config) {
         Visit: '访问',
         'Extra Students': '临时调课学生',
         'Extra Students Hint': '输入学生UID，多个用逗号分隔。这些学生可以临时访问本课程，不影响其所属班级。',
+        'You are not allowed to copy this course from {0} to {1}.': '不允许将课程从 {0} 复制到 {1}。',
+        'Missing referenced problems in target domain: {0}': '目标域缺少以下同源题目：{0}',
 
         // 题目详情页关联课程
         'In following courses': '在以下课程中',
@@ -94,6 +99,9 @@ export async function apply(ctx: Context, config: typeof Config) {
         domain_class_edit: 'Edit Class',
         'Edit Course': 'Edit Course',
         'Course Management': 'Course Management',
+        'Source Domain': 'Source Domain',
+        'Source Domain is required.': 'Source Domain is required.',
+        'No available course templates.': 'No available course templates.',
         'Joined Course': 'Joined Course',
         'Not Joined Course': 'Not Joined Course',
         'Enter Course': 'Enter Course',
@@ -106,6 +114,8 @@ export async function apply(ctx: Context, config: typeof Config) {
         'This course is not live.': 'This course is not live.',
         "You haven't joined this course yet.": "You haven't joined this course yet.",
         'You are not assigned to this course.': 'You are not assigned to this course.',
+        'You are not allowed to copy this course from {0} to {1}.': 'You are not allowed to copy this course from {0} to {1}.',
+        'Missing referenced problems in target domain: {0}': 'Missing referenced problems in target domain: {0}',
     });
 
     const isCourseEnabled = (handler: any) => config.enable || handler.domain?.enableCourse;
