@@ -311,6 +311,24 @@ function compareCourseTitle(a: any, b: any) {
     return (a.title || '').localeCompare(b.title || '', 'zh-CN');
 }
 
+function compareCoursePriorityTime(a: any, b: any, now: Date) {
+    const aStatus = getCourseOrderStatus(a, now);
+    const bStatus = getCourseOrderStatus(b, now);
+    if (aStatus !== bStatus) return aStatus - bStatus;
+
+    const beginDiff = a.beginAt.getTime() - b.beginAt.getTime();
+    if (beginDiff !== 0) {
+        return aStatus === 0 ? beginDiff : -beginDiff;
+    }
+
+    const endDiff = a.endAt.getTime() - b.endAt.getTime();
+    if (endDiff !== 0) {
+        return aStatus === 0 ? endDiff : -endDiff;
+    }
+
+    return 0;
+}
+
 function compareCourses(a: any, b: any, now: Date) {
     const aStatus = getCourseOrderStatus(a, now);
     const bStatus = getCourseOrderStatus(b, now);
@@ -341,9 +359,9 @@ function groupAndSortCourses(courseList: any[], now: Date) {
     const sortedGroups = Object.entries(groups)
         .map(([key, list]) => ({ key, tdocs: list }))
         .sort((a, b) => {
-            const courseDiff = compareCourses(a.tdocs[0], b.tdocs[0], now);
+            const courseDiff = compareCoursePriorityTime(a.tdocs[0], b.tdocs[0], now);
             if (courseDiff !== 0) return courseDiff;
-            return a.key.localeCompare(b.key);
+            return a.key.localeCompare(b.key, 'zh-CN');
         });
 
     return { groups, sortedGroups };
