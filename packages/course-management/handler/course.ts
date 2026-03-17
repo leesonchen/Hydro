@@ -321,11 +321,6 @@ function compareCoursePriorityTime(a: any, b: any, now: Date) {
         return aStatus === 0 ? beginDiff : -beginDiff;
     }
 
-    const endDiff = a.endAt.getTime() - b.endAt.getTime();
-    if (endDiff !== 0) {
-        return aStatus === 0 ? endDiff : -endDiff;
-    }
-
     return 0;
 }
 
