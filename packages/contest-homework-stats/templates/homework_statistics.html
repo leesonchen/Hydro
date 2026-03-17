@@ -16,8 +16,10 @@
   align-items: center;
   margin-right: auto;
 }
-.stats__controls .filter-form select,
-.stats__controls .filter-form input {
+.stats__controls .filter-form .filter-input {
+  min-width: 180px;
+}
+.stats__controls .filter-form select {
   min-width: 140px;
 }
 .stats__controls .compact.button,
@@ -72,7 +74,8 @@
         <div class="section__tools stats__controls">
           <form method="get" class="filter-form" name="filter-form">
             <input type="hidden" name="layout" value="{{ layout }}">
-            <input type="text" class="inline compact textbox" name="q" value="{{ q }}" placeholder="搜索用户...">
+            <input type="text" class="inline compact textbox filter-input" name="q" value="{{ q }}" placeholder="筛选课程/作业/比赛...">
+            <input type="text" class="inline compact textbox filter-input" name="uq" value="{{ uq }}" placeholder="筛选用户...">
             <select class="inline compact select" name="group">
               {%- for g in groups -%}
                 <option value="{{ g }}"{% if group == g %} selected{% endif %}>{{ g }}</option>
@@ -85,10 +88,10 @@
               搜索
             </button>
           </form>
-          <a class="compact button{% if layout == 'item' %} primary{% endif %}" href="{{ url('homework_statistics', query={group: group, q: q, layout: 'item'}) }}">
+          <a class="compact button{% if layout == 'item' %} primary{% endif %}" href="{{ url('homework_statistics', query={group: group, q: q, uq: uq, layout: 'item'}) }}">
             用户在列
           </a>
-          <a class="compact button{% if layout == 'user' %} primary{% endif %}" href="{{ url('homework_statistics', query={group: group, q: q, layout: 'user'}) }}">
+          <a class="compact button{% if layout == 'user' %} primary{% endif %}" href="{{ url('homework_statistics', query={group: group, q: q, uq: uq, layout: 'user'}) }}">
             用户在行
           </a>
           <!-- <a class="primary rounded button" href="{{ url('homework_statistics', query={group: group, q: q, layout: layout, download: true}) }}">

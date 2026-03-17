@@ -5,6 +5,7 @@
  * 与 CSV 导出。大部分逻辑集中在同一个文件中，方便审计与部署。
  */
 import { stringify as toCSV } from 'csv-stringify/sync';
+import { escapeRegExp } from 'lodash';
 import {
     BadRequestError,
     ContestModel,
@@ -52,6 +53,13 @@ interface TableData {
 
 // Windows 文件名不可包含的字符需要提前替换，避免导出失败。
 const sanitizeFilename = (name: string) => name.replace(/[\/:*?"<>|]+/g, '_');
+
+const buildTitleRegex = (query: string) => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const escaped = escapeRegExp(normalizedQuery);
+    if (!escaped) return null;
+    return new RegExp(normalizedQuery.length >= 2 ? escaped : `\\A${escaped}`, 'gim');
+};
 
 /**
  * 遍历 tsdoc 的提交日志并汇总进度，仅统计 tdoc.pids 内的题目。
@@ -220,9 +228,10 @@ class ContestStatsHandler extends Handler {
     @param('group', Types.Name, true)
     @param('page', Types.PositiveInt, true)
     @param('q', Types.String, true)
+    @param('uq', Types.String, true)
     @param('layout', Types.Range(['item', 'user']), true)
     @param('download', Types.Boolean, true)
-    async get(domainId: string, rule = '', group = '', page = 1, q = '', layout = '', download = false) {
+    async get(domainId: string, rule = '', group = '', page = 1, q = '', uq = '', layout = '', download = false) {
         if (rule && ContestModel.RULES[rule].hidden) throw new BadRequestError();
         // listGroup 返回用户可见的所有分组，这里过滤纯数字命名的临时课堂。
         const groupDocs = await UserModel.listGroup(
@@ -240,6 +249,7 @@ class ContestStatsHandler extends Handler {
                 group: '',
                 rule,
                 q,
+                uq,
                 layout: 'item',
                 table: emptyTable,
                 page: 1,
@@ -257,16 +267,19 @@ class ContestStatsHandler extends Handler {
             .map((uid) => udict[uid])
             .filter(Boolean)
             .sort((a, b) => a.uname.localeCompare(b.uname));
-        const normalizedQuery = q.trim().toLowerCase();
-        const filteredUsers = normalizedQuery
-            ? users.filter((user) => user.uname.toLowerCase().includes(normalizedQuery))
+        const normalizedItemQuery = q.trim().toLowerCase();
+        const normalizedUserQuery = uq.trim().toLowerCase();
+        const filteredUsers = normalizedUserQuery
+            ? users.filter((user) => user.uname.toLowerCase().includes(normalizedUserQuery))
             : users;
         const userIds = filteredUsers.map((user) => user._id);
+        const titleRegex = buildTitleRegex(q);
 
         const rules = Object.keys(ContestModel.RULES).filter((key) => !ContestModel.RULES[key].hidden);
         const filter = {
             assign: { $in: [selectedGroup] },
             ...(rule ? { rule } : { rule: { $in: rules } }),
+            ...(titleRegex ? { title: { $regex: titleRegex } } : {}),
         };
         const sort = { endAt: -1, beginAt: -1, _id: -1 };
         const cursor = ContestModel.getMulti(domainId, filter).sort(sort);
@@ -279,7 +292,7 @@ class ContestStatsHandler extends Handler {
         let resolvedLayout: 'user' | 'item';
         if (hasExplicitLayout) {
             resolvedLayout = layout as 'user' | 'item';
-        } else if (normalizedQuery) {
+        } else if (normalizedItemQuery) {
             resolvedLayout = 'item';
         } else {
             resolvedLayout = 'item';
@@ -305,6 +318,7 @@ class ContestStatsHandler extends Handler {
         let qs = rule ? `rule=${rule}` : '';
         if (selectedGroup) qs += qs ? `&group=${selectedGroup}` : `group=${selectedGroup}`;
         if (q) qs += `${qs ? '&' : ''}q=${encodeURIComponent(q)}`;
+        if (uq) qs += `${qs ? '&' : ''}uq=${encodeURIComponent(uq)}`;
         qs += `${qs ? '&' : ''}layout=${resolvedLayout}`;
         this.response.template = 'contest_statistics.html';
         this.response.body = {
@@ -314,6 +328,7 @@ class ContestStatsHandler extends Handler {
             group: selectedGroup,
             rule,
             q,
+            uq,
             layout: resolvedLayout,
             table,
             page,
@@ -328,9 +343,10 @@ class HomeworkStatsHandler extends Handler {
     @param('group', Types.Name, true)
     @param('page', Types.PositiveInt, true)
     @param('q', Types.String, true)
+    @param('uq', Types.String, true)
     @param('layout', Types.Range(['item', 'user']), true)
     @param('download', Types.Boolean, true)
-    async get(domainId: string, group = '', page = 1, q = '', layout = '', download = false) {
+    async get(domainId: string, group = '', page = 1, q = '', uq = '', layout = '', download = false) {
         const groupDocs = await UserModel.listGroup(
             domainId,
             this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK) ? undefined : this.user._id,
@@ -345,6 +361,7 @@ class HomeworkStatsHandler extends Handler {
                 groups: [],
                 group: '',
                 q,
+                uq,
                 layout: 'item',
                 table: emptyTable,
                 page: 1,
@@ -362,15 +379,18 @@ class HomeworkStatsHandler extends Handler {
             .map((uid) => udict[uid])
             .filter(Boolean)
             .sort((a, b) => a.uname.localeCompare(b.uname));
-        const normalizedQuery = q.trim().toLowerCase();
-        const filteredUsers = normalizedQuery
-            ? users.filter((user) => user.uname.toLowerCase().includes(normalizedQuery))
+        const normalizedItemQuery = q.trim().toLowerCase();
+        const normalizedUserQuery = uq.trim().toLowerCase();
+        const filteredUsers = normalizedUserQuery
+            ? users.filter((user) => user.uname.toLowerCase().includes(normalizedUserQuery))
             : users;
         const userIds = filteredUsers.map((user) => user._id);
+        const titleRegex = buildTitleRegex(q);
 
         const filter = {
             rule: 'homework',
             assign: { $in: [selectedGroup] },
+            ...(titleRegex ? { title: { $regex: titleRegex } } : {}),
         };
         const sort = { penaltySince: -1, endAt: -1, beginAt: -1, _id: -1 };
         const cursor = ContestModel.getMulti(domainId, filter).sort(sort);
@@ -383,7 +403,7 @@ class HomeworkStatsHandler extends Handler {
         let resolvedLayout: 'user' | 'item';
         if (hasExplicitLayout) {
             resolvedLayout = layout as 'user' | 'item';
-        } else if (normalizedQuery) {
+        } else if (normalizedItemQuery) {
             resolvedLayout = 'item';
         } else {
             resolvedLayout = (filteredUsers.length > exportDocs.length ? 'user' : 'item');
@@ -401,6 +421,7 @@ class HomeworkStatsHandler extends Handler {
         }
         let qs = selectedGroup ? `group=${selectedGroup}` : '';
         if (q) qs += `${qs ? '&' : ''}q=${encodeURIComponent(q)}`;
+        if (uq) qs += `${qs ? '&' : ''}uq=${encodeURIComponent(uq)}`;
         qs += `${qs ? '&' : ''}layout=${resolvedLayout}`;
         this.response.template = 'homework_statistics.html';
         this.response.body = {
@@ -409,6 +430,114 @@ class HomeworkStatsHandler extends Handler {
             groups,
             group: selectedGroup,
             q,
+            uq,
+            layout: resolvedLayout,
+            table,
+            page,
+            tpcount,
+            qs,
+        };
+    }
+}
+
+class CourseStatsHandler extends Handler {
+    // 查询参数与 HomeworkStatsHandler 相同，但仅处理 rule === 'course'。
+    @param('group', Types.Name, true)
+    @param('page', Types.PositiveInt, true)
+    @param('q', Types.String, true)
+    @param('uq', Types.String, true)
+    @param('layout', Types.Range(['item', 'user']), true)
+    @param('download', Types.Boolean, true)
+    async get(domainId: string, group = '', page = 1, q = '', uq = '', layout = '', download = false) {
+        const groupDocs = await UserModel.listGroup(
+            domainId,
+            this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK) ? undefined : this.user._id,
+        ) as any[];
+        const classGroups = groupDocs.filter((doc: any) => doc?.class);
+        const groups = classGroups
+            .map((doc: any) => doc.name)
+            .filter((name: string) => !Number.isSafeInteger(+name));
+        if (!groups.length) {
+            const emptyTable: TableData = { rowHeaderLabel: '课程', headers: [], rows: [] };
+            this.response.template = 'course_statistics.html';
+            this.response.body = {
+                rows: [],
+                users: [],
+                groups: [],
+                group: '',
+                q,
+                uq,
+                layout: 'item',
+                table: emptyTable,
+                page: 1,
+                tpcount: 1,
+                qs: '',
+            };
+            return;
+        }
+        const selectedGroup = group || groups[0];
+        if (!groups.includes(selectedGroup)) throw new NotAssignedError(selectedGroup);
+        const groupDoc = classGroups.find((doc: any) => doc.name === selectedGroup);
+        const groupUids = Array.from(new Set(
+            (groupDoc?.students?.length ? groupDoc.students : groupDoc?.uids) || [],
+        ));
+        const udict = await UserModel.getList(domainId, groupUids);
+        const users = groupUids
+            .map((uid) => udict[uid])
+            .filter(Boolean)
+            .sort((a, b) => a.uname.localeCompare(b.uname));
+        const normalizedItemQuery = q.trim().toLowerCase();
+        const normalizedUserQuery = uq.trim().toLowerCase();
+        const filteredUsers = normalizedUserQuery
+            ? users.filter((user) => user.uname.toLowerCase().includes(normalizedUserQuery))
+            : users;
+        const userIds = filteredUsers.map((user) => user._id);
+        const titleRegex = buildTitleRegex(q);
+
+        const filter = {
+            rule: 'course',
+            assign: { $in: [selectedGroup] },
+            ...(titleRegex ? { title: { $regex: titleRegex } } : {}),
+        };
+        const sort = { endAt: -1, beginAt: -1, _id: -1 };
+        const cursor = ContestModel.getMulti(domainId, filter).sort(sort);
+        const [tdocs, tpcount] = await this.paginate(cursor, page, 'contest');
+        const exportDocs = download
+            ? await ContestModel.getMulti(domainId, filter).sort(sort).toArray()
+            : tdocs;
+        const rows = await buildRows(domainId, exportDocs, userIds);
+        const hasExplicitLayout = layout === 'user' || layout === 'item';
+        let resolvedLayout: 'user' | 'item';
+        if (hasExplicitLayout) {
+            resolvedLayout = layout as 'user' | 'item';
+        } else if (normalizedItemQuery) {
+            resolvedLayout = 'item';
+        } else {
+            resolvedLayout = (filteredUsers.length > exportDocs.length ? 'user' : 'item');
+        }
+        const table = buildTableData(resolvedLayout, exportDocs, filteredUsers, rows, {
+            itemLabel: '课程',
+            itemUrl: (tdoc) => (this as any).url('course_detail', { tid: tdoc.docId }),
+            itemScoreboardUrl: (tdoc) => (this as any).url('course_scoreboard', { tid: tdoc.docId, id: 0 }),
+            userUrl: (user) => (this as any).url('user_detail', { uid: user._id }),
+        });
+        if (download) {
+            const filename = `course-stats-${sanitizeFilename(selectedGroup)}.csv`;
+            this.binary(buildCsv(table), filename);
+            return;
+        }
+        let qs = selectedGroup ? `group=${selectedGroup}` : '';
+        if (q) qs += `${qs ? '&' : ''}q=${encodeURIComponent(q)}`;
+        if (uq) qs += `${qs ? '&' : ''}uq=${encodeURIComponent(uq)}`;
+        qs += `${qs ? '&' : ''}layout=${resolvedLayout}`;
+        this.response.template = 'course_statistics.html';
+        this.response.body = {
+            rows,
+            users: filteredUsers,
+            groups,
+            group: selectedGroup,
+            q,
+            uq,
             layout: resolvedLayout,
             table,
             page,
@@ -425,6 +554,7 @@ class HomeworkStatsHandler extends Handler {
 export async function apply(ctx: Context) {
     ctx.Route('contest_statistics', '/contest-statistics', ContestStatsHandler, PERM.PERM_CREATE_CONTEST);
     ctx.Route('homework_statistics', '/homework-statistics', HomeworkStatsHandler, PERM.PERM_CREATE_HOMEWORK);
+    ctx.Route('course_statistics', '/course-statistics', CourseStatsHandler, PERM.PERM_CREATE_HOMEWORK);
     ctx.on('handler/after/UserDetail#get', async (handler: Handler) => {
         if (handler.response?.template !== 'user_detail.html') return;
         const body = handler.response.body as any;
