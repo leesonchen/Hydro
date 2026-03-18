@@ -720,6 +720,7 @@ export class CourseDetailHandler extends Handler {
         // 检查是否可查看题目
         if (!isTemplate && !canViewAllProblems
             && !this.user.hasPerm(PERM.PERM_VIEW_HOMEWORK_HIDDEN_SCOREBOARD)
+            && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF)
             && (ContestModel.isNotStarted(this.tdoc) || (!tsdoc?.attend && !ContestModel.isDone(this.tdoc)))) {
             return;
         }
