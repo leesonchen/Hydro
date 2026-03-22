@@ -79,6 +79,10 @@ export class ConnectionHandler extends ConnectionHandlerOriginal<Context> {
     domain: DomainDoc;
 }
 
+function shouldTraceLanguage(ctx: HandlerOriginal<Context>) {
+    return ctx.request.query?.__trace_lang === '1';
+}
+
 export async function apply(ctx: Context) {
     ctx.plugin(WebService, {
         keys: system.get('session.keys'),
@@ -170,6 +174,11 @@ export async function apply(ctx: Context) {
                 const langs = lang
                     ? [lang, ...this.context.acceptsLanguages()]
                     : [...this.context.acceptsLanguages(), system.get('server.language')];
+                if (shouldTraceLanguage(this)) {
+                    logger.info('[lang-trace] path=%s uid=%s user.viewLang=%s session.viewLang=%s accepts=%j langs=%j key=%s',
+                        this.request.path, this.user?._id, this.user?.viewLang, this.session?.viewLang,
+                        this.context.acceptsLanguages(), langs, str);
+                }
                 return cachedTranslate(str.toString(), langs);
             },
             paginate<T>(cursor: FindCursor<T>, page: number, key: string | number) {

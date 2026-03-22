@@ -178,6 +178,10 @@ export class HomeHandler extends Handler {
     }
 }
 
+function shouldTraceLanguage(that: Handler) {
+    return that.request.query?.__trace_lang === '1';
+}
+
 class HomeSecurityHandler extends Handler {
     @requireSudo
     async get() {
@@ -414,6 +418,15 @@ function set(s: Setting, key: string, value: any) {
 class HomeSettingsHandler extends Handler {
     @param('category', Types.Range(['preference', 'account', 'domain']))
     async get({ }, category: string) {
+        if (shouldTraceLanguage(this) && category === 'preference') {
+            this.ctx.logger('home').info(
+                '[lang-trace] render preference uid=%s user.viewLang=%s session.viewLang=%s accepts=%j',
+                this.user._id,
+                this.user.viewLang,
+                this.session.viewLang,
+                this.context.acceptsLanguages(),
+            );
+        }
         this.response.template = 'home_settings.html';
         this.response.body = {
             category,
@@ -433,6 +446,7 @@ class HomeSettingsHandler extends Handler {
         const $set = {};
         const booleanKeys = args.booleanKeys || {};
         delete args.booleanKeys;
+        const currentViewLang = this.user.viewLang;
         const setter = args.category === 'domain'
             ? (s) => domain.setUserInDomain(args.domainId, this.user._id, s)
             : (s) => user.setById(this.user._id, s);
@@ -440,6 +454,10 @@ class HomeSettingsHandler extends Handler {
         for (const key in args) {
             const val = set(settings[key], key, args[key]);
             if (val !== undefined) $set[key] = val;
+        }
+        if (args.category === 'preference' && ('viewLang' in args) && (args.viewLang === '' || args.viewLang === null)
+            && currentViewLang) {
+            delete $set.viewLang;
         }
         for (const key in booleanKeys) if (!args[key]) $set[key] = false;
         if (Object.keys($set).length) await setter($set);
