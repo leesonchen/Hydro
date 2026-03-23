@@ -18,6 +18,7 @@ config({
   markdownItConfig(mdit) {
     mdit.options.html = true;
     mdit.options.linkify = true;
+    mdit.options.breaks = true;
     mdit.linkify.tlds('.py', false);
     mdit.linkify.tlds('.zip', false);
     mdit.linkify.tlds('.mov', false);

@@ -2,9 +2,76 @@
   color: grey !important
   background-color: grey !important
 
-.md-editor-preview code
-  background-color: unset !important
-  color: unset !important
+// Make editor preview styles consistent with .typo on rendered pages
+.md-editor-preview
+  word-wrap: break-word
+  overflow: auto hidden
+  line-height: 1.75
+
+  p
+    padding-top: 0.27em
+    padding-bottom: 0.27em
+    line-height: 1.75
+    font-size: inherit
+
+  h1, h2, h3, h4, h5, h6
+    margin-top: 1.0em
+    margin-bottom: 0.6em
+    line-height: 1.1
+    font-weight: 400
+
+  h1
+    font-size: 1.8em
+    font-weight: 500
+
+  h2
+    font-size: 1.4em
+
+  h3
+    font-size: 1.17em
+
+  h4, h5, h6
+    font-size: 1em
+
+  ul
+    margin-left: 1.2em
+    list-style: square
+
+  ol
+    list-style: decimal
+    margin-left: 1.9em
+
+  li
+    padding-top: 0.15em
+    padding-bottom: 0.15em
+    line-height: 1.45
+
+  table th, table td
+    border: 1px solid #ddd
+    padding: 0.5em 1em
+    color: #666
+
+  table th
+    background: #fbfbfb
+
+  table thead th
+    background: #f1f1f1
+
+  blockquote
+    position: relative
+    border-left: 3px solid #DDD
+    padding: 1rem
+    margin: 0.5rem 0 1rem 0
+
+  img
+    max-width: 100%
+
+  a
+    color: var(--primary-color, #0057d8)
+
+  code
+    background-color: unset !important
+    color: unset !important
 
 .md-editor-scrn pre.syntax-hl code
   padding-left: unset !important

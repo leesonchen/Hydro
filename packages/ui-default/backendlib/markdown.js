@@ -30,6 +30,7 @@ class Markdown extends MarkdownIt {
     super({
       linkify: true,
       html: true,
+      breaks: true,
     });
     this.linkify.tlds('.py', false);
     this.use(Media);
