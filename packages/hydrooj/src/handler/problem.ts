@@ -49,6 +49,23 @@ function canBypassCourseTimeLimit(tdoc: any, udoc: User) {
         || udoc.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
 }
 
+function canBypassCourseDagLimit(tdoc: any, udoc: User) {
+    if (tdoc?.rule !== 'course') return false;
+    return udoc.own(tdoc)
+        || udoc.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+        || udoc.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)
+        || udoc.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
+}
+
+function getCourseNodeIdByPid(tdoc: any, pid: number) {
+    const dag = tdoc?.dag;
+    if (!dag?.length) return null;
+    for (const node of dag) {
+        if (node?.pids?.includes(pid)) return node._id;
+    }
+    return null;
+}
+
 type ExtendedProblemSearchOptions = ProblemSearchOptions & {
     scope?: 'all' | 'title';
     global?: boolean;
@@ -379,6 +396,12 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             if (!canBypassTimeLimit && !contest.isDone(this.tdoc, this.tsdoc) && (!this.tsdoc?.attend || !this.tsdoc.startAt)) {
                 if (this.tdoc.rule === 'course') throw new ForbiddenError((this as any).translate("You haven't joined this course yet."));
                 throw new ContestNotAttendedError(tid);
+            }
+            if (this.tdoc.rule === 'course' && !canBypassCourseDagLimit(this.tdoc, this.user)) {
+                const nodeId = getCourseNodeIdByPid(this.tdoc, this.pdoc.docId);
+                if (!nodeId || this.tsdoc?.allow?.[nodeId] !== true) {
+                    throw new ForbiddenError((this as any).translate('This problem is not available yet.'));
+                }
             }
             // Delete problem-related info in contest mode
             this.pdoc.tag.length = 0;

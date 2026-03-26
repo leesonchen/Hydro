@@ -16,7 +16,7 @@ import { Logger } from '../logger';
 import {
     BadRequestError, ContestNotAttendedError, ContestNotEndedError, ContestNotFoundError, ContestNotLiveError,
     FileLimitExceededError, FileTooLargeError, HackFailedError, NoProblemError, NotFoundError,
-    PermissionError, ProblemAlreadyExistError, ProblemAlreadyUsedByContestError, ProblemConfigError,
+    ForbiddenError, PermissionError, ProblemAlreadyExistError, ProblemAlreadyUsedByContestError, ProblemConfigError,
     ProblemIsReferencedError, ProblemNotAllowCopyError, ProblemNotAllowLanguageError, ProblemNotAllowPretestError,
     ProblemNotFoundError, RecordNotFoundError, SolutionNotFoundError, ValidationError,
 } from '../error';
@@ -41,6 +41,30 @@ import {
 import { ContestDetailBaseHandler } from './contest';
 
 const logger = new Logger('problem');
+
+function canBypassCourseTimeLimit(tdoc: any, udoc: User) {
+    if (tdoc?.rule !== 'course') return false;
+    return udoc.own(tdoc)
+        || udoc.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+        || udoc.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
+}
+
+function canBypassCourseDagLimit(tdoc: any, udoc: User) {
+    if (tdoc?.rule !== 'course') return false;
+    return udoc.own(tdoc)
+        || udoc.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+        || udoc.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)
+        || udoc.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
+}
+
+function getCourseNodeIdByPid(tdoc: any, pid: number) {
+    const dag = tdoc?.dag;
+    if (!dag?.length) return null;
+    for (const node of dag) {
+        if (node?.pids?.includes(pid)) return node._id;
+    }
+    return null;
+}
 
 type ExtendedProblemSearchOptions = ProblemSearchOptions & {
     scope?: 'all' | 'title';
@@ -364,8 +388,21 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
         if (!this.pdoc) throw new ProblemNotFoundError(domainId, pid);
         if (tid) {
             if (!this.tdoc?.pids?.includes(this.pdoc.docId)) throw new ContestNotFoundError(domainId, tid);
-            if (contest.isNotStarted(this.tdoc)) throw new ContestNotLiveError(tid);
-            if (!contest.isDone(this.tdoc, this.tsdoc) && (!this.tsdoc?.attend || !this.tsdoc.startAt)) throw new ContestNotAttendedError(tid);
+            const canBypassTimeLimit = canBypassCourseTimeLimit(this.tdoc, this.user);
+            if (contest.isNotStarted(this.tdoc) && !canBypassTimeLimit) {
+                if (this.tdoc.rule === 'course') throw new ForbiddenError((this as any).translate('This course is not live.'));
+                throw new ContestNotLiveError(tid);
+            }
+            if (!canBypassTimeLimit && !contest.isDone(this.tdoc, this.tsdoc) && (!this.tsdoc?.attend || !this.tsdoc.startAt)) {
+                if (this.tdoc.rule === 'course') throw new ForbiddenError((this as any).translate("You haven't joined this course yet."));
+                throw new ContestNotAttendedError(tid);
+            }
+            if (this.tdoc.rule === 'course' && !canBypassCourseDagLimit(this.tdoc, this.user)) {
+                const nodeId = getCourseNodeIdByPid(this.tdoc, this.pdoc.docId);
+                if (!nodeId || this.tsdoc?.allow?.[nodeId] !== true) {
+                    throw new ForbiddenError((this as any).translate('This problem is not available yet.'));
+                }
+            }
             // Delete problem-related info in contest mode
             this.pdoc.tag.length = 0;
             delete this.pdoc.nAccept;
@@ -522,7 +559,12 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
 export class ProblemSubmitHandler extends ProblemDetailHandler {
     @param('tid', Types.ObjectId, true)
     async prepare(domainId: string, tid?: ObjectId) {
-        if (tid && !contest.isOngoing(this.tdoc, this.tsdoc)) throw new ContestNotLiveError(this.tdoc.docId);
+        if (tid && !contest.isOngoing(this.tdoc, this.tsdoc)) {
+            if (!canBypassCourseTimeLimit(this.tdoc, this.user)) {
+                if (this.tdoc?.rule === 'course') throw new ForbiddenError((this as any).translate('This course is not live.'));
+                throw new ContestNotLiveError(this.tdoc.docId);
+            }
+        }
         if (typeof this.pdoc.config === 'string') throw new ProblemConfigError();
         if (this.pdoc.config.langs && !this.pdoc.config.langs.length) throw new ProblemConfigError();
     }
