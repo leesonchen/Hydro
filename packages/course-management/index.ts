@@ -70,6 +70,11 @@ export async function apply(ctx: Context, config: typeof Config) {
         'Create Reference Code': '创建参考代码',
         'This course is not live.': '此课程尚未开始。',
         "You haven't joined this course yet.": '你尚未进入此课程。',
+        'This problem is not available yet.': '该题目尚未开放。',
+        'Public Scoreboard': '公开成绩',
+        'You are not allowed to view the scoreboard.': '无权限查看成绩板',
+        'Students are not allowed to export the scoreboard.': '学生无权导出成绩板',
+        'Course is not enabled in this domain.': '该域尚未启用课程功能。',
         'You are not assigned to this course.': '你未被分配到此课程。',
         Teachers: '教师',
         Students: '学生',
@@ -79,6 +84,21 @@ export async function apply(ctx: Context, config: typeof Config) {
         Visit: '访问',
         'Extra Students': '临时调课学生',
         'Extra Students Hint': '输入学生UID，多个用逗号分隔。这些学生可以临时访问本课程，不影响其所属班级。',
+        'Ranking Settings': '排名设置',
+        'Set as Unranked': '设为不排名',
+        'Restore Ranking': '恢复排名',
+        'Bulk Allow Access': '批量允许访问',
+        'Bulk Deny Access': '批量禁止访问',
+        'Allow Access': '允许访问',
+        'Deny Access': '禁止访问',
+        'Bulk Set as Unranked': '批量设为不排名',
+        'Bulk Clear Unranked': '批量清除不排名',
+        'Confirm to set all class students as unranked?': '确认将班级所有学生设为不参与排名（unrank）？',
+        'Confirm to clear unranked status for all class students?': '确认清除班级所有学生的不排名状态（unrank）？',
+        'Confirm to set all extra students as unranked?': '确认将所有临时调课学生设为不参与排名（unrank）？',
+        'Confirm to clear unranked status for all extra students?': '确认清除所有临时调课学生的不排名状态（unrank）？',
+        'Edit Extra Students': '编辑临时学生名单',
+        'No extra students.': '暂无临时调课学生。',
         'You are not allowed to copy this course from {0} to {1}.': '不允许将课程从 {0} 复制到 {1}。',
         'Problem {0} in {1} is not allowed to be copied to {2}.': '题目 {0} 所在域 {1} 未向 {2} 开放复制权限。',
         'Course "{0}" already exists in this domain.': '当前域已存在同名课程“{0}”。',
@@ -118,18 +138,38 @@ export async function apply(ctx: Context, config: typeof Config) {
         'Create Reference Code': 'Create Reference Code',
         'This course is not live.': 'This course is not live.',
         "You haven't joined this course yet.": "You haven't joined this course yet.",
+        'This problem is not available yet.': 'This problem is not available yet.',
+        'Public Scoreboard': 'Public Scoreboard',
+        'You are not allowed to view the scoreboard.': 'You are not allowed to view the scoreboard.',
+        'Students are not allowed to export the scoreboard.': 'Students are not allowed to export the scoreboard.',
+        'Course is not enabled in this domain.': 'Course is not enabled in this domain.',
         'You are not assigned to this course.': 'You are not assigned to this course.',
         'You are not allowed to copy this course from {0} to {1}.': 'You are not allowed to copy this course from {0} to {1}.',
         'Problem {0} in {1} is not allowed to be copied to {2}.': 'Problem {0} in {1} is not allowed to be copied to {2}.',
         'Course "{0}" already exists in this domain.': 'Course "{0}" already exists in this domain.',
         'Source domain {0} does not exist.': 'Source domain {0} does not exist.',
         'Missing referenced problems in target domain: {0}': 'Missing referenced problems in target domain: {0}',
+        'Ranking Settings': 'Ranking Settings',
+        'Set as Unranked': 'Set as Unranked',
+        'Restore Ranking': 'Restore Ranking',
+        'Bulk Allow Access': 'Bulk Allow Access',
+        'Bulk Deny Access': 'Bulk Deny Access',
+        'Allow Access': 'Allow Access',
+        'Deny Access': 'Deny Access',
+        'Bulk Set as Unranked': 'Bulk Set as Unranked',
+        'Bulk Clear Unranked': 'Bulk Clear Unranked',
+        'Confirm to set all class students as unranked?': 'Confirm to set all class students as unranked?',
+        'Confirm to clear unranked status for all class students?': 'Confirm to clear unranked status for all class students?',
+        'Confirm to set all extra students as unranked?': 'Confirm to set all extra students as unranked?',
+        'Confirm to clear unranked status for all extra students?': 'Confirm to clear unranked status for all extra students?',
+        'Edit Extra Students': 'Edit Extra Students',
+        'No extra students.': 'No extra students.',
     });
 
     const isCourseEnabled = (handler: any) => config.enable || handler.domain?.enableCourse;
     const ensureCourseEnabled = async (handler: any) => {
         if (isCourseEnabled(handler)) return;
-        throw new ForbiddenError('该域尚未启用课程功能。');
+        throw new ForbiddenError((handler as any).translate('Course is not enabled in this domain.'));
     };
 
     // 处理 Contest 页面重定向到 Course 页面
@@ -264,7 +304,7 @@ export async function apply(ctx: Context, config: typeof Config) {
             const isInAssign = tdoc.assign.some((g: string) => userGroups.has(g) || g === userIdStr);
 
             if (!isInAssign) {
-                throw new ForbiddenError('You are not assigned to this course.');
+                throw new ForbiddenError((handler as any).translate('You are not assigned to this course.'));
             }
         }
     });

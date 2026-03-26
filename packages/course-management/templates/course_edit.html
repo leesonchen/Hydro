@@ -41,7 +41,7 @@
           </div></div>
           <div class="row course-time-row">
             {{ form.form_text({
-                columns:5,
+                columns:4,
                 label: _('Begin at'),
                 name:'beginAt',
                 placeholder:'YYYY-mm-dd HH:MM',
@@ -50,7 +50,7 @@
                 row:false
             }) }}
             {{ form.form_text({
-                columns:5,
+                columns:4,
                 label: _('End at'),
                 name:'endAt',
                 placeholder:'YYYY-mm-dd HH:MM',
@@ -58,6 +58,13 @@
                 datetime:true,
                 row:false
             }) }}
+            <div class="medium-4 columns"{% if isTemplate %} style="display:none"{% endif %}>
+              <label style="display: flex; align-items: center; gap: 8px; margin-top: 24px;">
+                <input type="hidden" name="publicScoreboard" value="false">
+                <input type="checkbox" name="publicScoreboard" value="true"{% if not tdoc or tdoc.publicScoreboard !== false %} checked{% endif %}>
+                <span>{{ _('Public Scoreboard') }}</span>
+              </label>
+            </div>
           </div>
           {% if isTemplate %}
             <input type="hidden" name="isTemplate" value="true">

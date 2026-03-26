@@ -673,7 +673,7 @@ export class CourseDetailHandler extends Handler {
                     if (v) mergedLectureAllow[+k] = true;
                 });
             }
-            await ContestModel.attend(domainId, tid, this.user._id, { unrank: true });
+            await ContestModel.attend(domainId, tid, this.user._id);
             await ContestModel.setStatus(domainId, tid, this.user._id, {
                 attend: true,
                 allow: mergedAllow,
@@ -685,13 +685,13 @@ export class CourseDetailHandler extends Handler {
         // 普通学生首次访问且已分配到课程时自动加入（attend）
         const isInAssign = this.tdoc.assign?.some((g: string) => this.user.group?.includes(g) || g === userIdStr);
         if (!tsdoc && isInAssign && !isTemplate) {
-            await ContestModel.attend(domainId, tid, this.user._id, { unrank: true });
+            await ContestModel.attend(domainId, tid, this.user._id);
             tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
         }
 
         // 如果用户未加入且有编辑权限，自动加入
         if (!tsdoc && this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF)) {
-            await ContestModel.attend(domainId, tid, this.user._id, { unrank: true });
+            await ContestModel.attend(domainId, tid, this.user._id);
             tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
         }
 
@@ -811,6 +811,7 @@ export class CourseEditHandler extends Handler {
     @param('templateCategory', Types.String, true)
     @param('assign', Types.CommaSeperatedArray, true)
     @param('extraStudents', Types.CommaSeperatedArray, true)
+    @param('publicScoreboard', Types.Boolean, true)
     async post(
         domainId: string,
         tid: ObjectId | undefined,
@@ -823,6 +824,7 @@ export class CourseEditHandler extends Handler {
         templateCategory = '',
         assign: string[] = [],
         extraStudentsStr: string[] = [],
+        publicScoreboard = true,
     ) {
         assign = Array.from(new Set((assign || []).map((s) => (s || '').trim()).filter(Boolean)));
         const extraStudents = Array.from(new Set((extraStudentsStr || [])
@@ -880,6 +882,7 @@ export class CourseEditHandler extends Handler {
                 endAt: endAt.toDate(),
                 editor,
                 updateAt,
+                publicScoreboard,
             });
             await ContestModel.recalcStatus(domainId, tid);
         } else {
@@ -909,6 +912,7 @@ export class CourseEditHandler extends Handler {
             assign: finalAssign,
             editor,
             updateAt,
+            publicScoreboard,
         });
         // 清除旧的 extraStudents 字段（已合并到 assign）
         await DocumentModel.set(domainId, DocumentModel.TYPE_CONTEST, tid, undefined, { extraStudents: '' as any });
@@ -1485,10 +1489,18 @@ export class CourseScoreboardHandler extends Handler {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
         const tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
 
-        // 权限检查：学生（非编辑权限）禁止查看成绩板
-        if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-            && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
-            throw new ForbiddenError('无权限查看成绩板');
+        const isEditor = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+            || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+        if (!isEditor) {
+            if (tdoc.publicScoreboard === false) {
+                throw new ForbiddenError((this as any).translate('You are not allowed to view the scoreboard.'));
+            }
+            if (!this.user.hasPerm(PERM.PERM_VIEW_HOMEWORK_SCOREBOARD)) {
+                throw new ForbiddenError((this as any).translate('You are not allowed to view the scoreboard.'));
+            }
+            if (!tsdoc?.attend) {
+                throw new ForbiddenError((this as any).translate('You are not allowed to view the scoreboard.'));
+            }
         }
 
         if (ext) {
@@ -1508,6 +1520,7 @@ export class CourseScoreboardHandler extends Handler {
         this.response.template = 'contest_scoreboard.html';
         this.response.body = {
             tdoc,
+            tsdoc,
             rows,
             udict,
             pdict,
@@ -1521,7 +1534,7 @@ export class CourseScoreboardHandler extends Handler {
         // 权限检查：学生（非编辑权限）禁止导出成绩板
         if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
             && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
-            throw new ForbiddenError('学生无权导出成绩板');
+            throw new ForbiddenError((this as any).translate('Students are not allowed to export the scoreboard.'));
         }
 
         await (this as any).limitRate('scoreboard_download', 60, 3);

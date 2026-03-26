@@ -1,5 +1,5 @@
 import {
-  addPage, NamedPage, Notification, React, ReactDOM,
+  addPage, i18n, NamedPage, Notification, React, ReactDOM,
 } from '@hydrooj/ui-default';
 
 type CourseManagePayload = {
@@ -190,24 +190,24 @@ function CourseManageApp() {
         <div className="columns">
           <div className="button-group">
             <button type="button" className="rounded primary button" onClick={() => post({ operation: 'visit', uid: 0, allow: true })}>
-              批量允许访问
+              {i18n('Bulk Allow Access')}
             </button>
             <button type="button" className="rounded button" onClick={() => post({ operation: 'visit', uid: 0, allow: false })}>
-              批量禁止访问
+              {i18n('Bulk Deny Access')}
             </button>
             <button
               type="button"
               className="rounded button"
-              onClick={() => confirmAndPost('确认将班级所有学生设为不参与排名（unrank）？', { operation: 'unrank', uid: 0, unrank: true })}
+              onClick={() => confirmAndPost(i18n('Confirm to set all class students as unranked?'), { operation: 'unrank', uid: 0, unrank: true })}
             >
-              批量设为不排名
+              {i18n('Bulk Set as Unranked')}
             </button>
             <button
               type="button"
               className="rounded button"
-              onClick={() => confirmAndPost('确认清除班级所有学生的不排名状态（unrank）？', { operation: 'unrank', uid: 0, clear: true })}
+              onClick={() => confirmAndPost(i18n('Confirm to clear unranked status for all class students?'), { operation: 'unrank', uid: 0, clear: true })}
             >
-              批量清除不排名
+              {i18n('Bulk Clear Unranked')}
             </button>
           </div>
         </div>
@@ -219,6 +219,7 @@ function CourseManageApp() {
               <tr>
                 <th style={{ width: 100 }}>UID</th>
                 <th>用户</th>
+                <th style={{ width: 160 }}>{i18n('Ranking Settings')}</th>
                 <th style={{ width: 200 }}>课程访问</th>
               </tr>
             </thead>
@@ -226,6 +227,7 @@ function CourseManageApp() {
               {students.map((uid) => {
                 const tsdoc = tsdict?.[uid];
                 const allowed = !!tsdoc;
+                const unrank = !!tsdoc?.unrank;
                 return (
                   <tr key={uid}>
                     <td>{uid}</td>
@@ -234,10 +236,23 @@ function CourseManageApp() {
                       {allowed ? (
                         <button
                           type="button"
+                          className={`rounded button ${unrank ? 'primary' : ''}`}
+                          onClick={() => post({ operation: 'unrank', uid, unrank: !unrank })}
+                        >
+                          {unrank ? i18n('Restore Ranking') : i18n('Set as Unranked')}
+                        </button>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td>
+                      {allowed ? (
+                        <button
+                          type="button"
                           className="rounded button"
                           onClick={() => post({ operation: 'visit', uid, allow: false })}
                         >
-                          禁止访问
+                          {i18n('Deny Access')}
                         </button>
                       ) : (
                         <button
@@ -245,7 +260,7 @@ function CourseManageApp() {
                           className="rounded primary button"
                           onClick={() => post({ operation: 'visit', uid, allow: true })}
                         >
-                          允许访问
+                          {i18n('Allow Access')}
                         </button>
                       )}
                     </td>
@@ -268,21 +283,21 @@ function CourseManageApp() {
               href={`${basePath}/edit`}
               className="rounded primary button"
             >
-              编辑临时学生名单
+              {i18n('Edit Extra Students')}
             </a>
             <button
               type="button"
               className="rounded button"
-              onClick={() => confirmAndPost('确认将所有临时调课学生设为不参与排名（unrank）？', { operation: 'unrank', uid: 0, unrank: true })}
+              onClick={() => confirmAndPost(i18n('Confirm to set all extra students as unranked?'), { operation: 'unrank', uid: 0, unrank: true })}
             >
-              批量设为不排名
+              {i18n('Bulk Set as Unranked')}
             </button>
             <button
               type="button"
               className="rounded button"
-              onClick={() => confirmAndPost('确认清除所有临时调课学生的不排名状态（unrank）？', { operation: 'unrank', uid: 0, clear: true })}
+              onClick={() => confirmAndPost(i18n('Confirm to clear unranked status for all extra students?'), { operation: 'unrank', uid: 0, clear: true })}
             >
-              批量清除不排名
+              {i18n('Bulk Clear Unranked')}
             </button>
           </div>
         </div>
@@ -290,7 +305,7 @@ function CourseManageApp() {
       {extraStudentList.length === 0 ? (
         <div className="row">
           <div className="columns">
-            <p className="typo">暂无临时调课学生。</p>
+            <p className="typo">{i18n('No extra students.')}</p>
           </div>
         </div>
       ) : (
@@ -301,6 +316,7 @@ function CourseManageApp() {
                 <tr>
                   <th style={{ width: 100 }}>UID</th>
                   <th>用户</th>
+                  <th style={{ width: 160 }}>{i18n('Ranking Settings')}</th>
                   <th style={{ width: 200 }}>课程访问</th>
                 </tr>
               </thead>
@@ -308,10 +324,24 @@ function CourseManageApp() {
                 {extraStudentList.map((uid) => {
                   const tsdoc = tsdict?.[uid];
                   const allowed = !!tsdoc;
+                  const unrank = !!tsdoc?.unrank;
                   return (
                     <tr key={uid}>
                       <td>{uid}</td>
                       <td>{getUserText(udict?.[uid])}</td>
+                      <td>
+                        {allowed ? (
+                          <button
+                            type="button"
+                            className={`rounded button ${unrank ? 'primary' : ''}`}
+                            onClick={() => post({ operation: 'unrank', uid, unrank: !unrank })}
+                          >
+                            {unrank ? i18n('Restore Ranking') : i18n('Set as Unranked')}
+                          </button>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
                       <td>
                         {allowed ? (
                           <button

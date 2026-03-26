@@ -24,6 +24,7 @@ export interface CourseTdoc extends Tdoc {
     editor?: number;
     updateAt?: Date;
     extraStudents?: number[];
+    publicScoreboard?: boolean;
 }
 
 export interface CourseStatus {

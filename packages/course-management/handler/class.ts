@@ -36,6 +36,9 @@ async function assertCourseCopyAllowed(sourceDomainId: string, targetDomainId: s
     if (!ddoc) {
         throw new BadRequestError(fillMessage(translate('Source domain {0} does not exist.'), sourceDomainId));
     }
+    if (sourceDomainId === targetDomainId) {
+        return ddoc;
+    }
     const t = `,${ddoc.share || ''},`;
     if (t !== ',*,' && !t.includes(`,${targetDomainId},`)) {
         throw new BadRequestError(fillMessage(translate('You are not allowed to copy this course from {0} to {1}.'), sourceDomainId, targetDomainId));
@@ -47,6 +50,9 @@ async function assertProblemCopyAllowed(sourceDomainId: string, targetDomainId: 
     const ddoc = await DomainModel.get(sourceDomainId);
     if (!ddoc) {
         throw new BadRequestError(fillMessage(translate('Source domain {0} does not exist.'), sourceDomainId));
+    }
+    if (sourceDomainId === targetDomainId) {
+        return ddoc;
     }
     const t = `,${ddoc.share || ''},`;
     if (t !== ',*,' && !t.includes(`,${targetDomainId},`)) {

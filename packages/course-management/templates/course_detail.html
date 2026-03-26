@@ -52,7 +52,22 @@
                 <a href="javascript:;" name="training__section__expand" class="expanded--hidden"><span class="icon icon-expand_more"></span> {{ _('expand') }}</a>
                 <a href="javascript:;" name="training__section__collapse" class="collapsed--hidden"><span class="icon icon-expand_less"></span> {{ _('collapse') }}</a>
                 {% if not isTemplate %}
-                <a href="{{ url('course_scoreboard', tid=tdoc.docId, id=node._id)}}"><span class="icon icon-statistics"></span> {{ _('Scoreboard') }}</a>
+                  {% set hasViewPerm = handler.user.hasPerm(perm.PERM_VIEW_HOMEWORK_SCOREBOARD) %}
+                  {% set tsAttend = tsdoc and tsdoc.attend %}
+                  {% set canViewScoreboard = isTeacherEditor or (tsAttend and (tdoc.publicScoreboard !== false) and hasViewPerm) %}
+                  <span style="display:none"
+                    data-debug="course-scoreboard-link"
+                    data-is-template="{{ isTemplate }}"
+                    data-is-teacher-editor="{{ isTeacherEditor }}"
+                    data-public-scoreboard="{{ tdoc.publicScoreboard|default(true) }}"
+                    data-has-view-perm="{{ hasViewPerm }}"
+                    data-tsdoc-exists="{{ (tsdoc is not none) }}"
+                    data-tsdoc-attend="{{ tsAttend|default(false) }}"
+                    data-can-view-scoreboard="{{ canViewScoreboard }}"
+                  ></span>
+                  {% if canViewScoreboard %}
+                    <a href="{{ url('course_scoreboard', tid=tdoc.docId, id=node._id)}}"><span class="icon icon-statistics"></span> {{ _('Scoreboard') }}</a>
+                  {% endif %}
                 {% endif %}
               </li>
             </ul>

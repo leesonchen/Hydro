@@ -23,10 +23,26 @@
         <span class="icon icon-homework"></span> {{ _('View Course') }}
       </a></li>
     {% endif %}
-    {% if not isTemplate and (handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
-      <li class="menu__item"><a class="menu__link" href="{{ url('course_scoreboard', tid=tdoc.docId, id=0) }}">
-        <span class="icon icon-statistics"></span> {{ _('Scoreboard') }}
-      </a></li>
+    {% if not isTemplate %}
+      {% set isTeacherEditor = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF) %}
+      {% set hasViewPerm = handler.user.hasPerm(perm.PERM_VIEW_HOMEWORK_SCOREBOARD) %}
+      {% set tsAttend = tsdoc and tsdoc.attend %}
+      {% set canViewScoreboard = isTeacherEditor or (tsAttend and (tdoc.publicScoreboard !== false) and hasViewPerm) %}
+      <span style="display:none"
+        data-debug="course-scoreboard-sidebar"
+        data-is-template="{{ isTemplate }}"
+        data-is-teacher-editor="{{ isTeacherEditor }}"
+        data-public-scoreboard="{{ tdoc.publicScoreboard|default(true) }}"
+        data-has-view-perm="{{ hasViewPerm }}"
+        data-tsdoc-exists="{{ (tsdoc is not none) }}"
+        data-tsdoc-attend="{{ tsAttend|default(false) }}"
+        data-can-view-scoreboard="{{ canViewScoreboard }}"
+      ></span>
+      {% if canViewScoreboard %}
+        <li class="menu__item"><a class="menu__link" href="{{ url('course_scoreboard', tid=tdoc.docId, id=0) }}">
+          <span class="icon icon-statistics"></span> {{ _('Scoreboard') }}
+        </a></li>
+      {% endif %}
     {% endif %}
     {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('course_edit', tid=tdoc.docId) }}">
