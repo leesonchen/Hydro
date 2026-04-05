@@ -559,12 +559,13 @@ export async function apply(ctx: Context) {
         if (handler.response?.template !== 'user_detail.html') return;
         const body = handler.response.body as any;
         if (!body?.tdocs?.length) return;
-        const showActivityStats = handler.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
-        body.showActivityStats = showActivityStats;
-        if (!showActivityStats) return;
         const domainId = handler.args?.domainId;
         const uid = body?.udoc?._id ?? handler.args?.uid;
         if (!domainId || !uid) return;
+        const isSelf = uid === handler.user?._id;
+        const showActivityStats = handler.user.hasPerm(PERM.PERM_CREATE_HOMEWORK) || isSelf;
+        body.showActivityStats = showActivityStats;
+        if (!showActivityStats) return;
         const docIds = body.tdocs.map((tdoc: any) => tdoc.docId).filter(Boolean);
         if (!docIds.length) return;
         const [tsdocs, fullTdocs] = await Promise.all([
