@@ -243,13 +243,46 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
     },
 
     async scoreboard(config, _, tdoc, pdict, cursor) {
-        const tsdocs = (await cursor.toArray()).sort(
-            (a, b) => (b.score?.[config.id] || 0) - (a.score?.[config.id] || 0)
-                || (a.accept?.[config.id] || 0) - (b.accept?.[config.id] || 0)
-                || a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime(),
-        );
+        const calcCnt = (tsdoc: any) => {
+            let cnt = 0;
+            for (const j of tsdoc.journal || []) {
+                if (!tdoc.pids.includes(j.pid)) continue;
+                cnt++;
+            }
+            return cnt;
+        };
 
-        const rankedDocs = await ranked(tsdocs, (a, b) => a.score === b.score);
+        const calcLastSubmitTime = (tsdoc: any) => {
+            let last = 0;
+            for (const j of tsdoc.journal || []) {
+                if (!tdoc.pids.includes(j.pid)) continue;
+                const t = j.rid?.getTimestamp?.().getTime?.() || 0;
+                if (t > last) last = t;
+            }
+            return last || Number.POSITIVE_INFINITY;
+        };
+
+        const tsdocs = (await cursor.toArray()).sort((a: any, b: any) => {
+            const as = a.score?.[config.id] || 0;
+            const bs = b.score?.[config.id] || 0;
+            const dScore = bs - as;
+            if (dScore) return dScore;
+            const ac = calcCnt(a);
+            const bc = calcCnt(b);
+            if (ac !== bc) return ac - bc;
+            const at = calcLastSubmitTime(a);
+            const bt = calcLastSubmitTime(b);
+            if (at !== bt) return at - bt;
+            return a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime();
+        });
+
+        const rankedDocs = await ranked(tsdocs, (a: any, b: any) => {
+            const as = a.score?.[config.id] || 0;
+            const bs = b.score?.[config.id] || 0;
+            return as === bs
+                && calcCnt(a) === calcCnt(b)
+                && calcLastSubmitTime(a) === calcLastSubmitTime(b);
+        });
         const uids = rankedDocs.map(([, doc]) => doc.uid);
         const udict = await UserModel.getListForRender(tdoc.domainId, uids, ['displayName']);
 
@@ -265,7 +298,26 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
     },
 
     async ranked(config, tsdocs) {
-        return await ranked(tsdocs, (a, b) => a.score === b.score);
+        const calcAdjustedTime = (tsdoc: any) => {
+            let last = 0;
+            const submitCount: Record<number, number> = {};
+            for (const j of tsdoc.journal || []) {
+                const t = j.rid?.getTimestamp?.().getTime?.() || 0;
+                if (t > last) last = t;
+                submitCount[j.pid] = (submitCount[j.pid] || 0) + 1;
+            }
+            if (!last) return Number.POSITIVE_INFINITY;
+            let penaltyMinutes = 0;
+            for (const pid of Object.keys(submitCount)) {
+                penaltyMinutes += Math.max(0, submitCount[pid] - 1) * 10;
+            }
+            return last + penaltyMinutes * 60_000;
+        };
+        return await ranked(tsdocs, (a: any, b: any) => {
+            const as = a.score?.[config.id] || 0;
+            const bs = b.score?.[config.id] || 0;
+            return as === bs && calcAdjustedTime(a) === calcAdjustedTime(b);
+        });
     },
 }, ContestModel.RULES.ioi);
 
