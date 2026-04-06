@@ -1,0 +1,98 @@
+# Verdaccio 配置修复 - 配置文件示例
+
+# 在 npm.leeson.top 服务器的 Verdaccio 配置文件中添加以下内容
+# 配置文件通常位于：
+# - ~/.config/verdaccio/config.yaml
+# - ~/.local/share/verdaccio/config.yaml
+# - /etc/verdaccio/config.yaml
+
+# ============================================
+# 必须添加的配置（在文件顶部或任意位置）
+# ============================================
+
+# 设置公开访问的 URL 前缀（关键配置）
+url_prefix: https://npm.leeson.top/
+
+# 设置最大上传大小
+max_body_size: 100mb
+
+# 设置超时时间（可选）
+web:
+  timeout: 300000  # 5分钟
+
+# ============================================
+# 完整配置文件示例
+# ============================================
+
+# 如果您的配置文件很简单，可以参考以下完整示例：
+
+storage: ./storage
+plugins: ./plugins
+
+# 公开访问 URL（关键）
+url_prefix: https://npm.leeson.top/
+
+# 上传大小限制
+max_body_size: 100mb
+
+# Web 界面配置
+web:
+  title: Hydro Private NPM Registry
+  timeout: 300000
+
+# 认证
+auth:
+  htpasswd:
+    file: ./htpasswd
+    max_users: 1000
+
+# 上游链路（可选，用于代理官方 npm）
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+    timeout: 60s
+
+# 包访问控制
+packages:
+  '@*/*':
+    access: $all
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+
+  '**':
+    access: $all
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+
+# 日志配置
+logs:
+  - { type: stdout, format: pretty, level: http }
+
+# ============================================
+# 修改步骤
+# ============================================
+
+# 1. 备份原配置
+#    cp config.yaml config.yaml.backup
+
+# 2. 编辑配置文件
+#    vim config.yaml
+#    或
+#    nano config.yaml
+
+# 3. 添加 url_prefix 配置
+#    在文件中添加：
+#    url_prefix: https://npm.leeson.top/
+
+# 4. 保存并退出
+
+# 5. 重启 Verdaccio
+#    pm2 restart verdaccio
+#    或
+#    systemctl restart verdaccio
+
+# 6. 验证
+#    在开发服务器执行：
+#    npm view hydrooj@dev dist.tarball --registry https://npm.leeson.top/
