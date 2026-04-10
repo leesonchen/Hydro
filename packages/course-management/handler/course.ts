@@ -1381,7 +1381,8 @@ export class CourseProblemReferenceHandler extends Handler {
     @param('pid', Types.UnsignedInt)
     async get(domainId: string, tid: ObjectId, pid: number) {
         const refs = (await SolutionModel.getMulti(domainId, pid).toArray())
-            .filter((doc: any) => isReferenceCodeSolution(doc));
+            .filter((doc: any) => isReferenceCodeSolution(doc))
+            .sort((a: any, b: any) => a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime());
         const uids = Array.from(new Set([
             this.pdoc.owner,
             this.tdoc.owner,
