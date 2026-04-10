@@ -170,8 +170,6 @@ verify_install() {
     # 验证命令可用性
     if command -v hydrooj &> /dev/null; then
         echo -e "${GREEN}✓ hydrooj 命令可用${NC}"
-        local version=$(hydrooj --version 2>&1 || echo "无法获取版本")
-        echo -e "  版本: $version"
     else
         echo -e "${YELLOW}⚠ hydrooj 命令不在 PATH 中，但 PM2 可以通过 /usr/local/bin/hydrooj 访问${NC}"
     fi
@@ -179,10 +177,52 @@ verify_install() {
     echo ""
 }
 
+# 同步 ui-default dev 版本静态资源名，避免模板引用 dev 文件而静态目录仅有基础版本
+sync_ui_static_aliases() {
+    echo -e "${YELLOW}8. 同步 UI 静态资源版本...${NC}"
+
+    local ui_version=""
+    local base_version=""
+    ui_version=$(npm view @hydrooj/ui-default@dev version --registry https://npm.leeson.top/ 2>/dev/null | tr -d '[:space:]')
+    base_version=$(echo "$ui_version" | sed -E 's/-dev\.[0-9]+$//')
+
+    if [ -z "$ui_version" ]; then
+        echo -e "${YELLOW}⚠ 无法获取 ui-default@dev 版本，跳过同步${NC}"
+        echo ""
+        return 0
+    fi
+
+    if [ "$ui_version" = "$base_version" ]; then
+        echo -e "${GREEN}✓ 当前不是 dev 版本，无需同步${NC}"
+        echo ""
+        return 0
+    fi
+
+    local static_dir="/root/.hydro/static"
+    local source_theme="$static_dir/theme-${base_version}.css"
+    local source_hydro="$static_dir/hydro-${base_version}.js"
+    local target_theme="$static_dir/theme-${ui_version}.css"
+    local target_hydro="$static_dir/hydro-${ui_version}.js"
+
+    if [ -f "$source_theme" ] && [ ! -f "$target_theme" ]; then
+        cp -f "$source_theme" "$target_theme"
+    fi
+    if [ -f "$source_hydro" ] && [ ! -f "$target_hydro" ]; then
+        cp -f "$source_hydro" "$target_hydro"
+    fi
+
+    if [ -f "$target_theme" ] && [ -f "$target_hydro" ]; then
+        echo -e "${GREEN}✓ UI 静态资源已同步到 dev 版本名 (${ui_version})${NC}"
+    else
+        echo -e "${YELLOW}⚠ 部分静态资源未生成，建议重启后再次执行同步${NC}"
+    fi
+    echo ""
+}
+
 # 启动服务
 start_services() {
     if command -v pm2 &> /dev/null; then
-        echo -e "${YELLOW}8. 启动服务...${NC}"
+        echo -e "${YELLOW}9. 启动服务...${NC}"
 
         echo -e "启动 hydrooj..."
         pm2 start hydrooj 2>&1 || echo -e "${YELLOW}启动失败，尝试恢复...${NC}"
@@ -230,6 +270,7 @@ main() {
     install_packages
     verify_install
     start_services
+    sync_ui_static_aliases
     show_complete
 }
 

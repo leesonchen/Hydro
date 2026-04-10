@@ -8,6 +8,8 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+PUBLISH_TIMEOUT_SECONDS=300
+PUBLISH_RETRY_COUNT=3
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -75,6 +77,51 @@ increment_version() {
     fi
 }
 
+# 为 ui-default 生成与完整版本号一致的静态资源别名（并控制别名数量）
+prepare_ui_asset_aliases() {
+    local package_path="$1"
+    local full_version="$2"
+    local public_dir="$package_path/public"
+    local base_version
+    base_version=$(echo "$full_version" | sed -E 's/-dev\.[0-9]+$//')
+
+    if [ ! -d "$public_dir" ] || [ "$base_version" = "$full_version" ]; then
+        return 0
+    fi
+
+    local source_theme="$public_dir/theme-${base_version}.css"
+    local source_hydro="$public_dir/hydro-${base_version}.js"
+    local target_theme="$public_dir/theme-${full_version}.css"
+    local target_hydro="$public_dir/hydro-${full_version}.js"
+
+    # 先清理同基础版本的历史 dev 别名，避免包体逐次膨胀
+    find "$public_dir" -maxdepth 1 -type f -name "theme-${base_version}-dev.*.css" ! -name "theme-${full_version}.css" -delete 2>/dev/null || true
+    find "$public_dir" -maxdepth 1 -type f -name "hydro-${base_version}-dev.*.js" ! -name "hydro-${full_version}.js" -delete 2>/dev/null || true
+
+    UI_ALIAS_THEME_CREATED=0
+    UI_ALIAS_HYDRO_CREATED=0
+    UI_ALIAS_THEME_PATH="$target_theme"
+    UI_ALIAS_HYDRO_PATH="$target_hydro"
+
+    if [ -f "$source_theme" ] && [ ! -f "$target_theme" ]; then
+        cp -f "$source_theme" "$target_theme"
+        UI_ALIAS_THEME_CREATED=1
+    fi
+    if [ -f "$source_hydro" ] && [ ! -f "$target_hydro" ]; then
+        cp -f "$source_hydro" "$target_hydro"
+        UI_ALIAS_HYDRO_CREATED=1
+    fi
+}
+
+cleanup_ui_asset_aliases() {
+    if [ "${UI_ALIAS_THEME_CREATED:-0}" -eq 1 ] && [ -f "${UI_ALIAS_THEME_PATH:-}" ]; then
+        rm -f "$UI_ALIAS_THEME_PATH"
+    fi
+    if [ "${UI_ALIAS_HYDRO_CREATED:-0}" -eq 1 ] && [ -f "${UI_ALIAS_HYDRO_PATH:-}" ]; then
+        rm -f "$UI_ALIAS_HYDRO_PATH"
+    fi
+}
+
 # 更新 package.json 中的 workspace 依赖
 fix_workspace_deps() {
     local package_path="$1"
@@ -122,6 +169,11 @@ publish_package() {
     sed -i.bak "s/\"version\": \"$current_version\"/\"version\": \"$new_version\"/" package.json
     rm -f package.json.bak
 
+    # 对 ui-default 追加静态资源别名，确保与 dev 版本号一致
+    if [ "$package_name" = "@hydrooj/ui-default" ]; then
+        prepare_ui_asset_aliases "$package_path" "$new_version"
+    fi
+
     # 清理旧的打包文件
     rm -f "$tgz_filename"
 
@@ -144,10 +196,48 @@ publish_package() {
     tar -xzf "$package_path/$tgz_filename"
     cd package
 
-    if npm publish --registry https://npm.leeson.top/ --tag dev > /dev/null 2>&1; then
+    local safe_package_name
+    safe_package_name=$(echo "$package_name" | tr '/@' '__')
+    local log_file="/tmp/npm-publish-${safe_package_name}-${new_version}.log"
+    local publish_success=0
+    local attempt
+    for attempt in $(seq 1 "$PUBLISH_RETRY_COUNT"); do
+        echo -e "  发布尝试 ${attempt}/${PUBLISH_RETRY_COUNT}..."
+        rm -f "$log_file"
+        if command -v timeout > /dev/null 2>&1; then
+            timeout "$PUBLISH_TIMEOUT_SECONDS" npm publish --registry https://npm.leeson.top/ --tag dev 2>&1 | tee "$log_file"
+            local status=${PIPESTATUS[0]}
+        else
+            npm publish --registry https://npm.leeson.top/ --tag dev 2>&1 | tee "$log_file"
+            local status=${PIPESTATUS[0]}
+        fi
+
+        if [ "$status" -eq 0 ]; then
+            publish_success=1
+            break
+        fi
+
+        # 已存在视为可接受，避免阻塞后续流程
+        if grep -qiE "cannot publish over existing version|previously published|forbidden.*version" "$log_file"; then
+            echo -e "  ${YELLOW}版本可能已存在，按成功处理${NC}"
+            publish_success=1
+            break
+        fi
+
+        if [ "$attempt" -lt "$PUBLISH_RETRY_COUNT" ]; then
+            echo -e "  ${YELLOW}发布失败，5秒后重试...${NC}"
+            sleep 5
+        fi
+    done
+
+    if [ "$publish_success" -eq 1 ]; then
         echo -e "${GREEN}✓ ${package_name}@${new_version} 发布成功${NC}"
     else
-        echo -e "${YELLOW}⚠ ${package_name} 发布失败，可能已存在，继续...${NC}"
+        echo -e "${YELLOW}⚠ ${package_name} 发布失败，详情日志: ${log_file}${NC}"
+    fi
+
+    if [ "$package_name" = "@hydrooj/ui-default" ]; then
+        cleanup_ui_asset_aliases
     fi
 
     cd "$SCRIPT_DIR"
