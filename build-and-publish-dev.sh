@@ -10,12 +10,141 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 PUBLISH_TIMEOUT_SECONDS=300
 PUBLISH_RETRY_COUNT=3
+DEFAULT_PACKAGES=("common" "hydrooj" "ui-default" "hydrojudge")
+SELECTED_PACKAGES=()
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo -e "${GREEN}=== Hydro 开发版本打包发布脚本 ===${NC}"
 echo ""
+
+# 显示用法
+print_usage() {
+    echo "用法:"
+    echo "  ./build-and-publish-dev.sh [--packages pkg1,pkg2]"
+    echo ""
+    echo "可选包名: common, hydrooj, ui-default, hydrojudge"
+    echo "示例:"
+    echo "  ./build-and-publish-dev.sh --packages hydrooj,ui-default"
+    echo ""
+}
+
+# 解析参数
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --packages)
+                shift
+                if [ -z "${1:-}" ]; then
+                    echo -e "${RED}错误: --packages 需要参数${NC}"
+                    print_usage
+                    exit 1
+                fi
+                IFS=',' read -r -a SELECTED_PACKAGES <<< "$1"
+                ;;
+            -h|--help)
+                print_usage
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}错误: 未知参数 $1${NC}"
+                print_usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
+    if [ ${#SELECTED_PACKAGES[@]} -eq 0 ]; then
+        if [ -t 0 ]; then
+            echo -e "${YELLOW}请选择要构建/发布的包 (空格分隔，可多选)：${NC}"
+            local options=("all" "common" "hydrooj" "ui-default" "hydrojudge")
+            local selections=()
+            PS3="输入序号 (例如 1 2 3)，然后回车: "
+            select opt in "${options[@]}"; do
+                if [ -z "${opt:-}" ]; then
+                    echo -e "${YELLOW}无效选择，请重试${NC}"
+                    continue
+                fi
+                if [ "$opt" = "all" ]; then
+                    selections=("${DEFAULT_PACKAGES[@]}")
+                    break
+                fi
+                selections+=("$opt")
+                echo -e "${YELLOW}已选择: ${selections[*]} (继续选或按 Ctrl+D 完成)${NC}"
+            done
+
+            if [ ${#selections[@]} -gt 0 ]; then
+                SELECTED_PACKAGES=("${selections[@]}")
+            else
+                SELECTED_PACKAGES=("${DEFAULT_PACKAGES[@]}")
+            fi
+        else
+            SELECTED_PACKAGES=("${DEFAULT_PACKAGES[@]}")
+        fi
+    fi
+}
+
+# 判断包是否被选中
+is_selected() {
+    local target="$1"
+    local p
+    for p in "${SELECTED_PACKAGES[@]}"; do
+        if [ "$p" = "$target" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# 判断 package.json 是否存在某脚本
+has_script() {
+    local package_path="$1"
+    local script_name="$2"
+    node -e "const p=require('${package_path}/package.json');process.exit(p.scripts&&p.scripts['${script_name}']?0:1)" >/dev/null 2>&1
+}
+
+# 获取可用的 build 脚本名
+get_build_script() {
+    local package_path="$1"
+    if has_script "$package_path" "build"; then
+        echo "build"
+        return 0
+    fi
+    if has_script "$package_path" "build:prod"; then
+        echo "build:prod"
+        return 0
+    fi
+    if has_script "$package_path" "build:release"; then
+        echo "build:release"
+        return 0
+    fi
+    echo ""
+}
+
+# 构建单个包（如果存在 build 脚本）
+build_package() {
+    local package_name="$1"
+    local package_path="$2"
+
+    if [ ! -d "$package_path" ]; then
+        echo -e "${RED}错误: 包目录不存在: $package_path${NC}"
+        return 1
+    fi
+
+    local build_script
+    build_script=$(get_build_script "$package_path")
+    if [ -z "$build_script" ]; then
+        echo -e "  ${YELLOW}跳过构建: ${package_name} (未找到 build 脚本)${NC}"
+        return 0
+    fi
+
+    echo -e "  正在构建: ${package_name} (yarn run ${build_script})"
+    cd "$package_path"
+    yarn run "$build_script"
+    cd "$SCRIPT_DIR"
+}
 
 # 检查必要工具
 check_tools() {
@@ -248,16 +377,36 @@ publish_package() {
 
 # 主流程
 main() {
+    parse_args "$@"
     check_tools
     setup_registry
 
-    echo -e "${YELLOW}3. 开始打包和发布...${NC}"
+    echo -e "${YELLOW}3. 开始构建...${NC}"
+    echo ""
+
+    if is_selected "common"; then
+        echo -e "${YELLOW}构建依赖包...${NC}"
+        build_package "@hydrooj/common" "$SCRIPT_DIR/packages/common"
+        echo ""
+    fi
+
+    if is_selected "hydrooj"; then
+        build_package "hydrooj" "$SCRIPT_DIR/packages/hydrooj"
+    fi
+    if is_selected "ui-default"; then
+        build_package "@hydrooj/ui-default" "$SCRIPT_DIR/packages/ui-default"
+    fi
+    if is_selected "hydrojudge"; then
+        build_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge"
+    fi
+
+    echo ""
+    echo -e "${YELLOW}4. 开始打包和发布...${NC}"
     echo ""
 
     # 先发布依赖包（不递增版本，使用固定版本）
-    echo -e "${YELLOW}发布依赖包...${NC}"
-
-    if [ -d "$SCRIPT_DIR/packages/common" ]; then
+    if is_selected "common" && [ -d "$SCRIPT_DIR/packages/common" ]; then
+        echo -e "${YELLOW}发布依赖包...${NC}"
         echo -e "发布 @hydrooj/common..."
         cd "$SCRIPT_DIR/packages/common"
         rm -f common.tgz
@@ -268,26 +417,39 @@ main() {
         npm publish --registry https://npm.leeson.top/ > /dev/null 2>&1 || echo -e "${YELLOW}  (可能已存在)${NC}"
         cd "$SCRIPT_DIR"
         rm -rf /tmp/publish-temp
+        echo ""
     fi
 
-    echo ""
-
     # 发布 hydrooj
-    publish_package "hydrooj" "$SCRIPT_DIR/packages/hydrooj" "hydrooj-dev.tgz"
+    if is_selected "hydrooj"; then
+        publish_package "hydrooj" "$SCRIPT_DIR/packages/hydrooj" "hydrooj-dev.tgz"
+    fi
 
     # 发布 ui-default
-    publish_package "@hydrooj/ui-default" "$SCRIPT_DIR/packages/ui-default" "ui-default-dev.tgz"
+    if is_selected "ui-default"; then
+        publish_package "@hydrooj/ui-default" "$SCRIPT_DIR/packages/ui-default" "ui-default-dev.tgz"
+    fi
 
     # 发布 hydrojudge
-    publish_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge" "hydrojudge-dev.tgz"
+    if is_selected "hydrojudge"; then
+        publish_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge" "hydrojudge-dev.tgz"
+    fi
 
     echo -e "${GREEN}=== 所有包发布完成 ===${NC}"
     echo ""
     echo -e "已发布的版本:"
-    echo -e "  - @hydrooj/common@$(get_current_version "$SCRIPT_DIR/packages/common")"
-    echo -e "  - hydrooj@$(get_current_version "$SCRIPT_DIR/packages/hydrooj")"
-    echo -e "  - @hydrooj/ui-default@$(get_current_version "$SCRIPT_DIR/packages/ui-default")"
-    echo -e "  - @hydrooj/hydrojudge@$(get_current_version "$SCRIPT_DIR/packages/hydrojudge")"
+    if is_selected "common"; then
+        echo -e "  - @hydrooj/common@$(get_current_version "$SCRIPT_DIR/packages/common")"
+    fi
+    if is_selected "hydrooj"; then
+        echo -e "  - hydrooj@$(get_current_version "$SCRIPT_DIR/packages/hydrooj")"
+    fi
+    if is_selected "ui-default"; then
+        echo -e "  - @hydrooj/ui-default@$(get_current_version "$SCRIPT_DIR/packages/ui-default")"
+    fi
+    if is_selected "hydrojudge"; then
+        echo -e "  - @hydrooj/hydrojudge@$(get_current_version "$SCRIPT_DIR/packages/hydrojudge")"
+    fi
     echo ""
     echo -e "安装命令:"
     echo -e "  ${YELLOW}./install-dev-from-private-npm.sh${NC}"
