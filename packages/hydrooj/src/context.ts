@@ -39,6 +39,10 @@ export interface Context extends cordis.Context {
     injectUI: typeof inject;
     broadcast: Context['emit'];
     geoip?: GeoIP;
+    provideService(name: string, service: any): void;
+    getService(name: string): any;
+    addPermission(...perms: any[]): void;
+    onDispose(callback: () => void): void;
 }
 
 export abstract class Service<T = never> extends cordis.Service<T, Context> {

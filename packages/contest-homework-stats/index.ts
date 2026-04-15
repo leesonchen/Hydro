@@ -261,7 +261,7 @@ class ContestStatsHandler extends Handler {
         const selectedGroup = group || groups[0];
         if (!groups.includes(selectedGroup)) throw new NotAssignedError(selectedGroup);
         const groupDoc = groupDocs.find((doc: any) => doc.name === selectedGroup);
-        const groupUids = Array.from(new Set(groupDoc?.uids || []));
+        const groupUids: number[] = Array.from(new Set(groupDoc?.uids || []));
         const udict = await UserModel.getList(domainId, groupUids);
         const users = groupUids
             .map((uid) => udict[uid])
@@ -281,7 +281,7 @@ class ContestStatsHandler extends Handler {
             ...(rule ? { rule } : { rule: { $in: rules } }),
             ...(titleRegex ? { title: { $regex: titleRegex } } : {}),
         };
-        const sort = { endAt: -1, beginAt: -1, _id: -1 };
+        const sort: any = { endAt: -1, beginAt: -1, _id: -1 };
         const cursor = ContestModel.getMulti(domainId, filter).sort(sort);
         const [tdocs, tpcount] = await this.paginate(cursor, page, 'contest');
         const exportDocs = download
@@ -373,7 +373,7 @@ class HomeworkStatsHandler extends Handler {
         const selectedGroup = group || groups[0];
         if (!groups.includes(selectedGroup)) throw new NotAssignedError(selectedGroup);
         const groupDoc = groupDocs.find((doc: any) => doc.name === selectedGroup);
-        const groupUids = Array.from(new Set(groupDoc?.uids || []));
+        const groupUids = Array.from(new Set(groupDoc?.uids || [])) as number[];
         const udict = await UserModel.getList(domainId, groupUids);
         const users = groupUids
             .map((uid) => udict[uid])
@@ -392,7 +392,7 @@ class HomeworkStatsHandler extends Handler {
             assign: { $in: [selectedGroup] },
             ...(titleRegex ? { title: { $regex: titleRegex } } : {}),
         };
-        const sort = { penaltySince: -1, endAt: -1, beginAt: -1, _id: -1 };
+        const sort: any = { penaltySince: -1, endAt: -1, beginAt: -1, _id: -1 };
         const cursor = ContestModel.getMulti(domainId, filter).sort(sort);
         const [tdocs, tpcount] = await this.paginate(cursor, page, 'contest');
         const exportDocs = download
@@ -478,7 +478,7 @@ class CourseStatsHandler extends Handler {
         const selectedGroup = group || groups[0];
         if (!groups.includes(selectedGroup)) throw new NotAssignedError(selectedGroup);
         const groupDoc = classGroups.find((doc: any) => doc.name === selectedGroup);
-        const groupUids = Array.from(new Set(
+        const groupUids: number[] = Array.from(new Set(
             (groupDoc?.students?.length ? groupDoc.students : groupDoc?.uids) || [],
         ));
         const udict = await UserModel.getList(domainId, groupUids);
@@ -499,7 +499,7 @@ class CourseStatsHandler extends Handler {
             assign: { $in: [selectedGroup] },
             ...(titleRegex ? { title: { $regex: titleRegex } } : {}),
         };
-        const sort = { endAt: -1, beginAt: -1, _id: -1 };
+        const sort: any = { endAt: -1, beginAt: -1, _id: -1 };
         const cursor = ContestModel.getMulti(domainId, filter).sort(sort);
         const [tdocs, tpcount] = await this.paginate(cursor, page, 'contest');
         const exportDocs = download

@@ -212,7 +212,7 @@ check_tools() {
 
 # 配置 npm registry
 setup_registry() {
-    echo -e "${YELLOW}2. 配置 npm 仓库地址...${NC}"
+    echo -e "${YELLOW}3. 配置 npm 仓库地址...${NC}"
     npm config set registry https://npm.leeson.top/
     yarn config set registry https://npm.leeson.top/
 
@@ -220,7 +220,20 @@ setup_registry() {
     npm config set fetch-timeout 600000
     npm config set fetch-retry-maxtimeout 300000
 
-    echo -e "${GREEN}✓ npm 仓库配置完成${NC}"
+    echo -e "${GREEN}✓ npm 仓库配置完成（仅用于发布）${NC}"
+    echo ""
+}
+
+# 安装依赖
+install_deps() {
+    echo -e "${YELLOW}2. 安装依赖...${NC}"
+    cd "$SCRIPT_DIR"
+    if [ ! -d "node_modules" ]; then
+        yarn install --frozen-lockfile 2>/dev/null || yarn install
+    else
+        echo -e "  node_modules 已存在，跳过安装（如需重装请手动删除 node_modules 后重跑）"
+    fi
+    echo -e "${GREEN}✓ 依赖安装完成${NC}"
     echo ""
 }
 
@@ -421,9 +434,10 @@ publish_package() {
 main() {
     parse_args "$@"
     check_tools
+    install_deps
     setup_registry
 
-    echo -e "${YELLOW}3. 开始构建...${NC}"
+    echo -e "${YELLOW}4. 开始构建...${NC}"
     echo ""
 
     if is_selected "common"; then
@@ -449,7 +463,7 @@ main() {
     fi
 
     echo ""
-    echo -e "${YELLOW}4. 开始打包和发布...${NC}"
+    echo -e "${YELLOW}5. 开始打包和发布...${NC}"
     echo ""
 
     # 先发布依赖包（不递增版本，使用固定版本）

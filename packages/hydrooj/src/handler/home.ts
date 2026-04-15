@@ -443,7 +443,7 @@ class HomeSettingsHandler extends Handler {
     }
 
     async post(args: any) {
-        const $set = {};
+        const $set: Record<string, any> = {};
         const booleanKeys = args.booleanKeys || {};
         delete args.booleanKeys;
         const currentViewLang = this.user.viewLang;
