@@ -1,6 +1,6 @@
 {
   "name": "@hydrooj/ui-default",
-  "version": "4.58.0-beta.21-dev.9",
+  "version": "4.58.0-beta.21-dev.10",
   "author": "undefined <i@undefined.moe>",
   "license": "AGPL-3.0",
   "main": "index.ts",
@@ -81,7 +81,7 @@
     "normalize.css": "^8.0.1",
     "nprogress": "^0.2.0",
     "p-queue": "^9.1.0",
-    "pickadate": "patch:pickadate@npm%3A3.6.4#~/.yarn/patches/pickadate-npm-3.6.4-5795acb19d.patch",
+    "pickadate": "3.6.4",
     "postcss-loader": "7.3.4",
     "postcss-preset-mantine": "^1.18.0",
     "prism-themes": "^1.9.0",
