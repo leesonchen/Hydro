@@ -1,0 +1,115 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": [
+      "es2022"
+    ],
+    "module": "preserve",
+    "esModuleInterop": true,
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "sourceMap": false,
+    "composite": true,
+    "skipLibCheck": true,
+    "strictBindCallApply": true,
+    "resolveJsonModule": true,
+    "experimentalDecorators": true,
+    "incremental": true
+  },
+  "references": [
+    {
+      "path": "tsconfig.ui.json"
+    },
+    {
+      "path": "tsconfig.ui-next.json"
+    },
+    {
+      "path": "plugins/tsconfig.json"
+    },
+    {
+      "path": "packages/hydrooj"
+    },
+    {
+      "path": "packages/a11y"
+    },
+    {
+      "path": "packages/ai-translation"
+    },
+    {
+      "path": "packages/blog"
+    },
+    {
+      "path": "packages/center"
+    },
+    {
+      "path": "packages/common"
+    },
+    {
+      "path": "packages/contest-homework-stats"
+    },
+    {
+      "path": "packages/course-management"
+    },
+    {
+      "path": "packages/elastic"
+    },
+    {
+      "path": "packages/fps-importer"
+    },
+    {
+      "path": "packages/geoip"
+    },
+    {
+      "path": "packages/hydrojudge"
+    },
+    {
+      "path": "packages/hydrooj"
+    },
+    {
+      "path": "packages/import-hoj"
+    },
+    {
+      "path": "packages/import-qduoj"
+    },
+    {
+      "path": "packages/login-with-github"
+    },
+    {
+      "path": "packages/login-with-google"
+    },
+    {
+      "path": "packages/migrate"
+    },
+    {
+      "path": "packages/onlyoffice"
+    },
+    {
+      "path": "packages/onsite-toolkit"
+    },
+    {
+      "path": "packages/prom-client"
+    },
+    {
+      "path": "packages/scoreboard-xcpcio"
+    },
+    {
+      "path": "packages/sonic"
+    },
+    {
+      "path": "packages/telegram"
+    },
+    {
+      "path": "packages/userlist"
+    },
+    {
+      "path": "packages/vjudge"
+    },
+    {
+      "path": "framework/eslint-config"
+    },
+    {
+      "path": "framework/framework"
+    }
+  ],
+  "files": []
+}

@@ -23,6 +23,7 @@ const compilerOptionsBase = {
     jsx: 'react-jsx',
     sourceMap: false,
     composite: true,
+    skipLibCheck: true,
     strictBindCallApply: true,
     resolveJsonModule: true,
     experimentalDecorators: true,
