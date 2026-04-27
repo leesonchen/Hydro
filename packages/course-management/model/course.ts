@@ -25,6 +25,7 @@ export interface CourseTdoc extends Tdoc {
     updateAt?: Date;
     extraStudents?: number[];
     publicScoreboard?: boolean;
+    enablePenalty?: boolean;
 }
 
 export interface CourseStatus {
@@ -262,14 +263,18 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
             return last || Number.POSITIVE_INFINITY;
         };
 
+        const enablePenalty = (tdoc as CourseTdoc).enablePenalty !== false;
+
         const tsdocs = (await cursor.toArray()).sort((a: any, b: any) => {
             const as = a.score?.[config.id] || 0;
             const bs = b.score?.[config.id] || 0;
             const dScore = bs - as;
             if (dScore) return dScore;
-            const an = calcNaccept(a);
-            const bn = calcNaccept(b);
-            if (an !== bn) return an - bn;
+            if (enablePenalty) {
+                const an = calcNaccept(a);
+                const bn = calcNaccept(b);
+                if (an !== bn) return an - bn;
+            }
             const at = calcLastSubmitTime(a);
             const bt = calcLastSubmitTime(b);
             if (at !== bt) return at - bt;
@@ -279,8 +284,9 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
         const rankedDocs = await ranked(tsdocs, (a: any, b: any) => {
             const as = a.score?.[config.id] || 0;
             const bs = b.score?.[config.id] || 0;
-            return as === bs
-                && calcNaccept(a) === calcNaccept(b);
+            if (as !== bs) return false;
+            if (enablePenalty && calcNaccept(a) !== calcNaccept(b)) return false;
+            return calcLastSubmitTime(a) === calcLastSubmitTime(b);
         });
         const uids = rankedDocs.map(([, doc]) => doc.uid);
         const udict = await UserModel.getListForRender(tdoc.domainId, uids, ['displayName']);

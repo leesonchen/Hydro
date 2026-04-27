@@ -1,0 +1,263 @@
+{% import "components/contest.html" as contest with context %}
+{% import "components/nothing.html" as nothing with context %}
+{% import "components/user.html" as user with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{{ set(UiContext, 'tsdocs', tsdict) }}
+
+{% set allCategories = [
+  {key: 'my', name: _('My Courses'), groups: myCourseGroups | default([])},
+  {key: 'other', name: _('Other Courses'), groups: otherCourseGroups | default([])},
+  {key: 'template', name: _('Course Templates'), groups: templateGroups | default([])}
+] %}
+{% set firstCategory = null %}
+
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section course-section unified">
+      <div class="section__body no-padding">
+        <div class="two-level-menu-container">
+          <div class="course-toolbar">
+            <div class="toolbar-left tabs">
+              {% for cat in allCategories %}
+                {% set courseCount = 0 %}
+                {% for group in cat.groups %}
+                  {% set courseCount = courseCount + (group.tdocs | length) %}
+                {% endfor %}
+                {% if courseCount > 0 %}
+                  {% if firstCategory == null %}{% set firstCategory = cat.key %}{% endif %}
+                  <button class="category-tab {% if firstCategory == cat.key %}active{% endif %}" data-category="{{ cat.key }}">
+                    {{ cat.name }}
+                    <span class="category-count">({{ courseCount }})</span>
+                  </button>
+                {% endif %}
+              {% endfor %}
+            </div>
+            <div class="toolbar-center search">
+              <input type="text" id="courseSearchInput" placeholder="{{ _('Search courses by keyword...') }}">
+            </div>
+            {% if isTeacher %}
+            <div class="toolbar-right actions">
+              <a class="compact button" href="{{ url('domain_class') }}">{{ _('Classes Manage') }}</a>
+              <a class="compact button" href="{{ url('course_create') }}">{{ _('Create Course') }}</a>
+              <a class="compact button" href="{{ url('course_create', query={isTemplate:'true'}) }}">{{ _('Create Course Template') }}</a>
+            </div>
+            {% endif %}
+          </div>
+
+          {% if firstCategory %}
+          <div class="submenu-content-wrapper">
+            {% for cat in allCategories %}
+              {% set courseCount = 0 %}
+              {% for group in cat.groups %}
+                {% set courseCount = courseCount + (group.tdocs | length) %}
+              {% endfor %}
+              {% if courseCount > 0 %}
+              <div class="category-panel {% if firstCategory == cat.key %}active{% endif %}" data-panel="{{ cat.key }}">
+                <div class="class-sidebar">
+                  <ul class="class-tabs">
+                    {% for group in cat.groups %}
+                    <li class="class-tab {% if loop.first %}active{% endif %}" data-class="{{ cat.key }}-{{ loop.index0 }}">
+                      <span class="class-name">
+                        {% if (group.key or '').startsWith('templates::') %}
+                          {{ group.key.split('::')[1] or _('Templates') }}
+                        {% elif group.key == 'unassigned' %}
+                          {{ _('Unassigned') }}
+                        {% elif group.key == 'teachers' %}
+                          {{ _('Teachers') }}
+                        {% else %}
+                          {{ group.key }}
+                        {% endif %}
+                      </span>
+                      <span class="class-count">{{ group.tdocs | length }}</span>
+                    </li>
+                    {% endfor %}
+                  </ul>
+                </div>
+                <div class="class-content">
+                  {% for group in cat.groups %}
+                  <div class="class-panel {% if loop.first %}active{% endif %}" data-class-panel="{{ cat.key }}-{{ loop.index0 }}">
+                    <ol class="section__list homework__list unified-list">
+                    {%- for tdoc in group.tdocs -%}
+                      <li class="section__list__item homework__item unified-item">
+                        <div class="media">
+                          <div class="media__body medium">
+                            <h1 class="homework__title">
+                              <a href="{{ url('course_detail', tid=tdoc.docId) }}" data-emoji-enabled>
+                                {% if tdoc.isTemplate %}[模板]{% endif %}{{ tdoc.title }}
+                              </a>
+                            </h1>
+                            <ul class="supplementary list">
+                              <li>{{ tdoc.assign[0] if tdoc.assign else '未知班级' }}</li>
+                              <li>{{ _('Begin at') }}: {{ contest.render_time(tdoc.beginAt) }}</li>
+                              <li>{{ _('End at') }}: {{ contest.render_time(tdoc.endAt) }}</li>
+                              {% if tdoc.updateAt %}
+                              <li>{{ _('Last Updated') }}: {{ contest.render_time(tdoc.updateAt) }}</li>
+                              {% endif %}
+                              {% if tsdict[tdoc.docId] %}
+                              <li>{{ _('Progress') }}: {{ tsdict[tdoc.docId].progress|default(0) }}%</li>
+                              {% endif %}
+                              {% if tsdict[tdoc.docId] and tsdict[tdoc.docId].startAt %}
+                              <li>{{ _('Join at') }}: {{ contest.render_time(tsdict[tdoc.docId].startAt) }}</li>
+                              {% endif %}
+                            </ul>
+                            {% if tsdict[tdoc.docId] %}
+                            <div class="bp6-progress-bar bp6-intent-primary bp6-no-stripes">
+                              <div class="file-progress bp6-progress-meter" style="width: {{ tsdict[tdoc.docId].progress|default(0) }}%"></div>
+                            </div>
+                            {% endif %}
+                          </div>
+                        </div>
+                      </li>
+                    {%- endfor -%}
+                    </ol>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+          {% else %}
+            <div class="submenu-content-wrapper">
+              <div class="category-panel active">
+                <div class="class-content">
+                  <ol class="section__list homework__list unified-list">
+                    <li class="section__list__item homework__item unified-item empty">{{ _('No courses') }}</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.two-level-menu-container { display: flex; flex-direction: column; }
+
+/* Header */
+.course-header { padding: 15px 20px; background: #fafafa; border-bottom: 1px solid #eee; }
+
+/* Toolbar: Left - Center - Right */
+.course-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: #fff; border-bottom: 1px solid #eee; }
+
+/* Left: Category tabs */
+.toolbar-left { display: flex; gap: 0; }
+.category-tab { padding: 12px 20px; border: none; background: transparent; cursor: pointer; font-size: 14px; color: #666; border-bottom: 3px solid transparent; }
+.category-tab:hover { color: #333; background: rgba(95, 159, 214, 0.05); }
+.category-tab.active { color: #5f9fd6; border-bottom-color: #5f9fd6; background: #fff; font-weight: 500; }
+.category-count { font-size: 12px; color: #999; margin-left: 4px; }
+.category-tab.active .category-count { color: #5f9fd6; }
+
+/* Center: Search */
+.toolbar-center { flex: 1; text-align: center; }
+.toolbar-center input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; width: 220px; }
+.toolbar-center input:focus { outline: none; border-color: #5f9fd6; box-shadow: 0 0 0 2px rgba(95, 159, 214, 0.2); }
+.toolbar-center input::placeholder { color: #999; }
+
+/* Right: Actions */
+.toolbar-right { display: flex; gap: 8px; }
+.toolbar-right .button.primary { background: #5f9fd6; color: white; border-color: #5f9fd6; }
+.toolbar-right .button.primary:hover { background: #4a8bc2; }
+
+/* Content area */
+.submenu-content-wrapper { padding: 20px; }
+.category-panel { display: none; }
+.category-panel.active { display: flex; gap: 20px; }
+.class-sidebar { min-width: 180px; max-width: 220px; flex-shrink: 0; background: #fafafa; border-radius: 8px; padding: 15px; }
+.class-tabs { list-style: none; margin: 0; padding: 0; }
+.class-tab { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; cursor: pointer; border-radius: 6px; margin-bottom: 4px; border-left: 3px solid transparent; }
+.class-tab:hover { background: #f0f0f0; border-left-color: #5f9fd6; }
+.class-tab.active { background: #fff; border-left-color: #ed5f82; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+.class-name { font-size: 13px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+.class-count { font-size: 11px; color: #999; background: #eee; padding: 2px 8px; border-radius: 10px; }
+.class-tab.active .class-count { background: rgba(237, 95, 130, 0.15); color: #ed5f82; }
+.class-content { flex: 1; min-width: 0; }
+.class-panel { display: none; }
+.class-panel.active { display: block; }
+.homework__title { font-size: 20px !important; }
+.homework__title a { font-size: 20px !important; }
+
+/* No results message */
+.no-results-message { padding: 40px 20px; text-align: center; color: #999; font-size: 14px; display: none; }
+.no-results-message.visible { display: block; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .course-toolbar { flex-direction: column; gap: 10px; align-items: stretch; }
+  .toolbar-center { order: -1; text-align: left; }
+  .toolbar-center input { width: 100%; }
+  .toolbar-left { overflow-x: auto; }
+  .category-tab { white-space: nowrap; }
+  .category-panel.active { flex-direction: column; }
+  .class-sidebar { min-width: auto; max-width: none; }
+  .class-tabs { display: flex; overflow-x: auto; gap: 8px; }
+  .class-tab { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; }
+  .class-tab:hover { border-left-color: transparent; border-bottom-color: #5f9fd6; }
+  .class-tab.active { border-left-color: transparent; border-bottom-color: #ed5f82; }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const courseSearchInput = document.getElementById('courseSearchInput');
+  const noResultsMsg = document.createElement('div');
+  noResultsMsg.className = 'no-results-message';
+  noResultsMsg.textContent = "{{ _('No matching courses found') }}";
+  document.querySelector('.two-level-menu-container').appendChild(noResultsMsg);
+
+  if (courseSearchInput) {
+    courseSearchInput.addEventListener('input', function() {
+      const keyword = this.value.toLowerCase().trim();
+      const allCourseItems = document.querySelectorAll('.homework__item');
+      let visibleCount = 0;
+
+      allCourseItems.forEach(function(item) {
+        const titleEl = item.querySelector('.homework__title a');
+        const title = titleEl ? titleEl.textContent.toLowerCase() : '';
+        if (keyword === '' || title.includes(keyword)) {
+          item.style.display = '';
+          visibleCount++;
+        } else {
+          item.style.display = 'none';
+        }
+      });
+
+      noResultsMsg.classList.toggle('visible', visibleCount === 0 && keyword !== '');
+    });
+  }
+
+  const categoryTabs = document.querySelectorAll('.category-tab');
+  const categoryPanels = document.querySelectorAll('.category-panel');
+  categoryTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const category = tab.getAttribute('data-category');
+      categoryTabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      categoryPanels.forEach(panel => {
+        if (panel.getAttribute('data-panel') === category) panel.classList.add('active');
+        else panel.classList.remove('active');
+      });
+    });
+  });
+  document.querySelectorAll('.category-panel').forEach(panel => {
+    const classTabs = panel.querySelectorAll('.class-tab');
+    const classPanels = panel.querySelectorAll('.class-panel');
+    classTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const classKey = tab.getAttribute('data-class');
+        classTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        classPanels.forEach(p => {
+          if (p.getAttribute('data-class-panel') === classKey) p.classList.add('active');
+          else p.classList.remove('active');
+        });
+      });
+    });
+  });
+});
+</script>
+{% endblock %}

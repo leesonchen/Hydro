@@ -812,6 +812,7 @@ export class CourseEditHandler extends Handler {
     @param('assign', Types.CommaSeperatedArray, true)
     @param('extraStudents', Types.CommaSeperatedArray, true)
     @param('publicScoreboard', Types.Boolean, true)
+    @param('enablePenalty', Types.Boolean, true)
     async post(
         domainId: string,
         tid: ObjectId | undefined,
@@ -825,6 +826,7 @@ export class CourseEditHandler extends Handler {
         assign: string[] = [],
         extraStudentsStr: string[] = [],
         publicScoreboard = true,
+        enablePenalty = true,
     ) {
         assign = Array.from(new Set((assign || []).map((s) => (s || '').trim()).filter(Boolean)));
         const extraStudents = Array.from(new Set((extraStudentsStr || [])
@@ -883,6 +885,7 @@ export class CourseEditHandler extends Handler {
                 editor,
                 updateAt,
                 publicScoreboard,
+                enablePenalty,
             });
             await ContestModel.recalcStatus(domainId, tid);
         } else {
@@ -913,6 +916,7 @@ export class CourseEditHandler extends Handler {
             editor,
             updateAt,
             publicScoreboard,
+            enablePenalty,
         });
         // 清除旧的 extraStudents 字段（已合并到 assign）
         await DocumentModel.set(domainId, DocumentModel.TYPE_CONTEST, tid, undefined, { extraStudents: '' as any });
@@ -1501,6 +1505,9 @@ export class CourseScoreboardHandler extends Handler {
             }
             if (!tsdoc?.attend) {
                 throw new ForbiddenError((this as any).translate('You are not allowed to view the scoreboard.'));
+            }
+            if (ContestModel.isNotStarted(tdoc)) {
+                throw new ForbiddenError((this as any).translate('This course is not live.'));
             }
         }
 

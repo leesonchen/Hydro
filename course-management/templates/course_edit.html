@@ -1,0 +1,138 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<style>
+  .course-assign-row .course-assign-card {
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .course-assign-row .course-assign-card label {
+    font-weight: 600;
+    color: #374151;
+  }
+  .course-assign-row .course-assign-card .textbox {
+    margin-top: 6px;
+  }
+  .course-assign-row .course-assign-hint {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #6b7280;
+  }
+</style>
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__body">
+        <form method="post">
+          <div class="row">
+            <div class="medium-12 columns">
+              <label>
+                {{ _('Title') }}{% if isTemplate %}【模板】{% endif %}
+                <input name="title" placeholder="{{ _('title') }}" value="{{ tdoc.title|default('') }}" class="textbox" autofocus>
+              </label>
+            </div>
+          </div>
+          <div class="row"><div class="columns">
+            <label>
+              {{ _('Content') }}
+              <textarea name="content" class="textbox" data-markdown style="height: 200px">{{ tdoc['content']|default('') }}</textarea>
+            </label>
+          </div></div>
+          <div class="row course-time-row">
+            {{ form.form_text({
+                columns:4,
+                label: _('Begin at'),
+                name:'beginAt',
+                placeholder:'YYYY-mm-dd HH:MM',
+                value:beginAtText,
+                datetime:true,
+                row:false
+            }) }}
+            {{ form.form_text({
+                columns:4,
+                label: _('End at'),
+                name:'endAt',
+                placeholder:'YYYY-mm-dd HH:MM',
+                value:endAtText,
+                datetime:true,
+                row:false
+            }) }}
+            <div class="medium-4 columns"{% if isTemplate %} style="display:none"{% endif %}>
+              <label style="display: flex; align-items: center; gap: 8px; margin-top: 24px;">
+                <input type="hidden" name="publicScoreboard" value="false">
+                <input type="checkbox" name="publicScoreboard" value="true"{% if not tdoc or tdoc.publicScoreboard !== false %} checked{% endif %}>
+                <span>{{ _('Public Scoreboard') }}</span>
+              </label>
+            </div>
+            <div class="medium-4 columns"{% if isTemplate %} style="display:none"{% endif %}>
+              <label style="display: flex; align-items: center; gap: 8px; margin-top: 24px;">
+                <input type="hidden" name="enablePenalty" value="false">
+                <input type="checkbox" name="enablePenalty" value="true"{% if not tdoc or tdoc.enablePenalty !== false %} checked{% endif %}>
+                <span>{{ _('Enable Penalty') }}</span>
+              </label>
+            </div>
+          </div>
+          {% if isTemplate %}
+            <input type="hidden" name="isTemplate" value="true">
+          {% endif %}
+          <div class="row course-assign-row"{% if isTemplate %} style="display:none"{% endif %}>
+            <div class="columns">
+              <div class="course-assign-card">
+                <label>
+                  分配给班级
+                  <input name="assign" value="{{ assign|default(tdoc.assign|default('')) }}" class="textbox" placeholder="输入班级名称">
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="row course-extra-students-row"{% if isTemplate %} style="display:none"{% endif %}>
+            <div class="columns">
+              <div class="course-assign-card">
+                <label>
+                  临时调课学生
+                  <input name="extraStudents" value="{{ extraStudents|default(tdoc.extraStudents|default([]))|join(',') }}" class="textbox" placeholder="输入用户UID，多个用逗号分隔">
+                </label>
+                <div class="course-assign-hint">输入学生UID，多个用逗号分隔。这些学生可以临时访问本课程，不影响其所属班级。</div>
+              </div>
+            </div>
+          </div>
+          <div class="row"><div class="columns">
+            <label>
+              {{ _('Plan') }}
+              <textarea data-json name="dag" class="textbox" style="height: 500px">{% if tdoc %}{{ dag }}{% else %}{% include 'course_default.json' %}{% endif %}</textarea>
+            </label>
+          </div></div>
+          <div class="row"><div class="columns">
+          {% if page_name == 'course_edit' %}
+            <button type="submit" class="rounded primary button">
+              {{ _('Update') }}
+            </button>
+            {% if not isTemplate and handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+              <button name="isTemplate" value="true" type="submit" class="rounded button">
+                {{ _('Save as Template') }}
+              </button>
+            {% endif %}
+            {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+              <button name="operation" value="delete" type="submit" class="rounded button" onclick="return confirm('是否删除课程{{ tdoc.title }}?')">
+                {{ _('Delete') }}
+              </button>
+            {% endif %}
+          {% else %}
+            <button type="submit" class="rounded primary button">
+              {{ _('Create') }}
+            </button>
+          {% endif %}
+            <button type="button" class="rounded button" onclick="window.history.go(-1)">
+              {{ _('Cancel') }}
+            </button>
+          </div></div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    {% include 'components/md_hint.html' %}
+  </div>
+</div>
+{% endblock %}

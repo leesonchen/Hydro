@@ -1,0 +1,69 @@
+__id: zh
+__langname: 简体中文
+
+# 页面标题
+course_create: 创建课程
+course_main: 课程
+course_detail: 课程详情
+course_edit: 编辑课程
+course_lecture: 课程讲义
+course_manage: 课程管理
+course_scoreboard: 课程成绩
+course_detail_problem: 题目详情
+domain_class: 管理班级
+domain_class_create: 创建班级
+domain_class_edit: 编辑班级
+
+# 界面文字
+Create Course Template: 创建课程模板
+Class Name: 班级名称
+Classes Manage: 班级管理
+Edit Class: 编辑班级
+Create Class: 创建班级
+All Courses: 所有课程
+Create Course: 创建课程
+Save as Template: 另存为模板
+Course Templates: 课程模板
+Add Course: 添加课程
+Copy Source Domain: 源域
+View Course: 查看课程
+Course Name: 课程名称
+Join at: 进入于
+Teachers: 教师
+Students: 学生
+Lecture: 讲义
+Section: 章节
+Archive: 归档
+Visit: 访问
+Enable Course: 启用课程功能
+Begin Date: 开始日期
+Begin Time: 开始时间
+End Date: 结束日期
+End Time: 结束时间
+Plan: 课程计划
+Total Score: 总分
+Solved: 通过题数
+Tries: 尝试次数
+Time: 时间
+Scoreboard: 成绩板
+Created By: 创建人
+Last Edited By: 最后编辑人
+Interval: 上课间隔
+'Interval Days': 间隔天数
+'Every day': 每天
+'Every week (7 days)': 每周（7天）
+'Custom days': 自定义天数
+Courses: 课程数量
+My Courses: 我的课程
+Other Courses: 其他课程
+No courses: 暂无课程
+Source Domain: 源域
+Source Domain is required.: 必须填写源域。
+No available course templates.: 没有可用的课程模板。
+You are not allowed to copy this course from {0} to {1}.: 不允许将课程从 {0} 复制到 {1}。
+'Problem {0} in {1} is not allowed to be copied to {2}.': 题目 {0} 所在域 {1} 未向 {2} 开放复制权限。
+'Course "{0}" already exists in this domain.': 当前域已存在同名课程“{0}”。
+'Source domain {0} does not exist.': 源域 {0} 不存在。
+'Missing referenced problems in target domain: {0}': 目标域缺少以下同源题目：{0}
+Search courses by keyword...: 输入关键词搜索课程...
+No matching courses found: 没有找到匹配的课程

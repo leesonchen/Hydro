@@ -1,0 +1,503 @@
+import {
+    BadRequestError, ContestModel, DomainModel, Handler, moment, NotFoundError, ObjectId, param, PERM, PermissionError,
+    ProblemModel, StorageModel, Types, UserModel, ValidationError,
+} from 'hydrooj';
+import { ClassModel } from '../model/class';
+import type { CourseTdoc } from '../model/course';
+import { parseDag } from './course';
+
+function calcCourseTimeRange(baseBeginAt: moment.Moment, classEndAt: moment.Moment) {
+    const beginAt = baseBeginAt.clone();
+    return { beginAt, endAt: classEndAt.clone() };
+}
+
+function fillMessage(template: string, ...params: Array<string | number>) {
+    return template.replace(/\{(\d+)\}/g, (_, index) => String(params[Number(index)] ?? ''));
+}
+
+async function ensureCourseTitleAvailable(
+    domainId: string,
+    title: string,
+    assignGroup: string,
+    translate: (value: string) => string = (value) => value,
+) {
+    const duplicated = await ContestModel.getMulti(domainId, {
+        rule: 'course',
+        title,
+        assign: { $in: [assignGroup] },
+    }).limit(1).next();
+    if (duplicated) {
+        throw new BadRequestError(fillMessage(translate('Course "{0}" already exists in this domain.'), title));
+    }
+}
+
+async function assertCourseCopyAllowed(sourceDomainId: string, targetDomainId: string, translate: (value: string) => string = (value) => value) {
+    const ddoc = await DomainModel.get(sourceDomainId);
+    if (!ddoc) {
+        throw new BadRequestError(fillMessage(translate('Source domain {0} does not exist.'), sourceDomainId));
+    }
+    if (sourceDomainId === targetDomainId) {
+        return ddoc;
+    }
+    const t = `,${ddoc.share || ''},`;
+    if (t !== ',*,' && !t.includes(`,${targetDomainId},`)) {
+        throw new BadRequestError(fillMessage(translate('You are not allowed to copy this course from {0} to {1}.'), sourceDomainId, targetDomainId));
+    }
+    return ddoc;
+}
+
+async function assertProblemCopyAllowed(sourceDomainId: string, targetDomainId: string, originPid: number, translate: (value: string) => string = (value) => value) {
+    const ddoc = await DomainModel.get(sourceDomainId);
+    if (!ddoc) {
+        throw new BadRequestError(fillMessage(translate('Source domain {0} does not exist.'), sourceDomainId));
+    }
+    if (sourceDomainId === targetDomainId) {
+        return ddoc;
+    }
+    const t = `,${ddoc.share || ''},`;
+    if (t !== ',*,' && !t.includes(`,${targetDomainId},`)) {
+        throw new BadRequestError(fillMessage(translate('Problem {0} in {1} is not allowed to be copied to {2}.'), originPid, sourceDomainId, targetDomainId));
+    }
+    return ddoc;
+}
+
+async function resolveProblemOrigin(domainId: string, pid: number, translate: (value: string) => string = (value) => value) {
+    let current = await ProblemModel.get(domainId, pid);
+    if (!current) {
+        throw new BadRequestError(fillMessage(translate('Referenced source problem {0} in domain {1} does not exist.'), pid, domainId));
+    }
+    while (current.reference) {
+        current = await ProblemModel.get(current.reference.domainId, current.reference.pid);
+        if (!current) {
+            throw new BadRequestError(fillMessage(translate('Referenced source problem {0} in domain {1} does not exist.'), pid, domainId));
+        }
+    }
+    return {
+        originDomainId: current.domainId,
+        originPid: current.docId,
+    };
+}
+
+async function buildPidMapping(
+    sourceDomainId: string,
+    targetDomainId: string,
+    pids: number[],
+    translate: (value: string) => string = (value) => value,
+) {
+    const mapping = new Map<number, number>();
+    const missing: Array<{ pid: number, originDomainId: string, originPid: number }> = [];
+
+    for (const pid of Array.from(new Set(pids))) {
+        const origin = await resolveProblemOrigin(sourceDomainId, pid, translate);
+        let matched = await ProblemModel.getMulti(targetDomainId, {
+            reference: { domainId: origin.originDomainId, pid: origin.originPid },
+        }, ['docId', 'reference']).limit(1).next();
+
+        if (!matched && targetDomainId === origin.originDomainId) {
+            matched = await ProblemModel.get(targetDomainId, origin.originPid);
+        }
+
+        if (!matched) {
+            missing.push({ pid, originDomainId: origin.originDomainId, originPid: origin.originPid });
+            continue;
+        }
+
+        mapping.set(pid, matched.docId);
+    }
+
+    return { mapping, missing };
+}
+
+async function copyMissingProblemsToTarget(
+    targetDomainId: string,
+    missing: Array<{ pid: number, originDomainId: string, originPid: number }>,
+    userId: number,
+    translate: (value: string) => string = (value) => value,
+) {
+    const targetUser = await UserModel.getById(targetDomainId, userId);
+    if (!targetUser?.hasPerm(PERM.PERM_CREATE_PROBLEM)) {
+        throw new PermissionError(PERM.PERM_CREATE_PROBLEM);
+    }
+
+    const uniqueOrigins = Array.from(new Map(
+        missing.map((item) => [`${item.originDomainId}:${item.originPid}`, item]),
+    ).values());
+
+    for (const item of uniqueOrigins) {
+        await assertProblemCopyAllowed(item.originDomainId, targetDomainId, item.originPid, translate);
+        await ProblemModel.copy(item.originDomainId, item.originPid, targetDomainId);
+    }
+}
+
+function rewriteDagPids(dag: any[], mapping: Map<number, number>) {
+    return dag.map((node) => ({
+        ...node,
+        pids: Array.isArray(node.pids)
+            ? node.pids.map((pid: number) => mapping.get(pid) || pid)
+            : node.pids,
+    }));
+}
+
+// 班级列表页面
+export class ClassHandler extends Handler {
+    async prepare() {
+        this.checkPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF);
+    }
+
+    async get({ domainId }: { domainId: string }) {
+        const groups = await ClassModel.listGroup(domainId);
+        
+        // 过滤掉 teachers 特殊班级
+        const filteredGroups = groups.filter((g) => g.name !== 'teachers');
+        
+        // 获取每个班级的课程数量
+        const groupsWithCourseCount = await Promise.all(
+            filteredGroups.map(async (g) => {
+                const count = await ContestModel.getMulti(domainId, {
+                    rule: 'course',
+                    assign: { $in: [g.name] },
+                }).count();
+                return { ...g, courseCount: count };
+            })
+        );
+        
+        this.response.template = 'domain_class.html';
+        this.response.body = {
+            domain: this.domain,
+            groups: groupsWithCourseCount,
+        };
+    }
+}
+
+// 班级编辑页面
+export class ClassEditHandler extends Handler {
+    async prepare() {
+        if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK) && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
+            throw new PermissionError();
+        }
+    }
+
+    @param('id', Types.ObjectId, true)
+    async get(domainId: string, id?: ObjectId) {
+        this.response.body = {
+            page_name: id ? 'domain_class_edit' : 'domain_class_create',
+            domain: this.domain,
+        };
+
+        let beginAt = moment().add(1, 'day').tz(this.user.timeZone).hour(0).minute(0).millisecond(0);
+        let endAt = beginAt.clone().add(7, 'days').tz(this.user.timeZone).hour(23).minute(59).millisecond(0);
+        let intervalDays = 1;
+
+        const extra: any = {};
+        const groups = (await UserModel.listGroup(domainId)).filter((g: any) => !g?.class);
+        extra.groups = groups;
+        const visibleDomainIds = Object.keys(await DomainModel.getDictUserByDomainId(this.user._id));
+        extra.availableSourceDomains = visibleDomainIds.length
+            ? (await DomainModel.getMulti({ _id: { $in: visibleDomainIds } }).toArray())
+                .sort((a, b) => a.name.localeCompare(b.name) || a._id.localeCompare(b._id))
+                .map((ddoc: any) => ({ _id: ddoc._id, name: ddoc.name }))
+            : [];
+
+        if (id) {
+            const gdoc = await ClassModel.getGroupById(domainId, id);
+            if (!gdoc) throw new NotFoundError(domainId, id);
+
+            const tdocs = await ContestModel.getMulti(domainId, {
+                rule: 'course',
+                assign: { $in: [gdoc.name] },
+            }).toArray();
+
+            // 获取可用的课程模板（当前域下 assign=teachers）
+            const templates = await ContestModel.getMulti(domainId, {
+                rule: 'course',
+                assign: { $elemMatch: { $eq: 'teachers' } },
+            }).sort({ title: 1 }).toArray();
+
+            const usedTitles = tdocs.map((t) => t.title);
+
+            extra.gdoc = gdoc;
+            extra.tdocs = tdocs;
+            extra.templates = templates.filter((t) => !usedTitles.includes(t.title));
+
+            if (gdoc.beginAt) {
+                beginAt = moment.utc(gdoc.beginAt).tz(this.user.timeZone);
+            }
+            if (gdoc.endAt) {
+                endAt = moment.utc(gdoc.endAt).tz(this.user.timeZone);
+            }
+            if (typeof gdoc.intervalDays === 'number') {
+                intervalDays = gdoc.intervalDays;
+            }
+
+            // 如果没有设置时间但有课程，使用课程的时间范围
+            if (!gdoc.beginAt && tdocs.length) {
+                beginAt = moment.min(tdocs.map((t) => moment(t.beginAt).tz(this.user.timeZone)));
+                endAt = moment.max(tdocs.map((t) => moment(t.endAt).tz(this.user.timeZone)));
+            }
+        }
+
+        const intervalPreset = intervalDays === 1 ? '1' : intervalDays === 7 ? '7' : 'custom';
+        Object.assign(this.response.body, {
+            dateBeginText: beginAt.format('YYYY-M-D'),
+            timeBeginText: beginAt.format('H:mm'),
+            dateEndText: endAt.format('YYYY-M-D'),
+            timeEndText: endAt.format('H:mm'),
+            intervalDays,
+            intervalPreset,
+            ...extra,
+        });
+
+        this.response.template = 'domain_class_edit.html';
+    }
+
+    @param('id', Types.ObjectId)
+    async postDelete(domainId: string, id: ObjectId) {
+        const gdoc = await ClassModel.getGroupById(domainId, id);
+        if (!gdoc) throw new NotFoundError(domainId, id);
+
+        // 删除所有关联的课程
+        const tdocs = await ContestModel.getMulti(domainId, {
+            rule: 'course',
+            assign: { $in: [gdoc.name] },
+        }).toArray();
+
+        await Promise.all(tdocs.map((t) => ContestModel.del(domainId, t._id)));
+        await ClassModel.delGroup(domainId, id);
+
+        this.response.redirect = this.url('domain_class');
+    }
+
+    @param('id', Types.ObjectId, true)
+    @param('name', Types.String)
+    @param('teachers', Types.NumericArray)
+    @param('students', Types.NumericArray)
+    @param('teacherGroups', Types.CommaSeperatedArray, true)
+    @param('studentGroups', Types.CommaSeperatedArray, true)
+    @param('beginAtDate', Types.String)
+    @param('beginAtTime', Types.String)
+    @param('EndAtDate', Types.String)
+    @param('EndAtTime', Types.String)
+    @param('intervalDays', Types.Int, true)
+    @param('archive', Types.Boolean)
+    async postUpdate(
+        domainId: string,
+        id: ObjectId | undefined,
+        name: string,
+        teachers: number[],
+        students: number[],
+        teacherGroups: string[] = [],
+        studentGroups: string[] = [],
+        beginAtDate: string,
+        beginAtTime: string,
+        endAtDate: string,
+        endAtTime: string,
+        intervalDays = 1,
+        archive = false,
+    ) {
+        const beginAt = moment.tz(`${beginAtDate} ${beginAtTime}`, 'YYYY-M-D H:mm', this.user.timeZone);
+        if (!beginAt.isValid()) throw new ValidationError('beginAtDate', 'beginAtTime');
+
+        const endAt = moment.tz(`${endAtDate} ${endAtTime}`, 'YYYY-M-D H:mm', this.user.timeZone);
+        if (!endAt.isValid()) throw new ValidationError('endAtDate', 'endAtTime');
+
+        if (!intervalDays || intervalDays < 1) intervalDays = 1;
+
+        let shouldUpdateCourseTimes = true;
+        let existingTdocs: any[] = [];
+
+        if (id) {
+            const gdoc = await ClassModel.getGroupById(domainId, id);
+            if (!gdoc) throw new NotFoundError(domainId, id);
+
+            // 检查时间相关字段是否发生变化
+            const oldBeginAt = moment.utc(gdoc.beginAt).tz(this.user.timeZone);
+            const oldEndAt = moment.utc(gdoc.endAt).tz(this.user.timeZone);
+            const oldIntervalDays = gdoc.intervalDays || 1;
+
+            const beginAtChanged = !beginAt.isSame(oldBeginAt, 'minute');
+            const endAtChanged = !endAt.isSame(oldEndAt, 'minute');
+            const intervalChanged = intervalDays !== oldIntervalDays;
+
+            shouldUpdateCourseTimes = beginAtChanged || endAtChanged || intervalChanged;
+
+            // 如果班级名称改变，更新所有关联的课程
+            if (gdoc.name !== name) {
+                const tdocs = await ContestModel.getMulti(domainId, {
+                    rule: 'course',
+                    assign: { $in: [gdoc.name] },
+                }).toArray();
+
+                await Promise.all(tdocs.map((t) => ContestModel.edit(domainId, t._id, { assign: [name] })));
+            }
+
+            await ClassModel.delGroup(domainId, id);
+        }
+
+        const groupDocs = (await UserModel.listGroup(domainId)).filter((g: any) => !g?.class);
+        const groupMap = new Map<string, number[]>(groupDocs.map((g: any) => [g.name, (g.uids || []) as number[]]));
+        const collectGroupUids = (groupNames: string[]) => groupNames.flatMap((groupName) => groupMap.get(groupName) || []);
+        const mergedTeachers = Array.from(new Set([...teachers, ...collectGroupUids(teacherGroups)]));
+        const mergedStudents = Array.from(new Set([...students, ...collectGroupUids(studentGroups)]));
+
+        await ClassModel.updateGroup(
+            domainId,
+            name,
+            mergedTeachers,
+            mergedStudents,
+            beginAt.toDate(),
+            endAt.toDate(),
+            archive,
+            intervalDays,
+        );
+
+        // 更新所有关联课程的维护者（始终更新）
+        const tdocs = await ContestModel.getMulti(domainId, {
+            rule: 'course',
+            assign: { $in: [name] },
+        }).sort({ beginAt: 1, _id: 1 }).toArray();
+
+        // 只有时间相关字段变化时，才更新课程时间
+        if (shouldUpdateCourseTimes) {
+            await Promise.all(tdocs.map((t, index) => {
+                const baseBeginAt = beginAt.clone().add(index * intervalDays, 'days');
+                const { beginAt: courseBeginAt, endAt: courseEndAt } = calcCourseTimeRange(baseBeginAt, endAt);
+                return ContestModel.edit(domainId, t._id, {
+                    beginAt: courseBeginAt.toDate(),
+                    endAt: courseEndAt.toDate(),
+                    maintainer: mergedTeachers,
+                });
+            }));
+        } else {
+            // 仅更新维护者
+            await Promise.all(tdocs.map((t) => ContestModel.edit(domainId, t._id, {
+                maintainer: mergedTeachers,
+            })));
+        }
+
+        this.response.redirect = this.url('domain_class');
+    }
+
+    @param('id', Types.ObjectId)
+    @param('sourceDomain', Types.String)
+    async postGetTemplates(domainId: string, id: ObjectId, sourceDomain: string) {
+        const gdoc = await ClassModel.getGroupById(domainId, id);
+        if (!gdoc) throw new NotFoundError(domainId, id);
+        const sourceDomainId = (sourceDomain || '').trim().toLowerCase();
+        if (!sourceDomainId) throw new ValidationError('sourceDomain');
+
+        await assertCourseCopyAllowed(sourceDomainId, domainId, (this as any).translate?.bind(this));
+
+        const [templates, tdocs] = await Promise.all([
+            ContestModel.getMulti(sourceDomainId, {
+                rule: 'course',
+                assign: { $elemMatch: { $eq: 'teachers' } },
+            }).sort({ title: 1 }).toArray(),
+            ContestModel.getMulti(domainId, {
+                rule: 'course',
+                assign: { $in: [gdoc.name] },
+            }).toArray(),
+        ]);
+
+        const usedTitles = new Set(tdocs.map((t) => t.title));
+        this.response.body = {
+            templates: templates
+                .filter((t) => !usedTitles.has(t.title))
+                .map((t) => ({
+                    _id: `${sourceDomainId}:${t._id}`,
+                    name: t.title,
+                    title: t.title,
+                    sourceDomainId,
+                })),
+        };
+    }
+
+    @param('id', Types.ObjectId)
+    @param('template', Types.CommaSeperatedArray)
+    async postCopy(domainId: string, id: ObjectId, templateIds: string[]) {
+        const gdoc = await ClassModel.getGroupById(domainId, id);
+        if (!gdoc) throw new NotFoundError(domainId, id);
+        const user = (this as any).user;
+
+        const intervalDays = typeof gdoc.intervalDays === 'number' && gdoc.intervalDays > 0 ? gdoc.intervalDays : 1;
+        const classBeginAt = moment.utc(gdoc.beginAt).tz(user.timeZone);
+        const classEndAt = moment.utc(gdoc.endAt).tz(this.user.timeZone);
+
+        const lastCourse = await ContestModel.getMulti(domainId, {
+            rule: 'course',
+            assign: { $in: [gdoc.name] },
+        }).sort({ beginAt: -1, _id: -1 }).limit(1).next();
+
+        let nextBaseBeginAt = lastCourse
+            ? moment.utc(lastCourse.beginAt).tz(user.timeZone).add(intervalDays, 'days')
+            : classBeginAt.clone();
+
+        const tdocs: any[] = [];
+
+        for (const templateValue of templateIds) {
+            const [sourceDomainIdRaw, templateIdRaw] = String(templateValue || '').split(':');
+            const sourceDomainId = (sourceDomainIdRaw || '').trim().toLowerCase();
+            const templateId = (templateIdRaw || '').trim();
+            if (!sourceDomainId || !templateId) continue;
+
+            await assertCourseCopyAllowed(sourceDomainId, domainId, (this as any).translate?.bind(this));
+
+            const template = await ContestModel.get(sourceDomainId, new ObjectId(templateId)) as CourseTdoc;
+            if (!template) continue;
+
+            const { title, content, dag } = template;
+            await ensureCourseTitleAvailable(domainId, title, gdoc.name, (this as any).translate?.bind(this));
+
+            const parsedDag = await parseDag(sourceDomainId, JSON.stringify(dag));
+            const sourcePids = Array.from(new Set(parsedDag.flatMap((node) => node.pids)));
+            let { mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids, (this as any).translate?.bind(this));
+            if (missing.length) {
+                await copyMissingProblemsToTarget(domainId, missing, user._id, (this as any).translate?.bind(this));
+                ({ mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids, (this as any).translate?.bind(this)));
+                if (missing.length) {
+                    const missingText = missing.map((item) => `${item.pid} -> ${item.originDomainId}:${item.originPid}`).join(', ');
+                    throw new BadRequestError(fillMessage((this as any).translate?.('Missing referenced problems in target domain: {0}') || 'Missing referenced problems in target domain: {0}', missingText));
+                }
+            }
+            const newDag = rewriteDagPids(parsedDag, mapping);
+            const allPids = Array.from(new Set(newDag.flatMap((node) => node.pids)));
+
+            const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
+
+            // 创建新课程
+            const newTid = await ContestModel.add(
+                domainId,
+                title,
+                content,
+                user._id,
+                'course',
+                beginAt.toDate(),
+                endAt.toDate(),
+                allPids,
+                false,
+                {
+                    dag: newDag,
+                    assign: [gdoc.name],
+                    maintainer: gdoc.teachers,
+                    lecture: template.lecture,
+                    files: template.files,
+                },
+            );
+
+            // 复制文件
+            if (template.files?.length) {
+                await Promise.all(template.files.map((f) => StorageModel.copy(
+                    `contest/${sourceDomainId}/${templateId}/public/${f.name}`,
+                    `contest/${domainId}/${newTid}/public/${f.name}`,
+                )));
+            }
+
+            const newTdoc = await ContestModel.get(domainId, newTid);
+            (newTdoc as any).url = this.url('course_detail', { tid: newTid });
+            tdocs.push(newTdoc);
+
+            nextBaseBeginAt = nextBaseBeginAt.clone().add(intervalDays, 'days');
+        }
+
+        this.response.body = { tdocs };
+    }
+}

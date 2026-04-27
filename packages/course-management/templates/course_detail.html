@@ -54,7 +54,8 @@
                 {% if not isTemplate %}
                   {% set hasViewPerm = handler.user.hasPerm(perm.PERM_VIEW_HOMEWORK_SCOREBOARD) %}
                   {% set tsAttend = tsdoc and tsdoc.attend %}
-                  {% set canViewScoreboard = isTeacherEditor or (tsAttend and (tdoc.publicScoreboard !== false) and hasViewPerm) %}
+                  {% set isNotStarted = model.contest.isNotStarted(tdoc) %}
+                  {% set canViewScoreboard = isTeacherEditor or (not isNotStarted and tsAttend and (tdoc.publicScoreboard !== false) and hasViewPerm) %}
                   <span style="display:none"
                     data-debug="course-scoreboard-link"
                     data-is-template="{{ isTemplate }}"

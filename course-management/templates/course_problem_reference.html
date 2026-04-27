@@ -1,0 +1,79 @@
+{% extends "layout/basic.html" %}
+{% import "components/user.html" as user with context %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">参考代码</h1>
+      </div>
+      <div class="section__body typo">
+        {% if refs.length %}
+          {% for ref in refs %}
+            <div class="section" style="margin-bottom:16px; border:1px solid #eee;" data-ref-id="{{ ref._id }}">
+              <div class="section__header" style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <h2 class="section__title" style="font-size:16px; margin:0;">{{ user.render_inline(udict[ref.owner], badge=false) }}</h2>
+                  <span style="font-size:12px; color:#666;">{{ ref._id.getTimestamp().toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) }}</span>
+                </div>
+                {% if canEdit %}
+                  <div>
+                    <button type="button" class="rounded button" onclick="toggleEdit('{{ ref._id }}')">编辑</button>
+                  </div>
+                {% endif %}
+              </div>
+              <div class="section__body typo richmedia" data-emoji-enabled>
+                {{ ref.content|markdown|safe }}
+              </div>
+              {% if canEdit %}
+                <div class="section__body" id="edit-form-{{ ref._id }}" style="border-top:1px solid #f1f1f1; display:none;">
+                  <form method="post" style="margin-bottom: 8px;">
+                    <label>
+                      编辑参考代码
+                      <textarea name="content" class="textbox" data-markdown required style="height: 160px">{{ ref.content }}</textarea>
+                    </label>
+                    <input type="hidden" name="operation" value="edit_solution">
+                    <input type="hidden" name="psid" value="{{ ref._id }}">
+                    <button type="submit" class="rounded button">更新</button>
+                  </form>
+                  <form method="post" onsubmit="return confirm('确认删除该参考代码？')">
+                    <input type="hidden" name="operation" value="delete_solution">
+                    <input type="hidden" name="psid" value="{{ ref._id }}">
+                    <button type="submit" class="rounded button">删除</button>
+                  </form>
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        {% else %}
+          <p>暂无参考代码。</p>
+        {% endif %}
+
+        {% if canEdit %}
+          <hr>
+          <form method="post">
+            <label>
+              新增参考代码
+              <textarea name="content" class="textbox" data-markdown required style="height: 180px"></textarea>
+            </label>
+            <input type="hidden" name="operation" value="submit">
+            <button type="submit" class="rounded primary button">保存</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    {% set owner_udoc = udict[tdoc.owner] %}
+    {% include "partials/problem_sidebar.html" %}
+  </div>
+</div>
+<script>
+function toggleEdit(refId) {
+  const form = document.getElementById('edit-form-' + refId);
+  if (form) {
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  }
+}
+</script>
+{% endblock %}

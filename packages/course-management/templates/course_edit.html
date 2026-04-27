@@ -59,11 +59,18 @@
                 row:false
             }) }}
             <div class="medium-4 columns"{% if isTemplate %} style="display:none"{% endif %}>
-              <label style="display: flex; align-items: center; gap: 8px; margin-top: 24px;">
-                <input type="hidden" name="publicScoreboard" value="false">
-                <input type="checkbox" name="publicScoreboard" value="true"{% if not tdoc or tdoc.publicScoreboard !== false %} checked{% endif %}>
-                <span>{{ _('Public Scoreboard') }}</span>
-              </label>
+              <div style="display: flex; gap: 24px; margin-top: 24px;">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                  <input type="hidden" name="publicScoreboard" value="false">
+                  <input type="checkbox" name="publicScoreboard" value="true"{% if not tdoc or tdoc.publicScoreboard !== false %} checked{% endif %}>
+                  <span>{{ _('Public Scoreboard') }}</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px;">
+                  <input type="hidden" name="enablePenalty" value="false">
+                  <input type="checkbox" name="enablePenalty" value="true"{% if not tdoc or tdoc.enablePenalty !== false %} checked{% endif %}>
+                  <span>{{ _('Enable Penalty') }}</span>
+                </label>
+              </div>
             </div>
           </div>
           {% if isTemplate %}

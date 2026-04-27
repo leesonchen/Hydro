@@ -1,0 +1,42 @@
+{% extends "domain_base.html" %}
+{% block domain_content %}
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title">{{ _('Classes Manage') }}</h1>
+    <div class="section__tools">
+      <a class="primary rounded button" name="create_group" href={{ url('domain_class_create')}}>{{ _('Create Class') }}</a>
+    </div>
+  </div>
+  <div class="section__body no-padding domain-group">
+    <table class="data-table">
+      <colgroup>
+        <col class="col--group">
+        <col class="col--teachers">
+        <col class="col--students">
+        <col class="col--courses">
+        <col class="col--action">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="col--group">{{ _('Class Name') }}</th>
+          <th class="col--teachers">{{ _('Teachers') }}</th>
+          <th class="col--students">{{ _('Students') }}</th>
+          <th class="col--courses">{{ _('Courses') }}</th>
+          <th class="col--action">{{ _('Action') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for gdoc in groups -%}
+        <tr data-gid="{{ gdoc._id }}">
+          <td class="col--group">{{ gdoc.name }}</td>
+          <td class="col--teachers">{{ gdoc.teachers|length }}</td>
+          <td class="col--students">{{ gdoc.students|length }}</td>
+          <td class="col--courses">{{ gdoc.courseCount|default(0) }}</td>
+          <td class="col--action"><a class="typo-a" href="{{ url('domain_class_edit', {'id': gdoc._id}) }}">{{ _('Edit') }}</a></td>
+        </tr>
+        {%- endfor -%}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
