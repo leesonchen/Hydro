@@ -4,21 +4,36 @@ import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
 import { sortFiles, Time } from '@hydrooj/utils/lib/utils';
 import {
-    ContestNotFoundError, FileLimitExceededError, FileUploadError, HomeworkNotLiveError, NotAssignedError, ValidationError,
+    ContestNotFoundError, FileLimitExceededError, FileUploadError, ForbiddenError, HomeworkNotLiveError, NotAssignedError, ValidationError,
 } from '../error';
 import { PenaltyRules, Tdoc } from '../interface';
-import { PERM } from '../model/builtin';
+import { PERM, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
 import problem from '../model/problem';
 import record from '../model/record';
+import solution from '../model/solution';
 import storage from '../model/storage';
 import system from '../model/system';
 import user from '../model/user';
+import * as document from '../model/document';
 import {
     Handler, param, post, Types,
 } from '../service/server';
 import { ContestCodeHandler, ContestFileDownloadHandler, ContestScoreboardHandler } from './contest';
+
+const REFERENCE_CODE_TITLE = '【参考代码】';
+
+function isReferenceCodeSolutionByContent(content = '') {
+    const firstLine = content.split(/\r?\n/).find((line) => line.trim());
+    if (!firstLine) return false;
+    const title = firstLine.trim().replace(/^#+\s*/, '');
+    return title.startsWith(REFERENCE_CODE_TITLE);
+}
+
+function isReferenceCodeSolution(doc: any) {
+    return doc?.title === REFERENCE_CODE_TITLE || isReferenceCodeSolutionByContent(doc?.content || '');
+}
 
 const validatePenaltyRules = (input: string) => {
     try {
@@ -306,6 +321,114 @@ export class HomeworkFilesHandler extends Handler {
     }
 }
 
+class HomeworkProblemReferenceHandler extends Handler {
+    tdoc: Tdoc;
+    pdoc: any;
+    tsdoc: any;
+    canEdit: boolean;
+
+    @param('tid', Types.ObjectId)
+    @param('pid', Types.UnsignedInt)
+    async prepare(domainId: string, tid: ObjectId, pid: number) {
+        this.tdoc = await contest.get(domainId, tid);
+        if (this.tdoc.rule !== 'homework') throw new ContestNotFoundError(domainId, tid);
+        if (this.tdoc.assign?.length && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)) {
+            if (!Set.intersection(this.tdoc.assign, this.user.group).size) {
+                throw new NotAssignedError('homework', this.tdoc.docId);
+            }
+        }
+
+        this.pdoc = await problem.get(domainId, pid);
+        if (!this.pdoc) throw new NotAssignedError('homework', this.tdoc.docId);
+        if (!this.tdoc.pids.includes(pid)) throw new NotAssignedError('homework', this.tdoc.docId);
+
+        this.tsdoc = await contest.getStatus(domainId, tid, this.user._id);
+        this.canEdit = this.user.own(this.tdoc)
+            || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+            || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+
+        const accepted = this.tsdoc?.detail?.[pid]?.status === STATUS.STATUS_ACCEPTED;
+        if (!this.canEdit && !accepted) throw new ForbiddenError('通过后才可查看参考代码。');
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('pid', Types.UnsignedInt)
+    async get(domainId: string, tid: ObjectId, pid: number) {
+        const refs = (await solution.getMulti(domainId, pid).toArray())
+            .filter((doc: any) => isReferenceCodeSolution(doc))
+            .sort((a: any, b: any) => a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime());
+        const uids = Array.from(new Set([
+            this.pdoc.owner,
+            this.tdoc.owner,
+            ...refs.map((doc: any) => doc.owner),
+        ].filter(Boolean)));
+        const udict = uids.length ? await user.getList(domainId, uids) : {};
+        this.response.template = 'homework_problem_reference.html';
+        this.response.body = {
+            page_name: 'homework_problem_reference',
+            tdoc: this.tdoc,
+            tsdoc: this.tsdoc,
+            pdoc: this.pdoc,
+            refs,
+            udict,
+            canEdit: this.canEdit,
+            canViewHomeworkReference: true,
+            canEditHomeworkReference: this.canEdit,
+            hasHomeworkReferenceCode: refs.length > 0,
+            tid,
+            pid,
+        };
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('pid', Types.UnsignedInt)
+    @param('content', Types.Content)
+    async postSubmit(domainId: string, tid: ObjectId, pid: number, content: string) {
+        if (!this.canEdit) throw new ForbiddenError('仅教师可编辑参考代码。');
+        await document.add(
+            domainId,
+            content,
+            this.user._id,
+            document.TYPE_PROBLEM_SOLUTION,
+            null,
+            document.TYPE_PROBLEM,
+            pid,
+            { reply: [], vote: 0, title: REFERENCE_CODE_TITLE },
+        );
+        this.back();
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('pid', Types.UnsignedInt)
+    @param('psid', Types.ObjectId)
+    @param('content', Types.Content)
+    async postEditSolution(domainId: string, tid: ObjectId, pid: number, psid: ObjectId, content: string) {
+        if (!this.canEdit) throw new ForbiddenError('仅教师可编辑参考代码。');
+        const psdoc = await solution.get(domainId, psid);
+        if (psdoc.parentId !== pid || !isReferenceCodeSolution(psdoc)) {
+            throw new ForbiddenError('只能编辑参考代码。');
+        }
+        await solution.edit(domainId, psid, content);
+        if (psdoc.title !== REFERENCE_CODE_TITLE) {
+            await document.set(domainId, document.TYPE_PROBLEM_SOLUTION, psid, { title: REFERENCE_CODE_TITLE } as any);
+        }
+        this.back();
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('pid', Types.UnsignedInt)
+    @param('psid', Types.ObjectId)
+    async postDeleteSolution(domainId: string, tid: ObjectId, pid: number, psid: ObjectId) {
+        if (!this.canEdit) throw new ForbiddenError('仅教师可编辑参考代码。');
+        const psdoc = await solution.get(domainId, psid);
+        if (psdoc.parentId !== pid || !isReferenceCodeSolution(psdoc)) {
+            throw new ForbiddenError('只能删除参考代码。');
+        }
+        await solution.del(domainId, psid);
+        this.back();
+    }
+}
+
 export async function apply(ctx) {
     ctx.Route('homework_main', '/homework', HomeworkMainHandler, PERM.PERM_VIEW_HOMEWORK);
     ctx.Route('homework_create', '/homework/create', HomeworkEditHandler);
@@ -314,6 +437,7 @@ export async function apply(ctx) {
     ctx.Route('homework_edit', '/homework/:tid/edit', HomeworkEditHandler);
     ctx.Route('homework_files', '/homework/:tid/file', HomeworkFilesHandler, PERM.PERM_VIEW_HOMEWORK);
     ctx.Route('homework_file_download', '/homework/:tid/file/:type/:filename', ContestFileDownloadHandler, PERM.PERM_VIEW_HOMEWORK);
+    ctx.Route('homework_problem_reference', '/homework/:tid/problem/:pid/reference', HomeworkProblemReferenceHandler, PERM.PERM_VIEW_HOMEWORK);
     await ctx.inject(['scoreboard'], ({ Route }) => {
         Route('homework_scoreboard', '/homework/:tid/scoreboard', ContestScoreboardHandler, PERM.PERM_VIEW_HOMEWORK_SCOREBOARD);
         Route('homework_scoreboard_view', '/homework/:tid/scoreboard/:view', ContestScoreboardHandler, PERM.PERM_VIEW_HOMEWORK_SCOREBOARD);

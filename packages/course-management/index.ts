@@ -235,25 +235,35 @@ export async function apply(ctx: Context, config: any) {
 
     // 题目详情页：查询关联的课程
     ctx.on('handler/after/ProblemDetail', async (handler) => {
-        // 课程内题目：注入“参考代码”可见性（教师可见；学生需通过）
+        // 课程/作业内题目：注入“参考代码”可见性（教师可见；学生需通过）
         handler.response.body.canViewCourseReference = false;
         handler.response.body.hasReferenceCode = false;
         handler.response.body.canEditCourseReference = false;
-        if (handler.tdoc?.rule === 'course') {
+        handler.response.body.canViewHomeworkReference = false;
+        handler.response.body.hasHomeworkReferenceCode = false;
+        handler.response.body.canEditHomeworkReference = false;
+        if (handler.tdoc?.rule === 'course' || handler.tdoc?.rule === 'homework') {
             const canEdit = handler.user.own(handler.tdoc)
                 || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
                 || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
             const accepted = handler.psdoc?.status === STATUS.STATUS_ACCEPTED;
-            handler.response.body.canViewCourseReference = !!(canEdit || accepted);
-            handler.response.body.canEditCourseReference = !!canEdit;
+            const REFERENCE_CODE_TITLE = '【参考代码】';
             // 检查是否存在参考代码
             const pid = handler.pdoc?.docId;
+            let hasRef = false;
             if (pid) {
                 const refs = await SolutionModel.getMulti(handler.args.domainId, pid)
                     .project({ docId: 1, title: 1 }).toArray();
-                const REFERENCE_CODE_TITLE = '【参考代码】';
-                const hasRef = refs.some((d: any) => d.title === REFERENCE_CODE_TITLE);
+                hasRef = refs.some((d: any) => d.title === REFERENCE_CODE_TITLE);
+            }
+            if (handler.tdoc.rule === 'course') {
+                handler.response.body.canViewCourseReference = !!(canEdit || accepted);
+                handler.response.body.canEditCourseReference = !!canEdit;
                 handler.response.body.hasReferenceCode = hasRef;
+            } else {
+                handler.response.body.canViewHomeworkReference = !!(canEdit || accepted);
+                handler.response.body.canEditHomeworkReference = !!canEdit;
+                handler.response.body.hasHomeworkReferenceCode = hasRef;
             }
             return;
         }
