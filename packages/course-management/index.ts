@@ -23,7 +23,7 @@ export const Config = Schema.object({
     enable: Schema.boolean().default(true),
 });
 
-export async function apply(ctx: Context, config: typeof Config) {
+export async function apply(ctx: Context, config: any) {
     // i18n 翻译
     ctx.i18n.load('zh', {
         // 页面标题

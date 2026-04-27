@@ -12,6 +12,7 @@ PUBLISH_TIMEOUT_SECONDS=300
 PUBLISH_RETRY_COUNT=3
 DEFAULT_PACKAGES=("common" "hydrooj" "ui-default" "hydrojudge")
 SELECTED_PACKAGES=()
+TS_BUILD_DONE=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -24,10 +25,84 @@ print_usage() {
     echo "用法:"
     echo "  ./build-and-publish-dev.sh [--packages pkg1,pkg2]"
     echo ""
-    echo "可选包名: common, hydrooj, ui-default, hydrojudge"
+    echo "可选包名: common, hydrooj, ui-default, hydrojudge, contest-homework-stats, course-management"
     echo "示例:"
     echo "  ./build-and-publish-dev.sh --packages hydrooj,ui-default"
     echo ""
+}
+
+# 交互选择包（支持空格分隔多选）
+interactive_select_packages() {
+    local options=("common" "hydrooj" "ui-default" "hydrojudge" "contest-homework-stats" "course-management")
+    local idx
+    local input
+
+    echo -e "${YELLOW}请选择要构建/发布的包:${NC}"
+    echo "  0) all"
+    for idx in "${!options[@]}"; do
+        echo "  $((idx + 1))) ${options[$idx]}"
+    done
+    echo "  示例: 0 或 2 3"
+    read -r -p "输入序号后回车: " input
+
+    if [ -z "$input" ]; then
+        SELECTED_PACKAGES=("${DEFAULT_PACKAGES[@]}")
+        return 0
+    fi
+
+    local picked=()
+    local token
+    for token in $input; do
+        case "$token" in
+            0)
+                SELECTED_PACKAGES=("${DEFAULT_PACKAGES[@]}")
+                return 0
+                ;;
+            1)
+                picked+=("common")
+                ;;
+            2)
+                picked+=("hydrooj")
+                ;;
+            3)
+                picked+=("ui-default")
+                ;;
+            4)
+                picked+=("hydrojudge")
+                ;;
+            5)
+                picked+=("contest-homework-stats")
+                ;;
+            6)
+                picked+=("course-management")
+                ;;
+            *)
+                echo -e "${YELLOW}忽略无效序号: ${token}${NC}"
+                ;;
+        esac
+    done
+
+    if [ ${#picked[@]} -eq 0 ]; then
+        SELECTED_PACKAGES=("${DEFAULT_PACKAGES[@]}")
+    else
+        # 去重并保持顺序
+        local p
+        local unique=()
+        for p in "${picked[@]}"; do
+            local exists=0
+            local u
+            for u in "${unique[@]}"; do
+                if [ "$u" = "$p" ]; then
+                    exists=1
+                    break
+                fi
+            done
+            if [ "$exists" -eq 0 ]; then
+                unique+=("$p")
+            fi
+        done
+        SELECTED_PACKAGES=("${unique[@]}")
+    fi
 }
 
 # 解析参数
@@ -58,28 +133,7 @@ parse_args() {
 
     if [ ${#SELECTED_PACKAGES[@]} -eq 0 ]; then
         if [ -t 0 ]; then
-            echo -e "${YELLOW}请选择要构建/发布的包 (空格分隔，可多选)：${NC}"
-            local options=("all" "common" "hydrooj" "ui-default" "hydrojudge")
-            local selections=()
-            PS3="输入序号 (例如 1 2 3)，然后回车: "
-            select opt in "${options[@]}"; do
-                if [ -z "${opt:-}" ]; then
-                    echo -e "${YELLOW}无效选择，请重试${NC}"
-                    continue
-                fi
-                if [ "$opt" = "all" ]; then
-                    selections=("${DEFAULT_PACKAGES[@]}")
-                    break
-                fi
-                selections+=("$opt")
-                echo -e "${YELLOW}已选择: ${selections[*]} (继续选或按 Ctrl+D 完成)${NC}"
-            done
-
-            if [ ${#selections[@]} -gt 0 ]; then
-                SELECTED_PACKAGES=("${selections[@]}")
-            else
-                SELECTED_PACKAGES=("${DEFAULT_PACKAGES[@]}")
-            fi
+            interactive_select_packages
         else
             SELECTED_PACKAGES=("${DEFAULT_PACKAGES[@]}")
         fi
@@ -98,32 +152,7 @@ is_selected() {
     return 1
 }
 
-# 判断 package.json 是否存在某脚本
-has_script() {
-    local package_path="$1"
-    local script_name="$2"
-    node -e "const p=require('${package_path}/package.json');process.exit(p.scripts&&p.scripts['${script_name}']?0:1)" >/dev/null 2>&1
-}
-
-# 获取可用的 build 脚本名
-get_build_script() {
-    local package_path="$1"
-    if has_script "$package_path" "build"; then
-        echo "build"
-        return 0
-    fi
-    if has_script "$package_path" "build:prod"; then
-        echo "build:prod"
-        return 0
-    fi
-    if has_script "$package_path" "build:release"; then
-        echo "build:release"
-        return 0
-    fi
-    echo ""
-}
-
-# 构建单个包（如果存在 build 脚本）
+# 构建单个包
 build_package() {
     local package_name="$1"
     local package_path="$2"
@@ -133,17 +162,30 @@ build_package() {
         return 1
     fi
 
-    local build_script
-    build_script=$(get_build_script "$package_path")
-    if [ -z "$build_script" ]; then
-        echo -e "  ${YELLOW}跳过构建: ${package_name} (未找到 build 脚本)${NC}"
+    if [ "$package_name" = "@hydrooj/ui-default" ]; then
+        echo -e "  正在构建: ${package_name} (yarn run build:ui)"
+        cd "$SCRIPT_DIR"
+        yarn run build:ui
+        if ! ls "$SCRIPT_DIR/packages/ui-default/public"/theme-*.css >/dev/null 2>&1; then
+            echo -e "${RED}错误: ui-default 构建后未找到 theme-*.css${NC}"
+            return 1
+        fi
+        if ! ls "$SCRIPT_DIR/packages/ui-default/public"/hydro-*.js >/dev/null 2>&1; then
+            echo -e "${RED}错误: ui-default 构建后未找到 hydro-*.js${NC}"
+            return 1
+        fi
         return 0
     fi
 
-    echo -e "  正在构建: ${package_name} (yarn run ${build_script})"
-    cd "$package_path"
-    yarn run "$build_script"
-    cd "$SCRIPT_DIR"
+    # hydrooj/hydrojudge/common 统一走一次根目录 TypeScript 构建
+    if [ "$TS_BUILD_DONE" -eq 0 ]; then
+        echo -e "  正在构建: ${package_name} (yarn run build)"
+        cd "$SCRIPT_DIR"
+        yarn run build
+        TS_BUILD_DONE=1
+    else
+        echo -e "  ${YELLOW}已完成 TS 构建，跳过重复构建: ${package_name}${NC}"
+    fi
 }
 
 # 检查必要工具
@@ -170,7 +212,7 @@ check_tools() {
 
 # 配置 npm registry
 setup_registry() {
-    echo -e "${YELLOW}2. 配置 npm 仓库地址...${NC}"
+    echo -e "${YELLOW}3. 配置 npm 仓库地址...${NC}"
     npm config set registry https://npm.leeson.top/
     yarn config set registry https://npm.leeson.top/
 
@@ -178,7 +220,20 @@ setup_registry() {
     npm config set fetch-timeout 600000
     npm config set fetch-retry-maxtimeout 300000
 
-    echo -e "${GREEN}✓ npm 仓库配置完成${NC}"
+    echo -e "${GREEN}✓ npm 仓库配置完成（仅用于发布）${NC}"
+    echo ""
+}
+
+# 安装依赖
+install_deps() {
+    echo -e "${YELLOW}2. 安装依赖...${NC}"
+    cd "$SCRIPT_DIR"
+    if [ ! -d "node_modules" ]; then
+        yarn install --frozen-lockfile 2>/dev/null || yarn install
+    else
+        echo -e "  node_modules 已存在，跳过安装（如需重装请手动删除 node_modules 后重跑）"
+    fi
+    echo -e "${GREEN}✓ 依赖安装完成${NC}"
     echo ""
 }
 
@@ -379,9 +434,10 @@ publish_package() {
 main() {
     parse_args "$@"
     check_tools
+    install_deps
     setup_registry
 
-    echo -e "${YELLOW}3. 开始构建...${NC}"
+    echo -e "${YELLOW}4. 开始构建...${NC}"
     echo ""
 
     if is_selected "common"; then
@@ -399,9 +455,15 @@ main() {
     if is_selected "hydrojudge"; then
         build_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge"
     fi
+    if is_selected "contest-homework-stats"; then
+        build_package "@hydrooj/contest-homework-stats" "$SCRIPT_DIR/packages/contest-homework-stats"
+    fi
+    if is_selected "course-management"; then
+        build_package "@hydrooj/course-management" "$SCRIPT_DIR/packages/course-management"
+    fi
 
     echo ""
-    echo -e "${YELLOW}4. 开始打包和发布...${NC}"
+    echo -e "${YELLOW}5. 开始打包和发布...${NC}"
     echo ""
 
     # 先发布依赖包（不递增版本，使用固定版本）
@@ -434,6 +496,12 @@ main() {
     if is_selected "hydrojudge"; then
         publish_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge" "hydrojudge-dev.tgz"
     fi
+    if is_selected "contest-homework-stats"; then
+        publish_package "@hydrooj/contest-homework-stats" "$SCRIPT_DIR/packages/contest-homework-stats" "contest-homework-stats-dev.tgz"
+    fi
+    if is_selected "course-management"; then
+        publish_package "@hydrooj/course-management" "$SCRIPT_DIR/packages/course-management" "course-management-dev.tgz"
+    fi
 
     echo -e "${GREEN}=== 所有包发布完成 ===${NC}"
     echo ""
@@ -449,6 +517,12 @@ main() {
     fi
     if is_selected "hydrojudge"; then
         echo -e "  - @hydrooj/hydrojudge@$(get_current_version "$SCRIPT_DIR/packages/hydrojudge")"
+    fi
+    if is_selected "contest-homework-stats"; then
+        echo -e "  - @hydrooj/contest-homework-stats@$(get_current_version "$SCRIPT_DIR/packages/contest-homework-stats")"
+    fi
+    if is_selected "course-management"; then
+        echo -e "  - @hydrooj/course-management@$(get_current_version "$SCRIPT_DIR/packages/course-management")"
     fi
     echo ""
     echo -e "安装命令:"

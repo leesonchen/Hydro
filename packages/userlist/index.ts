@@ -14,7 +14,7 @@ export const Config = Schema.object({
     banMode: Schema.union(['allPrivilege', 'noLogin']).default('allPrivilege'),
 });
 
-export async function apply(ctx: Context, config: typeof Config) {
+export async function apply(ctx: Context, config: any) {
     // 加载中文翻译
     ctx.i18n.load('zh', {
         'User List': '用户列表',

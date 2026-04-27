@@ -289,7 +289,14 @@ export interface Tdoc extends Document {
 
     // For training
     description?: string;
-    dag?: TrainingNode[];
+    dag?: TrainingNode[] | any[];
+
+    // For course
+    lecture?: Record<number, string>;
+    editor?: number;
+    updateAt?: Date;
+    extraStudents?: number[];
+    publicScoreboard?: boolean;
 }
 
 export interface TrainingDoc extends Omit<Tdoc, 'docType'> {
@@ -417,6 +424,7 @@ export interface ContestStat extends Record<string, any> {
 }
 
 export interface ScoreboardConfig {
+    id?: number;
     isExport: boolean;
     showDisplayName: boolean;
     lockAt?: Date;
@@ -617,6 +625,7 @@ export interface ProblemSearchResponse {
 export interface ProblemSearchOptions {
     limit?: number;
     skip?: number;
+    scope?: string;
 }
 
 export type ProblemSearch = (domainId: string, q: string, options?: ProblemSearchOptions) => Promise<ProblemSearchResponse>;

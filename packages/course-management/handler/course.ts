@@ -1549,7 +1549,7 @@ export class CourseScoreboardHandler extends Handler {
 
         const exporters: Record<string, (rows: any[], tdoc: any) => Promise<string>> = {
             csv: async (rows) => `\uFEFF${rows.map((row) => row.map((cell: any) => cell.value?.toString().replace(/\n/g, ' ')).join(',')).join('\n')}`,
-            html: (rows, doc) => this.renderHTML('contest_scoreboard_download_html.html', { rows, tdoc: doc }),
+            html: async (rows, doc) => this.renderHTML('contest_scoreboard_download_html.html', { rows, tdoc: doc }) as any as Promise<string>,
         };
 
         const pids = id ? (tdoc.dag.find((n) => n._id === id)?.pids || []) : [];

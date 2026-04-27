@@ -83,7 +83,7 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
     submitAfterAccept: false,
     statusSort: { score: -1, accept: -1, time: 1 },
 
-    stat(tdoc: CourseTdoc, journal: CourseJournal[]) {
+    stat(tdoc: CourseTdoc, journal: CourseJournal[]): any {
         const naccept = Counter<number>();
         const detail: Record<number, CourseDetail> = {};
 
@@ -302,7 +302,7 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
         ];
     },
 
-    async ranked(config, tsdocs) {
+    async ranked(config: any, tsdocs: any) {
         const calcNaccept = (tsdoc: any) => {
             let total = 0;
             const detail = tsdoc.detail || {};
@@ -320,8 +320,8 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
             return last || Number.POSITIVE_INFINITY;
         };
         return await ranked(tsdocs, (a: any, b: any) => {
-            const as = a.score?.[config.id] || 0;
-            const bs = b.score?.[config.id] || 0;
+            const as = (a as any).score?.[config.id] || 0;
+            const bs = (b as any).score?.[config.id] || 0;
             return as === bs
                 && calcNaccept(a) === calcNaccept(b);
         });

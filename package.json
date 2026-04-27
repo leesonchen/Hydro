@@ -35,8 +35,10 @@
         "@types/autocannon": "^7.12.7",
         "@types/chai": "^5.2.3",
         "@types/cross-spawn": "^6.0.6",
+        "@types/minimatch": "5",
         "@types/node": "24.10.13",
         "@types/semver": "^7.7.1",
+        "@types/uuid": "9",
         "autocannon": "^8.0.0",
         "cac": "^6.7.14",
         "chai": "^6.2.2",
@@ -64,6 +66,8 @@
     },
     "resolutions": {
         "mongodb": "^7.0.0",
+        "pickadate": "3.6.4",
         "@types/express-serve-static-core": "patch:@types/express-serve-static-core@npm%3A4.19.6#~/.yarn/patches/@types-express-serve-static-core-npm-4.19.6-cc0017aaf4.patch"
-    }
+    },
+    "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

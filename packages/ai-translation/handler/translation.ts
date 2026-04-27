@@ -1,6 +1,4 @@
-import { Context, Handler, param, post, route, Types } from 'hydrooj';
-import { ProblemNotFoundError, ValidationError } from 'hydrooj';
-import problem from 'hydrooj/dist/model/problem';
+import { Handler, ProblemModel as problem, ProblemNotFoundError, param, route, Types } from 'hydrooj';
 import { TranslationService } from '../service/translation';
 
 export class ProblemTranslationHandler extends Handler {

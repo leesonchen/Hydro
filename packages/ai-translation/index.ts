@@ -17,7 +17,7 @@ export const Config = Schema.object({
     cacheHours: Schema.number().default(24),
 });
 
-export async function apply(ctx: Context, config: typeof Config) {
+export async function apply(ctx: Context, config: any) {
     if (!config.enabled) return;
 
     // 注册翻译服务
