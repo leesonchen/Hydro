@@ -937,7 +937,7 @@ export class ProblemSolutionHandler extends ProblemDetailHandler {
     async get(domainId: string, page = 1, tid?: ObjectId, sid?: ObjectId) {
         this.response.template = 'problem_solution.html';
         const accepted = tid
-            ? this.tsdoc?.detail?.[this.pdoc.docId]?.status === STATUS.STATUS_ACCEPTED
+            ? this.tsdoc?.detail?.[String(this.pdoc.docId)]?.status === STATUS.STATUS_ACCEPTED
             : this.psdoc?.status === STATUS.STATUS_ACCEPTED;
         if (!accepted || !this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_SOLUTION_ACCEPT)) {
             this.checkPerm(PERM.PERM_VIEW_PROBLEM_SOLUTION);

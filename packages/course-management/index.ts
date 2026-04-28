@@ -243,18 +243,20 @@ export async function apply(ctx: Context, config: any) {
 
     // 题目详情页：查询关联的课程
     ctx.on('handler/after/ProblemDetail', async (handler) => {
-        // 课程/作业内题目：注入“参考代码”可见性（教师可见；学生需通过）
+        // 课程/作业内题目：注入"参考代码"可见性（教师可见；学生需通过）
         handler.response.body.canViewCourseReference = false;
         handler.response.body.hasReferenceCode = false;
         handler.response.body.canEditCourseReference = false;
         handler.response.body.canViewHomeworkReference = false;
         handler.response.body.hasHomeworkReferenceCode = false;
         handler.response.body.canEditHomeworkReference = false;
+        // 题解可见性（与参考代码使用相同的 AC 判断逻辑）
+        handler.response.body.canViewSolution = false;
         if (handler.tdoc?.rule === 'course' || handler.tdoc?.rule === 'homework') {
             const canEdit = handler.user.own(handler.tdoc)
                 || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
                 || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
-            const accepted = handler.psdoc?.status === STATUS.STATUS_ACCEPTED;
+            const accepted = handler.tsdoc?.detail?.[String(handler.pdoc?.docId)]?.status === STATUS.STATUS_ACCEPTED;
             const REFERENCE_CODE_TITLE = '【参考代码】';
             // 检查是否存在参考代码
             const pid = handler.pdoc?.docId;
@@ -273,6 +275,9 @@ export async function apply(ctx: Context, config: any) {
                 handler.response.body.canEditHomeworkReference = !!canEdit;
                 handler.response.body.hasHomeworkReferenceCode = hasRef;
             }
+            // 题解可见性：使用课程/作业内 AC 状态（tsdoc.detail）
+            handler.response.body.canViewSolution = handler.user.hasPerm(PERM.PERM_VIEW_PROBLEM_SOLUTION)
+                || (handler.user.hasPerm(PERM.PERM_VIEW_PROBLEM_SOLUTION_ACCEPT) && accepted);
             return;
         }
         // 只在非课程/作业/比赛模式下查询（即普通题目详情页）

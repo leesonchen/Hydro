@@ -75,13 +75,10 @@
         <span class="icon icon-flag"></span> {{ _('My Recent Submissions') }}
       </a></li>
     {% endif %}
-    {% if pdoc %}
-    {% set _canViewSolution = handler.user.hasPerm(perm.PERM_VIEW_PROBLEM_SOLUTION) or (handler.user.hasPerm(perm.PERM_VIEW_PROBLEM_SOLUTION_ACCEPT) and tsdoc.detail and tsdoc.detail[pdoc.docId] and tsdoc.detail[pdoc.docId].status == STATUS.STATUS_ACCEPTED) %}
-    {% if _canViewSolution %}
+    {% if pdoc and canViewSolution %}
       <li class="menu__item"><a class="menu__link{% if page_name == 'problem_solution' %} active{% endif %}" href="{{ url('problem_solution', pid=pdoc.pid|default(pdoc.docId), query={tid:tdoc.docId}) }}">
         <span class="icon icon-comment--text"></span> {{ _('Solutions') }}
       </a></li>
-    {% endif %}
     {% endif %}
       {# 全部隐藏帮助 #}
       <li class="menu__seperator"></li>
