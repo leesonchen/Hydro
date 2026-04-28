@@ -43,7 +43,7 @@
     </div>
     {% if sid %}
       <div class="section">
-        <a href="{{ url('problem_solution', pid=pdoc.pid|default(pdoc.docId)) }}" class="menu__link" style="width: 100%">{{ _('View all {0} solutions').format(pscount) }}</a>
+        <a href="{{ url('problem_solution', pid=pdoc.pid|default(pdoc.docId), query=tdoc and {tid:tdoc.docId} or {}) }}" class="menu__link" style="width: 100%">{{ _('View all {0} solutions').format(pscount) }}</a>
       </div>
     {% endif %}
   </div>

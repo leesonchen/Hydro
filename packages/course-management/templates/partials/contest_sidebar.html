@@ -110,6 +110,14 @@
         <span class="icon icon-comment--text"></span> {{ hasReferenceCode and _('Reference Code') or _('Create Reference Code') }}
       </a></li>
     {% endif %}
+    {% if tdoc.rule == 'course' and pdoc %}
+    {% set _canViewSolution = handler.user.hasPerm(perm.PERM_VIEW_PROBLEM_SOLUTION) or (handler.user.hasPerm(perm.PERM_VIEW_PROBLEM_SOLUTION_ACCEPT) and tsdoc.detail and tsdoc.detail[pdoc.docId] and tsdoc.detail[pdoc.docId].status == STATUS.STATUS_ACCEPTED) %}
+    {% if _canViewSolution %}
+      <li class="menu__item"><a class="menu__link{% if page_name == 'problem_solution' %} active{% endif %}" href="{{ url('problem_solution', pid=pdoc.pid|default(pdoc.docId), query={tid:tdoc.docId}) }}">
+        <span class="icon icon-comment--text"></span> {{ _('Solutions') }}
+      </a></li>
+    {% endif %}
+    {% endif %}
     {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={tid:tdoc.docId}) }}">
         <span class="icon icon-flag"></span> {{ _('All Submissions') }}

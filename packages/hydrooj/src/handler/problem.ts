@@ -445,7 +445,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             user.getById(domainId, this.pdoc.owner),
         ]);
         const [scnt, dcnt] = await Promise.all([
-            solution.count(domainId, { parentId: this.pdoc.docId }),
+            solution.count(domainId, { parentId: this.pdoc.docId, title: { $ne: '【参考代码】' } }),
             discussion.count(domainId, { parentId: this.pdoc.docId }),
         ]);
         this.response.body = {
@@ -935,15 +935,16 @@ export class ProblemSolutionHandler extends ProblemDetailHandler {
     @param('tid', Types.ObjectId, true)
     @param('sid', Types.ObjectId, true)
     async get(domainId: string, page = 1, tid?: ObjectId, sid?: ObjectId) {
-        if (tid) throw new PermissionError(PERM.PERM_VIEW_PROBLEM_SOLUTION);
         this.response.template = 'problem_solution.html';
-        const accepted = this.psdoc?.status === STATUS.STATUS_ACCEPTED;
+        const accepted = tid
+            ? this.tsdoc?.detail?.[this.pdoc.docId]?.status === STATUS.STATUS_ACCEPTED
+            : this.psdoc?.status === STATUS.STATUS_ACCEPTED;
         if (!accepted || !this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_SOLUTION_ACCEPT)) {
             this.checkPerm(PERM.PERM_VIEW_PROBLEM_SOLUTION);
         }
 
         let [psdocs, pcount, pscount] = await this.paginate(
-            solution.getMulti(domainId, this.pdoc.docId),
+            solution.getMulti(domainId, this.pdoc.docId, { title: { $ne: '【参考代码】' } }),
             page,
             'solution',
         );

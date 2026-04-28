@@ -233,6 +233,14 @@ export async function apply(ctx: Context, config: any) {
         }
     });
 
+    // 题解题面：注入 tdoc/tsdoc，使模板可附加 tid 参数
+    ctx.on('handler/after/ProblemSolution#get', async (handler) => {
+        if (handler.tdoc) {
+            handler.response.body.tdoc = handler.tdoc;
+            handler.response.body.tsdoc = handler.tsdoc;
+        }
+    });
+
     // 题目详情页：查询关联的课程
     ctx.on('handler/after/ProblemDetail', async (handler) => {
         // 课程/作业内题目：注入“参考代码”可见性（教师可见；学生需通过）

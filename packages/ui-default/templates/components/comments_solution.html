@@ -80,7 +80,7 @@
 {% endif %}
 {%- for doc in docs -%}
   {% set udoc = udict[doc.owner] %}
-  <li class="dczcomments__item">
+  <li class="dczcomments__item" data-title="{{ doc.title|default('') }}">
   <div class="media">
     <div class="media__left top">
       <div class="vote vote--discussion">
@@ -103,7 +103,7 @@
         </div>
         <div class="dczcomments__operations nojs--hide">
         {% if pdoc %}
-          <a href="javascript:;" data-tooltip="{{ _('Copy Link') }}" data-copylink="{{ url('problem_solution_detail', pid=pdoc.pid|default(pdoc.docId), sid=doc._id) }}">
+          <a href="javascript:;" data-tooltip="{{ _('Copy Link') }}" data-copylink="{{ url('problem_solution_detail', pid=pdoc.pid|default(pdoc.docId), sid=doc._id, query=tdoc and {tid:tdoc.docId} or {}) }}">
             <span class="icon icon-link"></span>
           </a>
         {% endif %}
