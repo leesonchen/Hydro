@@ -68,6 +68,7 @@ export async function apply(ctx: Context, config: any) {
         'Course Status': '课程状态',
         'Reference Code': '参考代码',
         'Create Reference Code': '创建参考代码',
+        'Exclude hidden problems': '不看隐藏题目',
         'This course is not live.': '此课程尚未开始。',
         "You haven't joined this course yet.": '你尚未进入此课程。',
         'This problem is not available yet.': '该题目尚未开放。',
@@ -137,6 +138,7 @@ export async function apply(ctx: Context, config: any) {
         'Course Status': 'Course Status',
         'Reference Code': 'Reference Code',
         'Create Reference Code': 'Create Reference Code',
+        'Exclude hidden problems': 'Exclude hidden problems',
         'This course is not live.': 'This course is not live.',
         "You haven't joined this course yet.": "You haven't joined this course yet.",
         'This problem is not available yet.': 'This problem is not available yet.',
@@ -233,11 +235,19 @@ export async function apply(ctx: Context, config: any) {
         }
     });
 
+    ctx.on('problem/list', async (query: any, handler: any) => {
+        if (!handler.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN)) return;
+        const hideHidden = handler.request.query?.hideHidden === 'true';
+        if (hideHidden) query.hidden = false;
+    });
+
     // 题解题面：注入 tdoc/tsdoc，使模板可附加 tid 参数
     ctx.on('handler/after/ProblemSolution#get', async (handler) => {
         if (handler.tdoc) {
             handler.response.body.tdoc = handler.tdoc;
             handler.response.body.tsdoc = handler.tsdoc;
+            handler.response.body.canViewSolution = true;
+            handler.response.body.solutionCount = handler.response.body.pscount;
         }
     });
 

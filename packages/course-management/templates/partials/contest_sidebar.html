@@ -112,7 +112,7 @@
     {% endif %}
     {% if tdoc.rule == 'course' and pdoc and canViewSolution %}
       <li class="menu__item"><a class="menu__link{% if page_name == 'problem_solution' %} active{% endif %}" href="{{ url('problem_solution', pid=pdoc.pid|default(pdoc.docId), query={tid:tdoc.docId}) }}">
-        <span class="icon icon-comment--text"></span> {{ _('Solutions') }}
+        <span class="icon icon-comment--text"></span> {{ _('Solutions') }}{% if solutionCount !== undefined %} ({{ solutionCount }}){% endif %}
       </a></li>
     {% endif %}
     {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}

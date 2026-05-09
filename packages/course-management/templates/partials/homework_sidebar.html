@@ -77,7 +77,7 @@
     {% endif %}
     {% if pdoc and canViewSolution %}
       <li class="menu__item"><a class="menu__link{% if page_name == 'problem_solution' %} active{% endif %}" href="{{ url('problem_solution', pid=pdoc.pid|default(pdoc.docId), query={tid:tdoc.docId}) }}">
-        <span class="icon icon-comment--text"></span> {{ _('Solutions') }}
+        <span class="icon icon-comment--text"></span> {{ _('Solutions') }}{% if solutionCount !== undefined %} ({{ solutionCount }}){% endif %}
       </a></li>
     {% endif %}
       {# 全部隐藏帮助 #}
