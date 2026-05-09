@@ -10,12 +10,22 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 PUBLISH_TIMEOUT_SECONDS=300
 PUBLISH_RETRY_COUNT=3
+NPM_REGISTRY="${NPM_REGISTRY:-https://npm.leeson.top/}"
 DEFAULT_PACKAGES=("common" "hydrooj" "ui-default" "hydrojudge")
 SELECTED_PACKAGES=()
-TS_BUILD_DONE=0
+TS_PREPARE_DONE=0
+BUILT_TS_CONFIGS=()
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+
+# Docker/Nix 环境中非 login shell 可能没有加载 npm/yarn 所在目录。
+for path_entry in "$HOME/.nix-profile/bin" /nix/var/nix/profiles/default/bin /usr/local/bin; do
+    if [ -d "$path_entry" ] && [[ ":$PATH:" != *":$path_entry:"* ]]; then
+        PATH="$path_entry:$PATH"
+    fi
+done
+export PATH
 
 echo -e "${GREEN}=== Hydro 开发版本打包发布脚本 ===${NC}"
 echo ""
@@ -152,6 +162,36 @@ is_selected() {
     return 1
 }
 
+# 构建单个 TypeScript 包。不要构建根 tsconfig，否则未选中的插件类型错误会阻塞发布。
+build_ts_package() {
+    local package_name="$1"
+    local package_path="$2"
+    local tsconfig="$package_path/tsconfig.json"
+
+    if [ ! -f "$tsconfig" ]; then
+        echo -e "  ${YELLOW}未找到 tsconfig，跳过 TS 构建: ${package_name}${NC}"
+        return 0
+    fi
+
+    local built
+    for built in "${BUILT_TS_CONFIGS[@]}"; do
+        if [ "$built" = "$tsconfig" ]; then
+            echo -e "  ${YELLOW}已完成 TS 构建，跳过重复构建: ${package_name}${NC}"
+            return 0
+        fi
+    done
+
+    cd "$SCRIPT_DIR"
+    if [ "$TS_PREPARE_DONE" -eq 0 ]; then
+        node build/prepare.js
+        TS_PREPARE_DONE=1
+    fi
+
+    echo -e "  正在构建: ${package_name} (tsc -b ${tsconfig#$SCRIPT_DIR/})"
+    ./node_modules/.bin/tsc -b --verbose "$tsconfig"
+    BUILT_TS_CONFIGS+=("$tsconfig")
+}
+
 # 构建单个包
 build_package() {
     local package_name="$1"
@@ -177,15 +217,7 @@ build_package() {
         return 0
     fi
 
-    # hydrooj/hydrojudge/common 统一走一次根目录 TypeScript 构建
-    if [ "$TS_BUILD_DONE" -eq 0 ]; then
-        echo -e "  正在构建: ${package_name} (yarn run build)"
-        cd "$SCRIPT_DIR"
-        yarn run build
-        TS_BUILD_DONE=1
-    else
-        echo -e "  ${YELLOW}已完成 TS 构建，跳过重复构建: ${package_name}${NC}"
-    fi
+    build_ts_package "$package_name" "$package_path"
 }
 
 # 检查必要工具
@@ -213,8 +245,8 @@ check_tools() {
 # 配置 npm registry
 setup_registry() {
     echo -e "${YELLOW}3. 配置 npm 仓库地址...${NC}"
-    npm config set registry https://npm.leeson.top/
-    yarn config set registry https://npm.leeson.top/
+    npm config set registry "$NPM_REGISTRY"
+    yarn config set registry "$NPM_REGISTRY"
 
     # 增加超时时间
     npm config set fetch-timeout 600000
@@ -261,6 +293,31 @@ increment_version() {
     fi
 }
 
+# 基于本地版本和远端 dev dist-tag 计算下一个 dev 版本，避免本地版本落后时把 dev tag 回退。
+next_dev_version() {
+    local package_name="$1"
+    local current_version="$2"
+    local candidate
+    candidate=$(increment_version "$current_version")
+
+    local base="${current_version}"
+    local current_num=0
+    if [[ "$current_version" =~ ^(.+)-dev\.([0-9]+)$ ]]; then
+        base="${BASH_REMATCH[1]}"
+        current_num="${BASH_REMATCH[2]}"
+    fi
+
+    local remote_version=""
+    remote_version=$(npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true)
+    if [[ "$remote_version" =~ ^(.+)-dev\.([0-9]+)$ ]] && [ "${BASH_REMATCH[1]}" = "$base" ]; then
+        local remote_num="${BASH_REMATCH[2]}"
+        local next_num=$((current_num > remote_num ? current_num + 1 : remote_num + 1))
+        candidate="${base}-dev.${next_num}"
+    fi
+
+    echo "$candidate"
+}
+
 # 为 ui-default 生成与完整版本号一致的静态资源别名（并控制别名数量）
 prepare_ui_asset_aliases() {
     local package_path="$1"
@@ -278,20 +335,36 @@ prepare_ui_asset_aliases() {
     local target_theme="$public_dir/theme-${full_version}.css"
     local target_hydro="$public_dir/hydro-${full_version}.js"
 
+    if [ ! -f "$source_theme" ]; then
+        source_theme=$(find "$public_dir" -maxdepth 1 -type f -name "theme-${base_version}-dev.*.css" | sort -V | tail -1)
+    fi
+    if [ ! -f "$source_hydro" ]; then
+        source_hydro=$(find "$public_dir" -maxdepth 1 -type f -name "hydro-${base_version}-dev.*.js" | sort -V | tail -1)
+    fi
+
+    local source_theme_name=""
+    local source_hydro_name=""
+    if [ -n "$source_theme" ]; then
+        source_theme_name=$(basename "$source_theme")
+    fi
+    if [ -n "$source_hydro" ]; then
+        source_hydro_name=$(basename "$source_hydro")
+    fi
+
     # 先清理同基础版本的历史 dev 别名，避免包体逐次膨胀
-    find "$public_dir" -maxdepth 1 -type f -name "theme-${base_version}-dev.*.css" ! -name "theme-${full_version}.css" -delete 2>/dev/null || true
-    find "$public_dir" -maxdepth 1 -type f -name "hydro-${base_version}-dev.*.js" ! -name "hydro-${full_version}.js" -delete 2>/dev/null || true
+    find "$public_dir" -maxdepth 1 -type f -name "theme-${base_version}-dev.*.css" ! -name "theme-${full_version}.css" ! -name "$source_theme_name" -delete 2>/dev/null || true
+    find "$public_dir" -maxdepth 1 -type f -name "hydro-${base_version}-dev.*.js" ! -name "hydro-${full_version}.js" ! -name "$source_hydro_name" -delete 2>/dev/null || true
 
     UI_ALIAS_THEME_CREATED=0
     UI_ALIAS_HYDRO_CREATED=0
     UI_ALIAS_THEME_PATH="$target_theme"
     UI_ALIAS_HYDRO_PATH="$target_hydro"
 
-    if [ -f "$source_theme" ] && [ ! -f "$target_theme" ]; then
+    if [ -n "$source_theme" ] && [ -f "$source_theme" ] && [ ! -f "$target_theme" ]; then
         cp -f "$source_theme" "$target_theme"
         UI_ALIAS_THEME_CREATED=1
     fi
-    if [ -f "$source_hydro" ] && [ ! -f "$target_hydro" ]; then
+    if [ -n "$source_hydro" ] && [ -f "$source_hydro" ] && [ ! -f "$target_hydro" ]; then
         cp -f "$source_hydro" "$target_hydro"
         UI_ALIAS_HYDRO_CREATED=1
     fi
@@ -345,7 +418,7 @@ publish_package() {
 
     # 获取当前版本并递增
     local current_version=$(get_current_version "$package_path")
-    local new_version=$(increment_version "$current_version")
+    local new_version=$(next_dev_version "$package_name" "$current_version")
 
     echo -e "  版本: $current_version -> $new_version"
 
@@ -389,10 +462,10 @@ publish_package() {
         echo -e "  发布尝试 ${attempt}/${PUBLISH_RETRY_COUNT}..."
         rm -f "$log_file"
         if command -v timeout > /dev/null 2>&1; then
-            timeout "$PUBLISH_TIMEOUT_SECONDS" npm publish --registry https://npm.leeson.top/ --tag dev 2>&1 | tee "$log_file"
+            timeout "$PUBLISH_TIMEOUT_SECONDS" npm publish --registry "$NPM_REGISTRY" --tag dev 2>&1 | tee "$log_file"
             local status=${PIPESTATUS[0]}
         else
-            npm publish --registry https://npm.leeson.top/ --tag dev 2>&1 | tee "$log_file"
+            npm publish --registry "$NPM_REGISTRY" --tag dev 2>&1 | tee "$log_file"
             local status=${PIPESTATUS[0]}
         fi
 
@@ -418,6 +491,12 @@ publish_package() {
         echo -e "${GREEN}✓ ${package_name}@${new_version} 发布成功${NC}"
     else
         echo -e "${YELLOW}⚠ ${package_name} 发布失败，详情日志: ${log_file}${NC}"
+        if [ "$package_name" = "@hydrooj/ui-default" ]; then
+            cleanup_ui_asset_aliases
+        fi
+        cd "$SCRIPT_DIR"
+        rm -rf /tmp/publish-temp
+        return 1
     fi
 
     if [ "$package_name" = "@hydrooj/ui-default" ]; then
@@ -476,7 +555,7 @@ main() {
         cd /tmp && rm -rf publish-temp && mkdir -p publish-temp && cd publish-temp
         tar -xzf "$SCRIPT_DIR/packages/common/common.tgz"
         cd package
-        npm publish --registry https://npm.leeson.top/ > /dev/null 2>&1 || echo -e "${YELLOW}  (可能已存在)${NC}"
+        npm publish --registry "$NPM_REGISTRY" > /dev/null 2>&1 || echo -e "${YELLOW}  (可能已存在)${NC}"
         cd "$SCRIPT_DIR"
         rm -rf /tmp/publish-temp
         echo ""

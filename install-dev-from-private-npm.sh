@@ -8,9 +8,20 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+NPM_REGISTRY="${NPM_REGISTRY:-https://npm.leeson.top/}"
+HYDRO_HOME="${HYDRO_HOME:-$HOME/.hydro}"
+SERVICE_VERIFY_DELAY_SECONDS="${SERVICE_VERIFY_DELAY_SECONDS:-5}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd /tmp  # 切换到非 workspace 目录
+
+# Docker/Nix 环境中非 login shell 可能没有加载 npm/yarn/pm2 所在目录。
+for path_entry in "$HOME/.nix-profile/bin" /nix/var/nix/profiles/default/bin /usr/local/bin; do
+    if [ -d "$path_entry" ] && [[ ":$PATH:" != *":$path_entry:"* ]]; then
+        PATH="$path_entry:$PATH"
+    fi
+done
+export PATH
 
 echo -e "${GREEN}=== Hydro 开发版本安装/更新脚本 ===${NC}"
 echo ""
@@ -63,8 +74,8 @@ check_node_version() {
 # 配置 npm registry
 setup_registry() {
     echo -e "${YELLOW}3. 配置 npm 仓库地址...${NC}"
-    npm config set registry https://npm.leeson.top/
-    yarn config set registry https://npm.leeson.top/
+    npm config set registry "$NPM_REGISTRY"
+    yarn config set registry "$NPM_REGISTRY"
 
     # 清除可能的 yarnrc，避免冲突
     rm -f ~/.yarnrc 2>/dev/null || true
@@ -113,20 +124,33 @@ clear_old_versions() {
 }
 
 # 安装包
+install_global_package() {
+    local package_spec="$1"
+    local safe_package_spec
+    safe_package_spec=$(echo "$package_spec" | tr '/@:' '___')
+    local log_file="/tmp/install-${safe_package_spec}.log"
+
+    echo -e "正在安装 ${package_spec}..."
+    rm -f "$log_file"
+    npm install -g "$package_spec" --registry "$NPM_REGISTRY" 2>&1 | tee "$log_file"
+    local status=${PIPESTATUS[0]}
+    if [ "$status" -eq 0 ]; then
+        grep -E "added|removed|changed|up to date" "$log_file" || true
+    else
+        echo -e "${RED}错误: ${package_spec} 安装失败，详情日志: ${log_file}${NC}"
+        return 1
+    fi
+}
+
 install_packages() {
     echo -e "${YELLOW}6. 从私有 npm 仓库安装开发版本...${NC}"
 
-    # 使用 npm 安装（避免 yarn 的 localhost:4873 问题）
-    echo -e "正在安装 hydrooj@dev..."
-    npm install -g hydrooj@dev 2>&1 | grep -E "added|removed|changed|up to date" || true
-
+    # 使用 npm 安装（避免 yarn 的 localhost:4873 问题），并显式指定 registry。
+    install_global_package "hydrooj@dev"
     echo -e ""
-    echo -e "正在安装 @hydrooj/ui-default@dev..."
-    npm install -g @hydrooj/ui-default@dev 2>&1 | grep -E "added|removed|changed|up to date" || true
-
+    install_global_package "@hydrooj/ui-default@dev"
     echo -e ""
-    echo -e "正在安装 @hydrooj/hydrojudge@dev..."
-    npm install -g @hydrooj/hydrojudge@dev 2>&1 | grep -E "added|removed|changed|up to date" || true
+    install_global_package "@hydrooj/hydrojudge@dev"
 
     echo -e ""
     echo -e "${GREEN}✓ 所有包安装完成${NC}"
@@ -165,6 +189,7 @@ verify_install() {
         fi
     else
         echo -e "${RED}✗ 无法找到 hydrooj 可执行文件${NC}"
+        return 1
     fi
 
     # 验证命令可用性
@@ -172,6 +197,10 @@ verify_install() {
         echo -e "${GREEN}✓ hydrooj 命令可用${NC}"
     else
         echo -e "${YELLOW}⚠ hydrooj 命令不在 PATH 中，但 PM2 可以通过 /usr/local/bin/hydrooj 访问${NC}"
+        if [ ! -x /usr/local/bin/hydrooj ]; then
+            echo -e "${RED}✗ /usr/local/bin/hydrooj 不可执行${NC}"
+            return 1
+        fi
     fi
 
     echo ""
@@ -179,11 +208,11 @@ verify_install() {
 
 # 同步 ui-default dev 版本静态资源名，避免模板引用 dev 文件而静态目录仅有基础版本
 sync_ui_static_aliases() {
-    echo -e "${YELLOW}8. 同步 UI 静态资源版本...${NC}"
+    echo -e "${YELLOW}10. 同步 UI 静态资源版本...${NC}"
 
     local ui_version=""
     local base_version=""
-    ui_version=$(npm view @hydrooj/ui-default@dev version --registry https://npm.leeson.top/ 2>/dev/null | tr -d '[:space:]')
+    ui_version=$(npm view @hydrooj/ui-default@dev version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]')
     base_version=$(echo "$ui_version" | sed -E 's/-dev\.[0-9]+$//')
 
     if [ -z "$ui_version" ]; then
@@ -198,16 +227,32 @@ sync_ui_static_aliases() {
         return 0
     fi
 
-    local static_dir="/root/.hydro/static"
-    local source_theme="$static_dir/theme-${base_version}.css"
-    local source_hydro="$static_dir/hydro-${base_version}.js"
+    local static_dir="$HYDRO_HOME/static"
+    local package_public_dir
+    package_public_dir="$(npm root -g 2>/dev/null)/@hydrooj/ui-default/public"
+    local source_theme="$package_public_dir/theme-${ui_version}.css"
+    local source_hydro="$package_public_dir/hydro-${ui_version}.js"
     local target_theme="$static_dir/theme-${ui_version}.css"
     local target_hydro="$static_dir/hydro-${ui_version}.js"
 
-    if [ -f "$source_theme" ] && [ ! -f "$target_theme" ]; then
+    if [ ! -f "$source_theme" ]; then
+        source_theme="$static_dir/theme-${base_version}.css"
+    fi
+    if [ ! -f "$source_theme" ]; then
+        source_theme=$(find "$static_dir" "$package_public_dir" -maxdepth 1 -type f -name "theme-${base_version}-dev.*.css" 2>/dev/null | sort -V | tail -1)
+    fi
+    if [ ! -f "$source_hydro" ]; then
+        source_hydro="$static_dir/hydro-${base_version}.js"
+    fi
+    if [ ! -f "$source_hydro" ]; then
+        source_hydro=$(find "$static_dir" "$package_public_dir" -maxdepth 1 -type f -name "hydro-${base_version}-dev.*.js" 2>/dev/null | sort -V | tail -1)
+    fi
+
+    mkdir -p "$static_dir"
+    if [ -n "$source_theme" ] && [ -f "$source_theme" ] && [ ! -f "$target_theme" ]; then
         cp -f "$source_theme" "$target_theme"
     fi
-    if [ -f "$source_hydro" ] && [ ! -f "$target_hydro" ]; then
+    if [ -n "$source_hydro" ] && [ -f "$source_hydro" ] && [ ! -f "$target_hydro" ]; then
         cp -f "$source_hydro" "$target_hydro"
     fi
 
@@ -243,6 +288,50 @@ start_services() {
     fi
 }
 
+# PM2 启动命令可能先成功、随后进程崩溃；短暂等待后再确认 hydrooj 仍在线。
+verify_services() {
+    if ! command -v pm2 &> /dev/null; then
+        return 0
+    fi
+
+    echo -e "${YELLOW}11. 验证服务运行状态...${NC}"
+    sleep "$SERVICE_VERIFY_DELAY_SECONDS"
+
+    if pm2 jlist 2>/dev/null | node -e '
+const chunks = [];
+process.stdin.on("data", (chunk) => chunks.push(chunk));
+process.stdin.on("end", () => {
+  const list = JSON.parse(Buffer.concat(chunks).toString() || "[]");
+  const app = list.find((item) => item.name === "hydrooj");
+  process.exit(app && app.pm2_env && app.pm2_env.status === "online" ? 0 : 1);
+});
+'; then
+        echo -e "${GREEN}✓ hydrooj 服务保持在线${NC}"
+    else
+        echo -e "${RED}✗ hydrooj 服务未保持在线，请查看最近日志:${NC}"
+        pm2 logs hydrooj --lines 50 --nostream 2>/dev/null || true
+        return 1
+    fi
+    echo ""
+}
+
+verify_login_page() {
+    echo -e "${YELLOW}12. 验证登录页响应...${NC}"
+
+    local body
+    body=$(curl -fsSL --max-time 10 http://127.0.0.1/login?redirect=%2F 2>/dev/null || true)
+    if [ "$body" = "{}" ] || ! echo "$body" | grep -qiE "<html|<form|login|signin|登录"; then
+        echo -e "${RED}✗ 登录页响应异常，请查看最近日志:${NC}"
+        echo "$body" | head -c 500
+        echo ""
+        pm2 logs hydrooj --lines 80 --nostream 2>/dev/null || true
+        return 1
+    fi
+
+    echo -e "${GREEN}✓ 登录页响应正常${NC}"
+    echo ""
+}
+
 # 显示完成信息
 show_complete() {
     echo -e "${GREEN}=== 安装/更新完成 ===${NC}"
@@ -254,8 +343,8 @@ show_complete() {
     echo -e "  4. 浏览器访问: http://服务器IP"
     echo ""
     echo -e "如果遇到问题:"
-    echo -e "  - 检查 Verdaccio 配置: ${YELLOW}url_prefix: https://npm.leeson.top/${NC}"
-    echo -e "  - 确保能访问: ${YELLOW}https://npm.leeson.top/${NC}"
+    echo -e "  - 检查 Verdaccio 配置: ${YELLOW}url_prefix: ${NPM_REGISTRY}${NC}"
+    echo -e "  - 确保能访问: ${YELLOW}${NPM_REGISTRY}${NC}"
     echo -e "  - 查看详细日志: ${YELLOW}pm2 logs hydrooj${NC}"
     echo ""
 }
@@ -271,6 +360,8 @@ main() {
     verify_install
     start_services
     sync_ui_static_aliases
+    verify_services
+    verify_login_page
     show_complete
 }
 
