@@ -1,16 +1,14 @@
 import $ from 'jquery';
+import { addPage } from '../api';
+import CustomSelectAutoComplete from 'vj/components/autocomplete/CustomSelectAutoComplete';
+import DomainSelectAutoComplete from 'vj/components/autocomplete/DomainSelectAutoComplete';
+import UserSelectAutoComplete from 'vj/components/autocomplete/UserSelectAutoComplete';
+import { ActionDialog } from 'vj/components/dialog';
+import Notification from 'vj/components/notification';
+import { NamedPage } from 'vj/misc/Page';
 import {
-  ActionDialog,
-  CustomSelectAutoComplete,
-  DomainSelectAutoComplete,
-  NamedPage,
-  Notification,
-  UserSelectAutoComplete,
-  addPage,
-  i18n,
-  request,
-  tpl,
-} from '@hydrooj/ui-default';
+  i18n, request, tpl,
+} from 'vj/utils';
 
 const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
   const $teachers = $('[name="teachers"]');

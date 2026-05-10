@@ -1,6 +1,6 @@
 {
     "name": "hydrooj",
-    "version": "5.0.0-beta.18-dev.9",
+    "version": "5.0.0-beta.18-dev.13",
     "bin": "bin/hydrooj.js",
     "main": "src/plugin-api",
     "module": "src/plugin-api",
@@ -17,6 +17,7 @@
         "@aws-sdk/s3-presigned-post": "3.726.1",
         "@aws-sdk/s3-request-presigner": "3.726.1",
         "@babel/code-frame": "^7.29.0",
+        "@cordisjs/plugin-logger": "^1.0.1",
         "@cordisjs/plugin-timer": "1.1.1",
         "@hydrooj/common": "0.0.7",
         "@hydrooj/framework": "0.2.7",

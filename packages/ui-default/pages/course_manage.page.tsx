@@ -1,6 +1,9 @@
-import {
-  addPage, i18n, NamedPage, Notification, React, ReactDOM,
-} from '@hydrooj/ui-default';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { addPage } from '../api';
+import Notification from 'vj/components/notification';
+import { NamedPage } from 'vj/misc/Page';
+import { i18n } from 'vj/utils';
 
 type CourseManagePayload = {
   page_name?: string;

@@ -1,12 +1,10 @@
 import $ from 'jquery';
-import {
-  addPage,
-  CustomSelectAutoComplete,
-  NamedPage,
-  ProblemSelectAutoComplete,
-  UserSelectAutoComplete,
-} from '@hydrooj/ui-default';
-import { api } from '@hydrooj/ui-default/utils';
+import { addPage } from '../api';
+import CustomSelectAutoComplete from 'vj/components/autocomplete/CustomSelectAutoComplete';
+import ProblemSelectAutoComplete from 'vj/components/autocomplete/ProblemSelectAutoComplete';
+import UserSelectAutoComplete from 'vj/components/autocomplete/UserSelectAutoComplete';
+import { NamedPage } from 'vj/misc/Page';
+import { api } from 'vj/utils';
 
 const page = new NamedPage(['course_edit', 'course_create'], () => {
   const ensureAutocompleteMounted = (instance: any, retries = 4, delay = 80) => {
