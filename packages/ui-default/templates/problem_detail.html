@@ -74,14 +74,27 @@
         </h1>
         {% if tdoc and tdoc.pids|length <= 26 and tdoc.pids|length > 1 %}
           <div class="section__tools contest-problems">
-            {% for pid in tdoc.pids -%}
+            {% set isCourse = tdoc.rule == 'course' %}
+            {% set allowedPids = [] %}
+            {% if isCourse and tsdoc %}
+              {% for node in tdoc.dag %}
+                {% if tsdoc.allow and tsdoc.allow[node._id] %}
+                  {% for pid in node.pids %}
+                    {% set allowedPids = (allowedPids.push(pid), allowedPids) %}
+                  {% endfor %}
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              {% set allowedPids = tdoc.pids %}
+            {% endif %}
+            {% for pid in allowedPids -%}
               {% set status = tsdoc.detail[pid].status %}
               {% set pass = status == STATUS.STATUS_ACCEPTED %}
               {% set fail = status and not pass %}
               <a href="{{ url('problem_detail', pid=pid, query={tid:tdoc.docId}) }}"
                  class="{% if pass %}pass{% elif fail %}fail{% endif %}
                         {% if pid==pdoc.docId %} active{% endif %}">
-                <span class="id">{{ utils.getAlphabeticId(loop.index0) }}</span>
+                <span class="id">{{ utils.getAlphabeticId(tdoc.pids.indexOf(pid)) }}</span>
                 {% if status %}<span class="icon icon-{% if pass %}check{% else %}close{% endif %}"></span>{% endif %}
               </a>
             {%- endfor %}

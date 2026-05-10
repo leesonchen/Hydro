@@ -75,14 +75,12 @@
         <span class="icon icon-flag"></span> {{ _('My Recent Submissions') }}
       </a></li>
     {% endif %}
-    {% if pdoc and canViewHomeworkReference and (hasHomeworkReferenceCode or canEditHomeworkReference) %}
-      <li class="menu__item"><a class="menu__link{% if page_name == 'homework_problem_reference' %} active{% endif %}" href="{{ url('homework_problem_reference', tid=tdoc.docId, pid=pdoc.docId) }}">
-        <span class="icon icon-comment--text"></span> {{ hasHomeworkReferenceCode and _('Reference Code') or _('Create Reference Code') }}
+    {% if pdoc and canViewSolution %}
+      <li class="menu__item"><a class="menu__link{% if page_name == 'problem_solution' %} active{% endif %}" href="{{ url('problem_solution', pid=pdoc.pid|default(pdoc.docId), query={tid:tdoc.docId}) }}">
+        <span class="icon icon-comment--text"></span> {{ _('Solutions') }}{% if solutionCount !== undefined %} ({{ solutionCount }}){% endif %}
       </a></li>
     {% endif %}
-      <li class="menu__item"><a class="menu__link" href="{{ url('wiki', page='help', anchor='homework') }}">
-        <span class="icon icon-help"></span> {{ _('Help') }}
-      </a></li>
+      {# 全部隐藏帮助 #}
       <li class="menu__seperator"></li>
     </ol>
   </div>

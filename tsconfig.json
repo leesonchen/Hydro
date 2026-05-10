@@ -45,12 +45,6 @@
       "path": "packages/common"
     },
     {
-      "path": "packages/contest-homework-stats"
-    },
-    {
-      "path": "packages/course-management"
-    },
-    {
       "path": "packages/elastic"
     },
     {
@@ -97,9 +91,6 @@
     },
     {
       "path": "packages/telegram"
-    },
-    {
-      "path": "packages/userlist"
     },
     {
       "path": "packages/vjudge"

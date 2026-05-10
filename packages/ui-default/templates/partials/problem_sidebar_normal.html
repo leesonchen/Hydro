@@ -1,3 +1,4 @@
+{# 覆盖核心模板，添加课程关联展示 #}
 {% import "components/user.html" as user with context %}
 {% import "components/problem.html" as problem with context %}
 <div class="section side section--problem-sidebar">
@@ -123,7 +124,7 @@
   {% include "partials/problem-sidebar-information.html" %}
 </div>
 {% endif %}
-{% if page_name == 'problem_detail' and (tdocs.length or ctdocs.length or htdocs.length) %}
+{% if page_name == 'problem_detail' and (tdocs.length or ctdocs.length or htdocs.length or cdocs.length) %}
 <div class="section side">
   <div class="section__header">
     <h1 class="section__title">{{ _('Related') }}</h1>
@@ -145,6 +146,12 @@
     <p>{{ _('In following homework') }}: </p>
     {%- for tdoc in htdocs -%}
       <p><a href="{{ url('homework_detail', tid=tdoc.docId) }}">{{ tdoc.title }}</a></p>
+    {%- endfor -%}
+  {% endif %}
+  {% if cdocs.length %}
+    <p>{{ _('In following courses') }}: </p>
+    {%- for tdoc in cdocs -%}
+      <p><a class="discussion-node-tag media-link" href="{{ url('course_detail', tid=tdoc.docId) }}">{% if tdoc.isTemplate %}{{ _('【模板】') }}{% endif %}{{ tdoc.title }}</a></p>
     {%- endfor -%}
   {% endif %}
   </div>

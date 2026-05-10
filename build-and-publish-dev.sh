@@ -35,7 +35,7 @@ print_usage() {
     echo "用法:"
     echo "  ./build-and-publish-dev.sh [--packages pkg1,pkg2]"
     echo ""
-    echo "可选包名: common, hydrooj, ui-default, hydrojudge, contest-homework-stats, course-management"
+    echo "可选包名: common, hydrooj, ui-default, hydrojudge"
     echo "示例:"
     echo "  ./build-and-publish-dev.sh --packages hydrooj,ui-default"
     echo ""
@@ -43,7 +43,7 @@ print_usage() {
 
 # 交互选择包（支持空格分隔多选）
 interactive_select_packages() {
-    local options=("common" "hydrooj" "ui-default" "hydrojudge" "contest-homework-stats" "course-management")
+    local options=("common" "hydrooj" "ui-default" "hydrojudge")
     local idx
     local input
 
@@ -79,12 +79,6 @@ interactive_select_packages() {
                 ;;
             4)
                 picked+=("hydrojudge")
-                ;;
-            5)
-                picked+=("contest-homework-stats")
-                ;;
-            6)
-                picked+=("course-management")
                 ;;
             *)
                 echo -e "${YELLOW}忽略无效序号: ${token}${NC}"
@@ -534,12 +528,6 @@ main() {
     if is_selected "hydrojudge"; then
         build_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge"
     fi
-    if is_selected "contest-homework-stats"; then
-        build_package "@hydrooj/contest-homework-stats" "$SCRIPT_DIR/packages/contest-homework-stats"
-    fi
-    if is_selected "course-management"; then
-        build_package "@hydrooj/course-management" "$SCRIPT_DIR/packages/course-management"
-    fi
 
     echo ""
     echo -e "${YELLOW}5. 开始打包和发布...${NC}"
@@ -575,12 +563,6 @@ main() {
     if is_selected "hydrojudge"; then
         publish_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge" "hydrojudge-dev.tgz"
     fi
-    if is_selected "contest-homework-stats"; then
-        publish_package "@hydrooj/contest-homework-stats" "$SCRIPT_DIR/packages/contest-homework-stats" "contest-homework-stats-dev.tgz"
-    fi
-    if is_selected "course-management"; then
-        publish_package "@hydrooj/course-management" "$SCRIPT_DIR/packages/course-management" "course-management-dev.tgz"
-    fi
 
     echo -e "${GREEN}=== 所有包发布完成 ===${NC}"
     echo ""
@@ -596,12 +578,6 @@ main() {
     fi
     if is_selected "hydrojudge"; then
         echo -e "  - @hydrooj/hydrojudge@$(get_current_version "$SCRIPT_DIR/packages/hydrojudge")"
-    fi
-    if is_selected "contest-homework-stats"; then
-        echo -e "  - @hydrooj/contest-homework-stats@$(get_current_version "$SCRIPT_DIR/packages/contest-homework-stats")"
-    fi
-    if is_selected "course-management"; then
-        echo -e "  - @hydrooj/course-management@$(get_current_version "$SCRIPT_DIR/packages/course-management")"
     fi
     echo ""
     echo -e "安装命令:"

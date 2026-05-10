@@ -29,6 +29,22 @@
       background: #fff;
       cursor: pointer;
     }
+    .search.search--with-scope > label.search-filter {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 100%;
+      margin: 0;
+      padding: 0 10px;
+      border-left: 1px solid #ddd;
+      white-space: nowrap;
+      font-size: 13px;
+      color: #555;
+      background: #fff;
+    }
+    .search.search--with-scope > label.search-filter input {
+      margin: 0;
+    }
     .search.search--with-scope > div[data-fragment-id="problem_stat"] {
       position: static;
       display: flex;
@@ -63,6 +79,12 @@
                 <option value="title" {{ "selected" if scope == 'title' else '' }}>{{ _('仅标题') }}</option>
                 <option value="all" {{ "selected" if scope == 'all' else '' }}>{{ _('全文') }}</option>
               </select>
+              {% if handler.user.hasPerm(perm.PERM_VIEW_PROBLEM_HIDDEN) %}
+                <label class="search-filter">
+                  <input name="hideHidden" type="checkbox" value="true" {{ "checked" if handler.request.query.hideHidden == 'true' else "" }}>
+                  {{ _('Exclude hidden problems') }}
+                </label>
+              {% endif %}
               {% include "partials/problem_stat.html" %}
               <select name="sort" class="search-sort">
                 {%- for sortType in ["default", "recent"] -%}
@@ -155,31 +177,43 @@
     // 方案2：劫持 PJAX 请求，强制附加 scope 参数
     (function() {
       const scopeSelect = document.querySelector('[name="scope"]');
+      const hideHiddenInput = document.querySelector('[name="hideHidden"]');
       if (!scopeSelect) return;
 
       // 以 URL 参数为准，避免 PJAX/模板变量不同步导致显示错误
-      const urlScope = new URL(window.location.href).searchParams.get('scope');
+      const searchParams = new URL(window.location.href).searchParams;
+      const urlScope = searchParams.get('scope');
       scopeSelect.value = (urlScope === 'all') ? 'all' : 'title';
+      if (hideHiddenInput) hideHiddenInput.checked = searchParams.get('hideHidden') === 'true';
       
-      // 监听 scope 变化立即刷新
-      scopeSelect.addEventListener('change', function() {
+      // 监听筛选变化立即刷新
+      function submitSearchForm() {
         const form = document.getElementById('searchForm');
         if (form) form.submit();
-      });
+      }
+      scopeSelect.addEventListener('change', submitSearchForm);
+      if (hideHiddenInput) hideHiddenInput.addEventListener('change', submitSearchForm);
       
       // 劫持 PJAX 请求（如果存在）
       if (window.pjax && window.pjax.request) {
         const originalPjax = window.pjax.request;
         window.pjax.request = function(options) {
           try {
-            const url = new URL(options.url, window.location.href);
+            const rawUrl = typeof options === 'string' ? options : options.url;
+            const url = new URL(rawUrl, window.location.href);
             const currentScope = scopeSelect.value;
             if (currentScope) {
               url.searchParams.set('scope', currentScope);
             } else {
               url.searchParams.delete('scope');
             }
-            options.url = url.toString();
+            if (hideHiddenInput && hideHiddenInput.checked) {
+              url.searchParams.set('hideHidden', 'true');
+            } else {
+              url.searchParams.delete('hideHidden');
+            }
+            if (typeof options === 'string') options = url.toString();
+            else options.url = url.toString();
           } catch (e) {
             console.error('PJAX scope override failed:', e);
           }

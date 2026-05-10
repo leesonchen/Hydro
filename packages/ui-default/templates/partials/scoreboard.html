@@ -30,9 +30,26 @@
         {%- for column in rows[0] -%}
           <th class="col--{{ column.type }}">
           {%- if column.type == 'problem' and column.raw -%}
-            <a href="{{ url('problem_detail', pid=column.raw, query={tid:tdoc.docId}) }}" data-tooltip="{{ pdict[column.raw].title }}">
-              {{ column.value }}<br />{{ pdict[column.raw].nAccept|default(0) }}/{{ pdict[column.raw].nSubmit|default(0) }}
-            </a>
+            {% set canViewProblemLink = true %}
+            {% if tdoc.rule == 'course' and not (handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
+              {% set problemDocId = pdict[column.raw].docId|default(column.raw) %}
+              {% set nodeId = none %}
+              {%- for node in tdoc.dag -%}
+                {%- for _pid in node.pids -%}
+                  {% if (_pid|string) == (problemDocId|string) %}{% set nodeId = node._id %}{% endif %}
+                {%- endfor -%}
+              {%- endfor -%}
+              {% set canViewProblemLink = nodeId and tsdoc and tsdoc.allow and tsdoc.allow[nodeId] == true %}
+            {% endif %}
+            {% if canViewProblemLink %}
+              <a href="{{ url('problem_detail', pid=column.raw, query={tid:tdoc.docId}) }}" data-tooltip="{{ pdict[column.raw].title }}">
+                {{ column.value }}<br />{{ pdict[column.raw].nAccept|default(0) }}/{{ pdict[column.raw].nSubmit|default(0) }}
+              </a>
+            {% else %}
+              <span>
+                {{ column.value }}<br />{{ pdict[column.raw].nAccept|default(0) }}/{{ pdict[column.raw].nSubmit|default(0) }}
+              </span>
+            {% endif %}
           {%- else -%}
             {{ column.value|string|nl2br|safe }}
           {%- endif -%}

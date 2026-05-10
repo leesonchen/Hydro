@@ -297,6 +297,7 @@ export interface Tdoc extends Document {
     updateAt?: Date;
     extraStudents?: number[];
     publicScoreboard?: boolean;
+    enablePenalty?: boolean;
 }
 
 export interface TrainingDoc extends Omit<Tdoc, 'docType'> {
