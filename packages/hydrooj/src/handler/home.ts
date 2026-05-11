@@ -21,6 +21,7 @@ import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
 import domain from '../model/domain';
 import message from '../model/message';
+import * as OplogModel from '../model/oplog';
 import ProblemModel from '../model/problem';
 import * as setting from '../model/setting';
 import storage from '../model/storage';
@@ -415,6 +416,31 @@ function set(s: Setting, key: string, value: any) {
     return value;
 }
 
+function summarizeSettingValue(key: string, value: any) {
+    if (value === undefined) return undefined;
+    if (value === null || ['number', 'boolean'].includes(typeof value)) return value;
+    if (typeof value === 'string') {
+        if (key.toLowerCase().includes('template')) return `<string length=${value.length}>`;
+        return value.length > 120
+            ? `${value.slice(0, 120)}...<length=${value.length}>`
+            : value;
+    }
+    try {
+        const str = JSON.stringify(value);
+        return str.length > 120
+            ? `${str.slice(0, 120)}...<length=${str.length}>`
+            : value;
+    } catch (e) {
+        return '<unserializable>';
+    }
+}
+
+function summarizeSettings(values: Record<string, any>) {
+    return Object.fromEntries(Object.entries(values).map(([key, value]) => [
+        key, summarizeSettingValue(key, value),
+    ]));
+}
+
 class HomeSettingsHandler extends Handler {
     @param('category', Types.Range(['preference', 'account', 'domain']))
     async get({ }, category: string) {
@@ -460,7 +486,34 @@ class HomeSettingsHandler extends Handler {
             delete $set.viewLang;
         }
         for (const key in booleanKeys) if (!args[key]) $set[key] = false;
-        if (Object.keys($set).length) await setter($set);
+        const keys = Object.keys($set);
+        let preferenceLogEntry: Record<string, any> | null = null;
+        if (args.category === 'preference') {
+            const previous = Object.fromEntries(keys.map((key) => [key, this.user[key]]));
+            preferenceLogEntry = {
+                type: 'user.preference.update',
+                time: new Date(),
+                domainId: args.domainId,
+                operator: this.user._id,
+                target: this.user._id,
+                path: this.request.path,
+                method: this.request.method,
+                referer: this.request.headers.referer,
+                ua: this.request.headers['user-agent'],
+                operateIp: this.request.ip,
+                keys,
+                previous: summarizeSettings(previous),
+                update: summarizeSettings($set),
+            };
+        }
+        if (keys.length) await setter($set);
+        if (preferenceLogEntry) {
+            this.ctx.logger('home').info(
+                '[preference-update] uid=%s keys=%j previous=%j update=%j path=%s',
+                this.user._id, keys, preferenceLogEntry.previous, preferenceLogEntry.update, this.request.path,
+            );
+            await OplogModel.add(preferenceLogEntry as any);
+        }
         if (args.viewLang && args.viewLang !== this.session.viewLang) this.session.viewLang = '';
         this.back();
     }

@@ -336,6 +336,10 @@ SystemSetting(Schema.object({
 SystemSetting(
     Setting('setting_server', 'server.language', 'zh_CN', langRange, 'server.language', 'Default display language'),
     ServerLangSettingNode,
+    Setting('setting_server', 'debug.requestTrace', false, 'boolean', 'debug.requestTrace',
+        'Log GET/POST requests with uid, username and url. Can also be enabled with HYDRO_REQUEST_TRACE=1.'),
+    Setting('setting_server', 'debug.requestTraceUsers', '', 'text', 'debug.requestTraceUsers',
+        'Comma-separated uid/username filter for request trace. Empty means all users.'),
     Setting('setting_limits', 'limit.by_user', false, 'boolean', 'limit.by_user', 'Use per-user limits instead of per ip limits'),
     Setting('setting_limits', 'limit.problem_files_max', 100, 'number', 'limit.problem_files_max', 'Max files per problem'),
     Setting('setting_limits', 'limit.problem_files_max_size', 256 * 1024 * 1024, 'number', 'limit.problem_files_max_size', 'Max files size per problem'),

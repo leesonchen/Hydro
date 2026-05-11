@@ -83,6 +83,17 @@ function shouldTraceLanguage(ctx: HandlerOriginal<Context>) {
     return ctx.request.query?.__trace_lang === '1';
 }
 
+function boolEnv(value: string | undefined) {
+    return ['1', 'true', 'yes', 'on'].includes((value || '').toLowerCase());
+}
+
+function traceTargets(value: any) {
+    return `${value || ''}`
+        .split(',')
+        .map((i) => i.trim().toLowerCase())
+        .filter(Boolean);
+}
+
 export async function apply(ctx: Context) {
     ctx.plugin(WebService, {
         keys: system.get('session.keys'),
@@ -103,8 +114,44 @@ export async function apply(ctx: Context) {
                 await next();
             } finally {
                 const finish = Date.now();
+                const method = c.request.method;
+                const traceEnabled = process.env.HYDRO_REQUEST_TRACE === undefined
+                    ? childContext.setting.get('debug.requestTrace')
+                    : boolEnv(process.env.HYDRO_REQUEST_TRACE);
+                if (traceEnabled && ['GET', 'POST'].includes(method.toUpperCase())) {
+                    const user = c.handler?.user;
+                    const targets = traceTargets(process.env.HYDRO_REQUEST_TRACE_USERS
+                        || childContext.setting.get('debug.requestTraceUsers'));
+                    const uid = user?._id?.toString() || '0';
+                    const uname = (user?.uname || 'Guest').toString();
+                    const shouldLog = !targets.length || targets.includes(uid)
+                        || targets.includes(uname.toLowerCase());
+                    if (shouldLog) {
+                        const request = c.HydroContext?.request;
+                        const querystring = request?.querystring || c.request.querystring;
+                        const path = request?.originalPath || request?.path || c.request.path || c.path || '';
+                        const url = `${path}${querystring ? `?${querystring}` : ''}`;
+                        const bodyKeys = method.toUpperCase() === 'POST'
+                            ? Object.keys(c.request.body || {})
+                                .filter((key) => !['password', 'verifyPassword'].includes(key)
+                                    && !key.startsWith('__'))
+                                .slice(0, 20)
+                            : [];
+                        logger.info(
+                            '[request-trace] uid=%s uname=%s method=%s status=%s domain=%s url=%s bodyKeys=%j ip=%s ms=%s referer=%s ua=%s',
+                            uid, uname, method.toUpperCase(),
+                            c.status || c.HydroContext?.response?.status || c.handler?.response?.status || 200,
+                            c.HydroContext?.domain?._id || c.HydroContext?.args?.domainId || 'system',
+                            url,
+                            bodyKeys,
+                            request?.ip || c.request.ip,
+                            finish - init,
+                            c.request.headers.referer || '',
+                            c.request.headers['user-agent'] || '',
+                        );
+                    }
+                }
                 if (finish - init > 5000) {
-                    const method = c.request.method;
                     const id = await OplogModel.log(c.handler, 'slow_request', { method, processtime: finish - init });
                     logger.warn(`Slow handler: ID=${id}, `, method, c.path, `${finish - init}ms`);
                 }
