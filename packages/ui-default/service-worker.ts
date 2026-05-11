@@ -22,6 +22,10 @@ function createStream(port) {
 }
 
 self.onmessage = (event) => {
+  if (event.data?.type === 'service-worker-config') {
+    initConfig(event.data.config);
+    return;
+  }
   if (event.data === 'ping') return;
   const data = event.data;
   const downloadUrl = data.url || `${self.registration.scope + Math.random()}/${typeof data === 'string' ? data : data.filename}`;

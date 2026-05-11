@@ -31,18 +31,28 @@ try {
   __webpack_public_path__ = UiContext.cdn_prefix;
 } catch (e) { }
 if ('serviceWorker' in navigator) {
-  const sendConfig = () => fetch('/service-worker-config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(UiContext.SWConfig),
-  });
+  const sendConfig = (sw) => {
+    sw?.postMessage({
+      type: 'service-worker-config',
+      config: UiContext.SWConfig,
+    });
+    // Older service workers only accept config through a fetch handler.
+    if (navigator.serviceWorker.controller) {
+      fetch('/service-worker-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(UiContext.SWConfig),
+      }).catch(() => undefined);
+    }
+  };
   navigator.serviceWorker.register('/service-worker.js').then((registration) => {
     console.log('SW registered: ', registration);
     const sw = registration.active || registration.waiting || registration.installing;
-    if (sw.state === 'activated') sendConfig();
+    if (!sw) return;
+    if (sw.state === 'activated') sendConfig(sw);
     else {
       sw.addEventListener('statechange', (e) => {
-        if (e.target.state === 'activated') sendConfig();
+        if (e.target.state === 'activated') sendConfig(e.target);
       });
     }
   }).catch((registrationError) => {
