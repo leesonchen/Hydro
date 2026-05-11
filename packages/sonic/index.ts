@@ -10,7 +10,7 @@ import {
 
 // HydroOJ 的 Context 在运行时会被各个插件扩展；这里显式声明
 // `ctx.sonic` 的存在，方便 TypeScript 在其他模块中引用该服务。
-declare module 'hydrooj' {
+declare module 'cordis' {
     interface Context {
         sonic?: SonicService;
     }
@@ -90,8 +90,8 @@ export class SonicService extends Service {
         super(ctx, 'sonic');
     }
 
-    *[Context.init]() {
-        // Hydro addon 在 ctx.plugin 时会执行 Context.init 生成器：
+    *[Service.init]() {
+        // Hydro addon 在 ctx.plugin 时会执行 Service.init 生成器：
         // 1) 在 generator 启动阶段做资源初始化；
         // 2) yield 出的函数会在插件卸载/重启时依次调用，实现清理逻辑。
         this.search = new Search(this.config);

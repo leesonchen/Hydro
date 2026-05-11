@@ -380,12 +380,12 @@ fix_workspace_deps() {
 
     if [ -f "$package_json" ]; then
         # 替换 workspace:^ 为实际版本号
-        # @hydrooj/common -> 0.0.7
-        # @hydrooj/framework -> 0.2.7
-        # @hydrooj/utils -> 1.5.4
-        sed -i.bak 's/"@hydrooj\/common": "workspace:\^"/"@hydrooj\/common": "0.0.7"/g' "$package_json"
-        sed -i.bak 's/"@hydrooj\/framework": "workspace:\^"/"@hydrooj\/framework": "0.2.7"/g' "$package_json"
-        sed -i.bak 's/"@hydrooj\/utils": "workspace:\^"/"@hydrooj\/utils": "1.5.4"/g' "$package_json"
+        # @hydrooj/common -> 0.0.8
+        # @hydrooj/framework -> 0.3.0
+        # @hydrooj/utils -> 1.5.5
+        sed -i.bak 's/"@hydrooj\/common": "workspace:\^"/"@hydrooj\/common": "0.0.8"/g' "$package_json"
+        sed -i.bak 's/"@hydrooj\/framework": "workspace:\^"/"@hydrooj\/framework": "0.3.0"/g' "$package_json"
+        sed -i.bak 's/"@hydrooj\/utils": "workspace:\^"/"@hydrooj\/utils": "1.5.5"/g' "$package_json"
 
         # 删除备份文件
         rm -f "$package_json.bak"

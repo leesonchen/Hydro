@@ -1,7 +1,6 @@
-/* eslint-disable ts/no-unsafe-declaration-merging */
-import LoggerService from '@cordisjs/plugin-logger';
-import { TimerService } from '@cordisjs/plugin-timer';
-import * as cordis from 'cordis';
+import type { } from '@cordisjs/plugin-logger';
+import type { } from '@cordisjs/plugin-timer';
+import { Service } from 'cordis';
 import Schema from 'schemastery';
 import type { DomainDoc, GeoIP, ModuleInterfaces } from './interface';
 import { inject } from './lib/ui';
@@ -11,6 +10,25 @@ import type CheckService from './service/check';
 import type { } from './service/migration';
 
 export { EventMap as Events };
+
+declare module 'cordis' {
+    export interface Events extends EventMap { }
+    interface Context {
+        domain?: DomainDoc;
+        loader: Loader;
+        check: CheckService;
+        setImmediate: typeof setImmediate;
+        addScript: typeof addScript;
+        provideModule: typeof provideModule;
+        injectUI: typeof inject;
+        broadcast: Context['emit'];
+        geoip?: GeoIP;
+        provideService(name: string, service: any): void;
+        getService(name: string): any;
+        addPermission(...perms: any[]): void;
+        onDispose(callback: () => void): void;
+    }
+}
 
 function addScript<K>(name: string, description: string, validate: Schema<K>, run: (args: K, report: any) => boolean | Promise<boolean>) {
     if (global.Hydro.script[name]) throw new Error(`duplicate script ${name} registered.`);
@@ -24,32 +42,10 @@ function provideModule<T extends keyof ModuleInterfaces>(type: T, id: string, mo
     return () => delete global.Hydro.module[type][id];
 }
 
-export type Fiber = cordis.Fiber<Context>;
-export const Fiber = cordis.Fiber;
-
-export { Disposable, FiberState, Plugin } from 'cordis';
-
-export interface Context extends cordis.Context {
-    [Context.events]: EventMap & cordis.Events<Context>;
-    loader: Loader;
-    check: CheckService;
-    setImmediate: typeof setImmediate;
-    addScript: typeof addScript;
-    provideModule: typeof provideModule;
-    injectUI: typeof inject;
-    broadcast: Context['emit'];
-    geoip?: GeoIP;
-    provideService(name: string, service: any): void;
-    getService(name: string): any;
-    addPermission(...perms: any[]): void;
-    onDispose(callback: () => void): void;
-}
-
-export abstract class Service<T = never> extends cordis.Service<T, Context> {
-}
+export { Context, Disposable, Fiber, FiberState, Plugin, Service } from 'cordis';
 
 const T = <F extends (...args: any[]) => any>(origFunc: F, disposeFunc?) =>
-    function method(this: cordis.Service, ...args: Parameters<F>) {
+    function method(this: Service, ...args: Parameters<F>) {
         this.ctx.effect(() => {
             const res = origFunc(...args);
             return () => (disposeFunc ? disposeFunc(res) : res());
@@ -67,27 +63,5 @@ export class ApiMixin extends Service {
     constructor(ctx) {
         super(ctx, '$api');
         ctx.mixin('$api', ['addScript', 'setImmediate', 'provideModule', 'injectUI', 'broadcast']);
-    }
-}
-
-export class Context extends cordis.Context {
-    domain?: DomainDoc;
-
-    constructor() {
-        super();
-        this.plugin(ApiMixin);
-        this.plugin(TimerService);
-        this.plugin(LoggerService, {
-            console: {
-                showDiff: false,
-                showTime: 'dd hh:mm:ss',
-                label: {
-                    align: 'right',
-                    width: 9,
-                    margin: 1,
-                },
-                levels: { default: process.env.DEV ? 3 : 2 },
-            },
-        });
     }
 }
