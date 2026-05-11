@@ -268,6 +268,7 @@ export interface Tdoc extends Document {
     privateFiles?: FileInfo[];
     allowViewCode?: boolean;
     allowPrint?: boolean;
+    keepScoreboardHidden?: boolean;
 
     // For contest
     lockAt?: Date;
@@ -422,10 +423,13 @@ export interface ScoreboardConfig {
     lockAt?: Date;
 }
 
+export type Feature = 'scoreboard' | 'download';
+
 export interface ContestRule<T = any> {
     _originalRule?: Partial<ContestRule<T>>;
     TEXT: string;
     hidden?: boolean;
+    features?: Feature[];
     check: (args: any) => any;
     statusSort: Record<string, 1 | -1>;
     submitAfterAccept: boolean;

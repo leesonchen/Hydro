@@ -24,7 +24,7 @@ for (const country of countries) {
     const tz = moment.tz.zonesForCountry(country);
     for (const t of tz) tzs.add(t);
 }
-const timezones = Array.from(tzs).sort().map((tz) => [tz, tz]) as [string, string][];
+const timezones = [...tzs].sort().map((tz) => [tz, tz]) as [string, string][];
 const langRange: Dictionary<string> = {};
 
 export const FLAG_HIDDEN = 1;
@@ -287,7 +287,7 @@ DomainUserSetting(Schema.object({
 
     rpInfo: Schema.any().extra('family', 'setting_storage').disabled().hidden(),
 
-    ...Object.fromEntries(['nAccept', 'nSubmit', 'nLike', 'rp', 'rpdelta', 'rank', 'level', 'join'].map((i) => ([
+    ...Object.fromEntries(['nAccept', 'nSubmit', 'nLiked', 'rp', 'rpdelta', 'rank', 'level', 'join'].map((i) => ([
         i, Schema.number().default(0).extra('family', 'setting_storage').disabled().hidden(),
     ]))),
 
@@ -315,11 +315,13 @@ SystemSetting(Schema.object({
     }).extra('family', 'setting_smtp'),
     server: Schema.object({
         allowInvite: Schema.boolean().default(true).description('Allow invite users'),
+        showDefaultRole: Schema.boolean().default(false).description('Show default role users in domain user management'),
         center: Schema.string().default('https://hydro.ac/center').description('Server Center').role('url').hidden(),
         name: Schema.string().default('Hydro').description('Server Name'),
         url: Schema.string().default('/').description('Server BaseURL'),
         upload: Schema.string().default('256m').description('Max upload file size'),
         cdn: Schema.string().default('/').description('CDN Prefix'),
+        cdn_dynamic: Schema.boolean().default(false).description('Dynamic CDN'),
         ws: Schema.string().default('/').description('WebSocket Prefix'),
         host: Schema.string().default('127.0.0.1').description('Listen host'),
         port: Schema.number().step(1).min(1).max(65535).default(8888).description('Server Port'),

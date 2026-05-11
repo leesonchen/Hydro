@@ -99,6 +99,7 @@ export class JudgeResultCallbackContext {
             }, { upsert: true });
         } else {
             const rdoc = await record.update(this.task.domainId, new ObjectId(this.task.rid as string), $set, $push, $unset, $inc);
+            body.key = 'next';
             if (rdoc) this.ctx.broadcast('record/change', rdoc, $set, $push, body);
         }
     }
@@ -107,6 +108,7 @@ export class JudgeResultCallbackContext {
         const {
             $set, $push, $unset, $inc,
         } = processPayload(body);
+        body.key = 'next';
         const rdoc = await record.update(domainId, rid, $set, $push, $unset, $inc);
         if (rdoc) app.broadcast('record/change', rdoc, $set, $push, body);
     }
@@ -156,6 +158,7 @@ export class JudgeResultCallbackContext {
 
         const rdoc = await record.update(this.task.domainId, new ObjectId(this.task.rid as string), $set, $push, $unset);
         if (rdoc) {
+            body.key = 'end';
             bus.broadcast('record/change', rdoc, null, null, body); // trigger a full update
             await JudgeResultCallbackContext.postJudge(rdoc, this);
         }
@@ -169,6 +172,7 @@ export class JudgeResultCallbackContext {
         $set.judger = body.judger ?? 1;
         const rdoc = await record.update(domainId, rid, $set, $push, $unset);
         if (rdoc) {
+            body.key = 'end';
             app.broadcast('record/change', rdoc, null, null, body); // trigger a full update
             await JudgeResultCallbackContext.postJudge(rdoc);
         }
@@ -359,7 +363,7 @@ export async function apply(ctx: Context) {
             assert(Array.isArray(config.subtasks));
             const file = await storage.get(`submission/${rdoc.files.hack.split('#')[0]}`);
             assert(file);
-            const hackSubtask = config.subtasks[config.subtasks.length - 1];
+            const hackSubtask = config.subtasks.at(-1);
             hackSubtask.cases ||= [];
             const input = `hack-${rdoc._id}-${hackSubtask.cases.length + 1}.in`;
             hackSubtask.cases.push({ input, output: '/dev/null' });

@@ -9,7 +9,7 @@ import { load as loadOptions } from '../options';
 import { MongoService } from '../service/db';
 import { SettingService } from '../settings';
 import {
-    addon, builtinModel, model, service,
+    addon, builtinModel, locale, model, service,
 } from './common';
 
 const argv = cac().parse();
@@ -77,7 +77,7 @@ async function cli() {
         return console.error(parameters.join(', '));
     }
     for (let i = 0; i < args.length; i++) {
-        if ("'\"".includes(args[i][0]) && "'\"".includes(args[i][args[i].length - 1])) {
+        if ("'\"".includes(args[i][0]) && "'\"".includes(args[i].at(-1))) {
             args[i] = args[i].substr(1, args[i].length - 2);
         } else if (args[i].length === 24 && ObjectId.isValid(args[i])) {
             args[i] = new ObjectId(args[i]);
@@ -110,6 +110,7 @@ export async function load(ctx: Context) {
     require('../service/bus').apply(ctx);
     const pending = global.addons;
     const fail = [];
+    await locale(pending, fail);
     await ctx.plugin(MongoService, loadOptions() || {});
     await ctx.plugin(SettingService);
     await ctx.plugin(SystemModel.Service);

@@ -307,7 +307,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             if (contest.isNotStarted(this.tdoc)) throw new ContestNotLiveError(tid);
             if (!contest.isDone(this.tdoc, this.tsdoc) && (!this.tsdoc?.attend || !this.tsdoc.startAt)) throw new ContestNotAttendedError(tid);
             // Delete problem-related info in contest mode
-            this.pdoc.tag.length = 0;
+            if (this.pdoc.tag) this.pdoc.tag.length = 0;
             delete this.pdoc.nAccept;
             delete this.pdoc.nSubmit;
             delete this.pdoc.difficulty;
@@ -366,8 +366,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
                         : problem.canViewBy(this.pdoc, this.user) ? 'correction' : 'none',
         };
         if (this.tdoc && this.tsdoc) {
-            const fields = ['attend', 'startAt'];
-            if (this.tdoc.duration) fields.push('endAt');
+            const fields = ['attend', 'startAt', 'endAt'];
             if (contest.canShowSelfRecord.call(this, this.tdoc, true)) fields.push('detail');
             this.tsdoc = pick(this.tsdoc, fields);
             this.response.body.tsdoc = this.tsdoc;
@@ -418,7 +417,8 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
                 contest.getRelated(this.args.domainId, this.pdoc.docId),
                 contest.getRelated(this.args.domainId, this.pdoc.docId, 'homework'),
             ])).map((tdocs) => tdocs.filter((tdoc) =>
-                this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST) || !tdoc.assign?.length || Set.intersection(tdoc.assign, this.user.group).size,
+                this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST) || !tdoc.assign?.length
+                || new Set(tdoc.assign).intersection(new Set(this.user.group)).size,
             ));
         }
     }
@@ -483,9 +483,9 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
     @param('lang', Types.Name)
     @param('code', Types.String, true)
     @param('pretest', Types.Boolean)
-    @param('input', Types.String, true)
+    @param('input', Types.ArrayOf(Types.String, true), true)
     @param('tid', Types.ObjectId, true)
-    async post(domainId: string, lang: string, code: string, pretest = false, input = '', tid?: ObjectId) {
+    async post(domainId: string, lang: string, code: string, pretest = false, input: string[] = [], tid?: ObjectId) {
         const config = this.pdoc.config;
         if (typeof config === 'string' || config === null) throw new ProblemConfigError();
         if (['submit_answer', 'objective'].includes(config.type)) {
@@ -498,6 +498,8 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
             if (!['default', 'remote_judge'].includes(this.response.body.pdoc.config?.type)) {
                 throw new ProblemNotAllowPretestError('type');
             }
+            if (!input.length) throw new ValidationError('input');
+            input = input.map((i) => i || '');
         }
         await this.limitRate('add_record', 60, system.get('limit.submission_user'), '{{user}}');
         await this.limitRate('add_record', 60, pretest ? system.get('limit.pretest') : system.get('limit.submission'));
@@ -915,7 +917,7 @@ export class ProblemSolutionHandler extends ProblemDetailHandler {
     @param('psrid', Types.ObjectId)
     async postDeleteReply(domainId: string, psid: ObjectId, psrid: ObjectId) {
         const [psdoc, psrdoc] = await solution.getReply(domainId, psid, psrid);
-        if (!psdoc || psdoc.parentId !== this.pdoc.docId) throw new SolutionNotFoundError(psid);
+        if (!psdoc || psdoc.parentId !== this.pdoc.docId) throw new SolutionNotFoundError(domainId, psid);
         if (!this.user.own(psrdoc) || !this.user.hasPerm(PERM.PERM_DELETE_PROBLEM_SOLUTION_REPLY_SELF)) {
             this.checkPerm(PERM.PERM_DELETE_PROBLEM_SOLUTION_REPLY);
         }

@@ -28,7 +28,7 @@ const ignoredLimit = `,${argv.options.ignoredLimit},`;
 const logger = new Logger('server');
 
 declare module '@hydrooj/framework' {
-    export interface HandlerCommon<C> { // eslint-disable-line ts/no-unused-vars
+    export interface HandlerCommon {
         domain: DomainDoc;
 
         paginate<T>(cursor: FindCursor<T>, page: number, key: string): Promise<[docs: T[], numPages: number, count: number]>;
@@ -72,10 +72,10 @@ export function requireSudo(target: any, funcName: string, obj: any) {
     return obj;
 }
 
-export class Handler extends HandlerOriginal<Context> {
+export class Handler extends HandlerOriginal {
     domain: DomainDoc;
 }
-export class ConnectionHandler extends ConnectionHandlerOriginal<Context> {
+export class ConnectionHandler extends ConnectionHandlerOriginal {
     domain: DomainDoc;
 }
 
@@ -233,7 +233,11 @@ export async function apply(ctx: Context) {
                     this.response.template = error instanceof UserFacingError ? 'error.html' : 'bsod.html';
                     this.response.body = {
                         UserFacingError,
-                        error: { message: error.msg(), params: error.params, stack: errorMessage(error.stack || '') },
+                        error: {
+                            message: error.msg(), stack: errorMessage(error.stack || ''),
+                            params: error.params, name: error.name, code: error.code,
+                        },
+                        _rawError: error,
                     };
                 }
             },

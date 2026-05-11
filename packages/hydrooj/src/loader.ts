@@ -12,12 +12,14 @@ import { I18nService } from './lib/i18n';
 
 import { Logger } from './logger';
 import {
-    Context, Service, FiberState, Fiber,
+    Context, Service, FiberState, Fiber, ApiMixin,
 } from './context';
 // eslint-disable-next-line import/no-duplicates
 import { sleep, unwrapExports } from './utils';
 import { PRIV } from './model/builtin';
 import { getAddons } from './options';
+import { TimerService } from '@cordisjs/plugin-timer';
+import LoggerService from '@cordisjs/plugin-logger';
 import Schema from 'schemastery';
 import { isEqual } from 'lodash';
 
@@ -48,6 +50,7 @@ export class Loader extends Service {
     public state: Record<string, Fiber> = Object.create(null);
     public suspend = false;
     public cache: Record<string, string> = Object.create(null);
+    private schemaCache = new WeakMap<Schema<any>, Record<string, Schema<any>>>();
     // public warnings: Record<string, string> = Object.create(null);
 
     static inject = ['setting', 'timer', 'i18n', 'logger'];
@@ -94,12 +97,18 @@ export class Loader extends Service {
         }
     }
 
+    buildSchema(schema: Schema<any>, scope?: string) {
+        if (!scope) return schema;
+        const cache = this.schemaCache.get(schema) || {};
+        cache[scope] ||= Schema.object({ [scope]: schema });
+        this.schemaCache.set(schema, cache);
+        return cache[scope];
+    }
+
     async resolveConfig(plugin: any, configScope: string, dynamic = true) {
         const schema = plugin['Config'] || plugin['schema'];
         if (!schema) return Object.freeze({});
-        const schemaRequest = configScope ? Schema.object({
-            [configScope]: schema,
-        }) : schema;
+        const schemaRequest = this.buildSchema(schema, configScope);
         await this.ctx.setting._tryMigrateConfig(schemaRequest);
         const res = this.ctx.setting.requestConfig(schemaRequest, dynamic);
         return configScope ? res[configScope] : res;
@@ -155,13 +164,27 @@ export class Loader extends Service {
     }
 }
 
+app.plugin(ApiMixin);
+app.plugin(TimerService);
+app.plugin(LoggerService, {
+    console: {
+        showDiff: false,
+        showTime: 'dd hh:mm:ss',
+        label: {
+            align: 'right',
+            width: 9,
+            margin: 1,
+        },
+        levels: { default: process.env.DEV ? 3 : 2 },
+    },
+});
 app.plugin(I18nService);
 app.plugin(Loader);
 
 async function preload() {
     global.app = await new Promise((resolve) => {
         app.inject(['timer', 'i18n', 'logger', '$api'], (c) => {
-            resolve(c);
+            c.inject({ domain: { required: false } }, resolve);
         });
     });
     for (const a of [path.resolve(__dirname, '..'), ...getAddons()]) {

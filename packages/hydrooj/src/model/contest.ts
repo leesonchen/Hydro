@@ -62,12 +62,14 @@ export function isNotStarted(tdoc: Tdoc) {
 
 export function isOngoing(tdoc: Tdoc, tsdoc?: any) {
     const now = new Date();
+    if (tsdoc?.endAt && tsdoc.endAt <= now) return false;
     if (tsdoc && tdoc.duration && tsdoc.startAt <= new Date(Date.now() - Math.floor(tdoc.duration * Time.hour))) return false;
     return (tdoc.beginAt <= now && now < tdoc.endAt);
 }
 
 export function isDone(tdoc: Tdoc, tsdoc?: any) {
     if (tdoc.endAt <= new Date()) return true;
+    if (tsdoc?.endAt && tsdoc.endAt <= new Date()) return true;
     if (tsdoc && tdoc.duration && tsdoc.startAt <= new Date(Date.now() - Math.floor(tdoc.duration * Time.hour))) return true;
     return false;
 }
@@ -78,7 +80,7 @@ export function isLocked(tdoc: Tdoc, time = new Date()) {
 }
 
 export function isExtended(tdoc: Tdoc) {
-    const now = new Date().getTime();
+    const now = Date.now();
     return tdoc.penaltySince.getTime() <= now && now < tdoc.endAt.getTime();
 }
 
@@ -312,9 +314,9 @@ const oi = buildContestRule({
         }
         return { score, detail, display };
     },
-    showScoreboard: (tdoc, now) => now > tdoc.endAt,
-    showSelfRecord: (tdoc, now) => now > tdoc.endAt,
-    showRecord: (tdoc, now) => now > tdoc.endAt,
+    showScoreboard: (tdoc, now) => now > tdoc.endAt && !tdoc.keepScoreboardHidden,
+    showSelfRecord: (tdoc, now) => now > tdoc.endAt && !tdoc.keepScoreboardHidden,
+    showRecord: (tdoc, now) => now > tdoc.endAt && !tdoc.keepScoreboardHidden,
     async scoreboardHeader(config, _, tdoc, pdict) {
         const columns: ScoreboardNode[] = [
             { type: 'rank', value: '#' },
@@ -477,9 +479,9 @@ const ioi = buildContestRule({
 const strictioi = buildContestRule({
     TEXT: 'IOI(Strict)',
     submitAfterAccept: false,
-    showRecord: (tdoc, now) => now > tdoc.endAt,
-    showSelfRecord: () => true,
-    showScoreboard: (tdoc, now) => now > tdoc.endAt,
+    showRecord: (tdoc, now) => now > tdoc.endAt && !tdoc.keepScoreboardHidden,
+    showSelfRecord: (tdoc) => !tdoc.keepScoreboardHidden || !isDone(tdoc),
+    showScoreboard: (tdoc, now) => now > tdoc.endAt && !tdoc.keepScoreboardHidden,
     stat(tdoc, journal) {
         const detail = {};
         let score = 0;
@@ -636,6 +638,7 @@ const ledo = buildContestRule({
 const homework = buildContestRule({
     TEXT: 'Assignment',
     hidden: true,
+    features: ['scoreboard', 'download'],
     check: () => { },
     submitAfterAccept: false,
     statusSort: { penaltyScore: -1, time: 1 },
@@ -846,7 +849,7 @@ export async function del(domainId: string, tid: ObjectId) {
 
 export async function get(domainId: string, tid: ObjectId): Promise<Tdoc> {
     const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
-    if (!tdoc) throw new ContestNotFoundError(tid);
+    if (!tdoc) throw new ContestNotFoundError(domainId, tid);
     return tdoc;
 }
 
@@ -939,8 +942,8 @@ export function getMultiStatus(domainId: string, query: any) {
     return document.getMultiStatus(domainId, document.TYPE_CONTEST, query);
 }
 
-export function setStatus(domainId: string, tid: ObjectId, uid: number, $set: any) {
-    return document.setStatus(domainId, document.TYPE_CONTEST, tid, uid, $set);
+export function setStatus(domainId: string, tid: ObjectId, uid: number, $set?: any, $unset?: any) {
+    return document.setStatus(domainId, document.TYPE_CONTEST, tid, uid, $set, $unset);
 }
 
 export function count(domainId: string, query: any) {

@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { pick } from 'lodash';
+import { escapeRegExp, pick } from 'lodash';
 import { Filter, ObjectId } from 'mongodb';
 import { sortFiles } from '@hydrooj/utils/lib/utils';
 import {
@@ -59,11 +59,13 @@ async function _parseDagJson(domainId: string, _dag: string): Promise<Tdoc['dag'
 
 class TrainingMainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
-    async get(domainId: string, page = 1) {
+    @param('q', Types.String, true)
+    async get(domainId: string, page = 1, q = '') {
         const query: Filter<TrainingDoc> = {};
+        if (q) query.title = { $regex: new RegExp(escapeRegExp(q), 'i') };
         await this.ctx.parallel('training/list', query, this);
         const [tdocs, tpcount] = await this.paginate(
-            training.getMulti(domainId),
+            training.getMulti(domainId, query),
             page,
             'training',
         );
@@ -89,7 +91,7 @@ class TrainingMainHandler extends Handler {
         for (const tdoc of tdocs) tdict[tdoc.docId.toHexString()] = tdoc;
         this.response.template = 'training_main.html';
         this.response.body = {
-            tdocs, page, tpcount, tsdict, tdict,
+            tdocs, page, tpcount, tsdict, tdict, q,
         };
     }
 }
@@ -109,14 +111,17 @@ class TrainingDetailHandler extends Handler {
             shouldCompare = uid !== this.user._id;
         } else uid = this.user._id;
         const canViewHidden = this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN) || this.user._id;
-        const [udoc, udict, pdict, psdict, selfPsdict] = await Promise.all([
+        const [udoc, udict, pdict] = await Promise.all([
             user.getById(domainId, tdoc.owner),
             user.getListForRender(domainId, enrollUsers, this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO)),
             problem.getList(domainId, pids, canViewHidden, false),
-            problem.getListStatus(domainId, uid, pids),
-            shouldCompare ? problem.getListStatus(domainId, this.user._id, pids) : {},
         ]);
         const missing = pids.filter((pid) => !pdict[pid]?.docId);
+        const exist = pids.filter((pid) => pdict[pid]?.docId);
+        const [psdict, selfPsdict] = await Promise.all([
+            problem.getListStatus(domainId, uid, exist),
+            shouldCompare ? problem.getListStatus(domainId, this.user._id, exist) : {},
+        ]);
         const donePids = new Set<number>();
         const progPids = new Set<number>();
         for (const pid in psdict) {
@@ -133,7 +138,7 @@ class TrainingDetailHandler extends Handler {
         for (const node of tdoc.dag) {
             ndict[node._id] = node;
             const totalCount = node.pids.length;
-            const doneCount = Set.intersection(node.pids, donePids).size;
+            const doneCount = new Set(node.pids).intersection(new Set(donePids)).size;
             const nsdoc = {
                 progress: totalCount ? Math.floor(100 * (doneCount / totalCount)) : 100,
                 isDone: training.isDone(node, doneNids, donePids),
