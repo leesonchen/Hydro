@@ -10,7 +10,9 @@ NC='\033[0m'
 
 NPM_REGISTRY="${NPM_REGISTRY:-https://npm.leeson.top/}"
 HYDRO_HOME="${HYDRO_HOME:-$HOME/.hydro}"
-SERVICE_VERIFY_DELAY_SECONDS="${SERVICE_VERIFY_DELAY_SECONDS:-5}"
+SERVICE_VERIFY_DELAY_SECONDS="${SERVICE_VERIFY_DELAY_SECONDS:-15}"
+LOGIN_VERIFY_TIMEOUT_SECONDS="${LOGIN_VERIFY_TIMEOUT_SECONDS:-180}"
+LOGIN_VERIFY_INTERVAL_SECONDS="${LOGIN_VERIFY_INTERVAL_SECONDS:-10}"
 LOCK_FILE="${LOCK_FILE:-/tmp/hydro-dev-install.lock}"
 RELEASES_DIR="$HYDRO_HOME/dev-releases"
 BACKUPS_DIR="$HYDRO_HOME/dev-backups"
@@ -54,6 +56,8 @@ usage() {
 环境变量:
   NPM_REGISTRY   npm 仓库地址，默认 ${NPM_REGISTRY}
   HYDRO_HOME     Hydro 数据目录，默认 ${HYDRO_HOME}
+  LOGIN_VERIFY_TIMEOUT_SECONDS   登录页最多等待秒数，默认 ${LOGIN_VERIFY_TIMEOUT_SECONDS}
+  LOGIN_VERIFY_INTERVAL_SECONDS  登录页重试间隔秒数，默认 ${LOGIN_VERIFY_INTERVAL_SECONDS}
 USAGE
 }
 
@@ -369,17 +373,23 @@ process.stdin.on("end", () => {
 verify_login_page() {
     log_title "10. 验证登录页响应..."
 
-    local body version
-    body=$(curl -fsSL --max-time 10 http://127.0.0.1/login?redirect=%2F 2>/dev/null || true)
-    if [ "$body" = "{}" ] || ! echo "$body" | grep -qiE "<html|<form|login|signin|登录"; then
-        log_error "登录页响应异常，请查看最近日志:"
-        echo "$body" | head -c 500
-        echo ""
-        pm2 logs hydrooj --lines 80 --nostream 2>/dev/null || true
-        return 1
-    fi
+    local body version deadline
+    deadline=$((SECONDS + LOGIN_VERIFY_TIMEOUT_SECONDS))
+    while :; do
+        body=$(curl -fsSL --max-time 10 http://127.0.0.1/login?redirect=%2F 2>/dev/null || true)
+        if [ "$body" != "{}" ] && grep -qiE "<html|<form|login|signin|登录" <<<"$body"; then
+            break
+        fi
+        if (( SECONDS >= deadline )); then
+            log_error "登录页响应异常，请查看最近日志:"
+            printf '%s\n' "${body:0:500}"
+            pm2 logs hydrooj --lines 80 --nostream 2>/dev/null || true
+            return 1
+        fi
+        sleep "$LOGIN_VERIFY_INTERVAL_SECONDS"
+    done
 
-    version=$(echo "$body" | grep -oE 'Hydro v[^< ]+' | head -1 || true)
+    version=$(grep -oE 'Hydro v[^< ]+' <<<"$body" | head -1 || true)
     if [ -n "$version" ]; then
         log_ok "登录页响应正常: ${version}"
     else
