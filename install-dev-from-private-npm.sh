@@ -370,7 +370,7 @@ verify_login_page() {
     log_title "10. 验证登录页响应..."
 
     local body version
-    body=$(curl -fsSL --max-time 10 http://127.0.0.1/login?redirect=%2F 2>/dev/null || true)
+    body=$(curl -fsSL --max-time 10 http://127.0.0.1:8888/login?redirect=%2F 2>/dev/null || true)
     if [ "$body" = "{}" ] || ! echo "$body" | grep -qiE "<html|<form|login|signin|登录"; then
         log_error "登录页响应异常，请查看最近日志:"
         echo "$body" | head -c 500
