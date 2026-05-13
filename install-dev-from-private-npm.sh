@@ -13,7 +13,7 @@ HYDRO_HOME="${HYDRO_HOME:-$HOME/.hydro}"
 SERVICE_VERIFY_DELAY_SECONDS="${SERVICE_VERIFY_DELAY_SECONDS:-15}"
 LOGIN_VERIFY_TIMEOUT_SECONDS="${LOGIN_VERIFY_TIMEOUT_SECONDS:-180}"
 LOGIN_VERIFY_INTERVAL_SECONDS="${LOGIN_VERIFY_INTERVAL_SECONDS:-10}"
-NPM_VIEW_TIMEOUT_SECONDS="${NPM_VIEW_TIMEOUT_SECONDS:-30}"
+NPM_VIEW_TIMEOUT_SECONDS="${NPM_VIEW_TIMEOUT_SECONDS:-180}"
 LOCK_FILE="${LOCK_FILE:-/tmp/hydro-dev-install.lock}"
 RELEASES_DIR="$HYDRO_HOME/dev-releases"
 BACKUPS_DIR="$HYDRO_HOME/dev-backups"
@@ -259,10 +259,35 @@ current_package_version() {
 
 remote_package_version() {
     local package_name="$1"
+    local registry_url="${NPM_REGISTRY%/}"
+    local package_path="$package_name"
+    local version=""
+    local fetch_timeout_ms=$((NPM_VIEW_TIMEOUT_SECONDS * 1000))
+    if [[ "$package_path" == @*/* ]]; then
+        package_path="${package_path/\//%2f}"
+    fi
+
+    version=$(curl -fsSL --max-time "$NPM_VIEW_TIMEOUT_SECONDS" "${registry_url}/${package_path}" 2>/dev/null | node -e '
+const chunks = [];
+process.stdin.on("data", (chunk) => chunks.push(chunk));
+process.stdin.on("end", () => {
+  try {
+    const data = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+    process.stdout.write((data["dist-tags"] && data["dist-tags"].dev) || "");
+  } catch {
+    process.exit(1);
+  }
+});
+' 2>/dev/null || true)
+    if [ -n "$version" ]; then
+        echo "$version"
+        return 0
+    fi
+
     if command -v timeout >/dev/null 2>&1; then
-        timeout "$NPM_VIEW_TIMEOUT_SECONDS" npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true
+        timeout "$NPM_VIEW_TIMEOUT_SECONDS" npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" --fetch-retries=1 --fetch-timeout="$fetch_timeout_ms" 2>/dev/null | tr -d '[:space:]' || true
     else
-        npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true
+        npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" --fetch-retries=1 --fetch-timeout="$fetch_timeout_ms" 2>/dev/null | tr -d '[:space:]' || true
     fi
 }
 
@@ -274,6 +299,15 @@ load_package_versions() {
         package_name=$(package_name_for_key "$key")
         CURRENT_PACKAGE_VERSIONS["$key"]="$(current_package_version "$package_name")"
         REMOTE_PACKAGE_VERSIONS["$key"]="$(remote_package_version "$package_name")"
+    done
+}
+
+load_current_package_versions() {
+    local key package_name
+    CURRENT_PACKAGE_VERSIONS=()
+    for key in "${PACKAGE_KEYS[@]}"; do
+        package_name=$(package_name_for_key "$key")
+        CURRENT_PACKAGE_VERSIONS["$key"]="$(current_package_version "$package_name")"
     done
 }
 
@@ -295,6 +329,16 @@ print_update_table() {
         fi
         printf '%-12s %-26s %-22s %-22s %s\n' "$key" "$package_name" "${current:-none}" "${remote:-unknown}" "$status"
     done
+}
+
+has_unknown_remote_versions() {
+    local key
+    for key in "${PACKAGE_KEYS[@]}"; do
+        if [ -z "${REMOTE_PACKAGE_VERSIONS[$key]:-}" ]; then
+            return 0
+        fi
+    done
+    return 1
 }
 
 select_outdated_packages() {
@@ -324,7 +368,11 @@ interactive_select_updates() {
     done
 
     if [ ${#outdated[@]} -eq 0 ]; then
-        log_ok "所有模块都已是最新 dev 版本"
+        if has_unknown_remote_versions; then
+            log_warn "未发现可更新模块，但部分模块 dev 版本查询失败，请查看状态表"
+        else
+            log_ok "所有模块都已是最新 dev 版本"
+        fi
         return 1
     fi
 
@@ -425,7 +473,7 @@ install_release() {
     release_dir="$RELEASES_DIR/$release_id"
     log_file="/tmp/hydro-dev-install-${release_id}.log"
 
-    load_package_versions
+    load_current_package_versions
     log_title "4. 下载并安装包到独立 release 目录..."
     mkdir -p "$release_dir"
     cat > "$release_dir/package.json" <<JSON
@@ -751,7 +799,11 @@ prepare_selected_packages() {
     print_update_table
     echo ""
     if [ ${#SELECTED_PACKAGE_KEYS[@]} -eq 0 ]; then
-        log_ok "所有模块都已是最新 dev 版本，无需更新"
+        if has_unknown_remote_versions; then
+            log_warn "未发现可更新模块，但部分模块 dev 版本查询失败，请查看状态表"
+        else
+            log_ok "所有模块都已是最新 dev 版本，无需更新"
+        fi
         return 1
     fi
 }
