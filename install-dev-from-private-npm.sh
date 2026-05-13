@@ -13,12 +13,16 @@ HYDRO_HOME="${HYDRO_HOME:-$HOME/.hydro}"
 SERVICE_VERIFY_DELAY_SECONDS="${SERVICE_VERIFY_DELAY_SECONDS:-15}"
 LOGIN_VERIFY_TIMEOUT_SECONDS="${LOGIN_VERIFY_TIMEOUT_SECONDS:-180}"
 LOGIN_VERIFY_INTERVAL_SECONDS="${LOGIN_VERIFY_INTERVAL_SECONDS:-10}"
+NPM_VIEW_TIMEOUT_SECONDS="${NPM_VIEW_TIMEOUT_SECONDS:-30}"
 LOCK_FILE="${LOCK_FILE:-/tmp/hydro-dev-install.lock}"
 RELEASES_DIR="$HYDRO_HOME/dev-releases"
 BACKUPS_DIR="$HYDRO_HOME/dev-backups"
 ACTIVE_RELEASE_FILE="$RELEASES_DIR/active"
 HYDRO_BIN_LINK="/usr/local/bin/hydrooj"
-PACKAGES=("hydrooj@dev" "@hydrooj/ui-default@dev" "@hydrooj/hydrojudge@dev")
+PACKAGE_KEYS=("hydrooj" "ui-default" "hydrojudge")
+SELECTED_PACKAGE_KEYS=()
+declare -A CURRENT_PACKAGE_VERSIONS=()
+declare -A REMOTE_PACKAGE_VERSIONS=()
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd /tmp
@@ -49,15 +53,26 @@ log_error() {
 usage() {
     cat <<USAGE
 用法:
-  ./install-dev-from-private-npm.sh [install]
+  ./install-dev-from-private-npm.sh [install] [--packages all|hydrooj,ui-default,hydrojudge]
+  ./install-dev-from-private-npm.sh update [--packages all|hydrooj,ui-default,hydrojudge]
+  ./install-dev-from-private-npm.sh update hydrojudge
+  ./install-dev-from-private-npm.sh check-updates
+  ./install-dev-from-private-npm.sh upgrade-interactive
   ./install-dev-from-private-npm.sh rollback [backup-id]
   ./install-dev-from-private-npm.sh list-backups
+
+说明:
+  install            默认安装/更新所有 dev 包。
+  update             默认只更新远端 dev 版本变化的包，未变化的包固定为当前 release 版本。
+  --packages         指定更新模块，未指定的模块固定为当前 release 版本。
+  upgrade-interactive 类似 yarn global upgrade-interactive --latest，先检查可更新模块再交互选择。
 
 环境变量:
   NPM_REGISTRY   npm 仓库地址，默认 ${NPM_REGISTRY}
   HYDRO_HOME     Hydro 数据目录，默认 ${HYDRO_HOME}
   LOGIN_VERIFY_TIMEOUT_SECONDS   登录页最多等待秒数，默认 ${LOGIN_VERIFY_TIMEOUT_SECONDS}
   LOGIN_VERIFY_INTERVAL_SECONDS  登录页重试间隔秒数，默认 ${LOGIN_VERIFY_INTERVAL_SECONDS}
+  NPM_VIEW_TIMEOUT_SECONDS       npm view 查询超时秒数，默认 ${NPM_VIEW_TIMEOUT_SECONDS}
 USAGE
 }
 
@@ -127,6 +142,222 @@ package_version_from_dir() {
     node -e "console.log(require(process.argv[1] + '/node_modules/' + process.argv[2] + '/package.json').version)" "$release_dir" "$package_name"
 }
 
+package_name_for_key() {
+    case "$1" in
+        hydrooj)
+            echo "hydrooj"
+            ;;
+        ui-default)
+            echo "@hydrooj/ui-default"
+            ;;
+        hydrojudge)
+            echo "@hydrooj/hydrojudge"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+normalize_package_key() {
+    case "$1" in
+        all)
+            echo "all"
+            ;;
+        hydrooj|ui-default|hydrojudge)
+            echo "$1"
+            ;;
+        @hydrooj/ui-default)
+            echo "ui-default"
+            ;;
+        @hydrooj/hydrojudge)
+            echo "hydrojudge"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_key_selected() {
+    local target="$1" key
+    for key in "${SELECTED_PACKAGE_KEYS[@]}"; do
+        if [ "$key" = "$target" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+select_all_packages() {
+    SELECTED_PACKAGE_KEYS=("${PACKAGE_KEYS[@]}")
+}
+
+add_selected_package_key() {
+    local key="$1" selected
+    if [ "$key" = "all" ]; then
+        select_all_packages
+        return 0
+    fi
+    for selected in "${SELECTED_PACKAGE_KEYS[@]}"; do
+        [ "$selected" = "$key" ] && return 0
+    done
+    SELECTED_PACKAGE_KEYS+=("$key")
+}
+
+parse_package_selector() {
+    local selector="$1" raw key
+    local raw_keys=()
+    IFS=',' read -r -a raw_keys <<< "$selector"
+    for raw in "${raw_keys[@]}"; do
+        key=$(normalize_package_key "$raw" || true)
+        if [ -z "$key" ]; then
+            echo -e "${RED}错误: 未知模块 ${raw}${NC}"
+            usage
+            exit 1
+        fi
+        add_selected_package_key "$key"
+    done
+}
+
+parse_update_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --packages)
+                shift
+                if [ -z "${1:-}" ]; then
+                    echo -e "${RED}错误: --packages 需要参数${NC}"
+                    usage
+                    exit 1
+                fi
+                parse_package_selector "$1"
+                ;;
+            --packages=*)
+                parse_package_selector "${1#--packages=}"
+                ;;
+            all|hydrooj|ui-default|hydrojudge|@hydrooj/ui-default|@hydrooj/hydrojudge)
+                parse_package_selector "$1"
+                ;;
+            *)
+                echo -e "${RED}错误: 未知参数 $1${NC}"
+                usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
+}
+
+current_package_version() {
+    local package_name="$1"
+    local active_release
+    active_release=$(read_active_release || true)
+    if [ -n "$active_release" ] && [ -d "$active_release/node_modules" ]; then
+        package_version_from_dir "$active_release" "$package_name" 2>/dev/null || true
+    fi
+}
+
+remote_package_version() {
+    local package_name="$1"
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$NPM_VIEW_TIMEOUT_SECONDS" npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true
+    else
+        npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true
+    fi
+}
+
+load_package_versions() {
+    local key package_name
+    CURRENT_PACKAGE_VERSIONS=()
+    REMOTE_PACKAGE_VERSIONS=()
+    for key in "${PACKAGE_KEYS[@]}"; do
+        package_name=$(package_name_for_key "$key")
+        CURRENT_PACKAGE_VERSIONS["$key"]="$(current_package_version "$package_name")"
+        REMOTE_PACKAGE_VERSIONS["$key"]="$(remote_package_version "$package_name")"
+    done
+}
+
+print_update_table() {
+    local key package_name current remote status
+    printf '%-12s %-26s %-22s %-22s %s\n' "模块" "包名" "当前版本" "dev 版本" "状态"
+    for key in "${PACKAGE_KEYS[@]}"; do
+        package_name=$(package_name_for_key "$key")
+        current="${CURRENT_PACKAGE_VERSIONS[$key]:-}"
+        remote="${REMOTE_PACKAGE_VERSIONS[$key]:-}"
+        if [ -z "$remote" ]; then
+            status="无法查询"
+        elif [ -z "$current" ]; then
+            status="未安装"
+        elif [ "$current" != "$remote" ]; then
+            status="可更新"
+        else
+            status="已最新"
+        fi
+        printf '%-12s %-26s %-22s %-22s %s\n' "$key" "$package_name" "${current:-none}" "${remote:-unknown}" "$status"
+    done
+}
+
+select_outdated_packages() {
+    local key current remote
+    SELECTED_PACKAGE_KEYS=()
+    load_package_versions
+    for key in "${PACKAGE_KEYS[@]}"; do
+        current="${CURRENT_PACKAGE_VERSIONS[$key]:-}"
+        remote="${REMOTE_PACKAGE_VERSIONS[$key]:-}"
+        if [ -n "$remote" ] && [ "$current" != "$remote" ]; then
+            add_selected_package_key "$key"
+        fi
+    done
+}
+
+interactive_select_updates() {
+    local outdated=() key idx input token selected
+    load_package_versions
+    log_title "4. 检查 dev 版本更新..."
+    print_update_table
+    echo ""
+
+    for key in "${PACKAGE_KEYS[@]}"; do
+        if [ -n "${REMOTE_PACKAGE_VERSIONS[$key]:-}" ] && [ "${CURRENT_PACKAGE_VERSIONS[$key]:-}" != "${REMOTE_PACKAGE_VERSIONS[$key]:-}" ]; then
+            outdated+=("$key")
+        fi
+    done
+
+    if [ ${#outdated[@]} -eq 0 ]; then
+        log_ok "所有模块都已是最新 dev 版本"
+        return 1
+    fi
+
+    echo -e "${YELLOW}请选择要更新的模块:${NC}"
+    echo "  0) all outdated"
+    for idx in "${!outdated[@]}"; do
+        key="${outdated[$idx]}"
+        echo "  $((idx + 1))) $key (${CURRENT_PACKAGE_VERSIONS[$key]:-none} -> ${REMOTE_PACKAGE_VERSIONS[$key]})"
+    done
+    echo "  示例: 0 或 1 3"
+    read -r -p "输入序号后回车: " input
+
+    SELECTED_PACKAGE_KEYS=()
+    if [ -z "$input" ] || [ "$input" = "0" ]; then
+        SELECTED_PACKAGE_KEYS=("${outdated[@]}")
+        return 0
+    fi
+
+    for token in $input; do
+        if ! [[ "$token" =~ ^[0-9]+$ ]] || (( token < 1 || token > ${#outdated[@]} )); then
+            log_warn "忽略无效序号: ${token}"
+            continue
+        fi
+        selected="${outdated[$((token - 1))]}"
+        add_selected_package_key "$selected"
+    done
+
+    if [ ${#SELECTED_PACKAGE_KEYS[@]} -eq 0 ]; then
+        log_warn "未选择任何模块，取消更新"
+        return 1
+    fi
+}
+
 link_target() {
     if [ -L "$HYDRO_BIN_LINK" ]; then
         readlink "$HYDRO_BIN_LINK"
@@ -188,18 +419,33 @@ backup_current_state() {
 
 install_release() {
     mkdir -p "$RELEASES_DIR"
-    local release_id release_dir log_file
+    local release_id release_dir log_file key package_name current spec
+    local package_specs=()
     release_id=$(now_id)
     release_dir="$RELEASES_DIR/$release_id"
     log_file="/tmp/hydro-dev-install-${release_id}.log"
 
-    log_title "4. 下载并安装 dev 包到独立 release 目录..."
+    load_package_versions
+    log_title "4. 下载并安装包到独立 release 目录..."
     mkdir -p "$release_dir"
     cat > "$release_dir/package.json" <<JSON
 {"private":true,"name":"hydro-dev-release-${release_id}","version":"0.0.0"}
 JSON
 
-    if npm install --prefix "$release_dir" --omit=dev --registry "$NPM_REGISTRY" "${PACKAGES[@]}" 2>&1 | tee "$log_file"; then
+    echo "  本次更新模块: ${SELECTED_PACKAGE_KEYS[*]}"
+    for key in "${PACKAGE_KEYS[@]}"; do
+        package_name=$(package_name_for_key "$key")
+        current="${CURRENT_PACKAGE_VERSIONS[$key]:-}"
+        if is_key_selected "$key" || [ -z "$current" ]; then
+            spec="${package_name}@dev"
+        else
+            spec="${package_name}@${current}"
+        fi
+        package_specs+=("$spec")
+        echo "  - ${spec}"
+    done
+
+    if npm install --prefix "$release_dir" --omit=dev --registry "$NPM_REGISTRY" "${package_specs[@]}" 2>&1 | tee "$log_file"; then
         log_ok "release 安装完成: ${release_dir}"
     else
         log_error "release 安装失败，详情日志: ${log_file}"
@@ -240,7 +486,7 @@ sync_ui_static_aliases() {
         ui_version=$(package_version_from_dir "$release_dir" "@hydrooj/ui-default" 2>/dev/null || true)
     else
         package_public_dir="$(npm root -g 2>/dev/null)/@hydrooj/ui-default/public"
-        ui_version=$(npm view @hydrooj/ui-default@dev version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true)
+        ui_version=$(remote_package_version "@hydrooj/ui-default")
     fi
 
     if [ -z "$ui_version" ] || [ ! -d "$package_public_dir" ]; then
@@ -489,11 +735,28 @@ rollback_release() {
     echo -e "${GREEN}=== 回退完成 ===${NC}"
 }
 
-install_flow() {
-    check_tools
-    check_node_version
-    setup_registry
+prepare_selected_packages() {
+    local mode="$1"
+    if [ ${#SELECTED_PACKAGE_KEYS[@]} -gt 0 ]; then
+        return 0
+    fi
 
+    if [ "$mode" = "install" ]; then
+        select_all_packages
+        return 0
+    fi
+
+    log_title "4. 检查 dev 版本更新..."
+    select_outdated_packages
+    print_update_table
+    echo ""
+    if [ ${#SELECTED_PACKAGE_KEYS[@]} -eq 0 ]; then
+        log_ok "所有模块都已是最新 dev 版本，无需更新"
+        return 1
+    fi
+}
+
+run_selected_install() {
     local backup_dir release_dir
     backup_dir=$(backup_current_state)
     log_ok "已创建回退备份: ${backup_dir}"
@@ -514,6 +777,36 @@ install_flow() {
     echo "回退命令: $SCRIPT_DIR/$(basename "$0") rollback $(basename "$backup_dir")"
 }
 
+install_flow() {
+    local mode="${1:-install}"
+    check_tools
+    check_node_version
+    setup_registry
+
+    if prepare_selected_packages "$mode"; then
+        run_selected_install
+    fi
+}
+
+check_updates_flow() {
+    check_tools
+    check_node_version
+    setup_registry
+    log_title "4. 检查 dev 版本更新..."
+    load_package_versions
+    print_update_table
+}
+
+upgrade_interactive_flow() {
+    check_tools
+    check_node_version
+    setup_registry
+
+    if interactive_select_updates; then
+        run_selected_install
+    fi
+}
+
 rollback_flow() {
     check_tools
     check_node_version
@@ -530,11 +823,28 @@ main() {
 
     case "$mode" in
         install|update)
+            parse_update_args "$@"
             (
                 flock -n 9 || { echo -e "${RED}错误: 已有安装/回退流程正在运行${NC}"; exit 1; }
                 echo -e "${GREEN}=== Hydro 开发版本安装/更新脚本 ===${NC}"
                 echo ""
-                install_flow
+                install_flow "$mode"
+            ) 9>"$LOCK_FILE"
+            ;;
+        check-updates)
+            (
+                flock -n 9 || { echo -e "${RED}错误: 已有安装/回退流程正在运行${NC}"; exit 1; }
+                echo -e "${GREEN}=== Hydro dev 版本检查脚本 ===${NC}"
+                echo ""
+                check_updates_flow
+            ) 9>"$LOCK_FILE"
+            ;;
+        upgrade-interactive)
+            (
+                flock -n 9 || { echo -e "${RED}错误: 已有安装/回退流程正在运行${NC}"; exit 1; }
+                echo -e "${GREEN}=== Hydro dev 交互升级脚本 ===${NC}"
+                echo ""
+                upgrade_interactive_flow
             ) 9>"$LOCK_FILE"
             ;;
         rollback)
