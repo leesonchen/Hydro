@@ -376,7 +376,7 @@ verify_login_page() {
     local body version deadline
     deadline=$((SECONDS + LOGIN_VERIFY_TIMEOUT_SECONDS))
     while :; do
-        body=$(curl -fsSL --max-time 10 http://127.0.0.1/login?redirect=%2F 2>/dev/null || true)
+        body=$(curl -fsSL --max-time 10 http://127.0.0.1:8888/login?redirect=%2F 2>/dev/null || true)
         if [ "$body" != "{}" ] && grep -qiE "<html|<form|login|signin|登录" <<<"$body"; then
             break
         fi
