@@ -1,5 +1,4 @@
 import $ from 'jquery';
-import { addPage } from '../api';
 import CustomSelectAutoComplete from 'vj/components/autocomplete/CustomSelectAutoComplete';
 import DomainSelectAutoComplete from 'vj/components/autocomplete/DomainSelectAutoComplete';
 import UserSelectAutoComplete from 'vj/components/autocomplete/UserSelectAutoComplete';
@@ -346,7 +345,5 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
     });
   }
 });
-
-addPage(page);
 
 export default page;
