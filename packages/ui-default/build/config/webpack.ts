@@ -134,6 +134,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.cjs'],
       alias: {
         vj: root(),
+        jquery: require.resolve('jquery'),
         'react/jsx-runtime': require.resolve('react/jsx-runtime'),
         react: require.resolve('react'),
         'react-dom/client': require.resolve('react-dom/client'),
