@@ -467,23 +467,38 @@ backup_current_state() {
 
 install_release() {
     mkdir -p "$RELEASES_DIR"
-    local release_id release_dir log_file key package_name current spec
+    local release_id release_dir log_file key package_name current spec active_release
     local package_specs=()
+    local incremental_install=0
     release_id=$(now_id)
     release_dir="$RELEASES_DIR/$release_id"
     log_file="/tmp/hydro-dev-install-${release_id}.log"
 
     load_current_package_versions
-    log_title "4. 下载并安装包到独立 release 目录..."
+    active_release=$(read_active_release || true)
     mkdir -p "$release_dir"
-    cat > "$release_dir/package.json" <<JSON
+
+    if [ -n "$active_release" ] && [ -d "$active_release/node_modules" ] \
+        && [ ${#SELECTED_PACKAGE_KEYS[@]} -gt 0 ] && [ ${#SELECTED_PACKAGE_KEYS[@]} -lt ${#PACKAGE_KEYS[@]} ]; then
+        incremental_install=1
+        log_title "4. 基于当前 release 增量安装选中模块..."
+        cp -a "$active_release"/. "$release_dir"/
+        echo "  复用当前 release: ${active_release}"
+    else
+        log_title "4. 下载并安装包到独立 release 目录..."
+        cat > "$release_dir/package.json" <<JSON
 {"private":true,"name":"hydro-dev-release-${release_id}","version":"0.0.0"}
 JSON
+    fi
 
     echo "  本次更新模块: ${SELECTED_PACKAGE_KEYS[*]}"
     for key in "${PACKAGE_KEYS[@]}"; do
         package_name=$(package_name_for_key "$key")
         current="${CURRENT_PACKAGE_VERSIONS[$key]:-}"
+        if [ "$incremental_install" -eq 1 ] && ! is_key_selected "$key"; then
+            echo "  - ${package_name}@${current} (复用当前 release)"
+            continue
+        fi
         if is_key_selected "$key" || [ -z "$current" ]; then
             spec="${package_name}@dev"
         else
