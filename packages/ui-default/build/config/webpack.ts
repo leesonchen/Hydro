@@ -81,8 +81,8 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
       options: {
         stylusOptions: {
           preferPathResolver: 'webpack',
+          import: [root('common/common.inc.styl')],
           use: [require('rupture')()],
-          import: ['~vj/common/common.inc.styl'],
         },
       },
     };
@@ -140,6 +140,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         'react-dom/client': require.resolve('react-dom/client'),
         'react-dom/server': join(dirname(require.resolve('react-dom/package.json')), 'server.browser.js'),
         'react-dom': require.resolve('react-dom'),
+        'rupture': require.resolve('rupture'),
       },
     },
     module: {
