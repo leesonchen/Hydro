@@ -80,7 +80,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
       loader: 'stylus-loader',
       options: {
         stylusOptions: {
-          preferPathResolver: 'webpack',
+          paths: [root()],
           import: [root('common/common.inc.styl')],
           use: [require('rupture')()],
         },
@@ -133,7 +133,8 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.cjs'],
       alias: {
-        vj: root(),
+        vj: root().replace(/\\/g, '/'),
+        '~vj': root().replace(/\\/g, '/'),
         jquery: require.resolve('jquery'),
         'react/jsx-runtime': require.resolve('react/jsx-runtime'),
         react: require.resolve('react'),
@@ -168,6 +169,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         },
         {
           test: /\.(ttf|eot|woff|woff2|png|jpg|jpeg|gif)$/,
+          exclude: /codicon\.ttf$/i,
           type: 'asset/resource',
           generator: {
             filename: (pathData) => {
