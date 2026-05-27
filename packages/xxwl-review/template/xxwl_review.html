@@ -1,0 +1,137 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<style>
+.xxwl-page { max-width: 1080px; margin: 0 auto; }
+.xxwl-hero { background: linear-gradient(135deg, #f4f7fb, #fff7ed); border: 1px solid #e6e8ef; border-radius: 12px; padding: 28px; margin-bottom: 18px; }
+.xxwl-title { margin: 0 0 8px; font-size: 28px; font-weight: 700; }
+.xxwl-muted { color: #667085; }
+.xxwl-search { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+.xxwl-search input { min-width: 240px; max-width: 360px; text-transform: uppercase; }
+.xxwl-card { background: #fff; border: 1px solid #e6e8ef; border-radius: 12px; margin-bottom: 18px; overflow: hidden; }
+.xxwl-card__body { padding: 22px; }
+.xxwl-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.xxwl-stat { background: #f8fafc; border-radius: 10px; padding: 14px; }
+.xxwl-stat b { display: block; font-size: 24px; line-height: 1.2; }
+.xxwl-stat span { color: #667085; font-size: 12px; }
+.xxwl-score-table td, .xxwl-score-table th { text-align: center; }
+.xxwl-score-full { color: #16794c; font-weight: 700; }
+.xxwl-score-zero { color: #b42318; font-weight: 700; }
+.xxwl-status { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 1px; word-break: break-all; }
+.xxwl-review { line-height: 1.8; }
+.xxwl-review pre { white-space: pre-wrap; }
+.xxwl-empty { padding: 30px; text-align: center; color: #667085; }
+.xxwl-wait { border: 1px dashed #b8c4d8; background: #f8fafc; border-radius: 10px; padding: 18px; color: #344054; }
+.xxwl-wait strong { display: block; margin-bottom: 6px; }
+.xxwl-spinner { display: inline-block; width: 14px; height: 14px; margin-right: 8px; border: 2px solid #c7d7fe; border-top-color: #2563eb; border-radius: 50%; vertical-align: -2px; animation: xxwl-spin .8s linear infinite; }
+.xxwl-error { border: 1px solid #fecdca; background: #fffbfa; color: #b42318; border-radius: 10px; padding: 14px; }
+@keyframes xxwl-spin { to { transform: rotate(360deg); } }
+@media (max-width: 720px) {
+  .xxwl-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .xxwl-search input { min-width: 100%; }
+}
+</style>
+
+<div class="xxwl-page">
+  <div class="xxwl-hero">
+    <h1 class="xxwl-title">{{ pageTitle }}</h1>
+    <div class="xxwl-muted">
+      仅登录用户可查看。{% if totalStudents %}数据来自信息与未来评测汇总：共 {{ totalStudents }} 人，均分 {{ globalMean }}，中位数 {{ globalMedian }}。{% else %}请先在插件配置中填写数据目录。{% endif %}
+    </div>
+    <form method="get" class="xxwl-search">
+      <input class="textbox" type="text" name="id" value="{{ queryId }}" placeholder="输入考试编号，例如 A001 / C100" autocomplete="off" required>
+      <button class="rounded primary button" type="submit">查询个人分析</button>
+    </form>
+  </div>
+
+  {% if configError %}
+    <div class="xxwl-card"><div class="xxwl-card__body"><div class="xxwl-error">{{ configError }}</div></div></div>
+  {% endif %}
+
+  {% if searched and not student and not configError %}
+    <div class="xxwl-card"><div class="xxwl-empty">未找到考试编号「{{ queryId }}」。请检查字母和数字是否输入正确。</div></div>
+  {% endif %}
+
+  {% if student %}
+    <div class="xxwl-card">
+      <div class="xxwl-card__body">
+        <h2 style="margin-top:0;">{{ student.id }} · 个人详情</h2>
+        <div class="xxwl-stat-grid">
+          <div class="xxwl-stat"><span>总分</span><b>{{ student.total }} / 500</b></div>
+          <div class="xxwl-stat"><span>全体排名</span><b>#{{ student.global_rank }}</b></div>
+          <div class="xxwl-stat"><span>考区排名</span><b>{{ student.region }} 区 #{{ student.region_rank }}</b></div>
+          <div class="xxwl-stat"><span>百分位</span><b>P{{ student.percentile }}</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="xxwl-card">
+      <div class="xxwl-card__body">
+        <h2 style="margin-top:0;">逐题得分与评测串</h2>
+        <table class="data-table xxwl-score-table">
+          <thead>
+            <tr>
+              <th>题号</th>
+              <th>题目</th>
+              <th>得分</th>
+              <th>评测串</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in problemRows %}
+              <tr>
+                <td>{{ row.id|upper }}</td>
+                <td style="text-align:left;">{{ row.title }}</td>
+                <td class="{% if row.score == row.max %}xxwl-score-full{% elif row.score == 0 %}xxwl-score-zero{% endif %}">{{ row.score }} / {{ row.max }}</td>
+                <td class="xxwl-status">{{ row.status or '无' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="xxwl-card">
+      <div class="xxwl-card__body xxwl-review typo" id="xxwl-review-box" data-id="{{ student.id }}" data-has-review="{{ 'true' if hasGeneratedReview else 'false' }}" data-can-generate="{{ 'true' if canGenerate else 'false' }}">
+        {% if hasGeneratedReview %}
+          {% include "xxwl_review_content.html" %}
+        {% else %}
+          <div class="xxwl-wait" id="xxwl-wait-box">
+            <strong><span class="xxwl-spinner"></span>正在生成个人代码审核评语</strong>
+            <div>该学生暂无已保存 review，系统正在按源码、评测串和成绩实时调用 LLM 生成。通常需要几十秒，请不要关闭页面。</div>
+          </div>
+          {% if not canGenerate %}
+            <div class="xxwl-error" style="margin-top:12px;">插件尚未配置 dataDir 或 apiKey，无法实时生成。请管理员在 Hydro addon 配置中填写数据目录、baseUrl 和 apiKey。</div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+{% if student and not hasGeneratedReview and canGenerate %}
+<script>
+(function() {
+  var box = document.getElementById('xxwl-review-box');
+  if (!box) return;
+  var studentId = box.getAttribute('data-id');
+  var waitBox = document.getElementById('xxwl-wait-box');
+  fetch('{{ url("xxwl_review_generate") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ id: studentId })
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (!data || !data.ok) throw new Error((data && data.error) || '生成失败');
+      box.innerHTML = data.html || '<pre></pre>';
+    })
+    .catch(function(err) {
+      if (waitBox) waitBox.remove();
+      var div = document.createElement('div');
+      div.className = 'xxwl-error';
+      div.textContent = '实时生成失败：' + (err && err.message ? err.message : String(err));
+      box.appendChild(div);
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}
