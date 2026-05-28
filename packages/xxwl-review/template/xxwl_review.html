@@ -24,6 +24,7 @@
 .xxwl-wait strong { display: block; margin-bottom: 6px; }
 .xxwl-spinner { display: inline-block; width: 14px; height: 14px; margin-right: 8px; border: 2px solid #c7d7fe; border-top-color: #2563eb; border-radius: 50%; vertical-align: -2px; animation: xxwl-spin .8s linear infinite; }
 .xxwl-error { border: 1px solid #fecdca; background: #fffbfa; color: #b42318; border-radius: 10px; padding: 14px; }
+.xxwl-review-actions { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 @keyframes xxwl-spin { to { transform: rotate(360deg); } }
 @media (max-width: 720px) {
   .xxwl-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -91,7 +92,14 @@
     </div>
 
     <div class="xxwl-card">
-      <div class="xxwl-card__body xxwl-review typo" id="xxwl-review-box" data-id="{{ student.id }}" data-has-review="{{ 'true' if hasGeneratedReview else 'false' }}" data-can-generate="{{ 'true' if canGenerate else 'false' }}">
+      <div class="xxwl-card__body xxwl-review typo">
+        {% if canReanalyze %}
+          <div class="xxwl-review-actions">
+            <button class="rounded button" type="button" id="xxwl-reanalyze-button">重新分析</button>
+            <span class="xxwl-muted">管理员操作：重新调用 LLM 并覆盖当前 review。</span>
+          </div>
+        {% endif %}
+        <div id="xxwl-review-box" data-id="{{ student.id }}" data-has-review="{{ 'true' if hasGeneratedReview else 'false' }}" data-can-generate="{{ 'true' if canGenerate else 'false' }}">
         {% if hasGeneratedReview %}
           {% include "xxwl_review_content.html" %}
         {% else %}
@@ -100,37 +108,72 @@
             <div>该学生暂无已保存 review，系统正在按源码、评测串和成绩实时调用 LLM 生成。通常需要几十秒，请不要关闭页面。</div>
           </div>
           {% if not canGenerate %}
-            <div class="xxwl-error" style="margin-top:12px;">插件尚未配置 dataDir 或 apiKey，无法实时生成。请管理员在 Hydro addon 配置中填写数据目录、baseUrl 和 apiKey。</div>
+            <div class="xxwl-error" style="margin-top:12px;">插件数据目录不可用或尚未配置 apiKey，无法实时生成。请管理员检查 dataDir、baseUrl 和 apiKey。</div>
           {% endif %}
         {% endif %}
+        </div>
       </div>
     </div>
   {% endif %}
 </div>
 
-{% if student and not hasGeneratedReview and canGenerate %}
+{% if student and canGenerate %}
 <script>
 (function() {
   var box = document.getElementById('xxwl-review-box');
   if (!box) return;
   var studentId = box.getAttribute('data-id');
-  var waitBox = document.getElementById('xxwl-wait-box');
-  fetch('{{ url("xxwl_review_generate") }}', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({ id: studentId })
-  }).then(function(res) { return res.json(); })
-    .then(function(data) {
-      if (!data || !data.ok) throw new Error((data && data.error) || '生成失败');
-      box.innerHTML = data.html || '<pre></pre>';
-    })
-    .catch(function(err) {
-      if (waitBox) waitBox.remove();
-      var div = document.createElement('div');
-      div.className = 'xxwl-error';
-      div.textContent = '实时生成失败：' + (err && err.message ? err.message : String(err));
-      box.appendChild(div);
+  var reanalyzeButton = document.getElementById('xxwl-reanalyze-button');
+
+  function showWait(message) {
+    box.innerHTML = '<div class="xxwl-wait" id="xxwl-wait-box"><strong><span class="xxwl-spinner"></span>' + message + '</strong><div>系统正在按完整题面、源码、评测串和成绩实时调用 LLM 生成，请不要关闭页面。</div></div>';
+  }
+
+  function showError(prefix, err) {
+    var waitBox = document.getElementById('xxwl-wait-box');
+    if (waitBox) waitBox.remove();
+    var div = document.createElement('div');
+    div.className = 'xxwl-error';
+    div.textContent = prefix + '：' + (err && err.message ? err.message : String(err));
+    box.appendChild(div);
+  }
+
+  function requestGenerate(force) {
+    if (force) showWait('正在重新分析个人代码审核评语');
+    if (reanalyzeButton) {
+      reanalyzeButton.disabled = true;
+      reanalyzeButton.textContent = force ? '重新分析中...' : '生成中...';
+    }
+    return fetch('{{ url("xxwl_review_generate") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ id: studentId, force: !!force })
+    }).then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (!data || !data.ok) throw new Error((data && data.error) || '生成失败');
+        box.innerHTML = data.html || '<pre></pre>';
+      })
+      .catch(function(err) {
+        showError(force ? '重新分析失败' : '实时生成失败', err);
+      })
+      .then(function() {
+        if (reanalyzeButton) {
+          reanalyzeButton.disabled = false;
+          reanalyzeButton.textContent = '重新分析';
+        }
+      });
+  }
+
+  if (reanalyzeButton) {
+    reanalyzeButton.addEventListener('click', function() {
+      if (!window.confirm('确定要重新分析并覆盖当前 review 吗？')) return;
+      requestGenerate(true);
     });
+  }
+
+  if (box.getAttribute('data-has-review') !== 'true' && box.getAttribute('data-can-generate') === 'true') {
+    requestGenerate(false);
+  }
 })();
 </script>
 {% endif %}
