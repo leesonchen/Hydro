@@ -1,0 +1,110 @@
+{% extends "manage_base.html" %}
+
+{% block manage_content %}
+<style>
+.url-audit-filter .form__item { margin-bottom: 1rem; }
+.url-audit-filter .textbox { width: 100%; }
+.url-audit-url { max-width: 360px; word-break: break-all; }
+.url-audit-meta { color: var(--color-text-secondary); font-size: 0.875rem; }
+.url-audit-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+</style>
+
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title" data-heading>{{ _('Query URL Audit') }}</h1>
+    <div class="section__tools">
+      <button type="button" class="rounded button" onclick="location.href=location.pathname">{{ _('Reset') }}</button>
+    </div>
+  </div>
+  <div class="section__body url-audit-filter">
+    <form method="get" class="row">
+      <div class="medium-3 columns form__item">
+        <label>
+          {{ _('UID or Username') }}
+          <input name="user" type="text" value="{{ filters.user }}" class="textbox" placeholder="1000 / admin">
+        </label>
+      </div>
+      <div class="medium-5 columns form__item">
+        <label>
+          {{ _('URL contains') }}
+          <input name="url" type="text" value="{{ filters.url }}" class="textbox" placeholder="/problem or /xinxi">
+        </label>
+      </div>
+      <div class="medium-2 columns form__item">
+        <label>
+          {{ _('Start Time') }}
+          <input name="startAt" type="datetime-local" value="{{ filters.startAt }}" class="textbox">
+        </label>
+      </div>
+      <div class="medium-2 columns form__item">
+        <label>
+          {{ _('End Time') }}
+          <input name="endAt" type="datetime-local" value="{{ filters.endAt }}" class="textbox">
+        </label>
+      </div>
+      <div class="medium-12 columns form__item text-right">
+        <input type="hidden" name="page" value="1">
+        <button type="submit" class="rounded primary button">{{ _('Search') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section__body no-padding">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ _('Time') }}</th>
+          <th>{{ _('User') }}</th>
+          <th>{{ _('Method') }}</th>
+          <th>{{ _('Status') }}</th>
+          <th>{{ _('URL') }}</th>
+          <th>{{ _('Route') }}</th>
+          <th>{{ _('IP') }}</th>
+          <th>{{ _('Response Time') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for doc in docs %}
+        <tr>
+          <td>{{ datetimeSpan(doc.time)|safe }}</td>
+          <td>
+            <a class="typo-a" href="{{ url('user_detail', uid=doc.uid) }}">{{ doc.uid }}</a>
+            <div class="url-audit-meta">{{ doc.uname }}</div>
+          </td>
+          <td>{{ doc.method }}</td>
+          <td>{{ doc.status }}</td>
+          <td class="url-audit-url">
+            <a class="typo-a" href="{{ doc.url }}" target="_blank" rel="noopener">{{ doc.url }}</a>
+            {% if doc.referer %}
+            <div class="url-audit-meta">Referer: {{ doc.referer }}</div>
+            {% endif %}
+          </td>
+          <td>{{ doc.route or '-' }}</td>
+          <td>{{ doc.ip }}</td>
+          <td>{{ doc.ms }}ms</td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="8" class="text-center supplementary">{{ _('No audit records found.') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="section__body">
+    <div class="url-audit-pagination">
+      <span class="supplementary">{{ _('{0} records, Page {1}/{2}').format(total, page, totalPages) }}</span>
+      <div>
+        {% if prevQuery %}
+        <a class="rounded button" href="{{ prevQuery }}">{{ _('Previous Page') }}</a>
+        {% endif %}
+        {% if nextQuery %}
+        <a class="rounded button" href="{{ nextQuery }}">{{ _('Next Page') }}</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
