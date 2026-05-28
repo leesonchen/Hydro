@@ -17,13 +17,15 @@ const PROBLEMS = [
     { id: 'p6', title: '桌面游戏', max: 100, desc: '两人轮流操作，求必胜方，Minimax + Alpha-Beta' },
 ];
 
-const SYSTEM_PROMPT = `你是一位信息学竞赛教练，为参加编程竞赛的学生撰写个性化代码审核评语。
-评语面向学生本人和教师，语气专业但鼓励，重点分析代码质量而非仅罗列分数。
+const SYSTEM_PROMPT = `你是一位信息学竞赛教练，为参加编程竞赛的学生撰写个性化代码点评。
+代码点评面向学生本人和教师，语气专业但鼓励，重点分析代码质量而非仅罗列分数。
 必须基于学生实际源码和评测串下结论；不要编造源码中不存在的函数、变量或行号。
 题意以提供的完整题面为准，不要只根据题目标题或图片主观补全算法。
-参考解法只用于理解正确思路和定位差距；评语必须主要评价学生代码，不要把参考解法当作学生代码。
-对低分题要结合“评测串错误类型 + 学生代码行号 + 参考解法关键思路”解释根因。
-只输出一份完整评语，不要重复标题、“强项”、“弱点/进步点”或“建议”章节。
+参考解法只用于理解正确思路和定位差距；代码点评必须主要评价学生代码，不要把参考解法当作学生代码。
+评测结果只写摘要（如“全 WA”“RE 2，AC 3”），不要在输出中展示由 *、x、r、t、c、o、. 组成的原始评测串。
+所有非满分题都必须被检查到：重点题可放在“可改进项”展开，其他题至少要在“题目要点总结”中逐题说明。
+对未提交题只说明“未提交，无法进行源码层面的代码点评”，不要补写正确算法、不要推测原因、不要做总结评价。
+只输出一份完整代码点评，不要重复标题、“强项”、“可改进项”、“题目要点总结”或“总体评价”章节。
 如果源码未提交或信息不足，要明确说明证据不足，并给出可执行的下一步建议。`;
 
 type StudentRecord = {
@@ -42,7 +44,13 @@ type AnalysisData = {
         n_students: number;
         total_mean: number;
         total_median: number;
+        total_std?: number;
+        zero_count?: number;
+        pass_count?: number;
+        total_quantiles?: Record<string, number>;
     };
+    regions?: Record<string, any>;
+    problems?: Record<string, any>;
     students: StudentRecord[];
 };
 
@@ -71,7 +79,7 @@ let runtimeConfig: RuntimeConfig = {
     model: 'gpt-5.5',
     endpoint: 'auto',
     reasoningEffort: 'high',
-    maxOutputTokens: 1800,
+    maxOutputTokens: 2200,
     codeMaxChars: 20000,
     statementMaxChars: 8000,
     solutionMaxChars: 6000,
@@ -82,6 +90,7 @@ let cachedMtime = 0;
 let cachedData: AnalysisData | null = null;
 let cachedStudents = new Map<string, StudentRecord>();
 const generationTasks = new Map<string, Promise<string>>();
+const REVIEW_TITLE_PATTERN = '代码(?:点评|审核|评审|审查|审阅)';
 
 function normalizeExamId(id = '') {
     return id.trim().toUpperCase();
@@ -129,15 +138,80 @@ async function writeReview(id: string, content: string) {
     await fsp.rename(tmp, target);
 }
 
+function displayReviewText(text: string) {
+    return replaceRawStatusStrings(text
+        .replace(/代码(?:审核|评审|审查|审阅)/g, '代码点评')
+        .replace(/代码点评评语/g, '代码点评'));
+}
+
 function buildProblemRows(student: StudentRecord) {
     return PROBLEMS.map((problem) => ({
         ...problem,
         score: student.scores?.[problem.id] ?? 0,
         status: student.report_string?.[problem.id] || '',
+        statusParts: buildStatusParts(student.report_string?.[problem.id] || ''),
+        statusSummary: summarizeReportString(student.report_string?.[problem.id] || ''),
     }));
 }
 
+function pct(value = 0) {
+    return `${(value * 100).toFixed(1)}%`;
+}
+
+function round2(value = 0) {
+    return Math.round(value * 100) / 100;
+}
+
+function buildStatsView(data: AnalysisData) {
+    const students = [...data.students].sort((a, b) => a.global_rank - b.global_rank || a.id.localeCompare(b.id));
+    const regionList = (Object.keys(data.regions || {}).length
+        ? Object.keys(data.regions || {})
+        : Array.from(new Set(students.map((s) => s.region)))).sort();
+    const regionRows = regionList.map((region) => {
+        const item = data.regions?.[region] || {};
+        return {
+            region,
+            n: item.n_students || students.filter((s) => s.region === region).length,
+            mean: round2(item.total_mean || 0),
+            median: round2(item.total_median || 0),
+            std: round2(item.total_std || 0),
+            problemMeans: PROBLEMS.map((p) => round2(item.per_problem?.[p.id]?.mean || 0)),
+        };
+    });
+    const problemRows = PROBLEMS.map((p) => {
+        const item = data.problems?.[p.id] || {};
+        return {
+            ...p,
+            mean: round2(item.mean || 0),
+            std: round2(item.std || 0),
+            zeroRate: pct(item.zero_rate || 0),
+            fullRate: pct(item.full_rate || 0),
+            discrimination: round2(item.discrimination || 0),
+            byRegion: regionList.map((region) => ({
+                region,
+                mean: round2(item.per_region?.[region] || 0),
+            })),
+        };
+    });
+    return {
+        global: {
+            ...data.global,
+            total_std: round2(data.global.total_std || 0),
+            pass_rate: pct((data.global.pass_count || 0) / Math.max(data.global.n_students || 1, 1)),
+            zero_rate: pct((data.global.zero_count || 0) / Math.max(data.global.n_students || 1, 1)),
+        },
+        regionRows,
+        problemRows,
+        leaderboardRows: students,
+    };
+}
+
 function summarizeReportString(status = '') {
+    const parts = buildStatusParts(status);
+    return parts.map((part) => `${part.label} ${part.count}`).join('，') || '无评测串';
+}
+
+function buildStatusParts(status = '') {
     const labels: Record<string, string> = {
         '*': 'AC',
         x: 'WA',
@@ -147,11 +221,36 @@ function summarizeReportString(status = '') {
         o: '输出超限',
         '.': '未提交',
     };
+    const order = ['*', 'x', 'r', 't', 'c', 'o', '.'];
     const counts = new Map<string, number>();
     for (const ch of status) counts.set(ch, (counts.get(ch) || 0) + 1);
-    return Array.from(counts.entries())
-        .map(([ch, count]) => `${labels[ch] || ch} ${count}`)
-        .join('，') || '无评测串';
+    return order
+        .filter((ch) => counts.has(ch))
+        .map((ch) => ({
+            ch,
+            label: labels[ch] || ch,
+            count: counts.get(ch) || 0,
+            className: ch === '*' ? 'ac' : ch === '.' ? 'missing' : 'bad',
+        }));
+}
+
+function summarizeRawStatus(status = '') {
+    const parts = buildStatusParts(status);
+    if (!parts.length) return '无评测串';
+    if (parts.length === 1) return parts[0].ch === '*' ? `全 ${parts[0].label}` : `${parts[0].label} ${parts[0].count}`;
+    return parts.map((part) => `${part.label} ${part.count}`).join('，');
+}
+
+function replaceRawStatusStrings(text: string) {
+    return text.split(/(```[\s\S]*?```)/g).map((part) => {
+        if (part.startsWith('```')) return part;
+        return part
+            .replace(/评测串\s*[:：]?\s*([*xrtc.o.]{3,})/gi, (_all, raw) => `评测结果：${summarizeRawStatus(raw.toLowerCase())}`)
+            .replace(/([（(])([*xrtc.o.]{3,})([）)])/gi, (_all, left, raw, right) => {
+                if (!/[xrtc*.o.]/i.test(raw)) return `${left}${raw}${right}`;
+                return `${left}${summarizeRawStatus(raw.toLowerCase())}${right}`;
+            });
+    }).join('');
 }
 
 function buildDiagnosisHint(student: StudentRecord) {
@@ -170,7 +269,11 @@ function buildDiagnosisHint(student: StudentRecord) {
         .slice(0, 3)
         .map((p) => `${p.id} 失 ${p.max - p.score} 分，${p.score}/${p.max}（${summarizeReportString(p.status)}）`)
         .join('；');
-    return `建议强项候选：${strengths || '无'}\n建议弱点优先级：${weaknesses || '无'}`;
+    const mustCover = rows
+        .filter((p) => p.max - p.score > 0 || [...p.status].some((ch) => ch !== '*'))
+        .map((p) => `${p.id} ${p.score}/${p.max}（${summarizeReportString(p.status)}）`)
+        .join('；');
+    return `建议强项候选：${strengths || '无'}\n建议可改进项优先级：${weaknesses || '无'}\n必须检查到的非满分/异常评测题：${mustCover || '无'}`;
 }
 
 function truncateMiddle(text: string, maxChars: number) {
@@ -204,6 +307,33 @@ async function readSource(studentId: string, pid: string) {
     }
 }
 
+async function readSourceForDisplay(studentId: string, problem: typeof PROBLEMS[number]) {
+    const file = `${problem.id}.cpp`;
+    const sourcePath = path.join(requireDataDir(), 'code', studentId, file);
+    try {
+        const source = await fsp.readFile(sourcePath, 'utf-8');
+        return {
+            id: problem.id,
+            title: problem.title,
+            file,
+            exists: true,
+            source,
+        };
+    } catch (err: any) {
+        return {
+            id: problem.id,
+            title: problem.title,
+            file,
+            exists: false,
+            source: err?.code === 'ENOENT' ? '// 未提交' : `// 读取失败: ${err?.message || String(err)}`,
+        };
+    }
+}
+
+async function readSourcesForDisplay(studentId: string) {
+    return Promise.all(PROBLEMS.map((problem) => readSourceForDisplay(studentId, problem)));
+}
+
 async function readProblemStatement(pid: string) {
     const statementPath = path.join(requireDataDir(), 'problems', `${pid}.md`);
     try {
@@ -212,6 +342,16 @@ async function readProblemStatement(pid: string) {
         if (err?.code === 'ENOENT') return '';
         logger.warn(`Read problem statement ${pid} failed: ${err?.message || String(err)}`);
         return '';
+    }
+}
+
+async function readProblemStatementFull(pid: string) {
+    const statementPath = path.join(requireDataDir(), 'problems', `${pid}.md`);
+    try {
+        return await fsp.readFile(statementPath, 'utf-8');
+    } catch (err: any) {
+        if (err?.code === 'ENOENT') return '题面暂不可用，请联系管理员检查 data/problems 目录。';
+        throw err;
     }
 }
 
@@ -270,7 +410,7 @@ async function buildReviewPrompt(student: StudentRecord, data: AnalysisData) {
         const source = await readSource(student.id, problem.id);
         codeBlocks.push(`### ${problem.id}.cpp\n\`\`\`cpp\n${source}\n\`\`\``);
     }
-    return `请为学生 ${student.id} 撰写代码审核评语。
+    return `请为学生 ${student.id} 撰写代码点评。
 
 ## 比赛信息
 - 总人数：${data.global.n_students} 人，满分 500
@@ -294,15 +434,14 @@ ${diagnosisHint}
 ${codeBlocks.join('\n')}
 
 ## 输出要求
-1. 用 Markdown 格式，以 \`# 代码审核 - ${student.id}\` 开头。
+1. 用 Markdown 格式，以 \`# 代码点评 - ${student.id}\` 开头。
 2. 第一行用粗体写成绩摘要：总分/满分、百分位、全体排名、考区排名。
-3. 分“强项”和“弱点/进步点”两大部分：
-   - 强项：优先选择得分最高且代码确有亮点的题，引用学生代码关键片段，说明为什么有效。
-   - 弱点：优先选择失分最多或评测串错误最集中的 1-2 题；必须定位学生代码行号，说明它与题面/参考解法的差异。
-4. 分析每个弱点时按“现象（得分/评测串）→ 代码证据 → 根因 → 正确思路/伪代码”的顺序写。
-5. 引用学生实际代码时用 \`\`\`cpp 代码块，并指出具体行号；不要把参考解法代码当成学生代码引用。
-6. 最后给出 2-3 条针对性改进建议，每条必须对应本学生的具体失分题。
-7. 全文 250-600 字（中文），避免泛泛而谈；如果无法确定根因，明确写“证据不足”，不要猜测。
+3. 只使用以下四个二级标题，且顺序固定：\`## 强项\`、\`## 可改进项\`、\`## 题目要点总结\`、\`## 总体评价\`。
+4. \`强项\`：选择 1-2 个最值得表扬的题或代码习惯，必须引用学生实际代码片段或行号说明为什么有效；没有明显强项时写“暂无明显强项”，不要硬夸。
+5. \`可改进项\`：只展开 1-3 个最值得讲的失分题。每项的小标题只写“题号 + 题名 + 得分/评测结果摘要”，例如“p5 旅行计划 0/100，全 RE”；正文用自然语言依次说明得分现象、学生代码行号/片段、错误根因和改法；不要把原始评测串字符、以及“现象 / 代码证据 / 根因 / 正确思路”这些词或箭头原样写出来。引用代码用 \`\`\`cpp 代码块，且不要引用参考解法作为学生代码。
+6. \`题目要点总结\`：必须按 p1-p6 顺序逐题覆盖，每题 1 句。满分题写清核心做法；非满分且已提交的 WA/RE/TLE/CE/输出超限题写清“得分/评测结果摘要 + 主要问题 + 正确要点”，即使未在“可改进项”展开也不能省略；未提交题只写“未提交，无法进行源码层面的代码点评”，不要补正确算法或总结评价。
+7. \`总体评价\`：用 1 段总结能力画像和下一步训练重点，必须点名最需要补的 1-2 个已提交题型/能力；未提交题只能作为“需要先完成提交”的事实，不评价其代码质量或算法水平。
+8. 全文 450-900 字（中文），表达精炼、言之有物；如果某题证据不足，明确写“证据不足”，不要猜测。
 `;
 }
 
@@ -402,12 +541,12 @@ async function callLLM(userPrompt: string) {
 
 function normalizeReview(text: string, student: StudentRecord) {
     let trimmed = text.trim();
-    const titlePattern = new RegExp(`#\\s*代码审核\\s*-\\s*${student.id}\\b`, 'g');
+    const titlePattern = new RegExp(`#\\s*${REVIEW_TITLE_PATTERN}\\s*-\\s*${student.id}\\b`, 'g');
     const titleMatches = Array.from(trimmed.matchAll(titlePattern));
     if (titleMatches.length > 1 && titleMatches[1].index !== undefined) {
         trimmed = trimmed.slice(0, titleMatches[1].index).trimEnd();
     }
-    for (const heading of ['\n## 强项', '\n## 弱点/进步点', '\n## 建议']) {
+    for (const heading of ['\n## 强项', '\n## 弱点/进步点', '\n## 可改进项', '\n## 题目要点总结', '\n## 总体评价', '\n## 建议']) {
         const first = trimmed.indexOf(heading);
         const second = first >= 0 ? trimmed.indexOf(heading, first + 1) : -1;
         if (second >= 0) {
@@ -415,12 +554,13 @@ function normalizeReview(text: string, student: StudentRecord) {
             break;
         }
     }
-    if (trimmed.startsWith(`# 代码审核 - ${student.id}`)) return `${trimmed}\n`;
-    return `# 代码审核 - ${student.id}\n\n**成绩：${student.total}/500 (P${student.percentile}) | 全体#${student.global_rank} | 考区${student.region}第${student.region_rank}**\n\n${trimmed.replace(/^#+\s*/, '')}\n`;
+    trimmed = displayReviewText(trimmed);
+    if (new RegExp(`^#\\s*代码点评\\s*-\\s*${student.id}\\b`).test(trimmed)) return `${trimmed}\n`;
+    return `# 代码点评 - ${student.id}\n\n**成绩：${student.total}/500 (P${student.percentile}) | 全体#${student.global_rank} | 考区${student.region}第${student.region_rank}**\n\n${trimmed.replace(/^#+\s*/, '')}\n`;
 }
 
 async function generateReview(student: StudentRecord, data: AnalysisData, force = false) {
-    if (!runtimeConfig.apiKey) throw new Error('插件未配置 apiKey，无法实时生成评语。');
+    if (!runtimeConfig.apiKey) throw new Error('插件未配置 apiKey，无法实时生成代码点评。');
     if (!force) {
         const existing = await readReview(student.id);
         if (existing) return existing;
@@ -455,21 +595,59 @@ class XxwlReviewHandler extends Handler {
         }
         const student = data && examId ? cachedStudents.get(examId) || null : null;
         const generatedReview = student ? await readReview(student.id) : '';
+        const sourceFiles = student ? await readSourcesForDisplay(student.id) : [];
         this.response.template = 'xxwl_review.html';
         this.response.body = {
             pageTitle: runtimeConfig.title,
             queryId: examId,
             student,
             problemRows: student ? buildProblemRows(student) : [],
-            review: generatedReview,
+            sourceFiles,
+            review: displayReviewText(generatedReview),
             totalStudents: data?.global.n_students || 0,
             globalMean: data?.global.total_mean || 0,
             globalMedian: data?.global.total_median || 0,
             hasGeneratedReview: Boolean(generatedReview),
             canGenerate: Boolean(runtimeConfig.apiKey && runtimeConfig.dataDir),
             canReanalyze: Boolean(runtimeConfig.apiKey && runtimeConfig.dataDir && isReviewAdmin(this)),
+            canViewStats: isReviewAdmin(this),
             configError,
             searched: Boolean(examId),
+        };
+    }
+}
+
+class XxwlProblemHandler extends Handler {
+    @param('pid', Types.String)
+    async get(_domainId: string, pid: string) {
+        const problem = PROBLEMS.find((p) => p.id === (pid || '').toLowerCase());
+        if (!problem) {
+            this.response.status = 404;
+            this.response.body = '题目不存在。';
+            return;
+        }
+        this.response.template = 'xxwl_problem.html';
+        this.response.body = {
+            pageTitle: `${problem.id.toUpperCase()} · ${problem.title}`,
+            problem,
+            statement: await readProblemStatementFull(problem.id),
+        };
+    }
+}
+
+class XxwlStatsHandler extends Handler {
+    async get() {
+        if (!isReviewAdmin(this)) {
+            this.response.status = 403;
+            this.response.body = '当前用户没有查看统计分析的权限。';
+            return;
+        }
+        const data = await readAnalysis();
+        this.response.template = 'xxwl_stats.html';
+        this.response.body = {
+            pageTitle: `${runtimeConfig.title} · 统计分析`,
+            problems: PROBLEMS,
+            stats: buildStatsView(data),
         };
     }
 }
@@ -490,14 +668,14 @@ class XxwlReviewGenerateHandler extends Handler {
                 this.response.body = { ok: false, error: `未找到考试编号 ${examId}` };
                 return;
             }
-            const taskKey = `${student.id}:${force ? 'force' : 'normal'}`;
+            const taskKey = student.id;
             let task = generationTasks.get(taskKey);
             if (!task) {
                 task = generateReview(student, data, force).finally(() => generationTasks.delete(taskKey));
                 generationTasks.set(taskKey, task);
             }
             const review = await task;
-            const html = await this.renderHTML('xxwl_review_content.html', { review });
+            const html = await this.renderHTML('xxwl_review_content.html', { review: displayReviewText(review) });
             this.response.body = { ok: true, id: student.id, review, html };
         } catch (err: any) {
             this.response.body = { ok: false, error: err?.message || String(err) };
@@ -513,7 +691,7 @@ export const Config = Schema.object({
     model: Schema.string().default('gpt-5.5').description('LLM 模型名'),
     endpoint: Schema.union(['auto', 'responses', 'chat'] as const).default('auto').description('API endpoint 类型'),
     reasoningEffort: Schema.string().default('high').description('推理强度，留空则不传'),
-    maxOutputTokens: Schema.number().default(1800).min(256).description('最大输出 token'),
+    maxOutputTokens: Schema.number().default(2200).min(256).description('最大输出 token'),
     temperature: Schema.number().role('slider').min(0).max(2).step(0.1).description('采样温度；留空则不传'),
     codeMaxChars: Schema.number().default(20000).min(1000).description('每个源码文件放入 prompt 的最大字符数'),
     statementMaxChars: Schema.number().default(8000).min(1000).description('每道题完整题面放入 prompt 的最大字符数'),
@@ -531,7 +709,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         model: config.model || 'gpt-5.5',
         endpoint: (config.endpoint || 'auto') as RuntimeConfig['endpoint'],
         reasoningEffort: config.reasoningEffort || '',
-        maxOutputTokens: config.maxOutputTokens || 1800,
+        maxOutputTokens: config.maxOutputTokens || 2200,
         temperature: config.temperature,
         codeMaxChars: config.codeMaxChars || 20000,
         statementMaxChars: config.statementMaxChars || 8000,
@@ -543,7 +721,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     cachedStudents = new Map();
     cachedMtime = 0;
     ctx.Route('xxwl_review', '/xinxi', XxwlReviewHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('xxwl_review_problem', '/xinxi/problem/:pid', XxwlProblemHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('xxwl_review_stats', '/xinxi/stats', XxwlStatsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('xxwl_review_generate', '/xinxi/generate', XxwlReviewGenerateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.injectUI('UserDropdown', 'xxwl_review', { icon: 'chart-bar', text: '个人分析查询' },
-        (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE));
 }

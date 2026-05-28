@@ -1,0 +1,32 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<style>
+.xxwl-problem { max-width: 980px; margin: 0 auto; }
+.xxwl-problem-card { background: #fff; border: 1px solid #e6e8ef; border-radius: 12px; padding: 24px; }
+.xxwl-problem-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: flex-start; gap: 24px; margin-bottom: 18px; }
+.xxwl-problem-title { margin: 0; font-size: 28px; font-weight: 700; }
+.xxwl-problem-meta { color: #667085; margin-top: 6px; max-width: 72ch; }
+.xxwl-problem-back { min-width: 116px; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+.xxwl-problem-statement { line-height: 1.8; }
+.xxwl-problem-statement pre { white-space: pre-wrap; }
+@media (max-width: 720px) {
+  .xxwl-problem-head { grid-template-columns: 1fr; }
+  .xxwl-problem-back { justify-self: flex-start; }
+}
+</style>
+
+<div class="xxwl-problem">
+  <div class="xxwl-problem-card">
+    <div class="xxwl-problem-head">
+      <div>
+        <h1 class="xxwl-problem-title">{{ problem.id|upper }} · {{ problem.title }}</h1>
+        <div class="xxwl-problem-meta">满分 {{ problem.max }} · {{ problem.desc }}</div>
+      </div>
+      <a class="rounded button xxwl-problem-back" href="{{ url('xxwl_review') }}">返回查询</a>
+    </div>
+    <div class="xxwl-problem-statement typo">
+      {{ statement|markdown|safe }}
+    </div>
+  </div>
+</div>
+{% endblock %}
