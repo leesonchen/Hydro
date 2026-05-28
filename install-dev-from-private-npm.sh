@@ -19,7 +19,7 @@ RELEASES_DIR="$HYDRO_HOME/dev-releases"
 BACKUPS_DIR="$HYDRO_HOME/dev-backups"
 ACTIVE_RELEASE_FILE="$RELEASES_DIR/active"
 HYDRO_BIN_LINK="/usr/local/bin/hydrooj"
-PACKAGE_KEYS=("hydrooj" "ui-default" "hydrojudge")
+PACKAGE_KEYS=("hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
 SELECTED_PACKAGE_KEYS=()
 declare -A CURRENT_PACKAGE_VERSIONS=()
 declare -A REMOTE_PACKAGE_VERSIONS=()
@@ -53,8 +53,8 @@ log_error() {
 usage() {
     cat <<USAGE
 用法:
-  ./install-dev-from-private-npm.sh [install] [--packages all|hydrooj,ui-default,hydrojudge]
-  ./install-dev-from-private-npm.sh update [--packages all|hydrooj,ui-default,hydrojudge]
+  ./install-dev-from-private-npm.sh [install] [--packages all|hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
+  ./install-dev-from-private-npm.sh update [--packages all|hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
   ./install-dev-from-private-npm.sh update hydrojudge
   ./install-dev-from-private-npm.sh check-updates
   ./install-dev-from-private-npm.sh upgrade-interactive
@@ -153,6 +153,15 @@ package_name_for_key() {
         hydrojudge)
             echo "@hydrooj/hydrojudge"
             ;;
+        fps-importer)
+            echo "@hydrooj/fps-importer"
+            ;;
+        a11y)
+            echo "@hydrooj/a11y"
+            ;;
+        import-hoj)
+            echo "@hydrooj/import-hoj"
+            ;;
         *)
             return 1
             ;;
@@ -164,7 +173,7 @@ normalize_package_key() {
         all)
             echo "all"
             ;;
-        hydrooj|ui-default|hydrojudge)
+        hydrooj|ui-default|hydrojudge|fps-importer|a11y|import-hoj)
             echo "$1"
             ;;
         @hydrooj/ui-default)
@@ -172,6 +181,15 @@ normalize_package_key() {
             ;;
         @hydrooj/hydrojudge)
             echo "hydrojudge"
+            ;;
+        @hydrooj/fps-importer)
+            echo "fps-importer"
+            ;;
+        @hydrooj/a11y)
+            echo "a11y"
+            ;;
+        @hydrooj/import-hoj)
+            echo "import-hoj"
             ;;
         *)
             return 1
@@ -235,7 +253,7 @@ parse_update_args() {
             --packages=*)
                 parse_package_selector "${1#--packages=}"
                 ;;
-            all|hydrooj|ui-default|hydrojudge|@hydrooj/ui-default|@hydrooj/hydrojudge)
+            all|hydrooj|ui-default|hydrojudge|fps-importer|a11y|import-hoj|@hydrooj/ui-default|@hydrooj/hydrojudge|@hydrooj/fps-importer|@hydrooj/a11y|@hydrooj/import-hoj)
                 parse_package_selector "$1"
                 ;;
             *)
@@ -528,14 +546,12 @@ verify_release() {
         return 1
     fi
 
-    local hydro_version ui_version judge_version
-    hydro_version=$(package_version_from_dir "$release_dir" "hydrooj")
-    ui_version=$(package_version_from_dir "$release_dir" "@hydrooj/ui-default")
-    judge_version=$(package_version_from_dir "$release_dir" "@hydrooj/hydrojudge")
-
-    log_ok "hydrooj@${hydro_version}"
-    log_ok "@hydrooj/ui-default@${ui_version}"
-    log_ok "@hydrooj/hydrojudge@${judge_version}"
+    local key package_name package_version
+    for key in "${PACKAGE_KEYS[@]}"; do
+        package_name=$(package_name_for_key "$key")
+        package_version=$(package_version_from_dir "$release_dir" "$package_name")
+        log_ok "${package_name}@${package_version}"
+    done
     echo ""
 }
 

@@ -12,7 +12,7 @@ PUBLISH_TIMEOUT_SECONDS=300
 PUBLISH_RETRY_COUNT=3
 NPM_REGISTRY="${NPM_REGISTRY:-https://npm.leeson.top/}"
 YARN_APPROVED_GIT_REPOSITORIES="${YARN_APPROVED_GIT_REPOSITORIES:-https://github.com/Mango/emitter.git}"
-DEFAULT_PACKAGES=("common" "hydrooj" "ui-default" "hydrojudge")
+DEFAULT_PACKAGES=("common" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
 SELECTED_PACKAGES=()
 TS_PREPARE_DONE=0
 BUILT_TS_CONFIGS=()
@@ -38,15 +38,15 @@ print_usage() {
     echo "用法:"
     echo "  ./build-and-publish-dev.sh [--packages pkg1,pkg2]"
     echo ""
-    echo "可选包名: common, hydrooj, ui-default, hydrojudge"
+    echo "可选包名: common, hydrooj, ui-default, hydrojudge, fps-importer, a11y, import-hoj"
     echo "示例:"
-    echo "  ./build-and-publish-dev.sh --packages hydrooj,ui-default"
+    echo "  ./build-and-publish-dev.sh --packages hydrooj,ui-default,fps-importer"
     echo ""
 }
 
 # 交互选择包（支持空格分隔多选）
 interactive_select_packages() {
-    local options=("common" "hydrooj" "ui-default" "hydrojudge")
+    local options=("common" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
     local idx
     local input
 
@@ -82,6 +82,15 @@ interactive_select_packages() {
                 ;;
             4)
                 picked+=("hydrojudge")
+                ;;
+            5)
+                picked+=("fps-importer")
+                ;;
+            6)
+                picked+=("a11y")
+                ;;
+            7)
+                picked+=("import-hoj")
                 ;;
             *)
                 echo -e "${YELLOW}忽略无效序号: ${token}${NC}"
@@ -591,6 +600,15 @@ main() {
     if is_selected "hydrojudge"; then
         build_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge"
     fi
+    if is_selected "fps-importer"; then
+        build_package "@hydrooj/fps-importer" "$SCRIPT_DIR/packages/fps-importer"
+    fi
+    if is_selected "a11y"; then
+        build_package "@hydrooj/a11y" "$SCRIPT_DIR/packages/a11y"
+    fi
+    if is_selected "import-hoj"; then
+        build_package "@hydrooj/import-hoj" "$SCRIPT_DIR/packages/import-hoj"
+    fi
 
     echo ""
     echo -e "${YELLOW}5. 开始打包和发布...${NC}"
@@ -615,6 +633,15 @@ main() {
     if is_selected "hydrojudge"; then
         publish_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge" "hydrojudge-dev.tgz"
     fi
+    if is_selected "fps-importer"; then
+        publish_package "@hydrooj/fps-importer" "$SCRIPT_DIR/packages/fps-importer" "fps-importer-dev.tgz"
+    fi
+    if is_selected "a11y"; then
+        publish_package "@hydrooj/a11y" "$SCRIPT_DIR/packages/a11y" "a11y-dev.tgz"
+    fi
+    if is_selected "import-hoj"; then
+        publish_package "@hydrooj/import-hoj" "$SCRIPT_DIR/packages/import-hoj" "import-hoj-dev.tgz"
+    fi
 
     echo -e "${GREEN}=== 所有包发布完成 ===${NC}"
     echo ""
@@ -630,6 +657,15 @@ main() {
     fi
     if is_selected "hydrojudge"; then
         echo -e "  - @hydrooj/hydrojudge@${PUBLISHED_VERSIONS["@hydrooj/hydrojudge"]}"
+    fi
+    if is_selected "fps-importer"; then
+        echo -e "  - @hydrooj/fps-importer@${PUBLISHED_VERSIONS["@hydrooj/fps-importer"]}"
+    fi
+    if is_selected "a11y"; then
+        echo -e "  - @hydrooj/a11y@${PUBLISHED_VERSIONS["@hydrooj/a11y"]}"
+    fi
+    if is_selected "import-hoj"; then
+        echo -e "  - @hydrooj/import-hoj@${PUBLISHED_VERSIONS["@hydrooj/import-hoj"]}"
     fi
     echo ""
     echo -e "安装命令:"
