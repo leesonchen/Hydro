@@ -507,7 +507,7 @@ class XxwlReviewGenerateHandler extends Handler {
 
 export const Config = Schema.object({
     dataDir: Schema.string().default(process.env.XXWL_REVIEW_DATA_DIR || DEFAULT_DATA_DIR).description('数据目录，默认 data，即本插件目录下的 data；需包含 cache/analysis.json、reviews/、code/；相对路径按本插件目录解析'),
-    title: Schema.string().default('信息与未来 2026 个人分析').description('查询页标题'),
+    title: Schema.string().default('信息与未来 2026 个人代码分析').description('查询页标题'),
     baseUrl: Schema.string().default('https://api.openai.com/v1').description('OpenAI-compatible API base URL，例如 https://api.openai.com/v1'),
     apiKey: Schema.string().role('secret').default('').description('OpenAI-compatible API Key，用于缺失 review 时实时生成'),
     model: Schema.string().default('gpt-5.5').description('LLM 模型名'),
@@ -525,7 +525,7 @@ export const Config = Schema.object({
 export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     runtimeConfig = {
         dataDir: resolveDataDir(config.dataDir || process.env.XXWL_REVIEW_DATA_DIR || DEFAULT_DATA_DIR),
-        title: config.title || '信息与未来 2026 个人分析',
+        title: config.title || '信息与未来 2026 个人代码分析',
         baseUrl: config.baseUrl || 'https://api.openai.com/v1',
         apiKey: config.apiKey || '',
         model: config.model || 'gpt-5.5',
