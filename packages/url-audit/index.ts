@@ -209,6 +209,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         'URL contains': 'URL 包含',
         'Start Time': '开始时间',
         'End Time': '结束时间',
+        Columns: '列显示',
         Route: '路由',
         'Response Time': '响应时间',
         'No audit records found.': '没有找到审计记录。',

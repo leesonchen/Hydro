@@ -7,6 +7,9 @@
 .url-audit-url { max-width: 360px; word-break: break-all; }
 .url-audit-meta { color: var(--color-text-secondary); font-size: 0.875rem; }
 .url-audit-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.url-audit-columns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.url-audit-columns label { font-weight: normal; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--color-form-border); padding: 2px 10px; border-radius: 4px; font-size: 0.9rem; }
+.url-audit-columns input { margin: 0; }
 </style>
 
 <div class="section">
@@ -46,6 +49,19 @@
         <input type="hidden" name="page" value="1">
         <button type="submit" class="rounded primary button">{{ _('Search') }}</button>
       </div>
+      <div class="medium-12 columns form__item">
+        <div class="url-audit-columns">
+          <span class="supplementary">{{ _('Columns') }}:</span>
+          <label><input type="checkbox" data-column="time" checked> {{ _('Time') }}</label>
+          <label><input type="checkbox" data-column="user" checked> {{ _('User') }}</label>
+          <label><input type="checkbox" data-column="method" checked> {{ _('Method') }}</label>
+          <label><input type="checkbox" data-column="status" checked> {{ _('Status') }}</label>
+          <label><input type="checkbox" data-column="url" checked> URL</label>
+          <label><input type="checkbox" data-column="route" checked> {{ _('Route') }}</label>
+          <label><input type="checkbox" data-column="ip" checked> IP</label>
+          <label><input type="checkbox" data-column="ms" checked> {{ _('Response Time') }}</label>
+        </div>
+      </div>
     </form>
   </div>
 </div>
@@ -55,35 +71,35 @@
     <table class="data-table">
       <thead>
         <tr>
-          <th>{{ _('Time') }}</th>
-          <th>{{ _('User') }}</th>
-          <th>{{ _('Method') }}</th>
-          <th>{{ _('Status') }}</th>
-          <th>{{ _('URL') }}</th>
-          <th>{{ _('Route') }}</th>
-          <th>{{ _('IP') }}</th>
-          <th>{{ _('Response Time') }}</th>
+          <th class="col--time">{{ _('Time') }}</th>
+          <th class="col--user">{{ _('User') }}</th>
+          <th class="col--method">{{ _('Method') }}</th>
+          <th class="col--status">{{ _('Status') }}</th>
+          <th class="col--url">{{ _('URL') }}</th>
+          <th class="col--route">{{ _('Route') }}</th>
+          <th class="col--ip">{{ _('IP') }}</th>
+          <th class="col--ms">{{ _('Response Time') }}</th>
         </tr>
       </thead>
       <tbody>
       {% for doc in docs %}
         <tr>
-          <td>{{ datetimeSpan(doc.time)|safe }}</td>
-          <td>
+          <td class="col--time">{{ datetimeSpan(doc.time)|safe }}</td>
+          <td class="col--user">
             <a class="typo-a" href="{{ url('user_detail', uid=doc.uid) }}">{{ doc.uid }}</a>
             <div class="url-audit-meta">{{ doc.uname }}</div>
           </td>
-          <td>{{ doc.method }}</td>
-          <td>{{ doc.status }}</td>
-          <td class="url-audit-url">
+          <td class="col--method">{{ doc.method }}</td>
+          <td class="col--status">{{ doc.status }}</td>
+          <td class="col--url url-audit-url">
             <a class="typo-a" href="{{ doc.url }}" target="_blank" rel="noopener">{{ doc.url }}</a>
             {% if doc.referer %}
             <div class="url-audit-meta">Referer: {{ doc.referer }}</div>
             {% endif %}
           </td>
-          <td>{{ doc.route or '-' }}</td>
-          <td>{{ doc.ip }}</td>
-          <td>{{ doc.ms }}ms</td>
+          <td class="col--route">{{ doc.route or '-' }}</td>
+          <td class="col--ip">{{ doc.ip }}</td>
+          <td class="col--ms">{{ doc.ms }}ms</td>
         </tr>
       {% else %}
         <tr>
@@ -107,4 +123,27 @@
     </div>
   </div>
 </div>
+
+<script>
+(function() {
+  document.querySelectorAll('.url-audit-columns input[data-column]').forEach(function(cb) {
+    var column = cb.dataset.column;
+    var selector = '.col--' + column;
+    var storageKey = 'url_audit_col_' + column;
+
+    function sync() {
+      var display = cb.checked ? '' : 'none';
+      document.querySelectorAll(selector).forEach(function(el) {
+        el.style.display = display;
+      });
+      localStorage.setItem(storageKey, cb.checked ? 'true' : 'false');
+    }
+
+    var saved = localStorage.getItem(storageKey);
+    if (saved !== null) cb.checked = saved === 'true';
+    cb.addEventListener('change', sync);
+    sync();
+  });
+})();
+</script>
 {% endblock %}
