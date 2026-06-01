@@ -355,6 +355,45 @@ async function readProblemStatementFull(pid: string) {
     }
 }
 
+function safeAnimationFilename(filename = '') {
+    const base = path.basename(filename);
+    return /^[A-Za-z0-9._-]+\.html$/i.test(base) ? base : '';
+}
+
+function extractHtmlTitle(source: string, fallback: string) {
+    const match = source.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    return (match?.[1] || fallback.replace(/\.html$/i, ''))
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+async function readSolutionAnimations(pid: string) {
+    const solutionDir = path.join(requireDataDir(), 'solutions', pid);
+    try {
+        const entries = await fsp.readdir(solutionDir, { withFileTypes: true });
+        const files = entries
+            .filter((entry) => entry.isFile() && safeAnimationFilename(entry.name) === entry.name)
+            .map((entry) => entry.name)
+            .sort((a, b) => a.localeCompare(b));
+        const animations: { file: string; title: string }[] = [];
+        for (const file of files) {
+            const source = await fsp.readFile(path.join(solutionDir, file), 'utf-8');
+            animations.push({ file, title: extractHtmlTitle(source, file) });
+        }
+        return animations;
+    } catch (err: any) {
+        if (err?.code === 'ENOENT') return [];
+        logger.warn(`Read solution animations ${pid} failed: ${err?.message || String(err)}`);
+        return [];
+    }
+}
+
+async function readSolutionAnimationFile(pid: string, filename: string) {
+    const safeName = safeAnimationFilename(filename);
+    if (!safeName) return '';
+    return await fsp.readFile(path.join(requireDataDir(), 'solutions', pid, safeName), 'utf-8');
+}
+
 async function readReferenceSolutions(pid: string) {
     const solutionDir = path.join(requireDataDir(), 'solutions', pid);
     try {
@@ -627,11 +666,40 @@ class XxwlProblemHandler extends Handler {
             return;
         }
         this.response.template = 'xxwl_problem.html';
+        const [statement, animations] = await Promise.all([
+            readProblemStatementFull(problem.id),
+            readSolutionAnimations(problem.id),
+        ]);
         this.response.body = {
             pageTitle: `${problem.id.toUpperCase()} · ${problem.title}`,
             problem,
-            statement: await readProblemStatementFull(problem.id),
+            statement,
+            animations,
         };
+    }
+}
+
+class XxwlProblemAnimationHandler extends Handler {
+    @param('pid', Types.String)
+    @param('filename', Types.String)
+    async get(_domainId: string, pid: string, filename: string) {
+        const problem = PROBLEMS.find((p) => p.id === (pid || '').toLowerCase());
+        const safeName = safeAnimationFilename(filename || '');
+        if (!problem || !safeName) {
+            this.response.status = 404;
+            this.response.body = '动画解法不存在。';
+            return;
+        }
+        try {
+            const html = await readSolutionAnimationFile(problem.id, safeName);
+            if (!html) throw new Error('empty animation');
+            this.response.type = 'text/html';
+            this.response.body = html;
+        } catch (err: any) {
+            if (err?.code !== 'ENOENT') logger.warn(`Read solution animation ${problem.id}/${safeName} failed: ${err?.message || String(err)}`);
+            this.response.status = 404;
+            this.response.body = '动画解法不存在。';
+        }
     }
 }
 
@@ -722,6 +790,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     cachedMtime = 0;
     ctx.Route('xxwl_review', '/xinxi', XxwlReviewHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('xxwl_review_problem', '/xinxi/problem/:pid', XxwlProblemHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('xxwl_review_problem_animation', '/xinxi/problem/:pid/solution/:filename', XxwlProblemAnimationHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('xxwl_review_stats', '/xinxi/stats', XxwlStatsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('xxwl_review_generate', '/xinxi/generate', XxwlReviewGenerateHandler, PRIV.PRIV_USER_PROFILE);
 }

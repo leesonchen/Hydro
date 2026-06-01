@@ -6,12 +6,26 @@
 .xxwl-problem-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: flex-start; gap: 24px; margin-bottom: 18px; }
 .xxwl-problem-title { margin: 0; font-size: 28px; font-weight: 700; }
 .xxwl-problem-meta { color: #667085; margin-top: 6px; max-width: 72ch; }
-.xxwl-problem-back { min-width: 116px; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+.xxwl-problem-actions { display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+.xxwl-problem-back,
+.xxwl-problem-animation-jump { min-width: 116px; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+.xxwl-problem-animation-jump { background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; border: 0; }
+.xxwl-problem-animation-jump:hover { color: #fff; }
 .xxwl-problem-statement { line-height: 1.8; }
 .xxwl-problem-statement pre { white-space: pre-wrap; }
+.xxwl-animation-section { margin-top: 28px; border-top: 1px solid #e6e8ef; padding-top: 24px; }
+.xxwl-animation-section h2 { margin: 0 0 8px; font-size: 24px; }
+.xxwl-animation-list { display: grid; gap: 14px; margin-top: 16px; }
+.xxwl-animation-item { border: 1px solid #e6e8ef; border-radius: 12px; overflow: hidden; background: #f8fafc; }
+.xxwl-animation-item summary { cursor: pointer; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; font-weight: 700; }
+.xxwl-animation-title { flex: 1; }
+.xxwl-animation-open { flex: 0 0 auto; font-weight: 600; }
+.xxwl-animation-frame { width: 100%; height: 760px; border: 0; border-top: 1px solid #e6e8ef; background: #fff; display: block; }
 @media (max-width: 720px) {
   .xxwl-problem-head { grid-template-columns: 1fr; }
-  .xxwl-problem-back { justify-self: flex-start; }
+  .xxwl-problem-actions { align-items: flex-start; }
+  .xxwl-animation-item summary { align-items: flex-start; flex-direction: column; }
+  .xxwl-animation-frame { height: 680px; }
 }
 </style>
 
@@ -22,11 +36,32 @@
         <h1 class="xxwl-problem-title">{{ problem.id|upper }} · {{ problem.title }}</h1>
         <div class="xxwl-problem-meta">满分 {{ problem.max }} · {{ problem.desc }}</div>
       </div>
-      <a class="rounded button xxwl-problem-back" href="{{ url('xxwl_review') }}">返回查询</a>
+      <div class="xxwl-problem-actions">
+        {% if animations.length %}
+          <a class="rounded button xxwl-problem-animation-jump" href="#xxwl-animations">查看题解</a>
+        {% endif %}
+        <a class="rounded button xxwl-problem-back" href="{{ url('xxwl_review') }}">返回查询</a>
+      </div>
     </div>
     <div class="xxwl-problem-statement typo">
       {{ statement|markdown|safe }}
     </div>
+    {% if animations.length %}
+      <div class="xxwl-animation-section" id="xxwl-animations">
+        <h2>动画解法</h2>
+        <div class="xxwl-animation-list">
+          {% for animation in animations %}
+            <details class="xxwl-animation-item" open>
+              <summary>
+                <span class="xxwl-animation-title">{{ animation.title }}</span>
+                <a class="rounded button xxwl-animation-open" href="{{ url('xxwl_review_problem_animation', pid=problem.id, filename=animation.file) }}" target="_blank" rel="noopener" onclick="event.stopPropagation();">新窗口打开</a>
+              </summary>
+              <iframe class="xxwl-animation-frame" src="{{ url('xxwl_review_problem_animation', pid=problem.id, filename=animation.file) }}" title="{{ animation.title }}" loading="lazy"></iframe>
+            </details>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

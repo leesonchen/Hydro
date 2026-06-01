@@ -43,6 +43,9 @@
 .xxwl-source-missing { color: #b42318; font-size: 12px; margin-left: 8px; }
 .xxwl-source-item pre { margin: 0; padding: 14px; border-top: 1px solid #e6e8ef; max-height: 460px; overflow: auto; background: #fbfcff; color: #101828; white-space: pre; line-height: 1.55; }
 .xxwl-source-item pre code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; color: #101828 !important; background: transparent !important; text-shadow: none !important; }
+.xxwl-source-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
+.xxwl-source-actions .button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+.xxwl-source-solution { padding-left: 18px; padding-right: 18px; }
 .xxwl-copy-source { flex: 0 0 auto; }
 @keyframes xxwl-spin { to { transform: rotate(360deg); } }
 @media (max-width: 720px) {
@@ -155,7 +158,10 @@
             <details class="xxwl-source-item">
               <summary>
                 <span class="xxwl-source-title">{{ source.id|upper }} · {{ source.title }} · {{ source.file }}{% if not source.exists %}<span class="xxwl-source-missing">未提交</span>{% endif %}</span>
-                <button class="rounded button xxwl-copy-source" type="button" data-target="xxwl-source-{{ source.id }}">复制</button>
+                <span class="xxwl-source-actions">
+                  <a class="rounded button xxwl-source-solution" href="{{ url('xxwl_review_problem', pid=source.id) }}#xxwl-animations" target="_blank" rel="noopener" onclick="event.stopPropagation();">查看题解</a>
+                  <button class="rounded button xxwl-copy-source" type="button" data-target="xxwl-source-{{ source.id }}">复制</button>
+                </span>
               </summary>
               <pre><code id="xxwl-source-{{ source.id }}">{{ source.source }}</code></pre>
             </details>
