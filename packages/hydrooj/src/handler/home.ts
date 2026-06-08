@@ -193,7 +193,7 @@ class HomeSecurityHandler extends Handler {
             session._id = md5(session._id);
             const ua = session.updateUa || session.createUa;
             if (ua) session.updateUaInfo = UAParser(ua);
-            session.updateGeoip = this.ctx.geoip?.lookup?.(
+            session.updateGeoip = this.ctx.get('geoip')?.lookup?.(
                 session.updateIp || session.createIp,
                 this.translate('geoip_locale'),
             );
@@ -207,8 +207,9 @@ class HomeSecurityHandler extends Handler {
                 'credentialID', 'name', 'credentialType', 'credentialDeviceType',
                 'authenticatorAttachment', 'regat', 'fmt',
             ])),
-            geoipProvider: this.ctx.geoip?.provider,
+            geoipProvider: this.ctx.get('geoip')?.provider,
             relations,
+            loginMethods: this.loginMethods,
         };
     }
 
@@ -285,7 +286,7 @@ class HomeSecurityHandler extends Handler {
     }
 
     async postDeleteAllTokens() {
-        await token.delByUid(this.user._id);
+        await token.delByUid(this.user._id, token.TYPE_SESSION);
         this.response.redirect = this.url('user_login');
     }
 
@@ -686,7 +687,7 @@ class HomeMessagesHandler extends Handler {
     }
 }
 
-export const inject = { geoip: { required: false }, oauth: {} };
+export const inject = ['oauth'];
 export function apply(ctx: Context) {
     ctx.Route('homepage', '/', HomeHandler);
     ctx.Route('home_security', '/home/security', HomeSecurityHandler, PRIV.PRIV_USER_PROFILE);

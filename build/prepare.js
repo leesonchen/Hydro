@@ -160,9 +160,6 @@ const UINextConfig = {
             '@/*': [
                 './packages/ui-next/src/*',
             ],
-            'vj/*': [
-                './packages/ui-default/*',
-            ],
         },
     },
 };
