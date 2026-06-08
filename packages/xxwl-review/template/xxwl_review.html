@@ -1,0 +1,272 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<style>
+.xxwl-page { max-width: 1080px; margin: 0 auto; }
+.xxwl-hero { background: linear-gradient(135deg, #f4f7fb, #fff7ed); border: 1px solid #e6e8ef; border-radius: 12px; padding: 28px; margin-bottom: 18px; }
+.xxwl-title { margin: 0 0 8px; font-size: 28px; font-weight: 700; }
+.xxwl-muted { color: #667085; }
+.xxwl-search { display: flex; gap: 10px; margin: 0; flex-wrap: wrap; align-items: center; }
+.xxwl-search input { width: min(450px, 58vw); min-width: 240px; max-width: 450px; height: 42px; text-transform: uppercase; }
+.xxwl-hero-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.xxwl-hero-actions .button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+.xxwl-stats-link { padding-left: 26px; padding-right: 26px; }
+.xxwl-card { background: #fff; border: 1px solid #e6e8ef; border-radius: 12px; margin-bottom: 18px; overflow: hidden; }
+.xxwl-card__body { padding: 22px; }
+.xxwl-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.xxwl-stat { background: #f8fafc; border-radius: 10px; padding: 14px; }
+.xxwl-stat b { display: block; font-size: 24px; line-height: 1.2; }
+.xxwl-stat span { color: #667085; font-size: 12px; }
+.xxwl-score-table td, .xxwl-score-table th { text-align: center; }
+.xxwl-score-full { color: #16794c; font-weight: 700; }
+.xxwl-score-zero { color: #b42318; font-weight: 700; }
+.xxwl-status { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.xxwl-status-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; line-height: 1.5; border: 1px solid #d0d5dd; background: #f8fafc; color: #344054; }
+.xxwl-status-chip.ac { border-color: #abefc6; background: #ecfdf3; color: #067647; }
+.xxwl-status-chip.bad { border-color: #fecdca; background: #fffbfa; color: #b42318; }
+.xxwl-status-chip.missing { border-color: #d0d5dd; background: #f2f4f7; color: #475467; }
+.xxwl-status-chip b { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-weight: 700; }
+.xxwl-review { line-height: 1.8; }
+.xxwl-review pre { white-space: pre-wrap; }
+.xxwl-empty { padding: 30px; text-align: center; color: #667085; }
+.xxwl-wait { border: 1px dashed #b8c4d8; background: #f8fafc; border-radius: 10px; padding: 18px; color: #344054; }
+.xxwl-wait strong { display: block; margin-bottom: 6px; }
+.xxwl-spinner { display: inline-block; width: 14px; height: 14px; margin-right: 8px; border: 2px solid #c7d7fe; border-top-color: #2563eb; border-radius: 50%; vertical-align: -2px; animation: xxwl-spin .8s linear infinite; }
+.xxwl-error { border: 1px solid #fecdca; background: #fffbfa; color: #b42318; border-radius: 10px; padding: 14px; }
+.xxwl-review-actions { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.xxwl-source-list { display: grid; gap: 12px; margin-top: 14px; }
+.xxwl-source-item { border: 1px solid #e6e8ef; border-radius: 10px; overflow: hidden; background: #f8fafc; }
+.xxwl-source-item summary { cursor: pointer; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 600; }
+.xxwl-source-item summary::-webkit-details-marker { display: none; }
+.xxwl-source-item summary:before { content: "▸"; color: #667085; margin-right: 8px; }
+.xxwl-source-item[open] summary:before { content: "▾"; }
+.xxwl-source-title { flex: 1; }
+.xxwl-source-missing { color: #b42318; font-size: 12px; margin-left: 8px; }
+.xxwl-source-item pre { margin: 0; padding: 14px; border-top: 1px solid #e6e8ef; max-height: 460px; overflow: auto; background: #fbfcff; color: #101828; white-space: pre; line-height: 1.55; }
+.xxwl-source-item pre code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; color: #101828 !important; background: transparent !important; text-shadow: none !important; }
+.xxwl-source-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
+.xxwl-source-actions .button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+.xxwl-source-solution { padding-left: 18px; padding-right: 18px; }
+.xxwl-copy-source { flex: 0 0 auto; }
+@keyframes xxwl-spin { to { transform: rotate(360deg); } }
+@media (max-width: 720px) {
+  .xxwl-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .xxwl-search, .xxwl-hero-actions { width: 100%; }
+  .xxwl-search input { width: 100%; min-width: 100%; }
+  .xxwl-source-item summary { align-items: flex-start; flex-direction: column; }
+}
+</style>
+
+<div class="xxwl-page">
+  <div class="xxwl-hero">
+    <h1 class="xxwl-title">{{ pageTitle }}</h1>
+    <div class="xxwl-muted">
+      仅登录用户可查看。{% if totalStudents %}数据来自信息与未来评测汇总：共 {{ totalStudents }} 人，均分 {{ globalMean }}，中位数 {{ globalMedian }}。{% else %}数据暂不可用，请联系管理员。{% endif %}
+    </div>
+    <div class="xxwl-hero-actions">
+      <form method="get" class="xxwl-search">
+        <input class="textbox" type="text" name="id" value="{{ queryId }}" placeholder="输入考试编号，例如 A001 / C100" autocomplete="off" required>
+        <button class="rounded primary button" type="submit">查询个人分析</button>
+      </form>
+      {% if canViewStats %}
+        <a class="rounded button xxwl-stats-link" href="{{ url('xxwl_review_stats') }}">统计分析</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if configError %}
+    <div class="xxwl-card"><div class="xxwl-card__body"><div class="xxwl-error">{{ configError }}</div></div></div>
+  {% endif %}
+
+  {% if searched and not student and not configError %}
+    <div class="xxwl-card"><div class="xxwl-empty">未找到考试编号「{{ queryId }}」。请检查字母和数字是否输入正确。</div></div>
+  {% endif %}
+
+  {% if student %}
+    <div class="xxwl-card">
+      <div class="xxwl-card__body">
+        <h2 style="margin-top:0;">{{ student.id }} · 个人详情</h2>
+        <div class="xxwl-stat-grid">
+          <div class="xxwl-stat"><span>总分</span><b>{{ student.total }} / 500</b></div>
+          <div class="xxwl-stat"><span>全体排名</span><b>#{{ student.global_rank }}</b></div>
+          <div class="xxwl-stat"><span>考区排名</span><b>{{ student.region }} 区 #{{ student.region_rank }}</b></div>
+          <div class="xxwl-stat"><span>百分位</span><b>P{{ student.percentile }}</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="xxwl-card">
+      <div class="xxwl-card__body">
+        <h2 style="margin-top:0;">逐题得分与评测结果</h2>
+        <table class="data-table xxwl-score-table">
+          <thead>
+            <tr>
+              <th>题号</th>
+              <th>题目</th>
+              <th>得分</th>
+              <th>评测结果</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in problemRows %}
+              <tr>
+                <td>{{ row.id|upper }}</td>
+                <td style="text-align:left;"><a href="{{ url('xxwl_review_problem', pid=row.id) }}" target="_blank" rel="noopener">{{ row.title }}</a></td>
+                <td class="{% if row.score == row.max %}xxwl-score-full{% elif row.score == 0 %}xxwl-score-zero{% endif %}">{{ row.score }} / {{ row.max }}</td>
+                <td>
+                  <div class="xxwl-status" title="{{ row.statusSummary }}">
+                    {% if row.statusParts.length %}
+                      {% for part in row.statusParts %}
+                        <span class="xxwl-status-chip {{ part.className }}">{{ part.label }} <b>{{ part.count }}</b></span>
+                      {% endfor %}
+                    {% else %}
+                      <span class="xxwl-status-chip missing">无</span>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="xxwl-card">
+      <div class="xxwl-card__body xxwl-review typo">
+        {% if canReanalyze %}
+          <div class="xxwl-review-actions">
+            <button class="rounded button" type="button" id="xxwl-reanalyze-button">重新分析</button>
+            <span class="xxwl-muted">管理员操作：重新生成并覆盖当前代码点评。</span>
+          </div>
+        {% endif %}
+        <div id="xxwl-review-box" data-id="{{ student.id }}" data-has-review="{{ 'true' if hasGeneratedReview else 'false' }}" data-can-generate="{{ 'true' if canGenerate else 'false' }}">
+        {% if hasGeneratedReview %}
+          {% include "xxwl_review_content.html" %}
+        {% else %}
+          <div class="xxwl-wait" id="xxwl-wait-box">
+            <strong><span class="xxwl-spinner"></span>代码点评正在生成中...</strong>
+          </div>
+        {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="xxwl-card">
+      <div class="xxwl-card__body">
+        <h2 style="margin-top:0;">提交源代码</h2>
+        <div class="xxwl-source-list">
+          {% for source in sourceFiles %}
+            <details class="xxwl-source-item">
+              <summary>
+                <span class="xxwl-source-title">{{ source.id|upper }} · {{ source.title }} · {{ source.file }}{% if not source.exists %}<span class="xxwl-source-missing">未提交</span>{% endif %}</span>
+                <span class="xxwl-source-actions">
+                  <a class="rounded button xxwl-source-solution" href="{{ url('xxwl_review_problem', pid=source.id) }}#xxwl-animations" target="_blank" rel="noopener" onclick="event.stopPropagation();">查看题解</a>
+                  <button class="rounded button xxwl-copy-source" type="button" data-target="xxwl-source-{{ source.id }}">复制</button>
+                </span>
+              </summary>
+              <pre><code id="xxwl-source-{{ source.id }}">{{ source.source }}</code></pre>
+            </details>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+{% if student and canGenerate %}
+<script>
+(function() {
+  var box = document.getElementById('xxwl-review-box');
+  if (!box) return;
+  var studentId = box.getAttribute('data-id');
+  var reanalyzeButton = document.getElementById('xxwl-reanalyze-button');
+
+  function showWait() {
+    box.innerHTML = '<div class="xxwl-wait" id="xxwl-wait-box"><strong><span class="xxwl-spinner"></span>代码点评正在生成中...</strong></div>';
+  }
+
+  function showError(prefix, err) {
+    var waitBox = document.getElementById('xxwl-wait-box');
+    if (waitBox) waitBox.remove();
+    var div = document.createElement('div');
+    div.className = 'xxwl-error';
+    div.textContent = prefix + '：' + (err && err.message ? err.message : String(err));
+    box.appendChild(div);
+  }
+
+  function requestGenerate(force) {
+    var pendingKey = 'xxwl-review:' + studentId;
+    window.__xxwlReviewPending = window.__xxwlReviewPending || {};
+    if (!force && window.__xxwlReviewPending[pendingKey]) return window.__xxwlReviewPending[pendingKey];
+    if (force) showWait();
+    if (reanalyzeButton) {
+      reanalyzeButton.disabled = true;
+      reanalyzeButton.textContent = force ? '重新分析中...' : '生成中...';
+    }
+    var request = fetch('{{ url("xxwl_review_generate") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ id: studentId, force: !!force })
+    }).then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (!data || !data.ok) throw new Error((data && data.error) || '生成失败');
+        box.innerHTML = data.html || '<pre></pre>';
+      })
+      .catch(function(err) {
+        showError(force ? '重新分析失败' : '生成失败', err);
+      })
+      .then(function() {
+        if (reanalyzeButton) {
+          reanalyzeButton.disabled = false;
+          reanalyzeButton.textContent = '重新分析';
+        }
+        if (!force) delete window.__xxwlReviewPending[pendingKey];
+      });
+    if (!force) window.__xxwlReviewPending[pendingKey] = request;
+    return request;
+  }
+
+  if (reanalyzeButton) {
+    reanalyzeButton.addEventListener('click', function() {
+      if (!window.confirm('确定要重新分析并覆盖当前代码点评吗？')) return;
+      requestGenerate(true);
+    });
+  }
+
+  if (box.getAttribute('data-has-review') !== 'true' && box.getAttribute('data-can-generate') === 'true') {
+    requestGenerate(false);
+  }
+})();
+</script>
+{% endif %}
+{% if student %}
+<script>
+(function() {
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    var textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    textarea.remove();
+    return Promise.resolve();
+  }
+  document.querySelectorAll('.xxwl-copy-source').forEach(function(button) {
+    button.addEventListener('click', function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      var target = document.getElementById(button.getAttribute('data-target'));
+      if (!target) return;
+      copyText(target.textContent || '').then(function() {
+        var oldText = button.textContent;
+        button.textContent = '已复制';
+        setTimeout(function() { button.textContent = oldText; }, 1200);
+      });
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

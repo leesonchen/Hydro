@@ -93,7 +93,13 @@
       "path": "packages/telegram"
     },
     {
+      "path": "packages/url-audit"
+    },
+    {
       "path": "packages/vjudge"
+    },
+    {
+      "path": "packages/xxwl-review"
     },
     {
       "path": "framework/eslint-config"

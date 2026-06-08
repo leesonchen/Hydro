@@ -1,0 +1,149 @@
+{% extends "manage_base.html" %}
+
+{% block manage_content %}
+<style>
+.url-audit-filter .form__item { margin-bottom: 1rem; }
+.url-audit-filter .textbox { width: 100%; }
+.url-audit-url { max-width: 360px; word-break: break-all; }
+.url-audit-meta { color: var(--color-text-secondary); font-size: 0.875rem; }
+.url-audit-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.url-audit-columns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.url-audit-columns label { font-weight: normal; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--color-form-border); padding: 2px 10px; border-radius: 4px; font-size: 0.9rem; }
+.url-audit-columns input { margin: 0; }
+</style>
+
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title" data-heading>{{ _('Query URL Audit') }}</h1>
+    <div class="section__tools">
+      <button type="button" class="rounded button" onclick="location.href=location.pathname">{{ _('Reset') }}</button>
+    </div>
+  </div>
+  <div class="section__body url-audit-filter">
+    <form method="get" class="row">
+      <div class="medium-3 columns form__item">
+        <label>
+          {{ _('UID or Username') }}
+          <input name="user" type="text" value="{{ filters.user }}" class="textbox" placeholder="1000 / admin">
+        </label>
+      </div>
+      <div class="medium-5 columns form__item">
+        <label>
+          {{ _('URL contains') }}
+          <input name="url" type="text" value="{{ filters.url }}" class="textbox" placeholder="/problem or /xinxi">
+        </label>
+      </div>
+      <div class="medium-2 columns form__item">
+        <label>
+          {{ _('Start Time') }}
+          <input name="startAt" type="datetime-local" value="{{ filters.startAt }}" class="textbox">
+        </label>
+      </div>
+      <div class="medium-2 columns form__item">
+        <label>
+          {{ _('End Time') }}
+          <input name="endAt" type="datetime-local" value="{{ filters.endAt }}" class="textbox">
+        </label>
+      </div>
+      <div class="medium-12 columns form__item text-right">
+        <input type="hidden" name="page" value="1">
+        <button type="submit" class="rounded primary button">{{ _('Search') }}</button>
+      </div>
+      <div class="medium-12 columns form__item">
+        <div class="url-audit-columns">
+          <span class="supplementary">{{ _('Columns') }}:</span>
+          <label><input type="checkbox" data-column="time" checked> {{ _('Time') }}</label>
+          <label><input type="checkbox" data-column="user" checked> {{ _('User') }}</label>
+          <label><input type="checkbox" data-column="method" checked> {{ _('Method') }}</label>
+          <label><input type="checkbox" data-column="status" checked> {{ _('Status') }}</label>
+          <label><input type="checkbox" data-column="url" checked> URL</label>
+          <label><input type="checkbox" data-column="route" checked> {{ _('Route') }}</label>
+          <label><input type="checkbox" data-column="ip" checked> IP</label>
+          <label><input type="checkbox" data-column="ms" checked> {{ _('Response Time') }}</label>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section__body no-padding">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th class="col--time">{{ _('Time') }}</th>
+          <th class="col--user">{{ _('User') }}</th>
+          <th class="col--method">{{ _('Method') }}</th>
+          <th class="col--status">{{ _('Status') }}</th>
+          <th class="col--url">{{ _('URL') }}</th>
+          <th class="col--route">{{ _('Route') }}</th>
+          <th class="col--ip">{{ _('IP') }}</th>
+          <th class="col--ms">{{ _('Response Time') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for doc in docs %}
+        <tr>
+          <td class="col--time">{{ datetimeSpan(doc.time)|safe }}</td>
+          <td class="col--user">
+            <a class="typo-a" href="{{ url('user_detail', uid=doc.uid) }}">{{ doc.uid }}</a>
+            <div class="url-audit-meta">{{ doc.uname }}</div>
+          </td>
+          <td class="col--method">{{ doc.method }}</td>
+          <td class="col--status">{{ doc.status }}</td>
+          <td class="col--url url-audit-url">
+            <a class="typo-a" href="{{ doc.url }}" target="_blank" rel="noopener">{{ doc.url }}</a>
+            {% if doc.referer %}
+            <div class="url-audit-meta">Referer: {{ doc.referer }}</div>
+            {% endif %}
+          </td>
+          <td class="col--route">{{ doc.route or '-' }}</td>
+          <td class="col--ip">{{ doc.ip }}</td>
+          <td class="col--ms">{{ doc.ms }}ms</td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="8" class="text-center supplementary">{{ _('No audit records found.') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="section__body">
+    <div class="url-audit-pagination">
+      <span class="supplementary">{{ _('{0} records, Page {1}/{2}').format(total, page, totalPages) }}</span>
+      <div>
+        {% if prevQuery %}
+        <a class="rounded button" href="{{ prevQuery }}">{{ _('Previous Page') }}</a>
+        {% endif %}
+        {% if nextQuery %}
+        <a class="rounded button" href="{{ nextQuery }}">{{ _('Next Page') }}</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  document.querySelectorAll('.url-audit-columns input[data-column]').forEach(function(cb) {
+    var column = cb.dataset.column;
+    var selector = '.col--' + column;
+    var storageKey = 'url_audit_col_' + column;
+
+    function sync() {
+      var display = cb.checked ? '' : 'none';
+      document.querySelectorAll(selector).forEach(function(el) {
+        el.style.display = display;
+      });
+      localStorage.setItem(storageKey, cb.checked ? 'true' : 'false');
+    }
+
+    var saved = localStorage.getItem(storageKey);
+    if (saved !== null) cb.checked = saved === 'true';
+    cb.addEventListener('change', sync);
+    sync();
+  });
+})();
+</script>
+{% endblock %}

@@ -936,7 +936,7 @@ With this feature, you can copy problems that you can view from a domain to some
 With this feature, you can import problems that you can view from a site to here. Their title, content, tags and categories will be imported. However, their test data are not copied directly.: 您可以通过这个功能将其他 OJ 的题目导入到本站。题目的标题、题面、标签和分类将会被直接导入，测试数据将会在后台自动导入。
 With this feature, you can import problems that you can view from a site to here. Their title, content, tags and categories will be imported.: 您可以通过这个功能将其他 OJ 的题目导入到本站。题目的标题、题面、标签和分类都将会被自动导入。
 Write Your Comment: 发表您的评论
-Write Your Solution: 发表您的题解
+Write Your Solution: 发表您的题解（先点“块级代码”按钮再贴代码，language改为对应语言名字如cpp）
 WYSIWYG: 所见即所得
 Year: 年
 You are banned by the domain moderator.: 您被该域的管理员封禁。

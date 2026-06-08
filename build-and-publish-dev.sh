@@ -11,10 +11,12 @@ NC='\033[0m' # No Color
 PUBLISH_TIMEOUT_SECONDS=300
 PUBLISH_RETRY_COUNT=3
 NPM_REGISTRY="${NPM_REGISTRY:-https://npm.leeson.top/}"
-DEFAULT_PACKAGES=("common" "hydrooj" "ui-default" "hydrojudge")
+YARN_APPROVED_GIT_REPOSITORIES="${YARN_APPROVED_GIT_REPOSITORIES:-https://github.com/Mango/emitter.git}"
+DEFAULT_PACKAGES=("common" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
 SELECTED_PACKAGES=()
 TS_PREPARE_DONE=0
 BUILT_TS_CONFIGS=()
+declare -A PUBLISHED_VERSIONS
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -26,6 +28,7 @@ for path_entry in "$HOME/.nix-profile/bin" /nix/var/nix/profiles/default/bin /us
     fi
 done
 export PATH
+export YARN_APPROVED_GIT_REPOSITORIES
 
 echo -e "${GREEN}=== Hydro 开发版本打包发布脚本 ===${NC}"
 echo ""
@@ -35,15 +38,15 @@ print_usage() {
     echo "用法:"
     echo "  ./build-and-publish-dev.sh [--packages pkg1,pkg2]"
     echo ""
-    echo "可选包名: common, hydrooj, ui-default, hydrojudge"
+    echo "可选包名: common, hydrooj, ui-default, hydrojudge, fps-importer, a11y, import-hoj"
     echo "示例:"
-    echo "  ./build-and-publish-dev.sh --packages hydrooj,ui-default"
+    echo "  ./build-and-publish-dev.sh --packages hydrooj,ui-default,fps-importer"
     echo ""
 }
 
 # 交互选择包（支持空格分隔多选）
 interactive_select_packages() {
-    local options=("common" "hydrooj" "ui-default" "hydrojudge")
+    local options=("common" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
     local idx
     local input
 
@@ -79,6 +82,15 @@ interactive_select_packages() {
                 ;;
             4)
                 picked+=("hydrojudge")
+                ;;
+            5)
+                picked+=("fps-importer")
+                ;;
+            6)
+                picked+=("a11y")
+                ;;
+            7)
+                picked+=("import-hoj")
                 ;;
             *)
                 echo -e "${YELLOW}忽略无效序号: ${token}${NC}"
@@ -197,9 +209,9 @@ build_package() {
     fi
 
     if [ "$package_name" = "@hydrooj/ui-default" ]; then
-        echo -e "  正在构建: ${package_name} (yarn run build:ui)"
+        echo -e "  正在构建: ${package_name} (npm run build:ui)"
         cd "$SCRIPT_DIR"
-        yarn run build:ui
+        npm run build:ui
         if ! ls "$SCRIPT_DIR/packages/ui-default/public"/theme-*.css >/dev/null 2>&1; then
             echo -e "${RED}错误: ui-default 构建后未找到 theme-*.css${NC}"
             return 1
@@ -236,17 +248,22 @@ check_tools() {
     echo ""
 }
 
-# 配置 npm registry
-setup_registry() {
-    echo -e "${YELLOW}3. 配置 npm 仓库地址...${NC}"
-    npm config set registry "$NPM_REGISTRY"
-    yarn config set registry "$NPM_REGISTRY"
+# 检查发布仓库和登录状态
+check_publish_registry() {
+    echo -e "${YELLOW}3. 检查发布仓库和登录状态...${NC}"
 
-    # 增加超时时间
-    npm config set fetch-timeout 600000
-    npm config set fetch-retry-maxtimeout 300000
+    if ! npm ping --registry "$NPM_REGISTRY" >/dev/null 2>&1; then
+        echo -e "${RED}错误: 无法连接到 npm 仓库: $NPM_REGISTRY${NC}"
+        exit 1
+    fi
 
-    echo -e "${GREEN}✓ npm 仓库配置完成（仅用于发布）${NC}"
+    if ! npm whoami --registry "$NPM_REGISTRY" >/dev/null 2>&1; then
+        echo -e "${RED}错误: 当前未登录私有 npm 仓库: $NPM_REGISTRY${NC}"
+        echo -e "${YELLOW}请先执行: npm login --registry $NPM_REGISTRY${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓ npm 仓库可访问，且已登录发布账号${NC}"
     echo ""
 }
 
@@ -255,7 +272,7 @@ install_deps() {
     echo -e "${YELLOW}2. 安装依赖...${NC}"
     cd "$SCRIPT_DIR"
     if [ ! -d "node_modules" ]; then
-        yarn install --frozen-lockfile 2>/dev/null || yarn install
+        yarn install --mode=skip-build
     else
         echo -e "  node_modules 已存在，跳过安装（如需重装请手动删除 node_modules 后重跑）"
     fi
@@ -373,22 +390,61 @@ cleanup_ui_asset_aliases() {
     fi
 }
 
+# 使用 npm 打包，兼容 Yarn Berry/Classic 环境
+pack_package() {
+    local package_path="$1"
+    local tgz_filename="$2"
+    local packed_file=""
+
+    packed_file=$(npm pack --silent --pack-destination "$package_path" | tail -n 1 | tr -d '[:space:]')
+    if [ -z "$packed_file" ] || [ ! -f "$package_path/$packed_file" ]; then
+        return 1
+    fi
+
+    if [ "$packed_file" != "$tgz_filename" ]; then
+        rm -f "$package_path/$tgz_filename"
+        mv -f "$package_path/$packed_file" "$package_path/$tgz_filename"
+    fi
+
+    return 0
+}
+
+# 获取工作区依赖的本地版本号
+get_workspace_version() {
+    case "$1" in
+        @hydrooj/common)
+            get_current_version "$SCRIPT_DIR/packages/common"
+            ;;
+        @hydrooj/framework)
+            get_current_version "$SCRIPT_DIR/framework/framework"
+            ;;
+        @hydrooj/utils)
+            get_current_version "$SCRIPT_DIR/framework/utils"
+            ;;
+        @hydrooj/register)
+            get_current_version "$SCRIPT_DIR/framework/register"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
 # 更新 package.json 中的 workspace 依赖
 fix_workspace_deps() {
     local package_path="$1"
     local package_json="$package_path/package.json"
 
     if [ -f "$package_json" ]; then
-        # 替换 workspace:^ 为实际版本号
-        # @hydrooj/common -> 0.0.8
-        # @hydrooj/framework -> 0.3.0
-        # @hydrooj/utils -> 1.5.5
-        sed -i.bak 's/"@hydrooj\/common": "workspace:\^"/"@hydrooj\/common": "0.0.8"/g' "$package_json"
-        sed -i.bak 's/"@hydrooj\/framework": "workspace:\^"/"@hydrooj\/framework": "0.3.0"/g' "$package_json"
-        sed -i.bak 's/"@hydrooj\/utils": "workspace:\^"/"@hydrooj\/utils": "1.5.5"/g' "$package_json"
-
-        # 删除备份文件
-        rm -f "$package_json.bak"
+        local dep
+        for dep in "@hydrooj/common" "@hydrooj/framework" "@hydrooj/utils" "@hydrooj/register"; do
+            local version
+            version=$(get_workspace_version "$dep")
+            if [ -n "$version" ]; then
+                sed -E -i.bak "s#\"${dep//\//\\/}\": \"workspace:[^\"]*\"#\"${dep//\//\\/}\": \"$version\"#g" "$package_json"
+                rm -f "$package_json.bak"
+            fi
+        done
     fi
 }
 
@@ -397,6 +453,8 @@ publish_package() {
     local package_name="$1"
     local package_path="$2"
     local tgz_filename="$3"
+    local package_json="$package_path/package.json"
+    local package_json_backup
 
     echo -e "${YELLOW}处理包: ${package_name}${NC}"
 
@@ -406,6 +464,8 @@ publish_package() {
     fi
 
     cd "$package_path"
+    package_json_backup=$(mktemp "/tmp/$(basename "$package_path")-package.json.XXXXXX")
+    cp "$package_json" "$package_json_backup"
 
     # 修复 workspace 依赖
     fix_workspace_deps "$package_path"
@@ -430,10 +490,19 @@ publish_package() {
 
     # 打包
     echo -e "  正在打包..."
-    yarn pack --filename "$tgz_filename" > /dev/null 2>&1
+    if ! pack_package "$package_path" "$tgz_filename"; then
+        echo -e "${RED}错误: 打包失败${NC}"
+        mv -f "$package_json_backup" "$package_json"
+        if [ "$package_name" = "@hydrooj/ui-default" ]; then
+            cleanup_ui_asset_aliases
+        fi
+        cd "$SCRIPT_DIR"
+        return 1
+    fi
 
     if [ ! -f "$tgz_filename" ]; then
         echo -e "${RED}错误: 打包失败${NC}"
+        mv -f "$package_json_backup" "$package_json"
         cd "$SCRIPT_DIR"
         return 1
     fi
@@ -483,11 +552,13 @@ publish_package() {
 
     if [ "$publish_success" -eq 1 ]; then
         echo -e "${GREEN}✓ ${package_name}@${new_version} 发布成功${NC}"
+        PUBLISHED_VERSIONS["$package_name"]="$new_version"
     else
         echo -e "${YELLOW}⚠ ${package_name} 发布失败，详情日志: ${log_file}${NC}"
         if [ "$package_name" = "@hydrooj/ui-default" ]; then
             cleanup_ui_asset_aliases
         fi
+        mv -f "$package_json_backup" "$package_json"
         cd "$SCRIPT_DIR"
         rm -rf /tmp/publish-temp
         return 1
@@ -497,6 +568,7 @@ publish_package() {
         cleanup_ui_asset_aliases
     fi
 
+    mv -f "$package_json_backup" "$package_json"
     cd "$SCRIPT_DIR"
     rm -rf /tmp/publish-temp
 
@@ -508,7 +580,7 @@ main() {
     parse_args "$@"
     check_tools
     install_deps
-    setup_registry
+    check_publish_registry
 
     echo -e "${YELLOW}4. 开始构建...${NC}"
     echo ""
@@ -528,25 +600,23 @@ main() {
     if is_selected "hydrojudge"; then
         build_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge"
     fi
+    if is_selected "fps-importer"; then
+        build_package "@hydrooj/fps-importer" "$SCRIPT_DIR/packages/fps-importer"
+    fi
+    if is_selected "a11y"; then
+        build_package "@hydrooj/a11y" "$SCRIPT_DIR/packages/a11y"
+    fi
+    if is_selected "import-hoj"; then
+        build_package "@hydrooj/import-hoj" "$SCRIPT_DIR/packages/import-hoj"
+    fi
 
     echo ""
     echo -e "${YELLOW}5. 开始打包和发布...${NC}"
     echo ""
 
-    # 先发布依赖包（不递增版本，使用固定版本）
-    if is_selected "common" && [ -d "$SCRIPT_DIR/packages/common" ]; then
-        echo -e "${YELLOW}发布依赖包...${NC}"
-        echo -e "发布 @hydrooj/common..."
-        cd "$SCRIPT_DIR/packages/common"
-        rm -f common.tgz
-        yarn pack --filename common.tgz > /dev/null 2>&1
-        cd /tmp && rm -rf publish-temp && mkdir -p publish-temp && cd publish-temp
-        tar -xzf "$SCRIPT_DIR/packages/common/common.tgz"
-        cd package
-        npm publish --registry "$NPM_REGISTRY" > /dev/null 2>&1 || echo -e "${YELLOW}  (可能已存在)${NC}"
-        cd "$SCRIPT_DIR"
-        rm -rf /tmp/publish-temp
-        echo ""
+    # 发布 common
+    if is_selected "common"; then
+        publish_package "@hydrooj/common" "$SCRIPT_DIR/packages/common" "common-dev.tgz"
     fi
 
     # 发布 hydrooj
@@ -563,21 +633,39 @@ main() {
     if is_selected "hydrojudge"; then
         publish_package "@hydrooj/hydrojudge" "$SCRIPT_DIR/packages/hydrojudge" "hydrojudge-dev.tgz"
     fi
+    if is_selected "fps-importer"; then
+        publish_package "@hydrooj/fps-importer" "$SCRIPT_DIR/packages/fps-importer" "fps-importer-dev.tgz"
+    fi
+    if is_selected "a11y"; then
+        publish_package "@hydrooj/a11y" "$SCRIPT_DIR/packages/a11y" "a11y-dev.tgz"
+    fi
+    if is_selected "import-hoj"; then
+        publish_package "@hydrooj/import-hoj" "$SCRIPT_DIR/packages/import-hoj" "import-hoj-dev.tgz"
+    fi
 
     echo -e "${GREEN}=== 所有包发布完成 ===${NC}"
     echo ""
     echo -e "已发布的版本:"
     if is_selected "common"; then
-        echo -e "  - @hydrooj/common@$(get_current_version "$SCRIPT_DIR/packages/common")"
+        echo -e "  - @hydrooj/common@${PUBLISHED_VERSIONS["@hydrooj/common"]}"
     fi
     if is_selected "hydrooj"; then
-        echo -e "  - hydrooj@$(get_current_version "$SCRIPT_DIR/packages/hydrooj")"
+        echo -e "  - hydrooj@${PUBLISHED_VERSIONS["hydrooj"]}"
     fi
     if is_selected "ui-default"; then
-        echo -e "  - @hydrooj/ui-default@$(get_current_version "$SCRIPT_DIR/packages/ui-default")"
+        echo -e "  - @hydrooj/ui-default@${PUBLISHED_VERSIONS["@hydrooj/ui-default"]}"
     fi
     if is_selected "hydrojudge"; then
-        echo -e "  - @hydrooj/hydrojudge@$(get_current_version "$SCRIPT_DIR/packages/hydrojudge")"
+        echo -e "  - @hydrooj/hydrojudge@${PUBLISHED_VERSIONS["@hydrooj/hydrojudge"]}"
+    fi
+    if is_selected "fps-importer"; then
+        echo -e "  - @hydrooj/fps-importer@${PUBLISHED_VERSIONS["@hydrooj/fps-importer"]}"
+    fi
+    if is_selected "a11y"; then
+        echo -e "  - @hydrooj/a11y@${PUBLISHED_VERSIONS["@hydrooj/a11y"]}"
+    fi
+    if is_selected "import-hoj"; then
+        echo -e "  - @hydrooj/import-hoj@${PUBLISHED_VERSIONS["@hydrooj/import-hoj"]}"
     fi
     echo ""
     echo -e "安装命令:"

@@ -44,7 +44,7 @@
                 id="courseStatisticsButton"
                 href="{{ url('course_statistics', query={group: firstStatsGroup}) if firstStatsGroup else url('course_statistics') }}"
                 data-base-href="{{ url('course_statistics') }}"
-              >课程统计</a>
+              >{{ _('Course Statistics') }}</a>
               <a class="compact button" href="{{ url('domain_class') }}">{{ _('Classes Manage') }}</a>
               <a class="compact button" href="{{ url('course_create') }}">{{ _('Create Course') }}</a>
               <a class="compact button" href="{{ url('course_create', query={isTemplate:'true'}) }}">{{ _('Create Course Template') }}</a>
