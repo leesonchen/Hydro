@@ -133,7 +133,7 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
                     } catch { /* ignore */ }
 
                     Object.assign(parsed, { email, username, password, displayName });
-                    await this.ctx.serial('user/import/parse', parsed);
+                    await this.ctx.serial('user/import/parse', parsed, messages);
                     users.push(parsed);
                 }
             } else {
