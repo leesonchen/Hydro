@@ -129,6 +129,35 @@
         </div>
       </div>
     {% endif %}
+    {% if submissionHistory|length %}
+      <div class="section side">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('Submission History') }}</h1>
+        </div>
+        <div class="section__body no-padding">
+          <ol class="menu">
+            {% for submission in submissionHistory %}
+            <li class="menu__item">
+              <a href="{{ url('record_detail', rid=submission._id) }}" {% if submission._id.equals(rdoc._id) %}style="border-color: #4690d0;"{% endif %} class="menu__link">
+                <span class="record-status--text {{ model.builtin.STATUS_CODES[submission.status] }}">
+                  {% if typeof(submission.score) == 'number' %}{{ submission.score|default(0) }} {% endif %}{{ model.builtin.STATUS_TEXTS[submission.status] }}
+                </span>
+                <br>
+                {{ datetimeSpan(submission._id, false)|safe }}
+              </a>
+            </li>
+            {% endfor %}
+            {% if submissionHistoryCount > submissionHistory|length and (not rdoc.contest or tdoc) %}
+            <li class="menu__item">
+              <a class="menu__link" href="{{ url('record_main', query={uidOrName:rdoc.uid, pid:rdoc.pid, tid:rdoc.contest} if tdoc else {uidOrName:rdoc.uid, pid:rdoc.pid}) }}">
+                {{ _('View All Submissions') }}
+              </a>
+            </li>
+            {% endif %}
+          </ol>
+        </div>
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
