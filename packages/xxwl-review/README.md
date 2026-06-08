@@ -25,9 +25,10 @@ data/reviews/{id}.md
 data/code/{id}/p1.cpp ... p6.cpp
 data/problems/p1.md ... p6.md
 data/solutions/p1/*.cpp ... p6/*.cpp
+data/solutions/p1/*.html ... p6/*.html
 ```
 
-源码目录已统一为英文 `code/`。`data/problems/` 会作为完整题面加入 prompt，`data/solutions/` 会作为参考解法加入 prompt，用来校准正确思路和定位差距。`题目/` 目录不是插件运行必需项；如果保留题面资料，建议放在 `data/problems/`。
+源码目录已统一为英文 `code/`。`data/problems/` 会作为完整题面加入 prompt，`data/solutions/` 中的源码会作为参考解法加入 prompt，用来校准正确思路和定位差距；同目录下的 `.html` 会在原题页面作为“动画解法”展示，不会放入代码点评 prompt。建议动画对应的参考解法先用测试数据编译运行通过，再放入 `data/solutions/{pid}/`。`题目/` 目录不是插件运行必需项；如果保留题面资料，建议放在 `data/problems/`。
 
 也可以用环境变量临时提供数据目录：
 
@@ -46,4 +47,4 @@ corepack yarn start
 
 然后登录 Hydro，访问 `/xinxi`。
 
-管理员还可以从 `/xinxi` 页面进入 `/xinxi/stats` 查看总览、考区对比、题目分析和排行榜；排行榜中的学生编号会跳转回 `/xinxi?id={id}` 个人详情页。原题页面路由为 `/xinxi/problem/p1` 到 `/xinxi/problem/p6`。
+管理员还可以从 `/xinxi` 页面进入 `/xinxi/stats` 查看总览、考区对比、题目分析和排行榜；排行榜中的学生编号会跳转回 `/xinxi?id={id}` 个人详情页。原题页面路由为 `/xinxi/problem/p1` 到 `/xinxi/problem/p6`，页面会自动读取 `data/solutions/{pid}/*.html` 并内嵌展示动画解法。
