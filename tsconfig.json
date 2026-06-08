@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "es2022",
     "lib": [
-      "es2022"
+      "esnext"
     ],
     "module": "preserve",
     "esModuleInterop": true,
@@ -11,6 +11,7 @@
     "sourceMap": false,
     "composite": true,
     "skipLibCheck": true,
+    "strict": false,
     "strictBindCallApply": true,
     "resolveJsonModule": true,
     "experimentalDecorators": true,
@@ -70,6 +71,9 @@
     },
     {
       "path": "packages/login-with-google"
+    },
+    {
+      "path": "packages/login-with-oidc"
     },
     {
       "path": "packages/migrate"
