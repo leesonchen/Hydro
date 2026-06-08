@@ -1,0 +1,8 @@
+{
+    "name": "@hydrooj/xxwl-review",
+    "version": "0.0.1",
+    "description": "Temporary student review query page for xxwl contest",
+    "main": "index.ts",
+    "private": true,
+    "repository": "https://github.com/hydro-dev/Hydro"
+}

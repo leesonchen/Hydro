@@ -1,6 +1,5 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { addPage } from '../api';
 import Notification from 'vj/components/notification';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
@@ -534,8 +533,10 @@ function CourseManageApp() {
   );
 }
 
-addPage(new NamedPage('course_manage', () => {
+const page = new NamedPage('course_manage', () => {
   const container = document.getElementById('course');
   if (!container) return;
   ReactDOM.createRoot(container).render(<CourseManageApp />);
-}));
+});
+
+export default page;

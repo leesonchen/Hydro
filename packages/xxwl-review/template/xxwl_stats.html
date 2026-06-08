@@ -1,0 +1,179 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<style>
+.xxwl-stats { max-width: 1220px; margin: 0 auto; }
+.xxwl-stats-hero { background: linear-gradient(135deg, #f5f7fb, #fff8ed); border: 1px solid #e6e8ef; border-radius: 12px; padding: 24px; margin-bottom: 18px; }
+.xxwl-stats-title { margin: 0 0 8px; font-size: 28px; font-weight: 700; }
+.xxwl-stats-muted { color: #667085; }
+.xxwl-stats-nav { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+.xxwl-stats-nav a { padding: 8px 12px; border: 1px solid #d0d5dd; border-radius: 999px; background: #fff; }
+.xxwl-stats-card { background: #fff; border: 1px solid #e6e8ef; border-radius: 12px; margin-bottom: 18px; overflow: hidden; }
+.xxwl-stats-body { padding: 22px; }
+.xxwl-stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.xxwl-stat { background: #f8fafc; border-radius: 10px; padding: 14px; }
+.xxwl-stat span { display: block; color: #667085; font-size: 12px; }
+.xxwl-stat b { display: block; margin-top: 4px; font-size: 24px; line-height: 1.2; }
+.xxwl-stats-table th, .xxwl-stats-table td { text-align: center; }
+.xxwl-stats-table td:first-child, .xxwl-stats-table th:first-child { text-align: left; }
+.xxwl-region-pill { display: inline-block; min-width: 28px; padding: 2px 8px; border-radius: 6px; background: #eef2ff; color: #344054; font-weight: 700; }
+.xxwl-score-full { color: #16794c; font-weight: 700; }
+.xxwl-score-zero { color: #b42318; font-weight: 700; }
+.xxwl-rank-tools { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.xxwl-rank-tools input, .xxwl-rank-tools select { min-width: 150px; }
+@media (max-width: 760px) {
+  .xxwl-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .xxwl-stats-body { overflow-x: auto; }
+}
+</style>
+
+<div class="xxwl-stats">
+  <div class="xxwl-stats-hero">
+    <h1 class="xxwl-stats-title">信息竞赛成绩统计</h1>
+    <div class="xxwl-stats-muted">仅管理员可查看。排行榜中的学生编号可跳转到个人详情页。</div>
+    <div class="xxwl-stats-nav">
+      <a href="#overview">总览</a>
+      <a href="#regions">考区对比</a>
+      <a href="#problems">题目分析</a>
+      <a href="#leaderboard">排行榜</a>
+      <a href="{{ url('xxwl_review') }}">个人查询</a>
+    </div>
+  </div>
+
+  <section class="xxwl-stats-card" id="overview">
+    <div class="xxwl-stats-body">
+      <h2 style="margin-top:0;">总览</h2>
+      <div class="xxwl-stats-grid">
+        <div class="xxwl-stat"><span>总人数</span><b>{{ stats.global.n_students }}</b></div>
+        <div class="xxwl-stat"><span>均分 / 中位数</span><b>{{ stats.global.total_mean }} / {{ stats.global.total_median }}</b></div>
+        <div class="xxwl-stat"><span>标准差</span><b>{{ stats.global.total_std }}</b></div>
+        <div class="xxwl-stat"><span>省一 / 省二分数线</span><b>170 / 75</b></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="xxwl-stats-card" id="regions">
+    <div class="xxwl-stats-body">
+      <h2 style="margin-top:0;">考区对比</h2>
+      <table class="data-table xxwl-stats-table">
+        <thead>
+          <tr>
+            <th>考区</th>
+            <th>人数</th>
+            <th>均分</th>
+            <th>中位数</th>
+            <th>标准差</th>
+            {% for p in problems %}
+              <th>{{ p.id|upper }} 均分</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats.regionRows %}
+            <tr>
+              <td><span class="xxwl-region-pill">{{ row.region }}</span></td>
+              <td>{{ row.n }}</td>
+              <td>{{ row.mean }}</td>
+              <td>{{ row.median }}</td>
+              <td>{{ row.std }}</td>
+              {% for mean in row.problemMeans %}
+                <td>{{ mean }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="xxwl-stats-card" id="problems">
+    <div class="xxwl-stats-body">
+      <h2 style="margin-top:0;">题目分析</h2>
+      <table class="data-table xxwl-stats-table">
+        <thead>
+          <tr>
+            <th>题目</th>
+            <th>满分</th>
+            <th>均分</th>
+            <th>零分率</th>
+            <th>满分率</th>
+            <th>区分度</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats.problemRows %}
+            <tr>
+              <td><a href="{{ url('xxwl_review_problem', pid=row.id) }}" target="_blank" rel="noopener">{{ row.id|upper }} · {{ row.title }}</a></td>
+              <td>{{ row.max }}</td>
+              <td>{{ row.mean }}</td>
+              <td>{{ row.zeroRate }}</td>
+              <td>{{ row.fullRate }}</td>
+              <td>{{ row.discrimination }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="xxwl-stats-card" id="leaderboard">
+    <div class="xxwl-stats-body">
+      <h2 style="margin-top:0;">排行榜</h2>
+      <div class="xxwl-rank-tools">
+        <input class="textbox" id="xxwl-rank-search" type="text" placeholder="搜索学号，例如 B018">
+        <select class="select" id="xxwl-region-filter">
+          <option value="">全部考区</option>
+          {% for row in stats.regionRows %}
+            <option value="{{ row.region }}">{{ row.region }} 区</option>
+          {% endfor %}
+        </select>
+      </div>
+      <table class="data-table xxwl-stats-table" id="xxwl-rank-table">
+        <thead>
+          <tr>
+            <th>排名</th>
+            <th>学号</th>
+            <th>考区</th>
+            {% for p in problems %}
+              <th>{{ p.id|upper }} / {{ p.max }}</th>
+            {% endfor %}
+            <th>总分</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats.leaderboardRows %}
+            <tr data-id="{{ row.id }}" data-region="{{ row.region }}">
+              <td>#{{ row.global_rank }}</td>
+              <td><a href="{{ url('xxwl_review', query={id:row.id}) }}">{{ row.id }}</a></td>
+              <td><span class="xxwl-region-pill">{{ row.region }}</span></td>
+              {% for p in problems %}
+                {% set score = row.scores[p.id] %}
+                <td class="{% if score == p.max %}xxwl-score-full{% elif score == 0 %}xxwl-score-zero{% endif %}">{{ score }}</td>
+              {% endfor %}
+              <td><b>{{ row.total }}</b></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+(function() {
+  var search = document.getElementById('xxwl-rank-search');
+  var region = document.getElementById('xxwl-region-filter');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#xxwl-rank-table tbody tr'));
+  function applyFilter() {
+    var q = (search && search.value || '').trim().toUpperCase();
+    var r = region && region.value || '';
+    rows.forEach(function(row) {
+      var okId = !q || row.getAttribute('data-id').indexOf(q) >= 0;
+      var okRegion = !r || row.getAttribute('data-region') === r;
+      row.style.display = okId && okRegion ? '' : 'none';
+    });
+  }
+  if (search) search.addEventListener('input', applyFilter);
+  if (region) region.addEventListener('change', applyFilter);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,8 @@
+{
+    "name": "@hydrooj/url-audit",
+    "version": "0.0.1",
+    "description": "HTTP URL audit log plugin for Hydro",
+    "main": "index.ts",
+    "private": true,
+    "repository": "https://github.com/hydro-dev/Hydro"
+}

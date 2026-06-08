@@ -1,5 +1,4 @@
 import $ from 'jquery';
-import { addPage } from '../api';
 import CustomSelectAutoComplete from 'vj/components/autocomplete/CustomSelectAutoComplete';
 import ProblemSelectAutoComplete from 'vj/components/autocomplete/ProblemSelectAutoComplete';
 import UserSelectAutoComplete from 'vj/components/autocomplete/UserSelectAutoComplete';
@@ -478,7 +477,5 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     render();
   }
 });
-
-addPage(page);
 
 export default page;
