@@ -159,7 +159,19 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
     // eslint-disable-next-line consistent-return
     async get(domainId: string, rid: ObjectId, download = false, rev?: ObjectId) {
         let rdoc = this.rdoc;
-        const allRev = await record.collHistory.find({ rid }).project({ _id: 1, judgeAt: 1 }).sort({ _id: -1 }).toArray();
+        const submissionHistoryFilter: Filter<RecordDoc> = {
+            uid: rdoc.uid,
+            pid: rdoc.pid,
+            'files.hack': { $exists: false },
+            contest: rdoc.contest || { $exists: false },
+        };
+        const [allRev, submissionHistory, submissionHistoryCount] = await Promise.all([
+            record.collHistory.find({ rid }).project({ _id: 1, judgeAt: 1 }).sort({ _id: -1 }).toArray(),
+            record.getMulti(domainId, submissionHistoryFilter)
+                .project(buildProjection(['_id', 'domainId', 'status', 'score']))
+                .sort({ _id: -1 }).limit(20).toArray(),
+            record.count(domainId, submissionHistoryFilter),
+        ]);
         const allRevs: Record<string, Date> = Object.fromEntries(allRev.map((i) => [i._id.toString(), i.judgeAt]));
         if (rev && allRevs[rev.toString()]) {
             rdoc = { ...rdoc, ...omit(await record.collHistory.findOne({ _id: rev }), ['_id']), progress: null };
@@ -206,7 +218,14 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
         } else if (download) return await this.download();
         this.response.template = 'record_detail.html';
         this.response.body = {
-            udoc, rdoc: canViewDetail ? rdoc : pick(rdoc, ['_id', 'lang', 'code']), pdoc, tdoc: this.tdoc, rev, allRevs,
+            udoc,
+            rdoc: canViewDetail ? rdoc : pick(rdoc, ['_id', 'lang', 'code']),
+            pdoc,
+            tdoc: this.tdoc,
+            rev,
+            allRevs,
+            submissionHistory,
+            submissionHistoryCount,
         };
     }
 
