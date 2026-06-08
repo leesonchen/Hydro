@@ -57,6 +57,7 @@ modules/
 
 # Data files
 *.mmdb
+packages/**/*.tgz
 
 # Base
 node_modules/
