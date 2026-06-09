@@ -105,7 +105,7 @@ export const RpTypes: Record<string, RpDef> = {
                     },
                 },
             ]).toArray();
-            for (const doc of pinned) udict[doc._id] += min(doc.count * 2, 50);
+            for (const doc of pinned) udict[doc._id] += min(doc.count, 30);
         },
         hidden: false,
         base: 0,
