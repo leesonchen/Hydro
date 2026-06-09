@@ -231,9 +231,8 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       nodes = normalizeNodes(nodes).sort((a, b) => a._id - b._id);
       const nextJson = JSON.stringify(nodes, null, 2);
       const editorInstance = $dag.data('vjEditorInstance');
-      const prevJson = editorInstance?.value ? editorInstance.value() : ($dag.val() as string);
       $dag.val(nextJson);
-      if (editorInstance?.value) {
+      if (editorInstance?.isValid && editorInstance?.value) {
         editorInstance.value(nextJson);
       }
       $dag.trigger('input');
