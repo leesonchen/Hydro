@@ -29,6 +29,14 @@ function isReferenceCodeSolution(doc: any) {
     return doc?.title === REFERENCE_CODE_TITLE || isReferenceCodeSolutionByContent(doc?.content || '');
 }
 
+function normalizeTemplateIds(templateIds: any) {
+    const values = Array.isArray(templateIds) ? templateIds : [templateIds];
+    return Array.from(new Set(values
+        .flatMap((id) => (id === undefined || id === null ? '' : String(id)).split(','))
+        .map((id) => id.trim())
+        .filter(Boolean)));
+}
+
 // 检查前置章节完成情况（按当前节点 completeCondition 聚合判断）
 function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc): boolean {
     if (!tsdoc) {
@@ -514,9 +522,9 @@ export class CourseMainHandler extends Handler {
         this.response.template = 'course_main.html';
     }
 
-    async updateTemplateCategories(domainId: string, templateIds: string[], category: string) {
+    async updateTemplateCategories(domainId: string, templateIds: any, category: string) {
         this.checkPerm(PERM.PERM_EDIT_HOMEWORK);
-        const rawIds = Array.from(new Set((templateIds || []).map((id) => (id || '').trim()).filter(Boolean)));
+        const rawIds = normalizeTemplateIds(templateIds);
         if (!rawIds.length) throw new ValidationError('templateIds');
         if (rawIds.some((id) => !ObjectId.isValid(id))) throw new ValidationError('templateIds');
         const ids = rawIds.map((id) => new ObjectId(id));
@@ -533,14 +541,14 @@ export class CourseMainHandler extends Handler {
         this.response.redirect = this.url('course_main');
     }
 
-    @param('templateIds', Types.CommaSeperatedArray)
+    @param('templateIds', Types.Any)
     @param('templateCategory', Types.String)
-    async postBatchSetTemplateCategory(domainId: string, templateIds: string[], templateCategory: string) {
+    async postBatchSetTemplateCategory(domainId: string, templateIds: any, templateCategory: string) {
         await this.updateTemplateCategories(domainId, templateIds, (templateCategory || '').trim());
     }
 
-    @param('templateIds', Types.CommaSeperatedArray)
-    async postBatchClearTemplateCategory(domainId: string, templateIds: string[]) {
+    @param('templateIds', Types.Any)
+    async postBatchClearTemplateCategory(domainId: string, templateIds: any) {
         await this.updateTemplateCategories(domainId, templateIds, '');
     }
 }

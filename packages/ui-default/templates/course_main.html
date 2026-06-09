@@ -96,6 +96,7 @@
                 <div class="class-content">
                   {% if cat.key == 'template' and canEditCourseTemplate %}
                   <form method="post" id="courseTemplateBatchForm" class="course-template-batch-form">
+                    <input type="hidden" name="templateIds" data-selected-template-ids>
                     <div class="course-template-batch-toolbar">
                       <label class="compact checkbox course-template-select-all">
                         <input type="checkbox" data-checkbox-toggle="course-template">
@@ -325,6 +326,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
       const categoryInput = courseTemplateBatchForm.querySelector('[name="templateCategory"]');
+      const templateIdsInput = courseTemplateBatchForm.querySelector('[data-selected-template-ids]');
       if (submitter && submitter.value === 'batch_clear_template_category' && categoryInput) {
         categoryInput.disabled = true;
       }
@@ -332,8 +334,13 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!categoryInput || !categoryInput.value.trim()) {
           ev.preventDefault();
           alert("{{ _('Please input template category.') }}");
+          return;
         }
       }
+      if (templateIdsInput) templateIdsInput.value = selectedIds.join(',');
+      courseTemplateBatchForm.querySelectorAll('[data-checkbox-group="course-template"]').forEach(input => {
+        input.disabled = true;
+      });
     });
     document.addEventListener('click', function(ev) {
       const target = ev.target;
