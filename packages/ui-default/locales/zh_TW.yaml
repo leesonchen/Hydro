@@ -124,7 +124,7 @@ Authenticators: 認證器
 author: 作者
 Auto configure: 自動配置
 Auto detect: 自動檢測
-Auto hide problems during the contest: 在比賽過程中自動隱藏題目
+Auto show problems after the contest: 比賽後公開題目（賽中隱藏）
 Auto Read Tasks: 自動識別任務
 Awards: 獎項
 Balloon Status: 氣球狀態

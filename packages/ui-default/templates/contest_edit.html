@@ -153,7 +153,7 @@
               columns:3,
               label:'Auto hide-and show',
               name:'autoHide',
-              placeholder:_('Auto hide problems during the contest'),
+              placeholder:_('Auto show problems after the contest'),
               value:handler.user.hasPerm(perm.PERM_EDIT_PROBLEM) and (tdoc.autoHide|default(true)),
               disabled:not handler.user.hasPerm(perm.PERM_EDIT_PROBLEM),
               row:false
