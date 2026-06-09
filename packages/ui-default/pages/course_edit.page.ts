@@ -90,7 +90,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
 
   const formatLocalDateTime = (date: Date) => {
     const pad = (value: number) => `${value}`.padStart(2, '0');
-    return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${pad(date.getMinutes())}`;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
   };
 
   const $beginAt = $('[name="beginAt"]');
