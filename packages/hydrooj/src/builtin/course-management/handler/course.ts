@@ -493,6 +493,8 @@ export class CourseMainHandler extends Handler {
         const myCourseData = groupAndSortCourses(myCourses, now);
         const otherCourseData = groupAndSortCourses(otherCourses, now);
         const templateData = groupAndSortTemplates(templates, now);
+        const templateCategoryOptions = Array.from(new Set(templates.map((t) => t.templateCategory).filter(Boolean)))
+            .sort((a, b) => a.localeCompare(b, 'zh-CN'));
 
         this.response.body = {
             myCourses: myCourseData.groups,
@@ -501,6 +503,7 @@ export class CourseMainHandler extends Handler {
             otherCourseGroups: otherCourseData.sortedGroups,
             templates: templateData.groups,
             templateGroups: templateData.sortedGroups,
+            templateCategoryOptions,
             templateCount: templates.length,
             tsdict,
             udict,
@@ -511,12 +514,12 @@ export class CourseMainHandler extends Handler {
         this.response.template = 'course_main.html';
     }
 
-    async updateTemplateCategories(domainId: string, templateIds: ObjectId[], category: string) {
+    async updateTemplateCategories(domainId: string, templateIds: string[], category: string) {
         this.checkPerm(PERM.PERM_EDIT_HOMEWORK);
-        const ids = Array.from(new Map((templateIds || [])
-            .filter(Boolean)
-            .map((id) => [id.toHexString(), id])).values());
-        if (!ids.length) throw new ValidationError('templateIds');
+        const rawIds = Array.from(new Set((templateIds || []).map((id) => (id || '').trim()).filter(Boolean)));
+        if (!rawIds.length) throw new ValidationError('templateIds');
+        if (rawIds.some((id) => !ObjectId.isValid(id))) throw new ValidationError('templateIds');
+        const ids = rawIds.map((id) => new ObjectId(id));
         const tdocs = await ContestModel.getMulti(domainId, {
             rule: 'course',
             docId: { $in: ids },
@@ -530,14 +533,14 @@ export class CourseMainHandler extends Handler {
         this.response.redirect = this.url('course_main');
     }
 
-    @param('templateIds', Types.ArrayOf(Types.ObjectId))
+    @param('templateIds', Types.CommaSeperatedArray)
     @param('templateCategory', Types.String)
-    async postBatchSetTemplateCategory(domainId: string, templateIds: ObjectId[], templateCategory: string) {
+    async postBatchSetTemplateCategory(domainId: string, templateIds: string[], templateCategory: string) {
         await this.updateTemplateCategories(domainId, templateIds, (templateCategory || '').trim());
     }
 
-    @param('templateIds', Types.ArrayOf(Types.ObjectId))
-    async postBatchClearTemplateCategory(domainId: string, templateIds: ObjectId[]) {
+    @param('templateIds', Types.CommaSeperatedArray)
+    async postBatchClearTemplateCategory(domainId: string, templateIds: string[]) {
         await this.updateTemplateCategories(domainId, templateIds, '');
     }
 }

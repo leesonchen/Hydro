@@ -105,8 +105,14 @@
                       <input
                         class="textbox course-template-category-input"
                         name="templateCategory"
+                        list="courseTemplateCategoryOptions"
                         placeholder="{{ _('Template Category') }}"
                       >
+                      <datalist id="courseTemplateCategoryOptions">
+                        {% for category in templateCategoryOptions | default([]) %}
+                        <option value="{{ category }}"></option>
+                        {% endfor %}
+                      </datalist>
                       <button class="compact button" name="operation" value="batch_set_template_category" type="submit">
                         {{ _('Batch Set Category') }}
                       </button>
@@ -318,8 +324,11 @@ document.addEventListener('DOMContentLoaded', function() {
         alert("{{ _('Please select at least one course template to perform this operation.') }}");
         return;
       }
+      const categoryInput = courseTemplateBatchForm.querySelector('[name="templateCategory"]');
+      if (submitter && submitter.value === 'batch_clear_template_category' && categoryInput) {
+        categoryInput.disabled = true;
+      }
       if (submitter && submitter.value === 'batch_set_template_category') {
-        const categoryInput = courseTemplateBatchForm.querySelector('[name="templateCategory"]');
         if (!categoryInput || !categoryInput.value.trim()) {
           ev.preventDefault();
           alert("{{ _('Please input template category.') }}");
