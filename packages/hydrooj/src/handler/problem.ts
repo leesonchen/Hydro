@@ -274,7 +274,7 @@ export class ProblemMainHandler extends Handler {
                 title: this.renderTitle(this.translate('problem_main')),
                 fragments: (await Promise.all([
                     this.renderHTML('partials/problem_list.html', {
-                        page, ppcount, pcount, pdocs, psdict, qs: q, scope, global: isGlobalSearch, sort: sortStrategy,
+                        page, ppcount, pcount, pdocs, psdict, qs: q, scope, globalSearch: isGlobalSearch, sort: sortStrategy,
                     }),
                     this.renderHTML('partials/problem_stat.html', { pcount, pcountRelation: this.queryContext.pcountRelation }),
                     this.renderHTML('partials/problem_lucky.html', { qs: q }),
@@ -290,7 +290,7 @@ export class ProblemMainHandler extends Handler {
                 psdict,
                 qs: q,
                 scope,
-                global: isGlobalSearch,
+                globalSearch: isGlobalSearch,
                 canGlobalSearch,
                 sort: sortStrategy,
             };

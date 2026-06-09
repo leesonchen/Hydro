@@ -87,7 +87,7 @@
               {% endif %}
               {% if canGlobalSearch %}
                 <label class="search-filter">
-                  <input name="global" type="checkbox" value="true" {{ "checked" if global or handler.request.query.global == 'true' else "" }}>
+                  <input name="global" type="checkbox" value="true" {{ "checked" if globalSearch or handler.request.query.global == 'true' else "" }}>
                   {{ _('Global Search') }}
                 </label>
               {% endif %}
