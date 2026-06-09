@@ -9,6 +9,7 @@ import difficultyAlgorithm from '../lib/difficulty';
 import rating from '../lib/rating';
 import { PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
+import * as document from '../model/document';
 import domain from '../model/domain';
 import problem from '../model/problem';
 import UserModel from '../model/user';
@@ -86,6 +87,28 @@ export const RpTypes: Record<string, RpDef> = {
         },
         hidden: false,
         base: 1500,
+    },
+    solution: {
+        async run(domainIds, udict) {
+            const pinned = await document.coll.aggregate<any>([
+                {
+                    $match: {
+                        domainId: { $in: domainIds },
+                        docType: document.TYPE_PROBLEM_SOLUTION,
+                        pin: { $exists: true },
+                    },
+                },
+                {
+                    $group: {
+                        _id: '$owner',
+                        count: { $sum: 1 },
+                    },
+                },
+            ]).toArray();
+            for (const doc of pinned) udict[doc._id] += min(doc.count * 2, 50);
+        },
+        hidden: false,
+        base: 0,
     },
     delta: {
         async run(domainIds, udict) {

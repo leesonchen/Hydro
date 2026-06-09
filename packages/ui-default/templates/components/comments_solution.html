@@ -100,12 +100,25 @@
       <div class="clearfix">
         <div class="supplementary dczcomments__supplementary">
           {{ user.render_inline(udoc) }} @ {{ datetimeSpan(doc._id)|safe }}
+          {% if doc.pin %}
+            <span class="icon icon-star" data-tooltip="{{ _('Pinned Solution') }}"></span> {{ _('Pinned') }}
+          {% endif %}
         </div>
         <div class="dczcomments__operations nojs--hide">
         {% if pdoc %}
           <a href="javascript:;" data-tooltip="{{ _('Copy Link') }}" data-copylink="{{ url('problem_solution_detail', pid=pdoc.pid|default(pdoc.docId), sid=doc._id, query=tdoc and {tid:tdoc.docId} or {}) }}">
             <span class="icon icon-link"></span>
           </a>
+        {% endif %}
+        {% if handler.user.hasPerm(comment_delete_perm) %}
+          <form method="post" style="display:inline">
+            <input type="hidden" name="psid" value="{{ doc._id }}">
+            {% if doc.pin %}
+              <button type="submit" name="operation" value="unpin_solution" class="link" data-tooltip="{{ _('Unpin Solution') }}" aria-label="{{ _('Unpin Solution') }}"><span class="icon icon-star"></span></button>
+            {% else %}
+              <button type="submit" name="operation" value="pin_solution" class="link" data-tooltip="{{ _('Pin Solution') }}" aria-label="{{ _('Pin Solution') }}"><span class="icon icon-star--outline"></span></button>
+            {% endif %}
+          </form>
         {% endif %}
         {% if handler.user.hasPerm(reply_post_perm) %}
           <a href="javascript:;" data-tooltip="{{ _('Reply') }}" data-op="reply" data-type="comment" 

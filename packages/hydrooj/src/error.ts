@@ -58,6 +58,7 @@ export const ProblemReferencedByDomainError = Err('ProblemReferencedByDomainErro
 export const ProblemNotAllowPretestError = Err('ProblemNotAllowPretestError', ForbiddenError, 'Pretesting is not supported for {0}.');
 export const ProblemNotAllowLanguageError = Err('ProblemNotAllowSubmitError', ForbiddenError, 'This language is not allowed to submit.');
 export const ProblemNotAllowCopyError = Err('ProblemNotAllowCopyError', ForbiddenError, 'You are not allowed to copy this problem from {0} to {1}.');
+export const SolutionPinLimitExceededError = Err('SolutionPinLimitExceededError', ForbiddenError, 'Each problem can have at most 5 pinned solutions. Please unpin an existing solution first.');
 
 export const PretestRejudgeFailedError = Err('PretestRejudgeFailedError', BadRequestError, 'Cannot rejudge a pretest record.');
 export const HackRejudgeFailedError = Err('HackRejudgeFailedError', BadRequestError, 'Cannot rejudge a hack record.');

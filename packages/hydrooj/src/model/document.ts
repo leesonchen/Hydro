@@ -429,7 +429,7 @@ export async function apply(ctx: Context) {
         { key: { domainId: 1, docType: 1, search: 'text', title: 'text' }, name: 'search', sparse: true },
         { key: { domainId: 1, docType: 1, sort: 1, docId: 1 }, name: 'sort' },
         // For problem solution
-        { key: { domainId: 1, docType: 1, parentType: 1, parentId: 1, vote: -1, docId: -1 }, name: 'solution', sparse: true },
+        { key: { domainId: 1, docType: 1, parentType: 1, parentId: 1, pin: -1, vote: -1, docId: -1 }, name: 'solution', sparse: true },
         // For discussion
         { key: { docType: 1, domainId: 1, hidden: 1, pin: -1, docId: -1 }, name: 'discussionSort', ...onlyFor(TYPE_DISCUSSION) },
         { key: { docType: 1, domainId: 1, hidden: 1, parentType: 1, parentId: 1, pin: -1, docId: -1 }, name: 'discussionNodeSort', sparse: true },

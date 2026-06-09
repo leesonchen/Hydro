@@ -9,22 +9,22 @@ const sumStatus = (status) => ({ $sum: { $cond: [{ $eq: ['$status', status] }, 1
 export async function udoc(report) {
     const userStats = new Map<string, { nLiked?: number, nAccept?: number, nSubmit?: number }>();
 
-    report({ message: 'Udoc nLiked' });
-    const likedPipeline = [
+    report({ message: 'Udoc pinned solutions' });
+    const pinnedPipeline = [
         {
             $match: {
                 docType: document.TYPE_PROBLEM_SOLUTION,
-                vote: { $gt: 0 },
+                pin: { $exists: true },
             },
         },
         {
             $group: {
                 _id: { domainId: '$domainId', uid: '$owner' },
-                nLiked: { $sum: '$vote' },
+                nLiked: { $sum: 1 },
             },
         },
     ];
-    for await (const adoc of document.coll.aggregate<any>(likedPipeline, { allowDiskUse: true })) {
+    for await (const adoc of document.coll.aggregate<any>(pinnedPipeline, { allowDiskUse: true })) {
         userStats.set(`${adoc._id.domainId}/${adoc._id.uid}`, { nLiked: adoc.nLiked });
     }
 

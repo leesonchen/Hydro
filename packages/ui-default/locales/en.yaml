@@ -28,6 +28,9 @@ problem_import: Import Problem
 problem_main: Problem Set
 problem_solution: Problem Solution
 problem_submit: Problem Submit
+Pin Solution: Pin Solution
+Pinned Solution: Pinned Solution
+Pinned: Pinned
 problem_type.communication: 'Type: Communication'
 problem_type.default: 'Type: Default'
 problem_type.interactive: 'Type: Interactive'
@@ -47,6 +50,7 @@ record_detail: Record Detail
 record_main: Record
 rpDetailText_contest: Contest
 rpDetailText_problem: Problem
+rpDetailText_solution: Solution
 setting_customize: Customize
 setting_display: Display Preference
 setting_function: Function
@@ -55,6 +59,7 @@ setting_info: Personal Info
 setting_preference: Preference
 setting_privacy: Privacy
 setting_usage: Usage Preference
+Solutions Pinned: Pinned Solutions
 sort::default: Default
 sort::recent: Recent
 tasks_list: Task list
@@ -62,6 +67,7 @@ timeago_locale: en_US
 training_create: Training Create
 training_edit: Training Edit
 training_main: Training
+Unpin Solution: Unpin Solution
 user_detail: User Detail
 user_login: Login
 user_logout: Logout

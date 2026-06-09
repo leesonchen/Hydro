@@ -687,6 +687,9 @@ Permission: 許可權
 Permissions: 許可權
 Pick a problem randomly based on the current filter.: 根據當前過濾條件隨機選擇一道題
 Pin: 置頂
+Pin Solution: 置頂題解
+Pinned Solution: 已置頂題解
+Pinned: 已置頂
 PingFang SC: 蘋方簡體
 Plan: 計劃
 Please attend contest to see the problems.: 請參加比賽來檢視題目。
@@ -821,6 +824,7 @@ Roles: 身分組
 RP Algorithm: RP 演算法
 rpDetailText_contest: 比賽
 rpDetailText_problem: 題目
+rpDetailText_solution: 題解
 Rule: 規則
 Run Pretest: 執行自測
 Run: 執行
@@ -893,6 +897,7 @@ Sign Up Now: 現在註冊
 Sign Up: 註冊
 Size: 大小
 Solutions Liked: 題解被贊
+Solutions Pinned: 題解置頂
 Solutions: 題解
 Solve: 解決
 Solved: 解決
@@ -1012,6 +1017,7 @@ Unordered List: 無序列表
 Unrank: 打星
 Unstar Topic: 取消收藏
 Unstar: 取消收藏
+Unpin Solution: 取消置頂題解
 Unsupported configure this type of problem. Please refer to the documentation.: 暫不支援快捷配置此類題目。請參照文件操作。
 Update Permission: 更新許可權
 Update Settings: 更新設定
@@ -1128,6 +1134,7 @@ You're not logged in.: 您沒有登入。
 You've already attended this contest.: 您已經參加本次比賽。
 You've already claimed this homework.: 您已認領該功課。
 You've already voted.: 您已經投過票。
+Each problem can have at most 5 pinned solutions. Please unpin an existing solution first.: 每道題目最多只能置頂 5 個題解，請先取消已有置頂。
 Your account has two factor authentication enabled. Please choose an authenticator to verify.: 您的賬戶已啟用雙因素認證。請選擇一個驗證器來驗證。
 Your browser does not support WebAuthn or you are not in secure context.: 您的瀏覽器不支援WebAuthn或是您不在安全環境中。
 Your Device: 你的裝置

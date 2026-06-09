@@ -814,5 +814,6 @@ You're not logged in.: 로그인하십시오
 You've already attended this contest.: 이미 대회에 참가함
 You've already claimed this homework.: 이미 숙제를 받음
 You've already voted.: 이미 투표함
+Each problem can have at most 5 pinned solutions. Please unpin an existing solution first.: 문제마다 해설을 최대 5개까지 고정할 수 있습니다. 기존 고정을 먼저 해제하세요.
 Your permission: 당신의 권한
 Your role: 당신의 역할

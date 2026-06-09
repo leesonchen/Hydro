@@ -1022,6 +1022,24 @@ export class ProblemSolutionHandler extends ProblemDetailHandler {
     }
 
     @param('psid', Types.ObjectId)
+    async postPinSolution(domainId: string, psid: ObjectId) {
+        this.checkPerm(PERM.PERM_DELETE_PROBLEM_SOLUTION);
+        const psdoc = await solution.get(domainId, psid);
+        if (psdoc.parentId !== this.pdoc.docId) throw new SolutionNotFoundError(domainId, psid);
+        await solution.pin(domainId, psdoc.docId);
+        this.back();
+    }
+
+    @param('psid', Types.ObjectId)
+    async postUnpinSolution(domainId: string, psid: ObjectId) {
+        this.checkPerm(PERM.PERM_DELETE_PROBLEM_SOLUTION);
+        const psdoc = await solution.get(domainId, psid);
+        if (psdoc.parentId !== this.pdoc.docId) throw new SolutionNotFoundError(domainId, psid);
+        await solution.unpin(domainId, psdoc.docId);
+        this.back();
+    }
+
+    @param('psid', Types.ObjectId)
     @param('content', Types.Content)
     async postReply(domainId: string, psid: ObjectId, content: string) {
         this.checkPerm(PERM.PERM_REPLY_PROBLEM_SOLUTION);

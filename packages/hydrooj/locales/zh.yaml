@@ -960,5 +960,6 @@ You're not logged in.: 您没有登录。
 You've already attended this contest.: 您已经参加本次比赛。
 You've already claimed this homework.: 您已认领过该作业。
 You've already voted.: 您已经投过票。
+Each problem can have at most 5 pinned solutions. Please unpin an existing solution first.: 每道题目最多只能置顶 5 个题解，请先取消已有置顶。
 Your permission: 您的权限
 Your role: 您的角色

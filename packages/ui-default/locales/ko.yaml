@@ -515,6 +515,9 @@ Problem Set: 문제 모음
 Problem Settings: 문제 설정
 Problem Solution List: 문제 해설 목록
 Problem Solution: 문제 해설
+Pin Solution: 해설 고정
+Pinned Solution: 고정된 해설
+Pinned: 고정됨
 Problem Tags Visibility: 문제 태그 공개
 problem_create: 문제 만들기
 problem_edit: 문제 수정
@@ -643,7 +646,10 @@ Sign Up Now: 회원가입
 Sign Up: 회원가입
 Size: 크기
 Solutions Liked: 연결된 해설
+Solutions Pinned: 고정된 해설
 Solutions: 해설
+rpDetailText_solution: 해설
+Unpin Solution: 해설 고정 해제
 Solve: 해결
 Solved: 해결한 문제
 Sorry, there are no problems in the problem set.: 문제 모음에 문제가 없습니다.
@@ -819,6 +825,7 @@ You're not logged in.: 로그인하십시오
 You've already attended this contest.: 이미 대회에 참가함
 You've already claimed this homework.: 이미 숙제를 받음
 You've already voted.: 이미 투표함
+Each problem can have at most 5 pinned solutions. Please unpin an existing solution first.: 문제마다 해설을 최대 5개까지 고정할 수 있습니다. 기존 고정을 먼저 해제하세요.
 Your permission: 당신의 권한
 Your role: 당신의 역할
 Submission History: 제출 기록

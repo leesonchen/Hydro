@@ -1,7 +1,9 @@
 import { ObjectId } from 'mongodb';
-import { SolutionNotFoundError } from '../error';
+import { SolutionNotFoundError, SolutionPinLimitExceededError } from '../error';
 import bus from '../service/bus';
 import * as document from './document';
+
+const PIN_LIMIT = 5;
 
 class SolutionModel {
     static add(domainId: string, pid: number, owner: number, content: string) {
@@ -43,7 +45,7 @@ class SolutionModel {
         return document.getMulti(
             domainId, document.TYPE_PROBLEM_SOLUTION,
             { parentType: document.TYPE_PROBLEM, parentId: pid, ...query },
-        ).sort({ vote: -1 });
+        ).sort({ pin: -1, vote: -1, docId: -1 });
     }
 
     static getByUser(domainId: string, uid: number) {
@@ -81,6 +83,24 @@ class SolutionModel {
         return inc
             ? await document.inc(domainId, document.TYPE_PROBLEM_SOLUTION, psid, 'vote', inc)
             : doc;
+    }
+
+    static async pin(domainId: string, psid: ObjectId) {
+        const psdoc = await SolutionModel.get(domainId, psid);
+        if (!psdoc.pin) {
+            const pinnedCount = await SolutionModel.count(domainId, {
+                parentType: document.TYPE_PROBLEM,
+                parentId: psdoc.parentId,
+                pin: { $exists: true },
+            });
+            if (pinnedCount >= PIN_LIMIT) throw new SolutionPinLimitExceededError();
+        }
+        return document.set(domainId, document.TYPE_PROBLEM_SOLUTION, psid, { pin: new Date() });
+    }
+
+    static async unpin(domainId: string, psid: ObjectId) {
+        await SolutionModel.get(domainId, psid);
+        return document.set(domainId, document.TYPE_PROBLEM_SOLUTION, psid, undefined, { pin: '' });
     }
 
     static async getListStatus(domainId: string, psids: ObjectId[], uid: number) {

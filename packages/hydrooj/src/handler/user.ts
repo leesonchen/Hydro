@@ -421,6 +421,8 @@ class UserDetailHandler extends Handler {
             }
         }
         const tags = Object.entries(acInfo).sort((a, b) => b[1] - a[1]).slice(0, 20);
+        const pinnedSolutionCount = await SolutionModel.count(domainId, { owner: uid, pin: { $exists: true } });
+        udoc.nLiked = pinnedSolutionCount;
         const tsdocs = await ContestModel.getMultiStatus(domainId, { uid, attend: { $exists: true } }).project({ docId: 1 }).toArray();
         const tdocs = await ContestModel.getMulti(domainId, { docId: { $in: tsdocs.map((i) => i.docId) } })
             .project({ docId: 1, title: 1, rule: 1 }).sort({ _id: -1 }).toArray();
