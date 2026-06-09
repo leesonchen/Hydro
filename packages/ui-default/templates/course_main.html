@@ -94,12 +94,46 @@
                   </ul>
                 </div>
                 <div class="class-content">
+                  {% if cat.key == 'template' and canEditCourseTemplate %}
+                  <form method="post" id="courseTemplateBatchForm" class="course-template-batch-form">
+                    <div class="course-template-batch-toolbar">
+                      <label class="compact checkbox course-template-select-all">
+                        <input type="checkbox" data-checkbox-toggle="course-template">
+                        {{ _('Select All') }}
+                      </label>
+                      <span class="course-template-selected-count" data-selected-template-count>{{ _('No template selected') }}</span>
+                      <input
+                        class="textbox course-template-category-input"
+                        name="templateCategory"
+                        placeholder="{{ _('Template Category') }}"
+                      >
+                      <button class="compact button" name="operation" value="batch_set_template_category" type="submit">
+                        {{ _('Batch Set Category') }}
+                      </button>
+                      <button class="compact button" name="operation" value="batch_clear_template_category" type="submit">
+                        {{ _('Batch Remove Category') }}
+                      </button>
+                    </div>
+                  {% endif %}
                   {% for group in cat.groups %}
                   <div class="class-panel {% if loop.first %}active{% endif %}" data-class-panel="{{ cat.key }}-{{ loop.index0 }}">
                     <ol class="section__list homework__list unified-list">
                     {%- for tdoc in group.tdocs -%}
                       <li class="section__list__item homework__item unified-item">
                         <div class="media">
+                          {% if cat.key == 'template' and canEditCourseTemplate %}
+                          <div class="course-template-checkbox">
+                            <label class="compact checkbox">
+                              <input
+                                type="checkbox"
+                                name="templateIds"
+                                value="{{ tdoc.docId }}"
+                                data-checkbox-group="course-template"
+                                data-checkbox-range
+                              >
+                            </label>
+                          </div>
+                          {% endif %}
                           <div class="media__body medium">
                             <h1 class="homework__title">
                               <a href="{{ url('course_detail', tid=tdoc.docId) }}" data-emoji-enabled>
@@ -136,6 +170,9 @@
                     </ol>
                   </div>
                   {% endfor %}
+                  {% if cat.key == 'template' and canEditCourseTemplate %}
+                  </form>
+                  {% endif %}
                 </div>
               </div>
               {% endif %}
@@ -201,6 +238,12 @@
 .class-content { flex: 1; min-width: 0; }
 .class-panel { display: none; }
 .class-panel.active { display: block; }
+.course-template-batch-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 12px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; }
+.course-template-select-all { display: inline-flex; align-items: center; gap: 4px; margin: 0; white-space: nowrap; }
+.course-template-selected-count { color: #666; font-size: 13px; margin-right: 4px; white-space: nowrap; }
+.course-template-category-input { width: 180px; max-width: 100%; }
+.course-template-checkbox { flex: 0 0 28px; padding-top: 3px; }
+.course-template-checkbox .checkbox { margin: 0; }
 .homework__title { font-size: 20px !important; }
 .homework__title a { font-size: 20px !important; }
 
@@ -218,6 +261,8 @@
   .category-panel.active { flex-direction: column; }
   .class-sidebar { min-width: auto; max-width: none; }
   .class-tabs { display: flex; overflow-x: auto; gap: 8px; }
+  .course-template-batch-toolbar { align-items: stretch; }
+  .course-template-category-input { width: 100%; }
   .class-tab { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; }
   .class-tab:hover { border-left-color: transparent; border-bottom-color: #5f9fd6; }
   .class-tab.active { border-left-color: transparent; border-bottom-color: #ed5f82; }
@@ -228,10 +273,69 @@
 document.addEventListener('DOMContentLoaded', function() {
   const courseSearchInput = document.getElementById('courseSearchInput');
   const courseStatisticsButton = document.getElementById('courseStatisticsButton');
+  const courseTemplateBatchForm = document.getElementById('courseTemplateBatchForm');
   const noResultsMsg = document.createElement('div');
   noResultsMsg.className = 'no-results-message';
   noResultsMsg.textContent = "{{ _('No matching courses found') }}";
   document.querySelector('.two-level-menu-container').appendChild(noResultsMsg);
+
+  function getSelectedTemplateIds() {
+    const checked = document.querySelectorAll('[data-checkbox-group="course-template"]:checked');
+    return Array.from(new Set(Array.from(checked).map(input => input.value)));
+  }
+
+  function setTemplateCheckboxes(value, checked) {
+    document.querySelectorAll('[data-checkbox-group="course-template"]').forEach(input => {
+      if (input.value === value) input.checked = checked;
+    });
+  }
+
+  function syncVisibleTemplateCheckboxes() {
+    document.querySelectorAll('[data-checkbox-group="course-template"]').forEach(input => {
+      if (input.offsetParent !== null) setTemplateCheckboxes(input.value, input.checked);
+    });
+  }
+
+  function updateTemplateBatchState() {
+    if (!courseTemplateBatchForm) return;
+    const selectedCount = getSelectedTemplateIds().length;
+    const selectedCountEl = courseTemplateBatchForm.querySelector('[data-selected-template-count]');
+    const buttons = courseTemplateBatchForm.querySelectorAll('button[type="submit"]');
+    if (selectedCountEl) {
+      selectedCountEl.textContent = selectedCount
+        ? "{{ _('Selected templates') }}: " + selectedCount
+        : "{{ _('No template selected') }}";
+    }
+    buttons.forEach(button => { button.disabled = selectedCount === 0; });
+  }
+
+  if (courseTemplateBatchForm) {
+    courseTemplateBatchForm.addEventListener('submit', function(ev) {
+      const selectedIds = getSelectedTemplateIds();
+      const submitter = ev.submitter || document.activeElement;
+      if (!selectedIds.length) {
+        ev.preventDefault();
+        alert("{{ _('Please select at least one course template to perform this operation.') }}");
+        return;
+      }
+      if (submitter && submitter.value === 'batch_set_template_category') {
+        const categoryInput = courseTemplateBatchForm.querySelector('[name="templateCategory"]');
+        if (!categoryInput || !categoryInput.value.trim()) {
+          ev.preventDefault();
+          alert("{{ _('Please input template category.') }}");
+        }
+      }
+    });
+    document.addEventListener('click', function(ev) {
+      const target = ev.target;
+      if (!target || !target.matches('[data-checkbox-group="course-template"], [data-checkbox-toggle="course-template"]')) return;
+      setTimeout(function() {
+        syncVisibleTemplateCheckboxes();
+        updateTemplateBatchState();
+      }, 0);
+    });
+    updateTemplateBatchState();
+  }
 
   function updateCourseStatisticsButton() {
     if (!courseStatisticsButton) return;

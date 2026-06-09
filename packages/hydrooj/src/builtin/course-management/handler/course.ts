@@ -505,9 +505,40 @@ export class CourseMainHandler extends Handler {
             tsdict,
             udict,
             isTeacher,
+            canEditCourseTemplate: this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK),
             layoutType: type,
         };
         this.response.template = 'course_main.html';
+    }
+
+    async updateTemplateCategories(domainId: string, templateIds: ObjectId[], category: string) {
+        this.checkPerm(PERM.PERM_EDIT_HOMEWORK);
+        const ids = Array.from(new Map((templateIds || [])
+            .filter(Boolean)
+            .map((id) => [id.toHexString(), id])).values());
+        if (!ids.length) throw new ValidationError('templateIds');
+        const tdocs = await ContestModel.getMulti(domainId, {
+            rule: 'course',
+            docId: { $in: ids },
+            assign: { $elemMatch: { $eq: 'teachers' } },
+        })
+            .project({ _id: 1, docId: 1 })
+            .toArray();
+        if (tdocs.length !== ids.length) throw new BadRequestError('请选择有效的课程模板。');
+        const assign = category ? ['teachers', category] : ['teachers'];
+        await Promise.all(tdocs.map((tdoc) => ContestModel.edit(domainId, tdoc._id, { assign })));
+        this.response.redirect = this.url('course_main');
+    }
+
+    @param('templateIds', Types.ArrayOf(Types.ObjectId))
+    @param('templateCategory', Types.String)
+    async postBatchSetTemplateCategory(domainId: string, templateIds: ObjectId[], templateCategory: string) {
+        await this.updateTemplateCategories(domainId, templateIds, (templateCategory || '').trim());
+    }
+
+    @param('templateIds', Types.ArrayOf(Types.ObjectId))
+    async postBatchClearTemplateCategory(domainId: string, templateIds: ObjectId[]) {
+        await this.updateTemplateCategories(domainId, templateIds, '');
     }
 }
 
