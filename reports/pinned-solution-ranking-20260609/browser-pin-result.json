@@ -1,0 +1,28 @@
+{
+  "afterLogin": "http://localhost:8082/",
+  "solutionUrl": "http://localhost:8082/d/cpptrain/p/L35E4/solution",
+  "initialPinButtons": 7,
+  "pinnedCount": 5,
+  "errorMatched": true,
+  "consoleMessages": [
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "error: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "warning: Timer 'commentsPage: afterLoading' already exists"
+  ],
+  "failedRequests": [
+    "GET https://cn.cravatar.com/avatar/d41d8cd98f00b204e9800998ecf8427e?d=mm&s=64 net::ERR_ABORTED",
+    "GET https://cn.cravatar.com/avatar/c5d3a2e6b590dd8993b508b5d34e4e2c?d=mm&s=64 net::ERR_ABORTED",
+    "GET https://cn.cravatar.com/avatar/1c21ab84ba12047757ac14b113fb5d4b?d=mm&s=64 net::ERR_ABORTED",
+    "GET https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js net::ERR_ABORTED",
+    "GET https://unpkg.com/echarts@6.0.0/dist/echarts.min.js net::ERR_ABORTED",
+    "GET https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css net::ERR_ABORTED",
+    "GET https://unpkg.com/echarts@6.0.0/dist/echarts.min.js net::ERR_ABORTED"
+  ]
+}

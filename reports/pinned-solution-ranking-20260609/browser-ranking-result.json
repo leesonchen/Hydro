@@ -1,0 +1,27 @@
+{
+  "rankingUrl": "http://localhost:8082/d/cpptrain/ranking?page=4",
+  "userUrl": "http://localhost:8082/d/cpptrain/user/1544",
+  "headers": [
+    "排名",
+    "用户名",
+    "RP",
+    "题目",
+    "比赛",
+    "题解",
+    "通过",
+    "个人简介"
+  ],
+  "rowText": "373\t 胡泽予 LV 4\t198\t192\t-\t6\t46\t",
+  "userDetailHasPinnedLabel": true,
+  "userDetailHasCount3NearLabel": true,
+  "consoleMessages": [
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "warning: Timer 'commentsPage: afterLoading' already exists",
+    "warning: Timer 'commentsPage: afterLoading' already exists"
+  ],
+  "failedRequests": [
+    "GET http://cravatar.cn/avatar/f01f6bad561705c1fef2f6dfd765235d?d=mm&s=64 net::ERR_ABORTED"
+  ],
+  "userStatText": "54\n已递交\n\t\n46\n已通过\n\t\n3\n题解置顶"
+}
