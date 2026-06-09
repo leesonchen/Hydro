@@ -73,9 +73,48 @@
               </div>
             </div>
           </div>
+          <div class="row course-lesson-row">
+            {{ form.form_text({
+                columns:4,
+                label: _('Lesson Duration (hours)'),
+                name:'lessonDurationHours',
+                placeholder:'3',
+                value:lessonDurationHours,
+                row:false
+            }) }}
+            {{ form.form_text({
+                columns:4,
+                label: _('Lesson Begin at'),
+                name:'lessonBeginAt',
+                placeholder:'YYYY-mm-dd HH:MM',
+                value:lessonBeginAtText,
+                datetime:true,
+                row:false
+            }) }}
+            {{ form.form_text({
+                columns:4,
+                label: _('Lesson End at'),
+                name:'lessonEndAt',
+                placeholder:'YYYY-mm-dd HH:MM',
+                value:lessonEndAtText,
+                datetime:true,
+                row:false
+            }) }}
+          </div>
           {% if isTemplate %}
             <input type="hidden" name="isTemplate" value="true">
           {% endif %}
+          <div class="row course-assign-row course-template-category-row"{% if not isTemplate %} style="display:none"{% endif %}>
+            <div class="columns">
+              <div class="course-assign-card">
+                <label>
+                  {{ _('Template Category') }}
+                  <input name="templateCategory" value="{{ templateCategory|default('') }}" class="textbox" placeholder="{{ _('Uncategorized') }}">
+                </label>
+                <div class="course-assign-hint">{{ _('Leave blank to put this template in Uncategorized.') }}</div>
+              </div>
+            </div>
+          </div>
           <div class="row course-assign-row"{% if isTemplate %} style="display:none"{% endif %}>
             <div class="columns">
               <div class="course-assign-card">

@@ -86,11 +86,20 @@ function updateSelection() {
 function loadQuery() {
   const q = $('[name="q"]').val().toString();
   const sort = $('[name="sort"]').val().toString();
+  const scope = $('[name="scope"]').val()?.toString();
+  const hideHidden = $('[name="hideHidden"]').is(':checked');
+  const globalSearch = $('[name="global"]').is(':checked');
   const url = new URL(window.location.href);
   if (!q) url.searchParams.delete('q');
   else url.searchParams.set('q', q);
   if (sort && sort !== 'default') url.searchParams.set('sort', sort);
   else url.searchParams.delete('sort');
+  if (scope && scope !== 'title') url.searchParams.set('scope', scope);
+  else url.searchParams.delete('scope');
+  if (hideHidden) url.searchParams.set('hideHidden', 'true');
+  else url.searchParams.delete('hideHidden');
+  if (globalSearch) url.searchParams.set('global', 'true');
+  else url.searchParams.delete('global');
   url.searchParams.delete('page');
   pjax.request({ url: url.toString() });
 }

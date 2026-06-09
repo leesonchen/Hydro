@@ -146,7 +146,7 @@
               label:'Rated',
               name:'rated',
               placeholder:_('Is rated'),
-              value:tdoc.rated|default(true),
+              value:tdoc.rated === true,
               row:false
             }) }}
             {{ form.form_checkbox({
@@ -154,7 +154,7 @@
               label:'Auto hide-and show',
               name:'autoHide',
               placeholder:_('Auto show problems after the contest'),
-              value:handler.user.hasPerm(perm.PERM_EDIT_PROBLEM) and (tdoc.autoHide|default(true)),
+              value:handler.user.hasPerm(perm.PERM_EDIT_PROBLEM) and (tdoc.autoHide === true),
               disabled:not handler.user.hasPerm(perm.PERM_EDIT_PROBLEM),
               row:false
             }) }}
@@ -163,7 +163,7 @@
               label:'Allow View Code',
               name:'allowViewCode',
               placeholder:_('Allow user view others code after contest'),
-              value:tdoc.allowViewCode|default(true),
+              value:tdoc.allowViewCode === true,
               row:false
             }) }}
             {{ form.form_checkbox({

@@ -3,12 +3,26 @@ import {
     ProblemModel, StorageModel, Types, UserModel, ValidationError,
 } from '../../../plugin-api';
 import { ClassModel } from '../model/class';
+import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
 import type { CourseTdoc } from '../model/course';
 import { parseDag } from './course';
 
 function calcCourseTimeRange(baseBeginAt: moment.Moment, classEndAt: moment.Moment) {
     const beginAt = baseBeginAt.clone();
     return { beginAt, endAt: classEndAt.clone() };
+}
+
+function getLessonDurationHours(tdoc?: Partial<CourseTdoc>) {
+    const value = Number(tdoc?.lessonDurationHours);
+    return Number.isFinite(value) && value > 0 ? value : DEFAULT_COURSE_LESSON_DURATION_HOURS;
+}
+
+function calcLessonTimeRange(beginAt: moment.Moment, lessonDurationHours: number) {
+    return {
+        lessonDurationHours,
+        lessonBeginAt: beginAt.toDate(),
+        lessonEndAt: beginAt.clone().add(lessonDurationHours, 'hours').toDate(),
+    };
 }
 
 function fillMessage(template: string, ...params: Array<string | number>) {
@@ -361,9 +375,11 @@ export class ClassEditHandler extends Handler {
             await Promise.all(tdocs.map((t, index) => {
                 const baseBeginAt = beginAt.clone().add(index * intervalDays, 'days');
                 const { beginAt: courseBeginAt, endAt: courseEndAt } = calcCourseTimeRange(baseBeginAt, endAt);
+                const lessonWindow = calcLessonTimeRange(courseBeginAt, getLessonDurationHours(t as CourseTdoc));
                 return ContestModel.edit(domainId, t._id, {
                     beginAt: courseBeginAt.toDate(),
                     endAt: courseEndAt.toDate(),
+                    ...lessonWindow,
                     maintainer: mergedTeachers,
                 });
             }));
@@ -462,6 +478,7 @@ export class ClassEditHandler extends Handler {
             const allPids = Array.from(new Set(newDag.flatMap((node) => node.pids)));
 
             const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
+            const lessonWindow = calcLessonTimeRange(beginAt, getLessonDurationHours(template));
 
             // 创建新课程
             const newTid = await ContestModel.add(
@@ -480,6 +497,7 @@ export class ClassEditHandler extends Handler {
                     maintainer: gdoc.teachers,
                     lecture: template.lecture,
                     files: template.files,
+                    ...lessonWindow,
                 },
             );
 

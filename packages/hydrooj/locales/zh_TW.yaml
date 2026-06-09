@@ -214,6 +214,7 @@ Current Password: 當前密碼
 Current Status: 當前狀態
 currently offline: 目前離線
 Data of Problem {0} not found.: 題目 {0} 的資料缺失。
+'Problem {0} is referenced by another domain. Please contact administrator.': '題目 {0} 已被其他域引用，不能直接刪除，請聯絡管理員。'
 Data of problem {1} not found.: 題目 {1} 的資料未找到。
 Data of record {0} not found.: 記錄 {0} 的資料未找到。
 Dataset Format: 測試資料集格式

@@ -6,10 +6,13 @@ import {
     SolutionModel, STATUS, Types, UserModel, ValidationError,
 } from '../../../plugin-api';
 import bus from '../../../service/bus';
+import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
 import type { CourseTdoc, DagNode } from '../model/course';
 import { ClassModel } from '../model/class';
 
 const REFERENCE_CODE_TITLE = '【参考代码】';
+const TEMPLATE_ALL_KEY = 'templates::__all';
+const TEMPLATE_UNCATEGORIZED_KEY = 'templates::__uncategorized';
 
 function fillMessage(template: string, ...params: Array<string | number>) {
     return template.replace(/\{(\d+)\}/g, (_, index) => String(params[Number(index)] ?? ''));
@@ -345,6 +348,15 @@ function compareCourses(a: any, b: any, now: Date) {
     return String(a.docId).localeCompare(String(b.docId));
 }
 
+function getTemplateCategory(assign: string[] = []) {
+    const category = assign.includes('teachers') ? assign[1] : '';
+    return (category || '').trim();
+}
+
+function getTemplateCategoryKey(course: any) {
+    return course.templateCategory ? `templates::${course.templateCategory}` : TEMPLATE_UNCATEGORIZED_KEY;
+}
+
 function groupAndSortCourses(courseList: any[], now: Date) {
     const groups = _.groupBy(courseList, 'assignGroup');
     Object.keys(groups).forEach((key) => {
@@ -360,6 +372,35 @@ function groupAndSortCourses(courseList: any[], now: Date) {
         });
 
     return { groups, sortedGroups };
+}
+
+function groupAndSortTemplates(templateList: any[], now: Date) {
+    const sortedTemplates = [...templateList].sort((a, b) => compareCourses(a, b, now));
+    const groups = _.groupBy(sortedTemplates, getTemplateCategoryKey);
+    Object.keys(groups).forEach((key) => {
+        groups[key].sort((a, b) => compareCourses(a, b, now));
+    });
+    const sortedGroups = Object.entries(groups)
+        .map(([key, list]) => ({ key, tdocs: list }))
+        .sort((a, b) => a.key.localeCompare(b.key, 'zh-CN'));
+    if (sortedTemplates.length) sortedGroups.unshift({ key: TEMPLATE_ALL_KEY, tdocs: sortedTemplates });
+    return { groups, sortedGroups };
+}
+
+function getLessonDurationHours(tdoc?: Partial<CourseTdoc>) {
+    const value = Number(tdoc?.lessonDurationHours);
+    return Number.isFinite(value) && value > 0 ? value : DEFAULT_COURSE_LESSON_DURATION_HOURS;
+}
+
+function getLessonWindow(tdoc: Partial<CourseTdoc> | undefined, beginAt: moment.Moment, timeZone: string) {
+    const lessonDurationHours = getLessonDurationHours(tdoc);
+    const lessonBeginAt = tdoc?.lessonBeginAt
+        ? moment.utc(tdoc.lessonBeginAt).tz(timeZone)
+        : beginAt.clone();
+    const lessonEndAt = tdoc?.lessonEndAt
+        ? moment.utc(tdoc.lessonEndAt).tz(timeZone)
+        : lessonBeginAt.clone().add(lessonDurationHours, 'hours');
+    return { lessonDurationHours, lessonBeginAt, lessonEndAt };
 }
 
 // 课程列表页面
@@ -397,7 +438,21 @@ export class CourseMainHandler extends Handler {
             }),
         })
             .sort({ beginAt: -1 })
-            .project({ _id: 1, docId: 1, title: 1, beginAt: 1, endAt: 1, assign: 1, rule: 1, owner: 1, editor: 1, updateAt: 1 })
+            .project({
+                _id: 1,
+                docId: 1,
+                title: 1,
+                beginAt: 1,
+                endAt: 1,
+                assign: 1,
+                rule: 1,
+                owner: 1,
+                editor: 1,
+                updateAt: 1,
+                lessonDurationHours: 1,
+                lessonBeginAt: 1,
+                lessonEndAt: 1,
+            })
             .toArray();
 
         const uids = Array.from(new Set(tdocs.flatMap((t) => [t.owner, t.editor].filter(Boolean))));
@@ -418,8 +473,8 @@ export class CourseMainHandler extends Handler {
         // 处理课程数据
         const courses = tdocs.map((t) => ({
             ...t,
-            assignGroup: t.assign?.[0],
-            category: `templates::${t.assign?.[1] || ''}`,
+            assignGroup: t.assign?.includes('teachers') ? 'teachers' : t.assign?.[0],
+            templateCategory: getTemplateCategory(t.assign),
             isTemplate: t.assign?.includes('teachers') || false,
         }));
         const now = new Date();
@@ -437,7 +492,7 @@ export class CourseMainHandler extends Handler {
 
         const myCourseData = groupAndSortCourses(myCourses, now);
         const otherCourseData = groupAndSortCourses(otherCourses, now);
-        const templateData = groupAndSortCourses(templates.sort((a, b) => compareCourses(a, b, now)), now);
+        const templateData = groupAndSortTemplates(templates, now);
 
         this.response.body = {
             myCourses: myCourseData.groups,
@@ -446,6 +501,7 @@ export class CourseMainHandler extends Handler {
             otherCourseGroups: otherCourseData.sortedGroups,
             templates: templateData.groups,
             templateGroups: templateData.sortedGroups,
+            templateCount: templates.length,
             tsdict,
             udict,
             isTeacher,
@@ -781,12 +837,17 @@ export class CourseEditHandler extends Handler {
         const endAt = this.tdoc
             ? moment.utc(this.tdoc.endAt).tz(this.user.timeZone)
             : beginAt.clone().add(7, 'days').tz(this.user.timeZone).hour(23).minute(59).millisecond(0);
+        const { lessonDurationHours, lessonBeginAt, lessonEndAt } = getLessonWindow(this.tdoc, beginAt, this.user.timeZone);
 
         this.response.body = {
             page_name: this.tdoc ? 'course_edit' : 'course_create',
             tdoc: this.tdoc,
             beginAtText: beginAt.format('YYYY-M-D H:mm'),
             endAtText: endAt.format('YYYY-M-D H:mm'),
+            lessonDurationHours,
+            lessonBeginAtText: lessonBeginAt.format('YYYY-M-D H:mm'),
+            lessonEndAtText: lessonEndAt.format('YYYY-M-D H:mm'),
+            templateCategory: getTemplateCategory(this.tdoc?.assign),
             isTemplate: isTemplate || this.tdoc?.assign?.includes('teachers'),
         };
 
@@ -807,6 +868,9 @@ export class CourseEditHandler extends Handler {
     @param('dag', Types.Content)
     @param('beginAt', Types.String)
     @param('endAt', Types.String)
+    @param('lessonDurationHours', Types.Float, true)
+    @param('lessonBeginAt', Types.String, true)
+    @param('lessonEndAt', Types.String, true)
     @param('isTemplate', Types.Boolean)
     @param('templateCategory', Types.String, true)
     @param('assign', Types.CommaSeperatedArray, true)
@@ -821,6 +885,9 @@ export class CourseEditHandler extends Handler {
         dagJson: string,
         beginAtStr: string,
         endAtStr: string,
+        lessonDurationHours = DEFAULT_COURSE_LESSON_DURATION_HOURS,
+        lessonBeginAtStr = '',
+        lessonEndAtStr = '',
         isTemplate = false,
         templateCategory = '',
         assign: string[] = [],
@@ -829,6 +896,7 @@ export class CourseEditHandler extends Handler {
         enablePenalty = true,
     ) {
         assign = Array.from(new Set((assign || []).map((s) => (s || '').trim()).filter(Boolean)));
+        templateCategory = (templateCategory || '').trim();
         const extraStudents = Array.from(new Set((extraStudentsStr || [])
             .map((s) => parseInt(s, 10))
             .filter((n) => Number.isFinite(n) && n > 0)));
@@ -844,6 +912,18 @@ export class CourseEditHandler extends Handler {
 
         const endAt = moment.tz(endAtStr, 'YYYY-M-D H:mm', this.user.timeZone);
         if (!endAt.isValid()) throw new ValidationError('endAt');
+        const normalizedLessonDurationHours = Number.isFinite(+lessonDurationHours) && +lessonDurationHours > 0
+            ? +lessonDurationHours
+            : DEFAULT_COURSE_LESSON_DURATION_HOURS;
+        const lessonBeginAt = lessonBeginAtStr
+            ? moment.tz(lessonBeginAtStr, 'YYYY-M-D H:mm', this.user.timeZone)
+            : beginAt.clone();
+        if (!lessonBeginAt.isValid()) throw new ValidationError('lessonBeginAt');
+        const lessonEndAt = lessonEndAtStr
+            ? moment.tz(lessonEndAtStr, 'YYYY-M-D H:mm', this.user.timeZone)
+            : lessonBeginAt.clone().add(normalizedLessonDurationHours, 'hours');
+        if (!lessonEndAt.isValid()) throw new ValidationError('lessonEndAt');
+        if (lessonBeginAt.isSameOrAfter(lessonEndAt)) throw new ValidationError('lessonBeginAt', 'lessonEndAt');
 
         const editor = this.user._id;
         const updateAt = new Date();
@@ -882,6 +962,9 @@ export class CourseEditHandler extends Handler {
                 pids,
                 beginAt: beginAt.toDate(),
                 endAt: endAt.toDate(),
+                lessonDurationHours: normalizedLessonDurationHours,
+                lessonBeginAt: lessonBeginAt.toDate(),
+                lessonEndAt: lessonEndAt.toDate(),
                 editor,
                 updateAt,
                 publicScoreboard,
@@ -917,6 +1000,9 @@ export class CourseEditHandler extends Handler {
             updateAt,
             publicScoreboard,
             enablePenalty,
+            lessonDurationHours: normalizedLessonDurationHours,
+            lessonBeginAt: lessonBeginAt.toDate(),
+            lessonEndAt: lessonEndAt.toDate(),
         });
         // 清除旧的 extraStudents 字段（已合并到 assign）
         await DocumentModel.set(domainId, DocumentModel.TYPE_CONTEST, tid, undefined, { extraStudents: '' as any });

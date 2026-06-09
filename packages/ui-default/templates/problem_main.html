@@ -85,6 +85,12 @@
                   {{ _('Exclude hidden problems') }}
                 </label>
               {% endif %}
+              {% if canGlobalSearch %}
+                <label class="search-filter">
+                  <input name="global" type="checkbox" value="true" {{ "checked" if global or handler.request.query.global == 'true' else "" }}>
+                  {{ _('Global Search') }}
+                </label>
+              {% endif %}
               {% include "partials/problem_stat.html" %}
               <select name="sort" class="search-sort">
                 {%- for sortType in ["default", "recent"] -%}
@@ -178,6 +184,7 @@
     (function() {
       const scopeSelect = document.querySelector('[name="scope"]');
       const hideHiddenInput = document.querySelector('[name="hideHidden"]');
+      const globalSearchInput = document.querySelector('[name="global"]');
       if (!scopeSelect) return;
 
       // 以 URL 参数为准，避免 PJAX/模板变量不同步导致显示错误
@@ -185,6 +192,7 @@
       const urlScope = searchParams.get('scope');
       scopeSelect.value = (urlScope === 'all') ? 'all' : 'title';
       if (hideHiddenInput) hideHiddenInput.checked = searchParams.get('hideHidden') === 'true';
+      if (globalSearchInput) globalSearchInput.checked = searchParams.get('global') === 'true';
       
       // 监听筛选变化立即刷新
       function submitSearchForm() {
@@ -193,6 +201,7 @@
       }
       scopeSelect.addEventListener('change', submitSearchForm);
       if (hideHiddenInput) hideHiddenInput.addEventListener('change', submitSearchForm);
+      if (globalSearchInput) globalSearchInput.addEventListener('change', submitSearchForm);
       
       // 劫持 PJAX 请求（如果存在）
       if (window.pjax && window.pjax.request) {
@@ -211,6 +220,11 @@
               url.searchParams.set('hideHidden', 'true');
             } else {
               url.searchParams.delete('hideHidden');
+            }
+            if (globalSearchInput && globalSearchInput.checked) {
+              url.searchParams.set('global', 'true');
+            } else {
+              url.searchParams.delete('global');
             }
             if (typeof options === 'string') options = url.toString();
             else options.url = url.toString();

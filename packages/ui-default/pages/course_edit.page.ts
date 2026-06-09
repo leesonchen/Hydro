@@ -79,6 +79,55 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     $input.data('fp-initialized', true);
   });
 
+  const parseLocalDateTime = (value: any) => {
+    const match = String(value || '').trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const [, year, month, day, hour, minute] = match;
+    const date = new Date(+year, +month - 1, +day, +hour, +minute);
+    if (Number.isNaN(date.getTime())) return null;
+    return date;
+  };
+
+  const formatLocalDateTime = (date: Date) => {
+    const pad = (value: number) => `${value}`.padStart(2, '0');
+    return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${pad(date.getMinutes())}`;
+  };
+
+  const $beginAt = $('[name="beginAt"]');
+  const $lessonDuration = $('[name="lessonDurationHours"]');
+  const $lessonBeginAt = $('[name="lessonBeginAt"]');
+  const $lessonEndAt = $('[name="lessonEndAt"]');
+  if ($beginAt.length && $lessonDuration.length && $lessonBeginAt.length && $lessonEndAt.length) {
+    const getDurationHours = () => {
+      const value = Number($lessonDuration.val());
+      return Number.isFinite(value) && value > 0 ? value : 3;
+    };
+    const getDefaultLessonWindow = () => {
+      const begin = parseLocalDateTime($beginAt.val());
+      if (!begin) return null;
+      const end = new Date(begin.getTime() + getDurationHours() * 60 * 60 * 1000);
+      return {
+        begin: formatLocalDateTime(begin),
+        end: formatLocalDateTime(end),
+      };
+    };
+    const initialDefaultWindow = getDefaultLessonWindow();
+    let lessonWindowEdited = !!initialDefaultWindow
+      && (String($lessonBeginAt.val() || '').trim() !== initialDefaultWindow.begin
+        || String($lessonEndAt.val() || '').trim() !== initialDefaultWindow.end);
+    const updateLessonWindow = () => {
+      if (lessonWindowEdited) return;
+      const next = getDefaultLessonWindow();
+      if (!next) return;
+      $lessonBeginAt.val(next.begin);
+      $lessonEndAt.val(next.end);
+    };
+    $lessonBeginAt.add($lessonEndAt).on('input change', () => {
+      lessonWindowEdited = true;
+    });
+    $beginAt.add($lessonDuration).on('input change', updateLessonWindow);
+  }
+
   // DAG Visual Editor (default)
   const $dag = $('textarea[name="dag"]');
   if ($dag.length) {
@@ -165,6 +214,19 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
 
     let nodes = normalizeNodes(parseDag() || []);
 
+    const remapNodeIds = (orderedNodes: any[]) => {
+      const idMap = new Map<number, number>();
+      orderedNodes.forEach((node, index) => {
+        idMap.set(+node._id, index + 1);
+      });
+      orderedNodes.forEach((node, index) => {
+        node._id = index + 1;
+        node.requireNids = Array.from(new Set((node.requireNids || [])
+          .map((id: any) => idMap.get(+id))
+          .filter((id: any) => Number.isFinite(id) && id > 0 && id !== node._id)));
+      });
+    };
+
     const commit = (opts: { rerender?: boolean; source?: string } = {}) => {
       nodes = normalizeNodes(nodes).sort((a, b) => a._id - b._id);
       const nextJson = JSON.stringify(nodes, null, 2);
@@ -192,12 +254,14 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         name: `${n._id}. ${n.title}`,
       }));
 
-      nodes.forEach((node) => {
+      nodes.forEach((node, nodeIndex) => {
         const $section = $(
           '<div class="training__section expanded dag-node">'
             + '<div class="section__header dag-node-header" style="display:flex; align-items:center; justify-content:space-between;">'
               + '<h3 class="section__title dag-node-title" style="margin:0;"></h3>'
               + '<div class="button-group" style="margin:0;">'
+                + '<button type="button" class="rounded button small dag-move-up">上移</button>'
+                + '<button type="button" class="rounded button small dag-move-down">下移</button>'
                 + '<button type="button" class="rounded button small dag-remove">删除</button>'
               + '</div>'
             + '</div>'
@@ -238,8 +302,12 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         const $completeType = $section.find('.dag-complete-type');
         const $completeValue = $section.find('.dag-complete-value');
         const $lecture = $section.find('.dag-lecture');
+        const $moveUp = $section.find('.dag-move-up');
+        const $moveDown = $section.find('.dag-move-down');
 
         $headerTitle.text(`章节 ${node._id}. ${node.title}`);
+        $moveUp.prop('disabled', nodeIndex === 0);
+        $moveDown.prop('disabled', nodeIndex === nodes.length - 1);
         $title.val(node.title);
         $title.on('input', () => {
           const nextTitle = String($title.val() || '').trim();
@@ -419,6 +487,19 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
             clearProblemQuery();
           }, 0);
         });
+
+        const moveNode = (direction: -1 | 1) => {
+          const orderedNodes = normalizeNodes(nodes).sort((a, b) => a._id - b._id);
+          const currentIndex = orderedNodes.findIndex((n) => n._id === node._id);
+          const nextIndex = currentIndex + direction;
+          if (currentIndex < 0 || nextIndex < 0 || nextIndex >= orderedNodes.length) return;
+          [orderedNodes[currentIndex], orderedNodes[nextIndex]] = [orderedNodes[nextIndex], orderedNodes[currentIndex]];
+          remapNodeIds(orderedNodes);
+          nodes = orderedNodes;
+          commit({ rerender: true, source: 'move' });
+        };
+        $moveUp.on('click', () => moveNode(-1));
+        $moveDown.on('click', () => moveNode(1));
 
         $section.find('.dag-remove').on('click', () => {
           nodes = nodes.filter((n) => n._id !== node._id);

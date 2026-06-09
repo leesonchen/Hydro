@@ -18,7 +18,7 @@ import {
     FileLimitExceededError, FileTooLargeError, HackFailedError, NoProblemError, NotFoundError,
     ForbiddenError, PermissionError, ProblemAlreadyExistError, ProblemAlreadyUsedByContestError, ProblemConfigError,
     ProblemIsReferencedError, ProblemNotAllowCopyError, ProblemNotAllowLanguageError, ProblemNotAllowPretestError,
-    ProblemNotFoundError, RecordNotFoundError, SolutionNotFoundError, ValidationError,
+    ProblemNotFoundError, ProblemReferencedByDomainError, RecordNotFoundError, SolutionNotFoundError, ValidationError,
 } from '../error';
 import {
     ProblemDoc, ProblemSearchOptions, ProblemStatusDoc, RecordDoc, User,
@@ -26,6 +26,7 @@ import {
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
+import * as document from '../model/document';
 import domain from '../model/domain';
 import * as oplog from '../model/oplog';
 import problem from '../model/problem';
@@ -113,10 +114,21 @@ const defaultSearch = async (domainId: string, q: string, options?: ExtendedProb
     }
     return {
         hits: Array.from(new Set(pdocs.map((i) => `${i.domainId}/${i.docId}`))),
-        total: Math.max(pdocs.length, await problem.count(domainId, filter)),
+        total: Math.max(pdocs.length, options?.global
+            ? await document.coll.countDocuments({ docType: document.TYPE_PROBLEM, ...filter })
+            : await problem.count(domainId, filter)),
         countRelation: 'eq',
     };
 };
+
+async function assertProblemNotReferencedByOtherDomain(domainId: string, pid: number) {
+    const referenced = await problem.getMulti('', {
+        domainId: { $ne: domainId },
+        'reference.domainId': domainId,
+        'reference.pid': pid,
+    }, ['domainId', 'docId', 'reference']).limit(1).next();
+    if (referenced) throw new ProblemReferencedByDomainError(pid);
+}
 
 export interface QueryContext {
     query: Filter<ProblemDoc>;
@@ -191,7 +203,8 @@ export class ProblemMainHandler extends Handler {
         if (text) displayTags.push(text);
         if (displayTags.length) this.UiContext.extraTitleContent = displayTags.join(',');
         let total = 0;
-        const isGlobalSearch = domainId === 'system' && global;
+        const canGlobalSearch = domainId === 'system' && this.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN);
+        const isGlobalSearch = canGlobalSearch && global;
         if (text) {
             const effectiveDomainId = isGlobalSearch && !useRegex ? '*' : domainId;
             logger.debug('problem list search: domain=%s global=%s mode=%s scope=%s query=%s text=%s',
@@ -217,7 +230,10 @@ export class ProblemMainHandler extends Handler {
                     .map((t) => t.split('/'))
                     .filter((t) => t.length === 2)
                     .map((t) => ({ domainId: t[0], docId: +t[1] }));
-                query.$or = pairs;
+                if (pairs.length) {
+                    query.$and ||= [];
+                    query.$and.push({ $or: pairs });
+                }
                 const domainIds = Array.from(new Set(pairs.map((pair) => pair.domainId)));
                 if (domainIds.length) query.domainId = { $in: domainIds };
             } else {
@@ -258,7 +274,7 @@ export class ProblemMainHandler extends Handler {
                 title: this.renderTitle(this.translate('problem_main')),
                 fragments: (await Promise.all([
                     this.renderHTML('partials/problem_list.html', {
-                        page, ppcount, pcount, pdocs, psdict, qs: q, sort: sortStrategy,
+                        page, ppcount, pcount, pdocs, psdict, qs: q, scope, global: isGlobalSearch, sort: sortStrategy,
                     }),
                     this.renderHTML('partials/problem_stat.html', { pcount, pcountRelation: this.queryContext.pcountRelation }),
                     this.renderHTML('partials/problem_lucky.html', { qs: q }),
@@ -274,6 +290,8 @@ export class ProblemMainHandler extends Handler {
                 psdict,
                 qs: q,
                 scope,
+                global: isGlobalSearch,
+                canGlobalSearch,
                 sort: sortStrategy,
             };
         }
@@ -319,14 +337,22 @@ export class ProblemMainHandler extends Handler {
 
     @param('pids', Types.NumericArray)
     async postDelete(domainId: string, pids: number[]) {
-        let i = 0;
+        const pdocs = [];
         for (const pid of pids) {
             // eslint-disable-next-line no-await-in-loop
             const pdoc = await problem.get(domainId, pid);
             if (!pdoc) continue;
             if (!this.user.own(pdoc, PERM.PERM_EDIT_PROBLEM_SELF)) this.checkPerm(PERM.PERM_EDIT_PROBLEM);
+            pdocs.push(pdoc);
+        }
+        for (const pdoc of pdocs) {
             // eslint-disable-next-line no-await-in-loop
-            await problem.del(domainId, pid);
+            await assertProblemNotReferencedByOtherDomain(pdoc.domainId, pdoc.docId);
+        }
+        let i = 0;
+        for (const pdoc of pdocs) {
+            // eslint-disable-next-line no-await-in-loop
+            await problem.del(pdoc.domainId, pdoc.docId);
             i++;
             this.progress('Deleting: ({0}/{1})', [i, pids.length]);
         }
@@ -545,6 +571,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
         if (!this.user.own(this.pdoc, PERM.PERM_EDIT_PROBLEM_SELF)) this.checkPerm(PERM.PERM_EDIT_PROBLEM);
         const tdocs = await contest.getRelated(this.args.domainId, this.pdoc.docId);
         if (tdocs.length) throw new ProblemAlreadyUsedByContestError(this.pdoc.docId, tdocs[0]._id);
+        await assertProblemNotReferencedByOtherDomain(this.pdoc.domainId, this.pdoc.docId);
         await problem.del(this.pdoc.domainId, this.pdoc.docId);
         this.response.redirect = this.url('problem_main');
     }

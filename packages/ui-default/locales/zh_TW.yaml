@@ -34,6 +34,7 @@ Copy failed :(: 複製失敗 :(
 'File IO: {0}': 檔案IO：{0}
 'File upload failed: {0}': 檔案上傳失敗：{0}
 'Format: category 1, category 2, ..., category n': 格式：分類1, 分類2, ..., 分類n
+Global Search: 全域搜尋
 'Hello, {0}! You can click following link to active your new email of your {1} account:': '您好，{0}！您可以點選以下連結來啟用您 {1} 賬戶的新電子郵件地址：'
 'Hello, {0}! You can click following link to reset the password of your {1} account:': '您好，{0}！您可以點選以下連結來重置您 {1} 賬戶的密碼：'
 'Hello! You can click following link to sign up your {0} account:': '您好！您可以點選以下連結來註冊您的 {0} 賬戶：'
@@ -268,6 +269,7 @@ Daily update check: 每日自動檢查更新
 Dark: 暗色
 Data Generator: 資料生成器
 Data of Problem {0} not found.: 題目 {0} 的資料缺失。
+'Problem {0} is referenced by another domain. Please contact administrator.': '題目 {0} 已被其他域引用，不能直接刪除，請聯絡管理員。'
 Data of problem {1} not found.: 題目 {1} 的資料未找到。
 Data of record {0} not found.: 記錄 {0} 的資料未找到。
 Dataset Format: 測試資料集格式

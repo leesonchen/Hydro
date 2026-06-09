@@ -218,6 +218,7 @@ Current Password: 当前密码
 Current Status: 当前状态
 currently offline: 目前离线
 Data of Problem {0} not found.: 题目 {0} 的数据缺失。
+'Problem {0} is referenced by another domain. Please contact administrator.': '题目 {0} 已被其他域引用，不能直接删除，请联系管理员。'
 Data of problem {1} not found.: 题目 {1} 的数据未找到。
 Data of record {0} not found.: 记录 {0} 的数据未找到。
 Dataset Format: 测试数据集格式

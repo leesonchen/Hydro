@@ -3,6 +3,8 @@ import {
 } from '../../../plugin-api';
 import type { ContestRule, ScoreboardRow, Tdoc } from '../../../plugin-api';
 
+export const DEFAULT_COURSE_LESSON_DURATION_HOURS = 3;
+
 export interface DagNode {
     _id: number;
     title: string;
@@ -26,6 +28,9 @@ export interface CourseTdoc extends Tdoc {
     extraStudents?: number[];
     publicScoreboard?: boolean;
     enablePenalty?: boolean;
+    lessonDurationHours?: number;
+    lessonBeginAt?: Date;
+    lessonEndAt?: Date;
 }
 
 export interface CourseStatus {

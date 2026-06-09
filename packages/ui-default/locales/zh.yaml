@@ -34,6 +34,7 @@ __langname: 简体中文
 'File IO: {0}': 文件IO：{0}
 'File upload failed: {0}': 文件上传失败：{0}
 'Format: category 1, category 2, ..., category n': 格式：分类1, 分类2, ..., 分类n
+Global Search: 全局搜索
 'Hello, {0}! You can click following link to active your new email of your {1} account:': 您好，{0}！您可以点击以下链接来激活您 {1} 账户的新电子邮件地址：
 'Hello, {0}! You can click following link to reset the password of your {1} account:': 您好，{0}！您可以点击以下链接来重置您 {1} 账户的密码：
 'Hello! You can click following link to sign up your {0} account:': 您好！您可以点击以下链接来注册您的 {0} 账户：
@@ -270,6 +271,7 @@ Daily update check: 每日自动检查更新
 Dark: 暗色
 Data Generator: 数据生成器
 Data of Problem {0} not found.: 题目 {0} 的数据缺失。
+'Problem {0} is referenced by another domain. Please contact administrator.': '题目 {0} 已被其他域引用，不能直接删除，请联系管理员。'
 Data of problem {1} not found.: 题目 {1} 的数据未找到。
 Data of record {0} not found.: 记录 {0} 的数据未找到。
 Dataset Format: 测试数据集格式

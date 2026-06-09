@@ -54,6 +54,7 @@ export const FileExistsError = Err('FileExistsError', ForbiddenError, 'File {0} 
 export const HackFailedError = Err('HackFailedError', ForbiddenError, 'Hack failed: {0}');
 export const ProblemAlreadyExistError = Err('ProblemAlreadyExistError', ForbiddenError, 'Problem {0} already exists.');
 export const ProblemAlreadyUsedByContestError = Err('ProblemAlreadyUsedByContestError', ForbiddenError, 'Problem {0} is already used by contest {1}.');
+export const ProblemReferencedByDomainError = Err('ProblemReferencedByDomainError', ForbiddenError, 'Problem {0} is referenced by another domain. Please contact administrator.');
 export const ProblemNotAllowPretestError = Err('ProblemNotAllowPretestError', ForbiddenError, 'Pretesting is not supported for {0}.');
 export const ProblemNotAllowLanguageError = Err('ProblemNotAllowSubmitError', ForbiddenError, 'This language is not allowed to submit.');
 export const ProblemNotAllowCopyError = Err('ProblemNotAllowCopyError', ForbiddenError, 'You are not allowed to copy this problem from {0} to {1}.');
