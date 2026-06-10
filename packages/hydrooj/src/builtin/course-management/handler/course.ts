@@ -551,6 +551,42 @@ export class CourseMainHandler extends Handler {
     async postBatchClearTemplateCategory(domainId: string, templateIds: any) {
         await this.updateTemplateCategories(domainId, templateIds, '');
     }
+
+    @param('oldCategory', Types.String)
+    @param('newCategory', Types.String)
+    async postRenameTemplateCategory(domainId: string, oldCategory: string, newCategory: string) {
+        this.checkPerm(PERM.PERM_EDIT_HOMEWORK);
+        const trimmedOld = (oldCategory || '').trim();
+        const trimmedNew = (newCategory || '').trim();
+        if (!trimmedOld) throw new ValidationError('oldCategory');
+        if (!trimmedNew) throw new ValidationError('newCategory');
+        if (trimmedOld === trimmedNew) {
+            this.response.redirect = this.url('course_main');
+            return;
+        }
+        const tdocs = await ContestModel.getMulti(domainId, {
+            rule: 'course',
+            assign: { $all: ['teachers', trimmedOld] },
+        })
+            .project({ _id: 1, assign: 1 })
+            .toArray();
+        if (!tdocs.length) {
+            this.response.redirect = this.url('course_main');
+            return;
+        }
+        const conflictQuery: any = {
+            rule: 'course',
+            assign: { $all: ['teachers', trimmedNew] },
+        };
+        if (await ContestModel.getMulti(domainId, conflictQuery).limit(1).next()) {
+            const translate = (this as any).translate?.bind(this) || ((v: string) => v);
+            throw new BadRequestError(fillMessage(translate('Template category "{0}" already exists.'), trimmedNew));
+        }
+        await Promise.all(tdocs.map((tdoc) => ContestModel.edit(domainId, tdoc._id, {
+            assign: ['teachers', trimmedNew],
+        })));
+        this.response.redirect = this.url('course_main');
+    }
 }
 
 // 课程列表页面 - 卡片网格布局
@@ -881,6 +917,21 @@ export class CourseEditHandler extends Handler {
             : beginAt.clone().add(7, 'days').tz(this.user.timeZone).hour(23).minute(59).millisecond(0);
         const { lessonDurationHours, lessonBeginAt, lessonEndAt } = getLessonWindow(this.tdoc, beginAt, this.user.timeZone);
 
+        let templateCategoryOptions: string[] = [];
+        if (isTemplate || this.tdoc?.assign?.includes('teachers')) {
+            const templateTdocs = await ContestModel.getMulti(domainId, {
+                rule: 'course',
+                assign: { $elemMatch: { $eq: 'teachers' } },
+            })
+                .project({ assign: 1 })
+                .toArray();
+            templateCategoryOptions = Array.from(new Set(
+                templateTdocs
+                    .map((t) => (t.assign?.includes('teachers') ? (t.assign?.[1] || '').trim() : ''))
+                    .filter(Boolean),
+            )).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+        }
+
         this.response.body = {
             page_name: this.tdoc ? 'course_edit' : 'course_create',
             tdoc: this.tdoc,
@@ -890,6 +941,7 @@ export class CourseEditHandler extends Handler {
             lessonBeginAtText: lessonBeginAt.format('YYYY-M-D H:mm'),
             lessonEndAtText: lessonEndAt.format('YYYY-M-D H:mm'),
             templateCategory: getTemplateCategory(this.tdoc?.assign),
+            templateCategoryOptions,
             isTemplate: isTemplate || this.tdoc?.assign?.includes('teachers'),
         };
 

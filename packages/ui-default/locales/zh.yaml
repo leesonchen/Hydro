@@ -162,6 +162,14 @@ Change Email: 修改电子邮件
 Change Password: 修改密码
 Change Theme: 切换主题
 Check In: 签到
+Course Period Begin: 课程周期-开始
+Course Period End: 课程周期-结束
+Rename category: 重命名分类
+Rename category "{0}" to: 将分类 "{0}" 重命名为：
+Select existing: 选择已有分类
+Custom (type below): 自定义（下方输入）
+Save: 保存
+Please input the new category name.: 请输入新的分类名称。
 Checker: 比较器
 CheckerType: 比较器类型
 Chinese: 中文

@@ -57,6 +57,25 @@
 
           {% if firstCategory %}
           <div class="submenu-content-wrapper">
+            {% if canEditCourseTemplate %}
+            <form method="post" id="courseTemplateRenameForm" class="course-template-rename-form" hidden>
+              <input type="hidden" name="oldCategory" data-template-rename-old>
+              <label class="course-template-rename-label">
+                <span data-template-rename-prompt>{{ _('Rename category') }}:</span>
+                <input
+                  class="textbox course-template-rename-input"
+                  name="newCategory"
+                  data-template-rename-new
+                  maxlength="64"
+                  required
+                >
+              </label>
+              <button class="compact primary button" name="operation" value="rename_template_category" type="submit">
+                {{ _('Save') }}
+              </button>
+              <button class="compact button" type="button" data-template-rename-cancel>{{ _('Cancel') }}</button>
+            </form>
+            {% endif %}
             {% for cat in allCategories %}
               {% set courseCount = 0 %}
               {% for group in cat.groups %}
@@ -72,13 +91,15 @@
                     {% for group in cat.groups %}
                     {% set statsGroup = '' if (group.key or '').startsWith('templates::') or group.key == 'unassigned' or group.key == 'teachers' else group.key %}
                     {% if firstStatsGroup == '' and loop.first and firstCategory == cat.key %}{% set firstStatsGroup = statsGroup %}{% endif %}
+                    {% set isTemplateCategory = (group.key or '').startsWith('templates::') %}
+                    {% set isUncategorized = group.key == 'templates::__uncategorized' %}
                     <li class="class-tab {% if loop.first %}active{% endif %}" data-class="{{ cat.key }}-{{ loop.index0 }}" data-stats-group="{{ statsGroup }}">
                       <span class="class-name">
                         {% if group.key == 'templates::__all' %}
                           {{ _('All') }}
-                        {% elif group.key == 'templates::__uncategorized' %}
+                        {% elif isUncategorized %}
                           {{ _('Uncategorized') }}
-                        {% elif (group.key or '').startsWith('templates::') %}
+                        {% elif isTemplateCategory %}
                           {{ group.key.split('::')[1] or _('Uncategorized') }}
                         {% elif group.key == 'unassigned' %}
                           {{ _('Unassigned') }}
@@ -89,6 +110,16 @@
                         {% endif %}
                       </span>
                       <span class="class-count">{{ group.tdocs | length }}</span>
+                      {% if cat.key == 'template' and canEditCourseTemplate and isTemplateCategory and not isUncategorized %}
+                      <button
+                        type="button"
+                        class="class-rename-button"
+                        data-template-rename
+                        data-template-category="{{ group.key.split('::')[1] }}"
+                        title="{{ _('Rename category') }}"
+                        aria-label="{{ _('Rename category') }}"
+                      >{{ _('Rename') }}</button>
+                      {% endif %}
                     </li>
                     {% endfor %}
                   </ul>
@@ -253,6 +284,13 @@
 .course-template-checkbox .checkbox { margin: 0; }
 .homework__title { font-size: 20px !important; }
 .homework__title a { font-size: 20px !important; }
+.class-rename-button { margin-left: 6px; padding: 2px 8px; font-size: 11px; color: #5f9fd6; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
+.class-rename-button:hover { background: #eef4fb; border-color: #5f9fd6; }
+.class-rename-button[hidden] { display: none; }
+.course-template-rename-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 12px; background: #fff7e6; border: 1px solid #f5d57a; border-radius: 6px; }
+.course-template-rename-form[hidden] { display: none; }
+.course-template-rename-label { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; }
+.course-template-rename-input { width: 200px; max-width: 100%; }
 
 /* No results message */
 .no-results-message { padding: 40px 20px; text-align: center; color: #999; font-size: 14px; display: none; }
@@ -422,5 +460,59 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   updateCourseStatisticsButton();
 });
+
+(function() {
+  const renameForm = document.getElementById('courseTemplateRenameForm');
+  if (!renameForm) return;
+  const oldInput = renameForm.querySelector('[data-template-rename-old]');
+  const newInput = renameForm.querySelector('[data-template-rename-new]');
+  const promptEl = renameForm.querySelector('[data-template-rename-prompt]');
+  const cancelBtn = renameForm.querySelector('[data-template-rename-cancel]');
+  const renameButtons = document.querySelectorAll('[data-template-rename]');
+
+  const tpl = {
+    label: "{{ _('Rename category \"{0}\" to:') }}",
+  };
+
+  function showRenameForm(oldName) {
+    if (!oldInput || !newInput) return;
+    oldInput.value = oldName;
+    newInput.value = oldName;
+    if (promptEl) promptEl.textContent = tpl.label.replace('{0}', oldName);
+    renameForm.hidden = false;
+    newInput.focus();
+    newInput.select();
+  }
+
+  function hideRenameForm() {
+    renameForm.hidden = true;
+    if (oldInput) oldInput.value = '';
+    if (newInput) newInput.value = '';
+  }
+
+  renameButtons.forEach(function(btn) {
+    btn.addEventListener('click', function(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const oldName = btn.getAttribute('data-template-category') || '';
+      if (!oldName) return;
+      showRenameForm(oldName);
+    });
+  });
+
+  if (cancelBtn) cancelBtn.addEventListener('click', hideRenameForm);
+
+  renameForm.addEventListener('submit', function(ev) {
+    if (!newInput || !newInput.value.trim()) {
+      ev.preventDefault();
+      alert("{{ _('Please input the new category name.') }}");
+      return;
+    }
+    if (oldInput && newInput.value.trim() === oldInput.value.trim()) {
+      ev.preventDefault();
+      hideRenameForm();
+    }
+  });
+})();
 </script>
 {% endblock %}
