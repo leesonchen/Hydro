@@ -59,6 +59,9 @@ packages/ui-next/public
 *.mmdb
 packages/**/*.tgz
 
+# Local validation reports
+/reports/
+
 # Base
 node_modules/
 __*
