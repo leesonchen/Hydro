@@ -21,9 +21,12 @@
         </div>
       </div>
       <div class="section__body">
-        <pre class="line-numbers"><code class="language-{{ model.setting.langs[rdoc.lang].highlight }}">{{ rdoc['code'] }}</code></pre>
+        <pre class="line-numbers" {% if rdoc.status === STATUS.STATUS_ACCEPTED %}data-ai-selectable="CODE_IMPROVEMENT"{% endif %}><code class="language-{{ model.setting.langs[rdoc.lang].highlight }}">{{ rdoc['code'] }}</code></pre>
       </div>
     </div>
+    {% endif %}
+    {% if aiAssistantToolbar %}
+      {{ aiAssistantToolbar|safe }}
     {% endif %}
   </div>
   <div class="medium-3 columns">

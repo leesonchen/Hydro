@@ -1,5 +1,5 @@
 <div class="section visible" id="status" data-status="{{ rdoc.status }}">
-  <div class="section__header">
+  <div class="section__header" {% if rdoc.status === STATUS.STATUS_ACCEPTED %}data-ai-selectable="CODE_IMPROVEMENT"{% endif %}>
     <h1 class="section__title">
       <span class="icon record-status--icon {{ model.builtin.STATUS_CODES[rdoc['status']] }}"></span>
       {% if typeof(rdoc['score']) == 'number' %}
@@ -13,12 +13,12 @@
   </div>
 {% if rdoc.compilerTexts.length %}
   <div class="section__body">
-    <pre class="compiler-text">{{ rdoc.compilerTexts|join('\n')|ansi|safe }}<div class="compiler-text-mask"><p><span class="icon icon-expand_more">{{ _('Expand') }}</span></p></div></pre>
+    <pre class="compiler-text" data-ai-selectable="COMPILE_ERROR_EXPLANATION">{{ rdoc.compilerTexts|join('\n')|ansi|safe }}<div class="compiler-text-mask"><p><span class="icon icon-expand_more">{{ _('Expand') }}</span></p></div></pre>
   </div>
 {% endif %}
 {% if rdoc.judgeTexts.length %}
   <div class="section__body">
-    <pre class="judge-text">{{ formatJudgeTexts(rdoc.judgeTexts)|ansi|safe }}</pre>
+    <pre class="judge-text" data-ai-selectable="CODE_HINT">{{ formatJudgeTexts(rdoc.judgeTexts)|ansi|safe }}</pre>
   </div>
 {% endif %}
 {% if rdoc.testCases.length %}
@@ -79,7 +79,7 @@
                 {{ (rdoc.subtasks[subtaskId]['score'] if _key != 'id' else rcdoc.score)|default(0) }}
               </span>
               {% endif %}
-              <span class="message">{{ formatJudgeTexts([rcdoc.message])|ansi|safe if rcdoc.message else '' }}</span>
+              <span class="message" data-ai-selectable="CODE_HINT">{{ formatJudgeTexts([rcdoc.message])|ansi|safe if rcdoc.message else '' }}</span>
             </td>
             <td class="col--time">{% if rcdoc['status'] == STATUS.STATUS_TIME_LIMIT_EXCEEDED or rcdoc['status'] == STATUS.STATUS_MEMORY_LIMIT_EXCEEDED or rcdoc['status'] == STATUS.STATUS_OUTPUT_LIMIT_EXCEEDED %}&ge;{% endif %}{{ rcdoc.time|round|int }}ms</td>
             <td class="col--memory">{% if rcdoc['status'] == STATUS.STATUS_TIME_LIMIT_EXCEEDED or rcdoc['status'] == STATUS.STATUS_MEMORY_LIMIT_EXCEEDED or rcdoc['status'] == STATUS.STATUS_OUTPUT_LIMIT_EXCEEDED %}&ge;{% endif %}{{ size(rcdoc.memory, 1024) }}</td>

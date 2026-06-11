@@ -1,0 +1,481 @@
+<div id="aiAssistantToolbarHost"
+  data-ask-url="{{ askUrl }}"
+  data-status-url="{{ statusUrl }}"
+  data-pid="{{ pdoc.docId }}"
+  data-context-type="{{ contextType }}"
+  data-context-id="{{ contextId }}"
+  data-teacher="{{ 'true' if teacher else 'false' }}"
+  data-teacher-question-type="{{ teacherQuestionType }}"
+  data-student-question-types="{{ studentQuestionTypes|json|safe }}">
+</div>
+
+<style>
+.ai-assistant-selection-popover {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+  font-size: 0.875rem;
+  min-width: 160px;
+  max-width: 360px;
+}
+.ai-assistant-selection-popover[hidden] { display: none; }
+.ai-assistant-selection-popover__row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ai-assistant-selection-popover__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #2386c8;
+  background: #fff;
+  color: #2386c8;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+.ai-assistant-selection-popover__btn:hover { background: #eaf5fc; }
+.ai-assistant-selection-popover__btn--teacher {
+  border-color: #888;
+  color: #555;
+}
+.ai-assistant-selection-popover__btn--teacher:hover { background: #f4f4f4; }
+.ai-assistant-selection-popover__btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ai-assistant-selection-popover__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border-top: 1px dashed #ccc;
+}
+.ai-assistant-selection-popover__card[hidden] { display: none; }
+.ai-assistant-selection-popover__card textarea {
+  width: 100%;
+  min-height: 64px;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  resize: vertical;
+}
+.ai-assistant-selection-popover__status {
+  font-size: 0.75rem;
+  color: #888;
+  min-height: 1em;
+}
+.ai-assistant-selection-popover__status--error { color: #d33; }
+</style>
+
+<script>
+(function () {
+  if (window.__aiAssistantToolbarLoaded) return;
+  window.__aiAssistantToolbarLoaded = true;
+
+  const host = document.getElementById('aiAssistantToolbarHost');
+  if (!host) return;
+
+  const askUrl = host.dataset.askUrl;
+  const statusUrl = host.dataset.statusUrl;
+  const pid = Number(host.dataset.pid);
+  const contextType = host.dataset.contextType || 'problem';
+  const contextId = host.dataset.contextId || '';
+  const isTeacher = host.dataset.teacher === 'true';
+  const teacherQuestionType = host.dataset.teacherQuestionType || 'CUSTOM_TEACHER_QUESTION';
+  let studentQuestionTypes = {};
+  try { studentQuestionTypes = JSON.parse(host.dataset.studentQuestionTypes || '{}'); } catch (e) {}
+
+  // Map question type -> button label; falls back to a generic label.
+  const QUESTION_LABELS = {
+    THINKING_GUIDANCE: '{{ _("Ask AI about selection") }}',
+    CODE_HINT: '{{ _("Ask AI about selection") }}',
+    COMPILE_ERROR_EXPLANATION: '{{ _("Ask AI about selection") }}',
+    CODE_IMPROVEMENT: '{{ _("Ask AI about selection") }}',
+  };
+  // Use icons that exist in the Hydro iconfont (see misc/.iconfont/webicon.styl).
+  const QUESTION_ICONS = {
+    THINKING_GUIDANCE: 'icon-help',
+    CODE_HINT: 'icon-help',
+    COMPILE_ERROR_EXPLANATION: 'icon-warning',
+    CODE_IMPROVEMENT: 'icon-star',
+  };
+  const ICON_CLASS = 'icon';
+  const POPOVER_ID = 'aiAssistantSelectionPopover';
+  const STATUS_OK = '{{ _("Ask AI about selection") }}';
+
+  let status = null; // { enabled, allowed, reason, quota, teacher }
+  let popover = null;
+  let activeRegion = null;
+  let lastRange = null;
+  let cardOpen = false;
+  let busy = false;
+
+  function t(key, fallback) {
+    if (window.UiContext && window.UiContext.i18n && window.UiContext.i18n[key]) return window.UiContext.i18n[key];
+    return fallback || key;
+  }
+
+  function isScratchpadMode() {
+    const sp = document.querySelector('.scratchpad-container');
+    if (!sp) return false;
+    const style = window.getComputedStyle(sp);
+    return style.display !== 'none' && sp.offsetParent !== null;
+  }
+
+  function findSelectableRegion(node) {
+    let cur = node;
+    while (cur && cur !== document.body) {
+      if (cur.nodeType === 1 && cur.dataset && cur.dataset.aiSelectable) {
+        return cur;
+      }
+      cur = cur.parentNode;
+    }
+    return null;
+  }
+
+  function rangesAreInSameRegion(range) {
+    const start = findSelectableRegion(range.startContainer);
+    const end = findSelectableRegion(range.endContainer);
+    return start && end && start === end ? start : null;
+  }
+
+  function recordIsFinal() {
+    // Hide AI entry while a record is still being judged.
+    const statusNode = document.getElementById('status');
+    if (!statusNode) return true;
+    const ds = statusNode.getAttribute('data-status');
+    if (!ds) return true;
+    // data-status can be a number (final) or a string like "STATUS_JUDGING".
+    const n = Number(ds);
+    if (Number.isFinite(n) && n >= 0 && n <= 50) return true;
+    return !/judg|wait|compil|fetch/i.test(ds);
+  }
+
+  function getSelectionInfo() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0);
+    if (range.collapsed) return null;
+    const text = sel.toString();
+    if (!text || !text.trim() || text.length < 1) return null;
+    const region = rangesAreInSameRegion(range);
+    if (!region) return null;
+    const rect = range.getBoundingClientRect();
+    if (!rect || (rect.width === 0 && rect.height === 0)) return null;
+    const questionType = region.dataset.aiSelectable;
+    if (!questionType) return null;
+    // scratchpad-only for THINKING_GUIDANCE on problem content
+    if (questionType === 'THINKING_GUIDANCE' && !isScratchpadMode()) return null;
+    if (!recordIsFinal()) return null;
+    return { range, rect, text, questionType, region };
+  }
+
+  function ensurePopover() {
+    if (popover) return popover;
+    popover = document.createElement('div');
+    popover.id = POPOVER_ID;
+    popover.className = 'ai-assistant-selection-popover';
+    popover.hidden = true;
+    popover.innerHTML = `
+      <div class="ai-assistant-selection-popover__row" data-role="row"></div>
+      <div class="ai-assistant-selection-popover__status" data-role="status"></div>
+      <div class="ai-assistant-selection-popover__card" data-role="card" hidden>
+        <textarea data-role="input" placeholder="{{ _('Free-form AI question') }}"></textarea>
+        <div class="ai-assistant-selection-popover__row">
+          <button type="button" class="ai-assistant-selection-popover__btn" data-role="submit">{{ _('Submit') }}</button>
+          <button type="button" class="ai-assistant-selection-popover__btn ai-assistant-selection-popover__btn--teacher" data-role="cancel">{{ _('Cancel') }}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(popover);
+    popover.addEventListener('mousedown', (ev) => {
+      // keep selection when clicking the popover
+      ev.preventDefault();
+    });
+    popover.querySelector('[data-role="submit"]').addEventListener('click', submitFreeform);
+    popover.querySelector('[data-role="cancel"]').addEventListener('click', closeCard);
+    document.addEventListener('mousedown', (ev) => {
+      if (!popover || popover.hidden) return;
+      if (popover.contains(ev.target)) return;
+      hidePopover();
+    });
+    return popover;
+  }
+
+  function renderRow(info) {
+    const pop = ensurePopover();
+    const row = pop.querySelector('[data-role="row"]');
+    row.innerHTML = '';
+    const main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'ai-assistant-selection-popover__btn';
+    main.dataset.role = 'ask';
+    main.dataset.questionType = info.questionType;
+    const label = QUESTION_LABELS[info.questionType] || STATUS_OK;
+    const icon = QUESTION_ICONS[info.questionType] || 'icon-help';
+    main.innerHTML = `<span class="icon ${icon}" aria-hidden="true"></span> ${label}`;
+    main.addEventListener('click', () => askMain(info));
+    row.appendChild(main);
+    if (isTeacher) {
+      const free = document.createElement('button');
+      free.type = 'button';
+      free.className = 'ai-assistant-selection-popover__btn ai-assistant-selection-popover__btn--teacher';
+      free.dataset.role = 'freeform';
+      free.innerHTML = `<span class="icon icon-edit" aria-hidden="true"></span> {{ _('Ask AI freely') }}`;
+      free.addEventListener('click', openCard);
+      row.appendChild(free);
+    }
+  }
+
+  function positionPopover(rect) {
+    if (!popover) return;
+    const top = rect.top + window.scrollY - popover.offsetHeight - 8;
+    const left = rect.left + window.scrollX + rect.width / 2 - popover.offsetWidth / 2;
+    const clampedLeft = Math.max(8, Math.min(left, document.documentElement.clientWidth - popover.offsetWidth - 8));
+    popover.style.top = `${Math.max(8, top)}px`;
+    popover.style.left = `${clampedLeft}px`;
+  }
+
+  function setStatus(message, isError) {
+    if (!popover) return;
+    const el = popover.querySelector('[data-role="status"]');
+    el.textContent = message || '';
+    el.classList.toggle('ai-assistant-selection-popover__status--error', !!isError);
+  }
+
+  function showPopover(info) {
+    if (!status || !status.enabled) return;
+    if (!status.allowed) {
+      // Still allow showing the button, but surface the reason.
+      ensurePopover();
+      renderRow(info);
+      popover.hidden = false;
+      setStatus(status.reason || '{{ _("AI assistant is unavailable.") }}', true);
+      positionPopover(info.rect);
+      return;
+    }
+    ensurePopover();
+    renderRow(info);
+    popover.hidden = false;
+    setStatus('');
+    positionPopover(info.rect);
+  }
+
+  function hidePopover() {
+    if (!popover) return;
+    popover.hidden = true;
+    closeCard();
+    activeRegion = null;
+    lastRange = null;
+  }
+
+  function openCard() {
+    if (!popover) return;
+    const card = popover.querySelector('[data-role="card"]');
+    card.hidden = false;
+    cardOpen = true;
+    const input = popover.querySelector('[data-role="input"]');
+    input.value = '';
+    input.focus();
+  }
+
+  function closeCard() {
+    if (!popover) return;
+    const card = popover.querySelector('[data-role="card"]');
+    card.hidden = true;
+    cardOpen = false;
+  }
+
+  function getCurrentCode() {
+    // record detail page: read the code <pre><code> if present
+    const codeBlock = document.querySelector('pre.line-numbers code');
+    if (codeBlock && codeBlock.textContent && codeBlock.textContent.trim()) return codeBlock.textContent;
+    // scratchpad Monaco model
+    if (window.monaco && window.monaco.editor && typeof window.monaco.editor.getModels === 'function') {
+      const models = window.monaco.editor.getModels()
+        .map((model) => model.getValue())
+        .filter((value) => value && value.trim());
+      if (models.length) return models.sort((a, b) => b.length - a.length)[0];
+    }
+    // textarea fallback
+    const textareas = Array.from(document.querySelectorAll('textarea[name="code"], textarea[data-editor]'));
+    for (const ta of textareas) {
+      if (ta.value && ta.value.trim()) return ta.value;
+    }
+    return '';
+  }
+
+  function getCurrentLanguage() {
+    const select = document.querySelector('select[name="lang"], select[data-name="lang"]');
+    if (select && select.value) return select.value;
+    return (window.UiContext && window.UiContext.codeLang) || '';
+  }
+
+  function getCompilerMessages() {
+    if (!popover) return '';
+    // Only relevant on compile error pages, but harmless to scrape.
+    const nodes = Array.from(document.querySelectorAll('pre.compiler-text, .record-status--text, .compiler-text'))
+      .map((node) => node.textContent || '')
+      .filter((text) => /error|warning|编译|错误/i.test(text));
+    return nodes.slice(0, 3).join('\n\n');
+  }
+
+  async function askMain(info) {
+    if (busy) return;
+    const payload = {
+      pid,
+      problemId: pid,
+      contextType,
+      contextId: contextId || undefined,
+      questionType: info.questionType,
+      question: studentQuestionTypes[info.questionType] || '',
+      selectedText: info.text,
+      currentCode: getCurrentCode(),
+      language: getCurrentLanguage(),
+      compilerMessages: getCompilerMessages(),
+    };
+    submit(payload);
+  }
+
+  async function submitFreeform() {
+    if (busy) return;
+    const input = popover.querySelector('[data-role="input"]');
+    const value = (input.value || '').trim();
+    if (!value) {
+      setStatus('{{ _("Please enter a question.") }}', true);
+      input.focus();
+      return;
+    }
+    const info = lastRange ? { text: lastRange.toString() } : { text: '' };
+    const payload = {
+      pid,
+      problemId: pid,
+      contextType,
+      contextId: contextId || undefined,
+      questionType: teacherQuestionType,
+      question: value,
+      selectedText: info.text,
+      currentCode: getCurrentCode(),
+      language: getCurrentLanguage(),
+      compilerMessages: getCompilerMessages(),
+    };
+    submit(payload);
+  }
+
+  async function submit(payload) {
+    busy = true;
+    setStatus('{{ _("Asking AI...") }}', false);
+    const buttons = popover.querySelectorAll('button');
+    buttons.forEach((b) => { b.disabled = true; });
+    try {
+      const res = await fetch(askUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || '{{ _("AI request failed.") }}');
+      window.location.href = data.recordUrl;
+    } catch (err) {
+      setStatus(err.message || '{{ _("AI request failed.") }}', true);
+      buttons.forEach((b) => { b.disabled = false; });
+      busy = false;
+    }
+  }
+
+  function onMouseUp() {
+    if (cardOpen) return;
+    if (busy) return;
+    const info = getSelectionInfo();
+    if (!info) {
+      // Hide only if our popover doesn't contain the click target.
+      hidePopover();
+      return;
+    }
+    if (activeRegion && activeRegion === info.region && popover && !popover.hidden) {
+      // Already showing for the same region, just reposition.
+      positionPopover(info.rect);
+      lastRange = info.range.cloneRange();
+      return;
+    }
+    activeRegion = info.region;
+    lastRange = info.range.cloneRange();
+    showPopover(info);
+  }
+
+  function onSelectionChange() {
+    if (cardOpen) return;
+    if (popover && !popover.hidden) {
+      const info = getSelectionInfo();
+      if (!info) {
+        hidePopover();
+        return;
+      }
+      if (info.region !== activeRegion) {
+        activeRegion = info.region;
+        renderRow(info);
+      }
+      positionPopover(info.rect);
+    }
+  }
+
+  function onKey(ev) {
+    if (ev.key === 'Escape' && popover && !popover.hidden) {
+      hidePopover();
+    }
+  }
+
+  function onScroll() {
+    if (popover && !popover.hidden) {
+      // Cheap: hide on scroll to avoid position drift.
+      hidePopover();
+    }
+  }
+
+  async function loadStatus() {
+    const params = new URLSearchParams();
+    params.set('pid', String(pid));
+    params.set('contextType', contextType);
+    if (contextId) params.set('contextId', contextId);
+    try {
+      const res = await fetch(`${statusUrl}?${params.toString()}`, { credentials: 'same-origin' });
+      const data = await res.json();
+      status = data;
+    } catch (err) {
+      status = { enabled: false, allowed: false, reason: '{{ _("AI assistant status check failed.") }}' };
+    }
+  }
+
+  document.addEventListener('mouseup', onMouseUp);
+  document.addEventListener('selectionchange', onSelectionChange);
+  document.addEventListener('keydown', onKey);
+  window.addEventListener('scroll', onScroll, true);
+  window.addEventListener('resize', onScroll, true);
+
+  // For record detail socket updates: re-evaluate when status changes.
+  const statusEl = document.getElementById('status');
+  if (statusEl && window.MutationObserver) {
+    const obs = new MutationObserver(() => {
+      // Re-validate the next selection against the new DOM.
+      activeRegion = null;
+    });
+    obs.observe(statusEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-status'] });
+  }
+
+  loadStatus();
+})();
+</script>

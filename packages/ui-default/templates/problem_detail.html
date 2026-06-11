@@ -129,11 +129,11 @@
         </ul>
       </div>
     </div>
-    {% if aiAssistantPanel %}
-      {{ aiAssistantPanel|safe }}
+    {% if aiAssistantToolbar %}
+      {{ aiAssistantToolbar|safe }}
     {% endif %}
     <div class="section">
-      <div class="problem-content-container"><div class="problem-content" data-marker-enabled>
+      <div class="problem-content-container"><div class="problem-content" data-marker-enabled data-ai-selectable="THINKING_GUIDANCE">
         <div class="section__header non-scratchpad--hide">
           <h1 class="section__title">{{ pdoc.title }}</h1>
         </div>

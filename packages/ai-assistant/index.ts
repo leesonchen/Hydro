@@ -15,10 +15,12 @@ const DEFAULT_COURSE_LESSON_DURATION_HOURS = 3;
 const PROVIDER_TYPES = ['anthropic', 'openai-responses', 'openai-chat'] as const;
 const CONTEXT_TYPES = ['problem', 'homework', 'contest', 'course', 'training'] as const;
 const STUDENT_QUESTION_TYPES = {
-    COMPILE_ERROR_EXPLANATION: '请解释这段编译错误，并指出怎么修改。',
-    CODE_HINT: '请根据我的代码给一个提示，不要直接给完整答案。',
     THINKING_GUIDANCE: '这道题我没有思路，请给我一些解题方向？',
+    CODE_HINT: '我的代码能运行但拿不到满分，请给我一些提示？',
+    COMPILE_ERROR_EXPLANATION: '请解释我的编译错误是什么意思？如何修复？',
+    CODE_IMPROVEMENT: '我的代码已经得到满分，请从性能优化、代码风格、潜在问题和最佳实践等角度给我一些改进建议',
 };
+const TEACHER_QUESTION_TYPE = 'CUSTOM_TEACHER_QUESTION';
 const SYSTEM_PROMPT = `你是一位信息学编程教师，正在为学生提供分层提示。
 回答必须围绕当前题目、代码、编译错误或解题思路。
 如果提问者是学生，不要直接给出完整可提交代码；优先提示观察方法、关键概念、下一步调试动作。
@@ -102,6 +104,7 @@ interface AskRequest {
     conversationId?: string;
     quotaCost?: number;
     targetStudentId?: string;
+    selectedText?: string;
 }
 
 interface LoadedContext {
@@ -391,6 +394,13 @@ function buildPrompt(request: AskRequest, context: LoadedContext, teacher: boole
     }
     if (code) parts.push(`当前代码（${request.language || 'unknown'}）：\n\`\`\`\n${code.slice(0, 20000)}\n\`\`\``);
     if (compilerMessages) parts.push(`编译/运行信息：\n${compilerMessages.slice(0, 8000)}`);
+    if (request.selectedText) {
+        const MAX = 2000;
+        const trimmed = request.selectedText.length > MAX
+            ? `${request.selectedText.slice(0, MAX)}\n[已截断，原长度 ${request.selectedText.length}]`
+            : request.selectedText;
+        parts.push(`用户选中的内容：\n${trimmed}`);
+    }
     return parts.join('\n\n');
 }
 
@@ -748,18 +758,39 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         'AI request failed.': 'AI 请求失败。',
         'View AI answer record': '查看 AI 答复记录',
         'Please enter a question.': '请输入问题。',
+        'Ask AI about selection': '向 AI 提问选区内容',
+        'Ask AI freely': '自由提问',
+        'Free-form AI question': '自由提问（教师）',
+        Submit: '发送',
+        Cancel: '取消',
+        'Selection too long, truncated': '选区内容过长，已截断',
+        'No AI entry on this region': '当前区域未启用 AI',
+        'Selection in progress': '正在出测评中，暂不可用 AI',
+        'Code improvement': '代码评价',
+    });
+
+    ctx.i18n.load('en', {
+        'Ask AI about selection': 'Ask AI about selection',
+        'Ask AI freely': 'Ask AI freely',
+        'Free-form AI question': 'Free-form AI question (teacher)',
+        Submit: 'Submit',
+        Cancel: 'Cancel',
+        'Selection too long, truncated': 'Selection too long, truncated',
+        'No AI entry on this region': 'AI is not enabled in this region',
+        'Selection in progress': 'AI is unavailable while judging',
+        'Code improvement': 'Code review',
     });
 
     ctx.Route('ai_assistant_status', '/ai-assistant/status', AiAssistantStatusHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ai_assistant_ask', '/ai-assistant/ask', AiAssistantAskHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ai_assistant_context_config', '/ai-assistant/context/:contextType/:contextId', AiAssistantContextConfigHandler, PRIV.PRIV_USER_PROFILE);
 
-    const injectAiAssistantPanel = async (handler) => {
+    const injectAiAssistantToolbar = async (handler) => {
         if (!handler.user.hasPriv(PRIV.PRIV_USER_PROFILE)) return;
         if (!getDomainAiConfig(handler.domain).enabled) return;
         const { pdoc, tdoc } = handler.response.body;
         if (!pdoc) return;
-        handler.response.body.aiAssistantPanel = await handler.renderHTML('ai_assistant_panel.html', {
+        handler.response.body.aiAssistantToolbar = await handler.renderHTML('selection_toolbar.html', {
             pdoc,
             tdoc,
             contextType: tdoc?.rule || 'problem',
@@ -768,8 +799,11 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
             statusUrl: handler.url('ai_assistant_status'),
             teacher: isTeacher(handler),
             studentQuestionTypes: STUDENT_QUESTION_TYPES,
+            teacherQuestionType: TEACHER_QUESTION_TYPE,
         });
     };
-    ctx.on('handler/after/ProblemDetail', injectAiAssistantPanel);
-    ctx.on('handler/after/ProblemDetailHandler', injectAiAssistantPanel);
+    ctx.on('handler/after/ProblemDetail', injectAiAssistantToolbar);
+    ctx.on('handler/after/ProblemDetailHandler', injectAiAssistantToolbar);
+    ctx.on('handler/after/RecordDetail', injectAiAssistantToolbar);
+    ctx.on('handler/after/RecordDetailHandler', injectAiAssistantToolbar);
 }
