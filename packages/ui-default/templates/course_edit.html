@@ -1,3 +1,4 @@
+{% import "components/course_template_category.html" as template_category with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
 <style>
@@ -19,21 +20,8 @@
     font-size: 12px;
     color: #6b7280;
   }
-  .course-template-category-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 6px;
-  }
-  .course-template-category-controls select {
-    flex: 0 0 220px;
-    max-width: 100%;
-  }
-  .course-template-category-controls input {
-    flex: 1 1 200px;
-    margin-top: 0;
-  }
 </style>
+{{ template_category.styles() }}
 <div class="row">
   <div class="medium-9 columns">
     <div class="section">
@@ -123,33 +111,12 @@
               <div class="course-assign-card">
                 <label>
                   {{ _('Template Category') }}
-                  <div class="course-template-category-controls">
-                    <select
-                      class="textbox"
-                      data-template-category-select
-                      aria-label="{{ _('Select existing category') }}"
-                    >
-                      <option value="">{{ _('— Select existing —') }}</option>
-                      <option value="__custom__">{{ _('— Custom (type below) —') }}</option>
-                      {% for category in templateCategoryOptions | default([]) %}
-                      <option value="{{ category }}"{% if category == templateCategory %} selected{% endif %}>{{ category }}</option>
-                      {% endfor %}
-                    </select>
-                    <input
-                      name="templateCategory"
-                      value="{{ templateCategory|default('') }}"
-                      class="textbox"
-                      placeholder="{{ _('Uncategorized') }}"
-                      list="courseTemplateCategoryOptions"
-                      maxlength="64"
-                      data-template-category-input
-                    >
-                    <datalist id="courseTemplateCategoryOptions">
-                      {% for category in templateCategoryOptions | default([]) %}
-                      <option value="{{ category }}"></option>
-                      {% endfor %}
-                    </datalist>
-                  </div>
+                  {{ template_category.input({
+                    id: 'courseTemplateCategoryOptions',
+                    value: templateCategory|default(''),
+                    options: templateCategoryOptions|default([]),
+                    placeholder: _('Uncategorized')
+                  }) }}
                 </label>
                 <div class="course-assign-hint">{{ _('Leave blank to put this template in Uncategorized.') }}</div>
               </div>
@@ -214,34 +181,4 @@
     {% include 'components/md_hint.html' %}
   </div>
 </div>
-<script>
-(function() {
-  const selectEl = document.querySelector('[data-template-category-select]');
-  const inputEl = document.querySelector('[data-template-category-input]');
-  if (!selectEl || !inputEl) return;
-
-  const current = (inputEl.value || '').trim();
-  const options = Array.from(selectEl.options).map(o => o.value);
-  if (current && !options.includes(current)) {
-    const opt = document.createElement('option');
-    opt.value = current;
-    opt.textContent = current + ' (current)';
-    selectEl.insertBefore(opt, selectEl.options[1] || null);
-    selectEl.value = current;
-  } else if (current) {
-    selectEl.value = current;
-  }
-
-  selectEl.addEventListener('change', function() {
-    const val = selectEl.value;
-    if (val === '__custom__') {
-      inputEl.focus();
-    } else if (val === '') {
-      inputEl.value = '';
-    } else {
-      inputEl.value = val;
-    }
-  });
-})();
-</script>
 {% endblock %}

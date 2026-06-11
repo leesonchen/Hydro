@@ -1,6 +1,7 @@
 {% import "components/contest.html" as contest with context %}
 {% import "components/nothing.html" as nothing with context %}
 {% import "components/user.html" as user with context %}
+{% import "components/course_template_category.html" as template_category with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
 {{ set(UiContext, 'tsdocs', tsdict) }}
@@ -92,25 +93,28 @@
                     {% set statsGroup = '' if (group.key or '').startsWith('templates::') or group.key == 'unassigned' or group.key == 'teachers' else group.key %}
                     {% if firstStatsGroup == '' and loop.first and firstCategory == cat.key %}{% set firstStatsGroup = statsGroup %}{% endif %}
                     {% set isTemplateCategory = (group.key or '').startsWith('templates::') %}
+                    {% set isAllTemplates = group.key == 'templates::__all' %}
                     {% set isUncategorized = group.key == 'templates::__uncategorized' %}
                     <li class="class-tab {% if loop.first %}active{% endif %}" data-class="{{ cat.key }}-{{ loop.index0 }}" data-stats-group="{{ statsGroup }}">
-                      <span class="class-name">
-                        {% if group.key == 'templates::__all' %}
-                          {{ _('All') }}
-                        {% elif isUncategorized %}
-                          {{ _('Uncategorized') }}
-                        {% elif isTemplateCategory %}
-                          {{ group.key.split('::')[1] or _('Uncategorized') }}
-                        {% elif group.key == 'unassigned' %}
-                          {{ _('Unassigned') }}
-                        {% elif group.key == 'teachers' %}
-                          {{ _('Teachers') }}
-                        {% else %}
-                          {{ group.key }}
-                        {% endif %}
+                      <span class="class-tab-main">
+                        <span class="class-name">
+                          {% if isAllTemplates %}
+                            {{ _('All') }}
+                          {% elif isUncategorized %}
+                            {{ _('Uncategorized') }}
+                          {% elif isTemplateCategory %}
+                            {{ group.key.split('::')[1] or _('Uncategorized') }}
+                          {% elif group.key == 'unassigned' %}
+                            {{ _('Unassigned') }}
+                          {% elif group.key == 'teachers' %}
+                            {{ _('Teachers') }}
+                          {% else %}
+                            {{ group.key }}
+                          {% endif %}
+                        </span>
+                        <span class="class-count">{{ group.tdocs | length }}</span>
                       </span>
-                      <span class="class-count">{{ group.tdocs | length }}</span>
-                      {% if cat.key == 'template' and canEditCourseTemplate and isTemplateCategory and not isUncategorized %}
+                      {% if cat.key == 'template' and canEditCourseTemplate and isTemplateCategory and not isAllTemplates and not isUncategorized %}
                       <button
                         type="button"
                         class="class-rename-button"
@@ -118,7 +122,7 @@
                         data-template-category="{{ group.key.split('::')[1] }}"
                         title="{{ _('Rename category') }}"
                         aria-label="{{ _('Rename category') }}"
-                      >{{ _('Rename') }}</button>
+                      ><span class="icon icon-edit"></span></button>
                       {% endif %}
                     </li>
                     {% endfor %}
@@ -126,25 +130,26 @@
                 </div>
                 <div class="class-content">
                   {% if cat.key == 'template' and canEditCourseTemplate %}
-                  <form method="post" id="courseTemplateBatchForm" class="course-template-batch-form">
+                  <div class="course-template-modebar">
+                    <button type="button" class="compact button course-template-batch-toggle" data-template-batch-toggle aria-pressed="false">
+                      <span class="icon icon-edit"></span>
+                      <span data-template-batch-toggle-label>{{ _('Batch Manage') }}</span>
+                    </button>
+                  </div>
+                  <form method="post" id="courseTemplateBatchForm" class="course-template-batch-form" data-template-batch-form>
                     <input type="hidden" name="templateIds" data-selected-template-ids>
-                    <div class="course-template-batch-toolbar">
+                    <div class="course-template-batch-toolbar" data-template-batch-toolbar hidden>
                       <label class="compact checkbox course-template-select-all">
                         <input type="checkbox" data-checkbox-toggle="course-template">
                         {{ _('Select All') }}
                       </label>
                       <span class="course-template-selected-count" data-selected-template-count>{{ _('No template selected') }}</span>
-                      <input
-                        class="textbox course-template-category-input"
-                        name="templateCategory"
-                        list="courseTemplateCategoryOptions"
-                        placeholder="{{ _('Template Category') }}"
-                      >
-                      <datalist id="courseTemplateCategoryOptions">
-                        {% for category in templateCategoryOptions | default([]) %}
-                        <option value="{{ category }}"></option>
-                        {% endfor %}
-                      </datalist>
+                      {{ template_category.input({
+                        id: 'courseTemplateBatchCategoryOptions',
+                        options: templateCategoryOptions|default([]),
+                        placeholder: _('Template Category'),
+                        compact: true
+                      }) }}
                       <button class="compact button" name="operation" value="batch_set_template_category" type="submit">
                         {{ _('Batch Set Category') }}
                       </button>
@@ -233,6 +238,7 @@
   </div>
 </div>
 
+{{ template_category.styles() }}
 <style>
 .two-level-menu-container { display: flex; flex-direction: column; }
 
@@ -267,25 +273,29 @@
 .category-panel.active { display: flex; gap: 20px; }
 .class-sidebar { min-width: 180px; max-width: 220px; flex-shrink: 0; background: #fafafa; border-radius: 8px; padding: 15px; }
 .class-tabs { list-style: none; margin: 0; padding: 0; }
-.class-tab { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; cursor: pointer; border-radius: 6px; margin-bottom: 4px; border-left: 3px solid transparent; }
+.class-tab { display: flex; align-items: center; gap: 6px; padding: 10px 12px; cursor: pointer; border-radius: 6px; margin-bottom: 4px; border-left: 3px solid transparent; }
 .class-tab:hover { background: #f0f0f0; border-left-color: #5f9fd6; }
 .class-tab.active { background: #fff; border-left-color: #ed5f82; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
-.class-name { font-size: 13px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+.class-tab-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.class-name { font-size: 13px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .class-count { font-size: 11px; color: #999; background: #eee; padding: 2px 8px; border-radius: 10px; }
 .class-tab.active .class-count { background: rgba(237, 95, 130, 0.15); color: #ed5f82; }
 .class-content { flex: 1; min-width: 0; }
 .class-panel { display: none; }
 .class-panel.active { display: block; }
+.course-template-modebar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.course-template-batch-toggle { display: inline-flex; align-items: center; gap: 4px; }
 .course-template-batch-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 12px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; }
+.course-template-batch-toolbar[hidden] { display: none; }
 .course-template-select-all { display: inline-flex; align-items: center; gap: 4px; margin: 0; white-space: nowrap; }
 .course-template-selected-count { color: #666; font-size: 13px; margin-right: 4px; white-space: nowrap; }
-.course-template-category-input { width: 180px; max-width: 100%; }
 .course-template-checkbox { flex: 0 0 28px; padding-top: 3px; }
 .course-template-checkbox .checkbox { margin: 0; }
+.course-template-batch-form:not(.is-batch-mode) .course-template-checkbox { display: none; }
 .homework__title { font-size: 20px !important; }
 .homework__title a { font-size: 20px !important; }
-.class-rename-button { margin-left: 6px; padding: 2px 8px; font-size: 11px; color: #5f9fd6; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
-.class-rename-button:hover { background: #eef4fb; border-color: #5f9fd6; }
+.class-rename-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; color: #7b8794; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; opacity: 0.75; }
+.class-rename-button:hover { color: #5f9fd6; background: #eef4fb; border-color: #d5e5f4; opacity: 1; }
 .class-rename-button[hidden] { display: none; }
 .course-template-rename-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 12px; background: #fff7e6; border: 1px solid #f5d57a; border-radius: 6px; }
 .course-template-rename-form[hidden] { display: none; }
@@ -307,7 +317,6 @@
   .class-sidebar { min-width: auto; max-width: none; }
   .class-tabs { display: flex; overflow-x: auto; gap: 8px; }
   .course-template-batch-toolbar { align-items: stretch; }
-  .course-template-category-input { width: 100%; }
   .class-tab { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; }
   .class-tab:hover { border-left-color: transparent; border-bottom-color: #5f9fd6; }
   .class-tab.active { border-left-color: transparent; border-bottom-color: #ed5f82; }
@@ -319,9 +328,21 @@ document.addEventListener('DOMContentLoaded', function() {
   const courseSearchInput = document.getElementById('courseSearchInput');
   const courseStatisticsButton = document.getElementById('courseStatisticsButton');
   const courseTemplateBatchForm = document.getElementById('courseTemplateBatchForm');
+  const courseTemplateBatchToggle = document.querySelector('[data-template-batch-toggle]');
+  const courseTemplateBatchToggleLabel = document.querySelector('[data-template-batch-toggle-label]');
+  const courseTemplateBatchToolbar = document.querySelector('[data-template-batch-toolbar]');
+  const jsText = {
+    noMatchingCourses: {{ _('No matching courses found')|json|safe }},
+    batchManage: {{ _('Batch Manage')|json|safe }},
+    finishBatchManage: {{ _('Finish Batch Manage')|json|safe }},
+    selectedTemplates: {{ _('Selected templates')|json|safe }},
+    noTemplateSelected: {{ _('No template selected')|json|safe }},
+    selectTemplateFirst: {{ _('Please select at least one course template to perform this operation.')|json|safe }},
+    inputTemplateCategory: {{ _('Please input template category.')|json|safe }},
+  };
   const noResultsMsg = document.createElement('div');
   noResultsMsg.className = 'no-results-message';
-  noResultsMsg.textContent = "{{ _('No matching courses found') }}";
+  noResultsMsg.textContent = jsText.noMatchingCourses;
   document.querySelector('.two-level-menu-container').appendChild(noResultsMsg);
 
   function getSelectedTemplateIds() {
@@ -348,19 +369,44 @@ document.addEventListener('DOMContentLoaded', function() {
     const buttons = courseTemplateBatchForm.querySelectorAll('button[type="submit"]');
     if (selectedCountEl) {
       selectedCountEl.textContent = selectedCount
-        ? "{{ _('Selected templates') }}: " + selectedCount
-        : "{{ _('No template selected') }}";
+        ? jsText.selectedTemplates + ': ' + selectedCount
+        : jsText.noTemplateSelected;
     }
     buttons.forEach(button => { button.disabled = selectedCount === 0; });
   }
 
+  function setTemplateBatchMode(enabled) {
+    if (!courseTemplateBatchForm) return;
+    courseTemplateBatchForm.classList.toggle('is-batch-mode', enabled);
+    if (courseTemplateBatchToolbar) courseTemplateBatchToolbar.hidden = !enabled;
+    if (courseTemplateBatchToggle) courseTemplateBatchToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    if (courseTemplateBatchToggleLabel) courseTemplateBatchToggleLabel.textContent = enabled ? jsText.finishBatchManage : jsText.batchManage;
+    if (!enabled) {
+      document.querySelectorAll('[data-checkbox-group="course-template"], [data-checkbox-toggle="course-template"]').forEach(input => {
+        input.checked = false;
+      });
+      const categoryInput = courseTemplateBatchForm.querySelector('[name="templateCategory"]');
+      if (categoryInput) categoryInput.value = '';
+    }
+    updateTemplateBatchState();
+  }
+
   if (courseTemplateBatchForm) {
+    if (courseTemplateBatchToggle) {
+      courseTemplateBatchToggle.addEventListener('click', function() {
+        setTemplateBatchMode(!courseTemplateBatchForm.classList.contains('is-batch-mode'));
+      });
+    }
     courseTemplateBatchForm.addEventListener('submit', function(ev) {
+      if (!courseTemplateBatchForm.classList.contains('is-batch-mode')) {
+        ev.preventDefault();
+        return;
+      }
       const selectedIds = getSelectedTemplateIds();
       const submitter = ev.submitter || document.activeElement;
       if (!selectedIds.length) {
         ev.preventDefault();
-        alert("{{ _('Please select at least one course template to perform this operation.') }}");
+        alert(jsText.selectTemplateFirst);
         return;
       }
       const categoryInput = courseTemplateBatchForm.querySelector('[name="templateCategory"]');
@@ -371,7 +417,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (submitter && submitter.value === 'batch_set_template_category') {
         if (!categoryInput || !categoryInput.value.trim()) {
           ev.preventDefault();
-          alert("{{ _('Please input template category.') }}");
+          alert(jsText.inputTemplateCategory);
           return;
         }
       }
@@ -388,7 +434,7 @@ document.addEventListener('DOMContentLoaded', function() {
         updateTemplateBatchState();
       }, 0);
     });
-    updateTemplateBatchState();
+    setTemplateBatchMode(false);
   }
 
   function updateCourseStatisticsButton() {
@@ -471,7 +517,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const renameButtons = document.querySelectorAll('[data-template-rename]');
 
   const tpl = {
-    label: "{{ _('Rename category \"{0}\" to:') }}",
+    label: {{ _('Rename category "{0}" to:')|json|safe }},
+    inputNewName: {{ _('Please input the new category name.')|json|safe }},
   };
 
   function showRenameForm(oldName) {
@@ -505,7 +552,7 @@ document.addEventListener('DOMContentLoaded', function() {
   renameForm.addEventListener('submit', function(ev) {
     if (!newInput || !newInput.value.trim()) {
       ev.preventDefault();
-      alert("{{ _('Please input the new category name.') }}");
+      alert(tpl.inputNewName);
       return;
     }
     if (oldInput && newInput.value.trim() === oldInput.value.trim()) {

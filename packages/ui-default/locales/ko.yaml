@@ -78,6 +78,9 @@ Attend Contest: 대회 참가
 Attend contests: 대회 참가
 Attended: 참가함
 author: 저자
+Batch Manage: 일괄 관리
+Batch Remove Category: 분류 일괄 제거
+Batch Set Category: 분류 일괄 설정
 Be Copied: 복사됨
 Begin at: 시작
 Begin Date: 시작 날짜
@@ -105,6 +108,19 @@ Category: 분류
 Change Email: 이메일 변경
 Change Password: 비밀번호 변경
 Check In: 로그인
+Course Period Begin: 강좌 기간 시작
+Course Period End: 강좌 기간 종료
+Finish Batch Manage: 완료
+No template selected: 선택한 템플릿 없음
+Please input template category.: 템플릿 분류를 입력하세요.
+Please input the new category name.: 새 분류 이름을 입력하세요.
+Please select at least one course template to perform this operation.: 이 작업을 수행하려면 강좌 템플릿을 하나 이상 선택하세요.
+Rename: 이름 변경
+Rename category: 분류 이름 변경
+Rename category "{0}" to: '분류 "{0}" 이름을 다음으로 변경:'
+Selected templates: 선택한 템플릿
+Template Category: 템플릿 분류
+Template category "{0}" already exists.: 템플릿 분류 "{0}"이(가) 이미 있습니다.
 Chinese: 중국
 Choose the background image in your profile page.: 프로필 배경을 선택하십시오.
 Claim homework: 숙제 할당

@@ -1,0 +1,35 @@
+{% macro styles() %}
+<style>
+.course-template-category-picker { width: 100%; max-width: 100%; }
+.course-template-category-picker--compact { width: 220px; }
+.course-template-category-picker .course-template-category-input { width: 100%; max-width: 100%; margin-top: 0; }
+@media (max-width: 768px) {
+  .course-template-category-picker--compact { width: 100%; }
+}
+</style>
+{% endmacro %}
+
+{% macro input(args) %}
+{% set id = args.id|default('courseTemplateCategoryOptions') %}
+{% set name = args.name|default('templateCategory') %}
+{% set value = args.value|default('') %}
+{% set options = args.options|default([]) %}
+{% set placeholder = args.placeholder|default(_('Template Category')) %}
+{% set compact = args.compact|default(false) %}
+<div class="course-template-category-picker{% if compact %} course-template-category-picker--compact{% endif %}">
+  <input
+    class="textbox course-template-category-input"
+    name="{{ name }}"
+    value="{{ value }}"
+    list="{{ id }}"
+    placeholder="{{ placeholder }}"
+    maxlength="64"
+    data-template-category-input
+  >
+  <datalist id="{{ id }}">
+    {% for category in options %}
+    <option value="{{ category }}"></option>
+    {% endfor %}
+  </datalist>
+</div>
+{% endmacro %}

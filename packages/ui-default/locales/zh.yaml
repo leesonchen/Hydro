@@ -131,7 +131,10 @@ Awards: 奖项
 Balloon Status: 气球状态
 Basic Info: 基础信息
 Basic: 基础
+Batch Manage: 批量管理
+Batch Remove Category: 批量移除分类
 Batch replacement: 批量替换
+Batch Set Category: 批量设置分类
 Be Copied: 被复制
 Begin at: 开始于
 Begin Date: 开始日期
@@ -164,12 +167,18 @@ Change Theme: 切换主题
 Check In: 签到
 Course Period Begin: 课程周期-开始
 Course Period End: 课程周期-结束
+Finish Batch Manage: 完成
+No template selected: 未选择模板
+Please input template category.: 请输入模板分类。
+Please input the new category name.: 请输入新的分类名称。
+Please select at least one course template to perform this operation.: 请至少选择一个课程模板后再执行此操作。
+Rename: 重命名
 Rename category: 重命名分类
 Rename category "{0}" to: 将分类 "{0}" 重命名为：
-Select existing: 选择已有分类
-Custom (type below): 自定义（下方输入）
+Selected templates: 已选模板
 Save: 保存
-Please input the new category name.: 请输入新的分类名称。
+Template Category: 模板分类
+Template category "{0}" already exists.: 模板分类 "{0}" 已存在。
 Checker: 比较器
 CheckerType: 比较器类型
 Chinese: 中文
