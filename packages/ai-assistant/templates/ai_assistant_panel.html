@@ -1,0 +1,203 @@
+<div class="section ai-assistant-panel" id="aiAssistantPanel"
+  data-ask-url="{{ askUrl }}"
+  data-status-url="{{ statusUrl }}"
+  data-pid="{{ pdoc.docId }}"
+  data-context-type="{{ contextType }}"
+  data-context-id="{{ contextId }}"
+  data-teacher="{{ 'true' if teacher else 'false' }}">
+  <div class="section__header">
+    <h1 class="section__title">{{ _('AI assistant') }}</h1>
+    <div class="section__tools">
+      <span class="ai-assistant-panel__quota" id="aiAssistantQuota"></span>
+    </div>
+  </div>
+  <div class="section__body">
+    <div class="ai-assistant-panel__status" id="aiAssistantStatus">{{ _('Checking AI availability...') }}</div>
+    <div class="ai-assistant-panel__actions" id="aiAssistantActions" style="display:none">
+      <button type="button" class="rounded button small" data-ai-question-type="THINKING_GUIDANCE">
+        {{ _('Thinking guidance') }}
+      </button>
+      <button type="button" class="rounded button small" data-ai-question-type="CODE_HINT">
+        {{ _('Code hint') }}
+      </button>
+      <button type="button" class="rounded button small" data-ai-question-type="COMPILE_ERROR_EXPLANATION">
+        {{ _('Explain compile error') }}
+      </button>
+    </div>
+    {% if teacher %}
+      <div class="ai-assistant-panel__custom" id="aiAssistantCustom" style="display:none">
+        <textarea class="textbox" id="aiAssistantQuestion" rows="3" placeholder="{{ _('Custom AI question') }}"></textarea>
+        <button type="button" class="rounded primary button small" id="aiAssistantCustomSubmit">
+          {{ _('Ask AI') }}
+        </button>
+      </div>
+    {% endif %}
+    <div class="ai-assistant-panel__result" id="aiAssistantResult" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const panel = document.getElementById('aiAssistantPanel');
+  if (!panel || panel.dataset.bound === 'true') return;
+  panel.dataset.bound = 'true';
+
+  const statusEl = document.getElementById('aiAssistantStatus');
+  const quotaEl = document.getElementById('aiAssistantQuota');
+  const actionsEl = document.getElementById('aiAssistantActions');
+  const customEl = document.getElementById('aiAssistantCustom');
+  const resultEl = document.getElementById('aiAssistantResult');
+  const questionTypes = {{ studentQuestionTypes|json|safe }};
+  let enabled = false;
+
+  function setStatus(message, isError) {
+    statusEl.textContent = message || '';
+    statusEl.classList.toggle('ai-assistant-panel__status--error', !!isError);
+  }
+
+  function getCurrentLanguage() {
+    const select = document.querySelector('select[name="lang"], select[data-name="lang"]');
+    if (select && select.value) return select.value;
+    return window.UiContext && window.UiContext.codeLang || '';
+  }
+
+  function getCurrentCode() {
+    const textareas = Array.from(document.querySelectorAll('textarea[name="code"], textarea[data-editor]'));
+    for (const textarea of textareas) {
+      if (textarea.value && textarea.value.trim()) return textarea.value;
+    }
+    if (window.monaco && window.monaco.editor && typeof window.monaco.editor.getModels === 'function') {
+      const models = window.monaco.editor.getModels()
+        .map((model) => model.getValue())
+        .filter((value) => value && value.trim());
+      if (models.length) return models.sort((a, b) => b.length - a.length)[0];
+    }
+    const codeBlocks = Array.from(document.querySelectorAll('pre, code'))
+      .map((node) => node.textContent || '')
+      .filter((value) => value.trim());
+    return codeBlocks.sort((a, b) => b.length - a.length)[0] || '';
+  }
+
+  function getCompilerMessages() {
+    const candidates = Array.from(document.querySelectorAll('.scratchpad-container, #scratchpad, .record-status--text, .compiler-text, pre'))
+      .map((node) => node.textContent || '')
+      .filter((text) => /error|warning|Compile Error|编译|错误/i.test(text));
+    return candidates.slice(0, 3).join('\n\n');
+  }
+
+  function contextPayload() {
+    return {
+      pid: Number(panel.dataset.pid),
+      problemId: Number(panel.dataset.pid),
+      contextType: panel.dataset.contextType || 'problem',
+      contextId: panel.dataset.contextId || undefined,
+    };
+  }
+
+  async function loadStatus() {
+    const params = new URLSearchParams();
+    const payload = contextPayload();
+    params.set('pid', payload.pid);
+    params.set('contextType', payload.contextType);
+    if (payload.contextId) params.set('contextId', payload.contextId);
+    try {
+      const res = await fetch(`${panel.dataset.statusUrl}?${params.toString()}`, { credentials: 'same-origin' });
+      const data = await res.json();
+      if (!data.enabled) {
+        panel.style.display = 'none';
+        return;
+      }
+      enabled = !!data.allowed;
+      if (data.quota) quotaEl.textContent = `${data.quota.remainingQuota}/${data.quota.totalQuota}`;
+      if (!enabled) {
+        setStatus(data.reason || '{{ _("AI assistant is unavailable.") }}', true);
+        return;
+      }
+      setStatus('{{ _("Choose an AI question.") }}');
+      actionsEl.style.display = '';
+      if (customEl && data.teacher) customEl.style.display = '';
+    } catch (err) {
+      setStatus(err.message || '{{ _("AI assistant status check failed.") }}', true);
+    }
+  }
+
+  async function ask(questionType, question) {
+    if (!enabled) return;
+    resultEl.style.display = '';
+    resultEl.textContent = '{{ _("Asking AI...") }}';
+    const payload = {
+      ...contextPayload(),
+      questionType,
+      question,
+      currentCode: getCurrentCode(),
+      language: getCurrentLanguage(),
+      compilerMessages: getCompilerMessages(),
+    };
+    try {
+      const res = await fetch(panel.dataset.askUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || '{{ _("AI request failed.") }}');
+      resultEl.innerHTML = `<a class="primary rounded button small" href="${data.recordUrl}">{{ _("View AI answer record") }}</a>`;
+      if (data.remainingQuota !== undefined) quotaEl.textContent = data.remainingQuota;
+      window.location.href = data.recordUrl;
+    } catch (err) {
+      resultEl.textContent = err.message || '{{ _("AI request failed.") }}';
+    }
+  }
+
+  actionsEl.addEventListener('click', (ev) => {
+    const button = ev.target.closest('[data-ai-question-type]');
+    if (!button) return;
+    const questionType = button.dataset.aiQuestionType;
+    ask(questionType, questionTypes[questionType] || '');
+  });
+
+  const customSubmit = document.getElementById('aiAssistantCustomSubmit');
+  if (customSubmit) {
+    customSubmit.addEventListener('click', () => {
+      const question = document.getElementById('aiAssistantQuestion').value.trim();
+      if (!question) {
+        setStatus('{{ _("Please enter a question.") }}', true);
+        return;
+      }
+      ask('CUSTOM', question);
+    });
+  }
+
+  loadStatus();
+})();
+</script>
+
+<style>
+.ai-assistant-panel .section__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ai-assistant-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ai-assistant-panel__custom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ai-assistant-panel__status {
+  color: #555;
+}
+.ai-assistant-panel__status--error,
+.ai-assistant-panel__result {
+  color: #d33;
+}
+.ai-assistant-panel__quota {
+  color: #2386c8;
+  font-size: 0.875rem;
+}
+</style>

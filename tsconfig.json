@@ -37,6 +37,9 @@
       "path": "packages/ai-translation"
     },
     {
+      "path": "packages/ai-assistant"
+    },
+    {
       "path": "packages/blog"
     },
     {

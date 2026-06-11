@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import {
     ContestModel, Context, DocumentModel, ForbiddenError, Handler,
-    Logger, ObjectId, PERM, PRIV, ProblemModel, Schema, SettingModel, TrainingModel, Types,
+    Logger, ObjectId, PERM, PRIV, ProblemModel, RecordModel, Schema, SettingModel, STATUS, TrainingModel, Types,
     db, moment, param,
 } from 'hydrooj';
 import type { Tdoc, TrainingDoc } from 'hydrooj';
@@ -68,6 +68,9 @@ interface AiProviderConfig {
 
 interface RuntimeConfig {
     providers: AiProviderConfig[];
+    providerApiKeys: Record<string, string>;
+    studentDailyQuota: number;
+    teacherDailyQuota: number;
     retryTimes: number;
     timeoutMs: number;
 }
@@ -109,8 +112,17 @@ interface LoadedContext {
     reason?: string;
 }
 
+interface AiRecordData {
+    rid: ObjectId;
+    initialCode: string;
+    lang: string;
+}
+
 let runtimeConfig: RuntimeConfig = {
     providers: [],
+    providerApiKeys: {},
+    studentDailyQuota: DEFAULT_STUDENT_DAILY_QUOTA,
+    teacherDailyQuota: DEFAULT_TEACHER_DAILY_QUOTA,
     retryTimes: 2,
     timeoutMs: 120000,
 };
@@ -136,8 +148,18 @@ function parseProviders(raw: string): AiProviderConfig[] {
         }));
 }
 
+function looksLikeEnvName(value: string) {
+    return /^[A-Z_][A-Z0-9_]*$/.test(value);
+}
+
 function providerApiKey(provider: AiProviderConfig) {
-    return provider.apiKey || (provider.apiKeyEnv ? process.env[provider.apiKeyEnv] : '');
+    if (provider.apiKey) return provider.apiKey;
+    if (runtimeConfig.providerApiKeys[provider.name || '']) return runtimeConfig.providerApiKeys[provider.name || ''];
+    if (runtimeConfig.providerApiKeys[provider.type]) return runtimeConfig.providerApiKeys[provider.type];
+    if (!provider.apiKeyEnv) return '';
+    const envValue = process.env[provider.apiKeyEnv];
+    if (envValue) return envValue;
+    return looksLikeEnvName(provider.apiKeyEnv) ? '' : provider.apiKeyEnv;
 }
 
 function isTeacher(handler: Handler) {
@@ -148,11 +170,17 @@ function isTeacher(handler: Handler) {
         || handler.user.hasPerm(PERM.PERM_EDIT_CONTEST);
 }
 
+function truthySetting(value: any) {
+    return value === true || value === 1
+        || value === 'true' || value === '1'
+        || value === 'on' || value === 'yes';
+}
+
 function getDomainAiConfig(domain: any) {
     return {
-        enabled: domain?.aieduAiEnabled === true,
-        studentDailyQuota: Math.max(Number(domain?.aieduAiStudentDailyQuota ?? DEFAULT_STUDENT_DAILY_QUOTA), 0),
-        teacherDailyQuota: Math.max(Number(domain?.aieduAiTeacherDailyQuota ?? DEFAULT_TEACHER_DAILY_QUOTA), 0),
+        enabled: truthySetting(domain?.aieduAiEnabled),
+        studentDailyQuota: Math.max(Number(runtimeConfig.studentDailyQuota ?? DEFAULT_STUDENT_DAILY_QUOTA), 0),
+        teacherDailyQuota: Math.max(Number(runtimeConfig.teacherDailyQuota ?? DEFAULT_TEACHER_DAILY_QUOTA), 0),
     };
 }
 
@@ -260,6 +288,84 @@ function normalizeStudentQuestion(questionType: string, question = '') {
     if (!defaultQuestion) throw new ForbiddenError('学生只能使用默认 AI 提问场景。');
     if (question && question.trim() !== defaultQuestion) throw new ForbiddenError('学生不能自由输入 AI 问题。');
     return defaultQuestion;
+}
+
+function requestPid(request: AskRequest) {
+    return Number(request.pid || request.problemId || 0) || 0;
+}
+
+function resolveRecordLang(language = '') {
+    const langs = SettingModel.langs || {};
+    const raw = String(language || '').trim();
+    if (raw && langs[raw]) return raw;
+    const lower = raw.toLowerCase();
+    if (lower && langs[lower]) return lower;
+    const aliases: Record<string, string[]> = {
+        c: ['cc.c', 'c'],
+        cc: ['cc.cc11', 'cc.cc17', 'cc'],
+        'c++': ['cc.cc11', 'cc.cc17', 'cc'],
+        cpp: ['cc.cc11', 'cc.cc17', 'cc'],
+        cxx: ['cc.cc11', 'cc.cc17', 'cc'],
+        java: ['java.java11', 'java'],
+        js: ['nodejs', 'javascript', 'js'],
+        javascript: ['nodejs', 'javascript', 'js'],
+        ts: ['typescript', 'ts'],
+        typescript: ['typescript', 'ts'],
+        py: ['py.py3', 'python3', 'python', 'py'],
+        python: ['py.py3', 'python3', 'python', 'py'],
+        python3: ['py.py3', 'python3', 'python', 'py'],
+        pas: ['pas', 'pascal'],
+        pascal: ['pas', 'pascal'],
+        sql: ['sql'],
+        sh: ['sh', 'bash'],
+        shell: ['sh', 'bash'],
+        bash: ['sh', 'bash'],
+    };
+    for (const candidate of aliases[lower] || []) {
+        if (langs[candidate]) return candidate;
+    }
+    if (langs['cc.cc11']) return 'cc.cc11';
+    return Object.keys(langs)[0] || 'cc.cc11';
+}
+
+function commentPrefixForLang(lang: string) {
+    const key = lang.toLowerCase();
+    if (/(^|\.)(py|python|sh|bash|rb|ruby|pl|perl|r|racket|yaml|yml)(\.|$)/.test(key)) return '#';
+    if (/(^|\.)(sql|lua|hs|haskell)(\.|$)/.test(key)) return '--';
+    if (/(^|\.)(pas|pascal)(\.|$)/.test(key)) return '{}';
+    return '//';
+}
+
+function commentLines(lang: string, text: string) {
+    const prefix = commentPrefixForLang(lang);
+    const lines = String(text || '').split(/\r?\n/);
+    if (prefix === '{}') return lines.map((line) => `{ ${line} }`).join('\n');
+    return lines.map((line) => `${prefix} ${line}`).join('\n');
+}
+
+function buildInitialRecordCode(request: AskRequest, context: LoadedContext, question: string, lang: string) {
+    const pid = requestPid(request);
+    const rawCode = request.code || request.currentCode || '';
+    const header = [
+        'AI 问答记录',
+        `问题类型：${request.questionType || 'CUSTOM'}`,
+        `提问：${question}`,
+        `场景：${context.contextType || 'problem'}`,
+        `题目 ID：${pid}`,
+    ].join('\n');
+    return [
+        commentLines(lang, header),
+        rawCode || commentLines(lang, '未提供源代码。'),
+    ].join('\n\n');
+}
+
+function buildAnnotatedRecordCode(request: AskRequest, initialCode: string, answer: string, lang: string) {
+    const rawCode = request.code || request.currentCode || '';
+    if (!rawCode || request.questionType === 'THINKING_GUIDANCE') return initialCode;
+    return [
+        initialCode,
+        commentLines(lang, ['AI 注释答复', answer].join('\n')),
+    ].join('\n\n');
 }
 
 function buildPrompt(request: AskRequest, context: LoadedContext, teacher: boolean) {
@@ -406,7 +512,7 @@ async function callLLM(prompt: string) {
     throw new Error(errors.join('\n'));
 }
 
-async function saveTutoringSession(handler: Handler, request: AskRequest, context: LoadedContext, question: string, answer: string, provider: string) {
+async function saveTutoringSession(handler: Handler, request: AskRequest, context: LoadedContext, question: string, answer: string, provider: string, recordId?: ObjectId) {
     const conversationId = request.conversationId || randomUUID();
     const turnIndex = await tutoringColl.countDocuments({ conversationId }) + 1;
     const doc = {
@@ -440,6 +546,7 @@ async function saveTutoringSession(handler: Handler, request: AskRequest, contex
             problemId: request.pid || request.problemId,
         }),
         preAcQuestionIndex: null,
+        recordId: recordId?.toHexString() || '',
         createdAt: new Date(),
         feedbackRating: null,
         feedbackComment: '',
@@ -447,6 +554,30 @@ async function saveTutoringSession(handler: Handler, request: AskRequest, contex
     };
     await tutoringColl.insertOne(doc);
     return { conversationId, turnIndex };
+}
+
+async function createAiRecord(handler: Handler, request: AskRequest, context: LoadedContext, question: string): Promise<AiRecordData> {
+    const pid = requestPid(request);
+    const lang = resolveRecordLang(request.language);
+    const initialCode = buildInitialRecordCode(request, context, question, lang);
+    const rid = await RecordModel.add(handler.args.domainId, pid, handler.user._id, lang, initialCode, false, { type: 'judge' });
+    return { rid, initialCode, lang };
+}
+
+async function updateAiRecord(handler: Handler, recordData: AiRecordData, status: STATUS, code: string, message: string) {
+    const rdoc = await RecordModel.update(handler.args.domainId, recordData.rid, {
+        status,
+        score: 0,
+        time: 0,
+        memory: 0,
+        judgeAt: new Date(),
+        judger: null,
+        compilerTexts: [message],
+        judgeTexts: [],
+        testCases: [],
+        code,
+    } as any, undefined, { progress: '' } as any);
+    if (rdoc) handler.ctx.broadcast('record/change', rdoc);
 }
 
 function sanitizeContextConfig(input: any): AiContextConfig {
@@ -481,6 +612,7 @@ class AiAssistantStatusHandler extends Handler {
 
 class AiAssistantAskHandler extends Handler {
     async post() {
+        let recordData: AiRecordData | null = null;
         try {
             const domainConfig = getDomainAiConfig(this.domain);
             if (!domainConfig.enabled) throw new ForbiddenError('当前域未开启 AI 功能。');
@@ -489,16 +621,21 @@ class AiAssistantAskHandler extends Handler {
             const quota = await getQuota(this);
             const quotaCost = Math.max(Number(request.quotaCost || 1), 1);
             if (quota.remainingQuota < quotaCost) throw new ForbiddenError(`今日 AI 问答次数不足，剩余 ${quota.remainingQuota} 次。`);
-            if (!teacher && !request.pid && !request.problemId) throw new ForbiddenError('学生 AI 提问必须绑定题目。');
+            const pid = requestPid(request);
+            if (!pid) throw new ForbiddenError('AI 提问必须绑定题目。');
 
             const context = await loadContext(this, request);
+            if (!context.problem) throw new ForbiddenError('题目不存在或不可访问。');
             if (!context.allowed) throw new ForbiddenError(context.reason || '当前场景不允许使用 AI。');
             const question = teacher
                 ? (request.question || request.userQuestion || '')
                 : normalizeStudentQuestion(request.questionType || '', request.question || request.userQuestion || '');
             const prompt = buildPrompt(request, context, teacher);
+            recordData = await createAiRecord(this, request, context, question);
             const result = await callLLM(prompt);
-            const saved = await saveTutoringSession(this, request, context, question, result.text, result.provider);
+            const annotatedCode = buildAnnotatedRecordCode(request, recordData.initialCode, result.text, recordData.lang);
+            await updateAiRecord(this, recordData, STATUS.STATUS_AI_ANSWER, annotatedCode, result.text);
+            const saved = await saveTutoringSession(this, request, context, question, result.text, result.provider, recordData.rid);
             const nextQuota = await getQuota(this);
             this.response.body = {
                 ok: true,
@@ -508,10 +645,23 @@ class AiAssistantAskHandler extends Handler {
                 conversationId: saved.conversationId,
                 turnIndex: saved.turnIndex,
                 remainingQuota: nextQuota.remainingQuota,
+                recordId: recordData.rid.toHexString(),
+                recordUrl: this.url('record_detail', { rid: recordData.rid }),
             };
         } catch (err: any) {
             this.response.status = err instanceof ForbiddenError ? 403 : 400;
-            this.response.body = { ok: false, error: err?.message || String(err) };
+            const message = err?.message || String(err);
+            if (recordData) {
+                await updateAiRecord(this, recordData, STATUS.STATUS_AI_ERROR, recordData.initialCode, message);
+            }
+            this.response.body = {
+                ok: false,
+                error: message,
+                ...(recordData ? {
+                    recordId: recordData.rid.toHexString(),
+                    recordUrl: this.url('record_detail', { rid: recordData.rid }),
+                } : {}),
+            };
         }
     }
 }
@@ -543,6 +693,11 @@ class AiAssistantContextConfigHandler extends Handler {
 
 export const Config = Schema.object({
     providers: Schema.string().role('textarea').default(DEFAULT_PROVIDERS).description('LLM providers JSON array. Supported type: anthropic, openai-responses, openai-chat. Providers are tried in order.'),
+    anthropicApiKey: Schema.string().default('').role('secret').description('Secret API key for provider named/type anthropic. Prefer this over embedding keys in providers JSON.'),
+    openaiResponsesApiKey: Schema.string().default('').role('secret').description('Secret API key for provider named/type openai-responses. Prefer this over embedding keys in providers JSON.'),
+    openaiChatApiKey: Schema.string().default('').role('secret').description('Secret API key for provider named/type openai-chat. Prefer this over embedding keys in providers JSON.'),
+    studentDailyQuota: Schema.number().default(DEFAULT_STUDENT_DAILY_QUOTA).min(0).description('Global daily AI quota for students.'),
+    teacherDailyQuota: Schema.number().default(DEFAULT_TEACHER_DAILY_QUOTA).min(0).description('Global daily AI quota for teachers.'),
     retryTimes: Schema.number().default(2).min(0).description('Provider-chain retry times after the first failed round. Default 2.'),
     timeoutMs: Schema.number().default(120000).min(10000).description('Upstream LLM request timeout in milliseconds.'),
 }).description('AI assistant');
@@ -550,6 +705,13 @@ export const Config = Schema.object({
 export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     runtimeConfig = {
         providers: parseProviders(config.providers || DEFAULT_PROVIDERS),
+        providerApiKeys: Object.fromEntries(Object.entries({
+            anthropic: config.anthropicApiKey,
+            'openai-responses': config.openaiResponsesApiKey,
+            'openai-chat': config.openaiChatApiKey,
+        }).filter(([, value]) => value)),
+        studentDailyQuota: Math.max(Number(config.studentDailyQuota ?? DEFAULT_STUDENT_DAILY_QUOTA), 0),
+        teacherDailyQuota: Math.max(Number(config.teacherDailyQuota ?? DEFAULT_TEACHER_DAILY_QUOTA), 0),
         retryTimes: Number.isFinite(config.retryTimes) ? config.retryTimes : 2,
         timeoutMs: config.timeoutMs || 120000,
     };
@@ -563,8 +725,6 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     ctx.inject(['setting'], (c) => {
         c.setting.DomainSetting(
             SettingModel.Setting('setting_ai_assistant', 'aieduAiEnabled', false, 'boolean', 'AI assistant enabled', 'Enable AI tutoring for this domain.'),
-            SettingModel.Setting('setting_ai_assistant', 'aieduAiStudentDailyQuota', DEFAULT_STUDENT_DAILY_QUOTA, 'number', 'Student daily AI quota'),
-            SettingModel.Setting('setting_ai_assistant', 'aieduAiTeacherDailyQuota', DEFAULT_TEACHER_DAILY_QUOTA, 'number', 'Teacher daily AI quota'),
         );
     });
 
@@ -572,11 +732,44 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         setting_ai_assistant: 'AI 助手',
         'AI assistant enabled': '开启 AI 助手',
         'Enable AI tutoring for this domain.': '是否在当前域开启 AI 问答功能。',
-        'Student daily AI quota': '学生每日 AI 问答次数',
-        'Teacher daily AI quota': '教师每日 AI 问答次数',
+        'Global daily AI quota for students.': '学生每日 AI 问答次数，全局生效。',
+        'Global daily AI quota for teachers.': '教师每日 AI 问答次数，全局生效。',
+        'AI assistant': 'AI 助手',
+        'Checking AI availability...': '正在检查 AI 可用状态...',
+        'Thinking guidance': '问思路',
+        'Code hint': '看代码给提示',
+        'Explain compile error': '解释编译错误',
+        'Custom AI question': '输入自定义 AI 问题',
+        'Ask AI': '询问 AI',
+        'AI assistant is unavailable.': 'AI 助手当前不可用。',
+        'Choose an AI question.': '请选择一个 AI 问题。',
+        'AI assistant status check failed.': 'AI 助手状态检查失败。',
+        'Asking AI...': '正在询问 AI...',
+        'AI request failed.': 'AI 请求失败。',
+        'View AI answer record': '查看 AI 答复记录',
+        'Please enter a question.': '请输入问题。',
     });
 
     ctx.Route('ai_assistant_status', '/ai-assistant/status', AiAssistantStatusHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ai_assistant_ask', '/ai-assistant/ask', AiAssistantAskHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ai_assistant_context_config', '/ai-assistant/context/:contextType/:contextId', AiAssistantContextConfigHandler, PRIV.PRIV_USER_PROFILE);
+
+    const injectAiAssistantPanel = async (handler) => {
+        if (!handler.user.hasPriv(PRIV.PRIV_USER_PROFILE)) return;
+        if (!getDomainAiConfig(handler.domain).enabled) return;
+        const { pdoc, tdoc } = handler.response.body;
+        if (!pdoc) return;
+        handler.response.body.aiAssistantPanel = await handler.renderHTML('ai_assistant_panel.html', {
+            pdoc,
+            tdoc,
+            contextType: tdoc?.rule || 'problem',
+            contextId: tdoc?._id?.toString?.() || '',
+            askUrl: handler.url('ai_assistant_ask'),
+            statusUrl: handler.url('ai_assistant_status'),
+            teacher: isTeacher(handler),
+            studentQuestionTypes: STUDENT_QUESTION_TYPES,
+        });
+    };
+    ctx.on('handler/after/ProblemDetail', injectAiAssistantPanel);
+    ctx.on('handler/after/ProblemDetailHandler', injectAiAssistantPanel);
 }

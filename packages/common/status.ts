@@ -18,6 +18,8 @@ export enum STATUS {
     STATUS_FORMAT_ERROR = 31,
     STATUS_HACK_SUCCESSFUL = 32,
     STATUS_HACK_UNSUCCESSFUL = 33,
+    STATUS_AI_ANSWER = 40,
+    STATUS_AI_ERROR = 41,
 }
 
 export const STATUS_TEXTS: Record<STATUS, string> = {
@@ -40,6 +42,8 @@ export const STATUS_TEXTS: Record<STATUS, string> = {
     [STATUS.STATUS_FORMAT_ERROR]: 'Format Error',
     [STATUS.STATUS_HACK_SUCCESSFUL]: 'Hack Successful',
     [STATUS.STATUS_HACK_UNSUCCESSFUL]: 'Hack Unsuccessful',
+    [STATUS.STATUS_AI_ANSWER]: 'AI Answer',
+    [STATUS.STATUS_AI_ERROR]: 'AI Error',
 };
 
 export const STATUS_SHORT_TEXTS: Partial<Record<STATUS, string>> = {
@@ -55,6 +59,8 @@ export const STATUS_SHORT_TEXTS: Partial<Record<STATUS, string>> = {
     [STATUS.STATUS_HACKED]: 'HK',
     [STATUS.STATUS_IGNORED]: 'IGN',
     [STATUS.STATUS_FORMAT_ERROR]: 'FE',
+    [STATUS.STATUS_AI_ANSWER]: 'AI',
+    [STATUS.STATUS_AI_ERROR]: 'AIE',
 };
 
 export const STATUS_CODES: Record<STATUS, string> = {
@@ -77,6 +83,8 @@ export const STATUS_CODES: Record<STATUS, string> = {
     [STATUS.STATUS_FORMAT_ERROR]: 'ignored',
     [STATUS.STATUS_HACK_SUCCESSFUL]: 'pass',
     [STATUS.STATUS_HACK_UNSUCCESSFUL]: 'fail',
+    [STATUS.STATUS_AI_ANSWER]: 'ai',
+    [STATUS.STATUS_AI_ERROR]: 'fail',
 };
 
 export const NORMAL_STATUS: STATUS[] = [

@@ -129,6 +129,9 @@
         </ul>
       </div>
     </div>
+    {% if aiAssistantPanel %}
+      {{ aiAssistantPanel|safe }}
+    {% endif %}
     <div class="section">
       <div class="problem-content-container"><div class="problem-content" data-marker-enabled>
         <div class="section__header non-scratchpad--hide">
