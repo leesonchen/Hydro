@@ -1,0 +1,11 @@
+{
+    "name": "@hydrooj/ai-assistant",
+    "version": "0.1.0",
+    "description": "Domain-scoped AI tutoring assistant for Hydro",
+    "main": "index.ts",
+    "private": true,
+    "repository": "https://github.com/hydro-dev/Hydro",
+    "peerDependencies": {
+        "hydrooj": "*"
+    }
+}
