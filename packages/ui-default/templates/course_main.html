@@ -294,7 +294,9 @@
 .course-template-batch-form:not(.is-batch-mode) .course-template-checkbox { display: none; }
 .homework__title { font-size: 20px !important; }
 .homework__title a { font-size: 20px !important; }
-.class-rename-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; color: #7b8794; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; opacity: 0.75; }
+.class-rename-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; color: #7b8794; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.2s ease, visibility 0.2s ease, color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease; }
+.class-tab:hover .class-rename-button,
+.class-tab:focus-within .class-rename-button { opacity: 0.75; visibility: visible; pointer-events: auto; }
 .class-rename-button:hover { color: #5f9fd6; background: #eef4fb; border-color: #d5e5f4; opacity: 1; }
 .class-rename-button[hidden] { display: none; }
 .course-template-rename-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 12px; background: #fff7e6; border: 1px solid #f5d57a; border-radius: 6px; }
