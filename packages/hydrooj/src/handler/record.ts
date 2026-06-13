@@ -207,8 +207,10 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
         } else if (download) return await this.download();
         let submissionHistory: RecordDoc[] = [];
         let submissionHistoryCount = 0;
-        const canShowSubmissionHistory = canViewDetail
-            && (!this.tdoc || this.tdoc.rule === 'homework' || contest.isDone(this.tdoc));
+        const isActiveContest = this.tdoc
+            && !['homework', 'course'].includes(this.tdoc.rule)
+            && !contest.isDone(this.tdoc);
+        const canShowSubmissionHistory = canViewDetail && !isActiveContest;
         if (canShowSubmissionHistory) {
             const submissionHistoryFilter: Filter<RecordDoc> = {
                 uid: rdoc.uid,
@@ -218,7 +220,7 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             };
             [submissionHistory, submissionHistoryCount] = await Promise.all([
                 record.getMulti(domainId, submissionHistoryFilter)
-                    .project(buildProjection(['_id', 'domainId', 'status', 'score']))
+                    .project<RecordDoc>(buildProjection(['_id', 'domainId', 'status', 'score']))
                     .sort({ _id: -1 }).limit(20).toArray(),
                 record.count(domainId, submissionHistoryFilter),
             ]);
