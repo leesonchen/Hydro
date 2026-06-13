@@ -159,19 +159,8 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
     // eslint-disable-next-line consistent-return
     async get(domainId: string, rid: ObjectId, download = false, rev?: ObjectId) {
         let rdoc = this.rdoc;
-        const submissionHistoryFilter: Filter<RecordDoc> = {
-            uid: rdoc.uid,
-            pid: rdoc.pid,
-            'files.hack': { $exists: false },
-            contest: rdoc.contest || { $exists: false },
-        };
-        const [allRev, submissionHistory, submissionHistoryCount] = await Promise.all([
-            record.collHistory.find({ rid }).project({ _id: 1, judgeAt: 1 }).sort({ _id: -1 }).toArray(),
-            record.getMulti(domainId, submissionHistoryFilter)
-                .project(buildProjection(['_id', 'domainId', 'status', 'score']))
-                .sort({ _id: -1 }).limit(20).toArray(),
-            record.count(domainId, submissionHistoryFilter),
-        ]);
+        const allRev = await record.collHistory.find({ rid })
+            .project({ _id: 1, judgeAt: 1 }).sort({ _id: -1 }).toArray();
         const allRevs: Record<string, Date> = Object.fromEntries(allRev.map((i) => [i._id.toString(), i.judgeAt]));
         if (rev && allRevs[rev.toString()]) {
             rdoc = { ...rdoc, ...omit(await record.collHistory.findOne({ _id: rev }), ['_id']), progress: null };
@@ -216,6 +205,24 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             rdoc.files = {};
             rdoc.compilerTexts = [];
         } else if (download) return await this.download();
+        let submissionHistory: RecordDoc[] = [];
+        let submissionHistoryCount = 0;
+        const canShowSubmissionHistory = canViewDetail
+            && (!this.tdoc || this.tdoc.rule === 'homework' || contest.isDone(this.tdoc));
+        if (canShowSubmissionHistory) {
+            const submissionHistoryFilter: Filter<RecordDoc> = {
+                uid: rdoc.uid,
+                pid: rdoc.pid,
+                'files.hack': { $exists: false },
+                contest: rdoc.contest || { $exists: false },
+            };
+            [submissionHistory, submissionHistoryCount] = await Promise.all([
+                record.getMulti(domainId, submissionHistoryFilter)
+                    .project(buildProjection(['_id', 'domainId', 'status', 'score']))
+                    .sort({ _id: -1 }).limit(20).toArray(),
+                record.count(domainId, submissionHistoryFilter),
+            ]);
+        }
         this.response.template = 'record_detail.html';
         this.response.body = {
             udoc,

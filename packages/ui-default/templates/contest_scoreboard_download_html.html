@@ -26,6 +26,7 @@
 </style>
 <h2>{{ tdoc.title }}</h2>
 Exported from <a href="{{ model.system.get('server.url') }}">{{ model.system.get('server.url') }}</a>
+{% set canViewAllRecords = handler.user.own(tdoc) or model.contest.canShowRecord.call(handler, tdoc) %}
 <table>
   <thead>
     <tr>
@@ -46,16 +47,16 @@ Exported from <a href="{{ model.system.get('server.url') }}">{{ model.system.get
       {%- for column in row -%}
         <td>
           {% if column.type == 'record' and column.raw %}
-            <a href="{{ model.system.get('server.url') }}{{ url('record_detail', rid=column.raw).substr(1,9999) }}">
-              <span style="font-weight:bold;color:{{ utils.status.getScoreColor(column.score|default(column.value)) }}">{{ column.value|string|nl2br|safe }}</span>
-            </a>
+            {% if canViewAllRecords %}<a href="{{ model.system.get('server.url') }}{{ url('record_detail', rid=column.raw).substr(1,9999) }}">{% endif %}
+            <span style="font-weight:bold;color:{{ utils.status.getScoreColor(column.score|default(column.value)) }}">{{ column.value|string|nl2br|safe }}</span>
+            {% if canViewAllRecords %}</a>{% endif %}
           {% elif column.type == 'records' %}
             {%- for record in column.raw -%}
               {% if loop.index0 %}/{% endif %}
               {% if record.raw %}
-                <a href="{{ model.system.get('server.url') }}{{ url('record_detail', rid=record.raw).substr(1,9999) }}">
-                  <span style="font-weight:bold;color:{{ utils.status.getScoreColor(record.score|default(record.value)) }}">{{ record.value|string|nl2br|safe }}</span>
-                </a>
+                {% if canViewAllRecords %}<a href="{{ model.system.get('server.url') }}{{ url('record_detail', rid=record.raw).substr(1,9999) }}">{% endif %}
+                <span style="font-weight:bold;color:{{ utils.status.getScoreColor(record.score|default(record.value)) }}">{{ record.value|string|nl2br|safe }}</span>
+                {% if canViewAllRecords %}</a>{% endif %}
               {% else %}
                 {{ record.value|string|nl2br|safe }}
               {% endif %}
