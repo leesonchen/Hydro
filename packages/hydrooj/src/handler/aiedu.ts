@@ -49,6 +49,8 @@ function validateLanguage(pdoc: ProblemDoc, lang: string) {
 }
 
 class AiEduInternalSubmitHandler extends Handler {
+    noCheckPermView = true;
+
     async post(args: any) {
         const routeDomainId = this.domain?._id || this.context?.domainId;
         const bodyDomainId = normalizeString(this.request.body?.domainId || args.domainId);
