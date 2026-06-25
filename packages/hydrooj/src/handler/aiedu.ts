@@ -3,7 +3,7 @@ import type { Context } from '../context';
 import {
     ForbiddenError, ProblemConfigError, ProblemNotAllowLanguageError, ProblemNotFoundError, ValidationError,
 } from '../error';
-import type { ProblemDoc } from '../interface';
+import type { ProblemDoc, Tdoc } from '../interface';
 import { STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import problem from '../model/problem';
@@ -48,6 +48,11 @@ function validateLanguage(pdoc: ProblemDoc, lang: string) {
     return lang;
 }
 
+async function ensureContestIncludesProblem(domainId: string, tid: ObjectId, tdoc: Tdoc, pid: number) {
+    if (tdoc.pids?.includes(pid)) return tdoc;
+    return await contest.edit(domainId, tid, { pids: [...(tdoc.pids || []), pid] });
+}
+
 class AiEduInternalSubmitHandler extends Handler {
     noCheckPermView = true;
 
@@ -76,8 +81,12 @@ class AiEduInternalSubmitHandler extends Handler {
 
         const { pdoc, sourcePdoc } = await getEffectiveProblem(AI_EDU_DOMAIN_ID, pid);
         const submitLang = validateLanguage(sourcePdoc, lang);
-        const tdoc = await contest.get(AI_EDU_DOMAIN_ID, tid);
-        if (!tdoc.pids?.includes(pdoc.docId)) throw new ValidationError('tid');
+        const tdoc = await ensureContestIncludesProblem(
+            AI_EDU_DOMAIN_ID,
+            tid,
+            await contest.get(AI_EDU_DOMAIN_ID, tid),
+            pdoc.docId,
+        );
 
         const rid = await record.add(AI_EDU_DOMAIN_ID, pdoc.docId, uid, submitLang, code, true, {
             contest: tid,
