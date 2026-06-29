@@ -333,12 +333,13 @@ export async function apply(ctx: Context) {
         });
         on('handler/before', async (h) => {
             if (!h.user?._id || !h.user.requirePasswordChange) return;
+            const normalizePath = (path: string) => path.replace(/^\/d\/[^/]+(?=\/)/, '');
             const allowedPaths = new Set([
                 h.url('home_security'),
                 h.url('user_sudo'),
                 h.url('user_logout'),
-            ]);
-            if (allowedPaths.has(h.request.path)) return;
+            ].map(normalizePath));
+            if (allowedPaths.has(normalizePath(h.request.path))) return;
             h.response.redirect = h.url('home_security');
             return 'cleanup';
         });
