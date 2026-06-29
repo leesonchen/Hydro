@@ -287,6 +287,7 @@ class SystemUserImportHandler extends SystemHandler {
                 try {
                     const uid = await user.create(udoc.email, udoc.username, udoc.password);
                     mapping[udoc.email] = uid;
+                    await user.setById(uid, { requirePasswordChange: true });
                     if (udoc.displayName) await domain.setUserInDomain(domainId, uid, { displayName: udoc.displayName });
                     if (udoc.school) await user.setById(uid, { school: udoc.school });
                     if (udoc.studentId) await user.setById(uid, { studentId: udoc.studentId });

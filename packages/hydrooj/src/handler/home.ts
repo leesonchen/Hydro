@@ -224,6 +224,7 @@ class HomeSecurityHandler extends Handler {
             if (!udoc) throw new UserNotFoundError(this.session.sudoUid);
             await udoc.checkPassword(current);
         } else await this.user.checkPassword(current);
+        if (password === current) throw new ValidationError('password', 'same');
         await user.setPassword(this.user._id, password);
         await token.delByUid(this.user._id);
         this.response.redirect = this.url('user_login');

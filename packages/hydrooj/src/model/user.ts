@@ -73,6 +73,7 @@ export class User {
     _files: FileInfo[];
     tfa: boolean;
     authn: boolean;
+    requirePasswordChange: boolean;
     group?: string[];
     [key: string]: any;
 
@@ -101,6 +102,7 @@ export class User {
         this.domains = udoc.domains || [];
         this.tfa = !!udoc.tfa;
         this.authn = !!udoc.authenticators?.length;
+        this.requirePasswordChange = !!udoc.requirePasswordChange;
         if (dudoc.group) this.group = dudoc.group;
         const load = (settings: Record<string, ReturnType<typeof setting.Setting>>, source: any) => {
             for (const key in settings) {
@@ -298,7 +300,10 @@ class UserModel {
         const salt = randomstring();
         const res = await coll.findOneAndUpdate(
             { _id: uid },
-            { $set: { salt, hash: await pwhash(password, salt), hashType: 'hydro' } },
+            {
+                $set: { salt, hash: await pwhash(password, salt), hashType: 'hydro' },
+                $unset: { requirePasswordChange: '' },
+            },
             { returnDocument: 'after' },
         );
         deleteUserCache(res);
