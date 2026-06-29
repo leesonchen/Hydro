@@ -22,6 +22,7 @@ async function bulkCreateUsers(
         try {
             const uid = await UserModel.create(u.email, u.username, u.password);
             uidByEmail[u.email] = uid;
+            await UserModel.setById(uid, { requirePasswordChange: true });
 
             const extra: any = {};
             if (u.displayName) {

@@ -331,6 +331,17 @@ export async function apply(ctx: Context) {
             if ((!('noCheckPermView' in h) || !h.noCheckPermView) && !h.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)) h.checkPerm(PERM.PERM_VIEW);
             if (h.context.pendingError) throw h.context.pendingError;
         });
+        on('handler/before', async (h) => {
+            if (!h.user?._id || !h.user.requirePasswordChange) return;
+            const allowedPaths = new Set([
+                h.url('home_security'),
+                h.url('user_sudo'),
+                h.url('user_logout'),
+            ]);
+            if (allowedPaths.has(h.request.path)) return;
+            h.response.redirect = h.url('home_security');
+            return 'cleanup';
+        });
         on('handler/create/ws', async (h) => {
             if (h.context.pendingError) throw h.context.pendingError;
         });

@@ -17,6 +17,9 @@
         <h1 class="section__title" id="password" data-heading>{{ _('Change Password') }}</h1>
       </div>
       <div class="section__body">
+        {% if handler.user.requirePasswordChange %}
+          <blockquote class="warn">{{ _('You must change your password before continuing.') }}</blockquote>
+        {% endif %}
         <form method="post">
           {{ form.form_text({
                type:'password',
