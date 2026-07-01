@@ -1,9 +1,15 @@
 import $ from 'jquery';
-import { prompt } from 'vj/components/dialog';
+import { confirm, prompt } from 'vj/components/dialog';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
 
 export default new NamedPage('home_domain', () => {
+  $(document).on('submit', 'form[data-leave-domain-form]', async (ev) => {
+    ev.preventDefault();
+    const confirmed = await confirm(i18n('Confirm leaving this domain?'));
+    if (confirmed) (ev.currentTarget as HTMLFormElement).submit();
+  });
+
   $(document).on('click', '[id="join-domain-button"]', async () => {
     const res = await prompt(i18n('Join Domain'), {
       domain: {
