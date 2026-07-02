@@ -50,7 +50,10 @@ export default class Editor extends DOMAttachedObject {
       if (!isUnsupportedRegExpFlagError(e)) throw e;
       console.warn('Monaco editor failed to load in this browser, falling back to a compatible editor.', e);
       if ((this.options.language || 'markdown') === 'markdown') await this.initMarkdownEditor();
-      else this.isValid = true;
+      else {
+        this.valueCache = String(this.$dom.val() ?? '');
+        this.isValid = true;
+      }
     }
   }
 
@@ -295,9 +298,14 @@ export default class Editor extends DOMAttachedObject {
       if (this.editor) return this.editor.setValue(val);
       this.setMarkdownEditorValue?.(val);
       this.markdownEditor?.resetHistory?.();
+      if (!this.markdownEditor) {
+        this.valueCache = val;
+        this.$dom.val(val);
+        this.$dom.text(val);
+      }
     }
     if (this.editor) return this.editor.getValue({ lineEnding: '\n', preserveBOM: false });
-    return this.valueCache;
+    return this.valueCache ?? this.$dom.val();
   }
 
   focus() {

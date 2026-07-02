@@ -325,10 +325,6 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         minChunkSize: 128000,
       }),
       new webpack.NormalModuleReplacementPlugin(/\/(vscode-)?nls\.js/, require.resolve('../../components/monaco/nls')),
-      new webpack.NormalModuleReplacementPlugin(
-        /monaco-editor[\\/]esm[\\/]vs[\\/]editor[\\/]common[\\/]services[\\/]findSectionHeaders(?:\\.js)?$/,
-        root('components/monaco/compat/findSectionHeaders.ts'),
-      ),
       new webpack.NormalModuleReplacementPlugin(/^prettier[$/]/, root('../../modules/nop.ts')),
       new webpack.NormalModuleReplacementPlugin(/^highlightjs[$/]/, root('../../modules/nop.ts')),
       new webpack.NormalModuleReplacementPlugin(/core-js\/stable/, root('__core-js.js')),
