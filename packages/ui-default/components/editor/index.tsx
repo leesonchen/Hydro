@@ -20,6 +20,12 @@ interface MonacoOptions {
 }
 type Options = MonacoOptions;
 
+function isUnsupportedRegExpFlagError(error: unknown) {
+  return error instanceof Error
+    && error.name === 'SyntaxError'
+    && /Invalid flags supplied to RegExp constructor ['"]d['"]/.test(error.message);
+}
+
 export default class Editor extends DOMAttachedObject {
   static DOMAttachKey = 'vjEditorInstance';
   model: import('../monaco').default.editor.IModel;
@@ -32,9 +38,20 @@ export default class Editor extends DOMAttachedObject {
 
   constructor($dom, public options: Options = {}) {
     super($dom);
-    if (UserContext.preferredEditorType === 'monaco') this.initMonaco();
-    else if (options.language && options.language !== 'markdown') this.initMonaco();
+    if (UserContext.preferredEditorType === 'monaco') this.initMonacoWithFallback();
+    else if (options.language && options.language !== 'markdown') this.initMonacoWithFallback();
     else this.initMarkdownEditor();
+  }
+
+  async initMonacoWithFallback() {
+    try {
+      await this.initMonaco();
+    } catch (e) {
+      if (!isUnsupportedRegExpFlagError(e)) throw e;
+      console.warn('Monaco editor failed to load in this browser, falling back to a compatible editor.', e);
+      if ((this.options.language || 'markdown') === 'markdown') await this.initMarkdownEditor();
+      else this.isValid = true;
+    }
   }
 
   async initMonaco() {
