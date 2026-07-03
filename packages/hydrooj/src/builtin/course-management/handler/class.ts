@@ -152,12 +152,34 @@ function rewriteDagPids(dag: any[], mapping: Map<number, number>) {
     }));
 }
 
-function copyCourseLecture(template: CourseTdoc, dag: any[]) {
+function getLectureContent(lecture: Record<string | number, string>, nodeId: number) {
+    const content = lecture[nodeId] || lecture[String(nodeId)];
+    return typeof content === 'string' && content.length ? content : '';
+}
+
+function getLectureTitle(sourceNode: any, targetNode: any, targetNodeId: number) {
+    if (typeof sourceNode?.lecture === 'string' && sourceNode.lecture.trim()) return sourceNode.lecture;
+    if (typeof targetNode?.lecture === 'string' && targetNode.lecture.trim()) return targetNode.lecture;
+    if (typeof sourceNode?.title === 'string' && sourceNode.title.trim()) return sourceNode.title;
+    if (typeof targetNode?.title === 'string' && targetNode.title.trim()) return targetNode.title;
+    return `Lecture ${targetNodeId}`;
+}
+
+function copyCourseLecture(template: CourseTdoc, sourceDag: any[], targetDag: any[]) {
     const lecture = template.lecture || {};
-    return Object.fromEntries(
-        dag.map((node) => [node._id, lecture[node._id] || lecture[String(node._id) as any] || ''])
-            .filter(([, content]) => typeof content === 'string' && content.length),
-    );
+    const nextLecture: Record<number, string> = {};
+    const nextDag = targetDag.map((node, index) => {
+        const sourceNode = sourceDag[index] || node;
+        const content = getLectureContent(lecture, sourceNode._id) || getLectureContent(lecture, node._id);
+        if (!content) return node;
+        nextLecture[node._id] = content;
+        if (node.lecture) return node;
+        return {
+            ...node,
+            lecture: getLectureTitle(sourceNode, node, node._id),
+        };
+    });
+    return { dag: nextDag, lecture: nextLecture };
 }
 
 // 班级列表页面
@@ -483,8 +505,10 @@ export class ClassEditHandler extends Handler {
                 }
             }
             const newDag = rewriteDagPids(parsedDag, mapping);
-            const newLecture = copyCourseLecture(template, newDag);
-            const allPids = Array.from(new Set(newDag.flatMap((node) => node.pids)));
+            const copiedLecture = copyCourseLecture(template, parsedDag, newDag);
+            const finalDag = copiedLecture.dag;
+            const newLecture = copiedLecture.lecture;
+            const allPids = Array.from(new Set(finalDag.flatMap((node) => node.pids)));
 
             const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
             const lessonWindow = calcLessonTimeRange(beginAt, getLessonDurationHours(template));
@@ -501,7 +525,7 @@ export class ClassEditHandler extends Handler {
                 allPids,
                 false,
                 {
-                    dag: newDag,
+                    dag: finalDag,
                     assign: [gdoc.name],
                     maintainer: gdoc.teachers,
                     lecture: newLecture,
