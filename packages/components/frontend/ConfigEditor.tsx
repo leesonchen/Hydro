@@ -109,6 +109,30 @@ function MonacoContainer({
     }
     model.pushEditOperations([], ops, undefined);
   }, [editor, config]);
+  if (!monaco) {
+    return <textarea
+      className="textbox"
+      spellCheck={false}
+      value={config}
+      style={{
+        width: '100%',
+        height: '80vh',
+        boxSizing: 'border-box',
+        fontFamily: codeFontFamily,
+      }}
+      onChange={(ev) => {
+        const val = ev.currentTarget.value;
+        try {
+          const loaded = yaml.load(val);
+          schema(loaded);
+          setValue(val);
+          setError('');
+        } catch (err) {
+          setError(err.message);
+        }
+      }}
+    />;
+  }
   return <div ref={initializeEditor} style={{ width: '100%', height: '80vh' }} />;
 }
 

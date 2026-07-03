@@ -7,7 +7,7 @@ import type { editor } from 'monaco-editor';
 import React from 'react';
 import { connect } from 'react-redux';
 import Editor from 'vj/components/editor';
-import { load } from 'vj/components/monaco/loader';
+import { isMonacoUnsupportedError, load } from 'vj/components/monaco/loader';
 
 const mapStateToProps = (state) => ({
   config: state.config,
@@ -94,11 +94,45 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MonacoEditor e
   editor: editor.IStandaloneCodeEditor;
   model: editor.ITextModel;
   vjEditor: Editor;
+  plainTextarea: HTMLTextAreaElement;
+  plainTextareaInputHandler: () => void;
+
+  initPlainTextarea(value: string) {
+    if (!this.containerElement) return;
+    this.containerElement.innerHTML = '';
+    const textarea = document.createElement('textarea');
+    textarea.className = 'textbox';
+    textarea.value = value;
+    textarea.spellcheck = false;
+    textarea.style.minHeight = '500px';
+    textarea.style.height = '100%';
+    textarea.style.width = '100%';
+    textarea.style.boxSizing = 'border-box';
+    textarea.style.fontFamily = UserContext.codeFontFamily;
+    this.plainTextareaInputHandler = () => {
+      this.__preventUpdate = true;
+      this.props.handleUpdateCode(textarea.value);
+      this.__preventUpdate = false;
+    };
+    textarea.addEventListener('input', this.plainTextareaInputHandler);
+    this.plainTextarea = textarea;
+    this.containerElement.appendChild(textarea);
+  }
 
   async componentDidMount() {
-    const { monaco } = await load(['yaml']);
+    const initialValue = yaml.dump(configYamlFormat(this.props.config), { noArrayIndent: true });
+    let loadedMonaco;
+    try {
+      loadedMonaco = await load(['yaml']);
+    } catch (e) {
+      if (!isMonacoUnsupportedError(e)) throw e;
+      console.warn('Monaco problem config editor failed to load in this browser, falling back to textarea.', e);
+      this.initPlainTextarea(initialValue);
+      return;
+    }
+    const { monaco } = loadedMonaco;
     const uri = monaco.Uri.parse('hydro://problem/file/config.yaml');
-    this.model = monaco.editor.createModel(yaml.dump(configYamlFormat(this.props.config), { noArrayIndent: true }), 'yaml', uri);
+    this.model = monaco.editor.createModel(initialValue, 'yaml', uri);
     this.vjEditor = Editor.getOrConstruct($(this.containerElement), {
       language: 'yaml',
       model: this.model,
@@ -113,6 +147,13 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MonacoEditor e
   }
 
   componentDidUpdate(prevProps) {
+    if (this.plainTextarea) {
+      if (this.__preventUpdate || !this.props.config.__valid) return;
+      if (yaml.dump(prevProps.config, { noArrayIndent: true }) === yaml.dump(this.props.config, { noArrayIndent: true })) return;
+      const nextValue = yaml.dump(configYamlFormat(this.props.config), { noArrayIndent: true });
+      if (this.plainTextarea.value !== nextValue) this.plainTextarea.value = nextValue;
+      return;
+    }
     if (this.__preventUpdate || !this.model || !this.props.config.__valid) return;
     if (yaml.dump(prevProps.config, { noArrayIndent: true }) === yaml.dump(this.props.config, { noArrayIndent: true })) return;
     const curValue = this.model.getValue();
@@ -144,6 +185,9 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MonacoEditor e
   }
 
   componentWillUnmount() {
+    if (this.plainTextarea && this.plainTextareaInputHandler) {
+      this.plainTextarea.removeEventListener('input', this.plainTextareaInputHandler);
+    }
     if (this.vjEditor) this.vjEditor.destroy();
     if (this.model) this.model.dispose();
     if (this.editor) this.editor.dispose();

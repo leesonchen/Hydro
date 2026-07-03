@@ -11,19 +11,29 @@ const page = new NamedPage('manage_config', async () => {
     document.documentElement.className += ' dark';
   }
 
-  const [{ ConfigEditor, ComponentsProvider }, { load }] = await Promise.all([
+  const [{ ConfigEditor, ComponentsProvider }, { isMonacoUnsupportedError, load }] = await Promise.all([
     import('@hydrooj/components'),
     import('vj/components/monaco/loader'),
   ]);
-  const { monaco, registerAction, renderMarkdown } = await load(['yaml']);
+  let monaco;
+  let registerAction: any = () => {};
+  let renderMarkdown;
+  try {
+    ({ monaco, registerAction, renderMarkdown } = await load(['yaml']));
+  } catch (e) {
+    if (!isMonacoUnsupportedError(e)) throw e;
+    console.warn('Monaco settings editor failed to load in this browser, falling back to textarea.', e);
+  }
 
   function Markdown({ source }) {
     const rendered = React.useMemo(() => {
+      if (!renderMarkdown) return '';
       const res = renderMarkdown({ value: source });
       const value = res.element.innerHTML;
       res.dispose();
       return value;
-    }, [source]);
+    }, [source, renderMarkdown]);
+    if (!renderMarkdown) return <div>{source}</div>;
     // Markdown snippet come from trusted backend code, no need to sanitize here
     return <div dangerouslySetInnerHTML={{ __html: rendered }} />;
   }

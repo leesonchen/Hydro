@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import DOMAttachedObject from 'vj/components/DOMAttachedObject';
+import { isMonacoUnsupportedError } from 'vj/components/monaco/loader';
 import { getTheme, i18n } from 'vj/utils';
 import uploadFiles from '../upload';
 
@@ -19,12 +20,6 @@ interface MonacoOptions {
   lineNumbers?: 'on' | 'off' | 'relative' | 'interval';
 }
 type Options = MonacoOptions;
-
-function isUnsupportedRegExpFlagError(error: unknown) {
-  return error instanceof Error
-    && error.name === 'SyntaxError'
-    && /Invalid flags supplied to RegExp constructor ['"]d['"]/.test(error.message);
-}
 
 export default class Editor extends DOMAttachedObject {
   static DOMAttachKey = 'vjEditorInstance';
@@ -47,10 +42,13 @@ export default class Editor extends DOMAttachedObject {
     try {
       await this.initMonaco();
     } catch (e) {
-      if (!isUnsupportedRegExpFlagError(e)) throw e;
+      if (!isMonacoUnsupportedError(e)) throw e;
       console.warn('Monaco editor failed to load in this browser, falling back to a compatible editor.', e);
       if ((this.options.language || 'markdown') === 'markdown') await this.initMarkdownEditor();
-      else this.isValid = true;
+      else {
+        this.$dom.show();
+        this.isValid = false;
+      }
     }
   }
 

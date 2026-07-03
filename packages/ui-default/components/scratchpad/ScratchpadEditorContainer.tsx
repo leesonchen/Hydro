@@ -1,7 +1,7 @@
 import type * as monaco from 'monaco-editor';
 import React from 'react';
 import { connect } from 'react-redux';
-import { load } from 'vj/components/monaco/loader';
+import { isMonacoUnsupportedError, load } from 'vj/components/monaco/loader';
 import { ctx } from 'vj/context';
 
 interface ScratchpadOptions {
@@ -37,11 +37,45 @@ export default connect((state: any) => ({
   model: monaco.editor.ITextModel;
   editor: monaco.editor.IStandaloneCodeEditor;
   containerElement: HTMLElement;
+  plainTextarea: HTMLTextAreaElement;
+  plainTextareaInputHandler: () => void;
+  usingPlainTextarea = false;
+
+  initPlainTextarea(value: string) {
+    if (!this.containerElement) return;
+    this.usingPlainTextarea = true;
+    this.containerElement.innerHTML = '';
+    const textarea = document.createElement('textarea');
+    textarea.className = 'textbox ScratchpadPlainEditor';
+    textarea.value = value;
+    textarea.spellcheck = false;
+    textarea.style.width = '100%';
+    textarea.style.height = '100%';
+    textarea.style.resize = 'none';
+    textarea.style.boxSizing = 'border-box';
+    textarea.style.fontFamily = UserContext.codeFontFamily;
+    this.plainTextareaInputHandler = () => {
+      this.props.handleUpdateCode?.(textarea.value, undefined as any);
+    };
+    textarea.addEventListener('input', this.plainTextareaInputHandler);
+    this.plainTextarea = textarea;
+    this.containerElement.appendChild(textarea);
+    ctx.scratchpad.loadCallback?.();
+  }
 
   async componentDidMount() {
     const value = this.props.value || '';
     const { language } = this.props;
-    const { monaco, registerAction, customOptions } = await load([language]);
+    let loadedMonaco;
+    try {
+      loadedMonaco = await load([language]);
+    } catch (e) {
+      if (!isMonacoUnsupportedError(e)) throw e;
+      console.warn('Monaco scratchpad failed to load in this browser, falling back to textarea.', e);
+      this.initPlainTextarea(value);
+      return;
+    }
+    const { monaco, registerAction, customOptions } = loadedMonaco;
     const uri = monaco.Uri.parse(`hydro:${UiContext.pdoc.pid || UiContext.pdoc.docId}.${language}`);
     this.model = monaco.editor.getModel(uri) || monaco.editor.createModel(value, language, uri);
     if (this.containerElement) {
@@ -74,6 +108,13 @@ export default connect((state: any) => ({
     const {
       value, language,
     } = this.props;
+    if (this.usingPlainTextarea) {
+      if (this.plainTextarea && value != null && value !== this.plainTextarea.value) {
+        this.plainTextarea.value = value;
+      }
+      if (this.props.pendingCommand) this.props.commandDone();
+      return;
+    }
     const { monaco } = await load([language]);
     const { editor, model } = this;
     const { LF } = monaco.editor.EndOfLinePreference;
@@ -111,6 +152,9 @@ export default connect((state: any) => ({
   }
 
   componentWillUnmount() {
+    if (this.plainTextarea && this.plainTextareaInputHandler) {
+      this.plainTextarea.removeEventListener('input', this.plainTextareaInputHandler);
+    }
     if (this.editor) this.editor.dispose();
     if (this.model) this.model.dispose();
     this.disposable.map((i) => i.dispose());

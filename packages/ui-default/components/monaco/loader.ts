@@ -2,6 +2,34 @@ import { getFeatures, load as loadModule } from '../../lazyload';
 
 let loaded;
 
+export class MonacoUnsupportedBrowserError extends Error {
+  constructor(public originalError?: unknown) {
+    super('Monaco editor is not supported by this browser.');
+    this.name = 'MonacoUnsupportedBrowserError';
+  }
+}
+
+function supportsRegExpIndices() {
+  try {
+    // eslint-disable-next-line no-new, prefer-regex-literals -- Old browsers must parse this file, so avoid a /.../d literal.
+    new RegExp('', 'd');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isUnsupportedRegExpFlagError(error: unknown) {
+  const err = error as Error;
+  return err?.name === 'SyntaxError'
+    && /Invalid flags supplied to RegExp constructor ['"]d['"]/.test(err.message || '');
+}
+
+export function isMonacoUnsupportedError(error: unknown) {
+  return error instanceof MonacoUnsupportedBrowserError
+    || isUnsupportedRegExpFlagError(error);
+}
+
 const val: Record<string, any> = {};
 /** @deprecated */
 export async function legacyLoadExternalModule(target: string) {
@@ -50,47 +78,54 @@ const loaders = {
 let loadPromise = Promise.resolve();
 
 export async function load(features = ['markdown']) {
-  let s = Date.now();
   await loadPromise;
   let resolve;
   loadPromise = new Promise((r) => { resolve = r; });
-  if (!loaded) {
-    await loaders.i18n();
-    console.log('Loading monaco editor');
-  }
-  const res = await import('./index');
-  if (!loaded) {
-    console.log('Loaded monaco editor in', Date.now() - s, 'ms');
-    loaded = [];
-  }
-  for (const feat of features) {
-    if (loaded.includes(feat)) continue;
-    if (!loaders[feat]) {
-      const items = await getFeatures(`monaco-${feat}`);
-      if (!items.length) {
-        console.warn('Unknown monaco feature:', feat);
-        continue;
+  try {
+    if (!supportsRegExpIndices()) throw new MonacoUnsupportedBrowserError();
+    let s = Date.now();
+    if (!loaded) {
+      await loaders.i18n();
+      console.log('Loading monaco editor');
+    }
+    const res = await import('./index');
+    if (!loaded) {
+      console.log('Loaded monaco editor in', Date.now() - s, 'ms');
+      loaded = [];
+    }
+    for (const feat of features) {
+      if (loaded.includes(feat)) continue;
+      if (!loaders[feat]) {
+        const items = await getFeatures(`monaco-${feat}`);
+        if (!items.length) {
+          console.warn('Unknown monaco feature:', feat);
+          continue;
+        }
+      }
+      s = Date.now();
+      console.log('Loading monaco feature:', feat);
+      try {
+        if (loaders[feat]) await loaders[feat]();
+        else await loaders.external(res.default, feat);
+        console.log('Loaded monaco feature:', feat, 'in', Date.now() - s, 'ms');
+        loaded.push(feat);
+      } catch (e) {
+        console.log('Monaco feat', feat, 'failed to load:', e);
       }
     }
-    s = Date.now();
-    console.log('Loading monaco feature:', feat);
-    try {
-      if (loaders[feat]) await loaders[feat]();
-      else await loaders.external(res.default, feat);
-      console.log('Loaded monaco feature:', feat, 'in', Date.now() - s, 'ms');
-      loaded.push(feat);
-    } catch (e) {
-      console.log('Monaco feat', feat, 'failed to load:', e);
-    }
+    await res.loadThemePromise;
+    return {
+      monaco: res.default,
+      registerAction: res.registerAction,
+      customOptions: res.customOptions,
+      renderMarkdown: res.renderMarkdown,
+    };
+  } catch (e) {
+    if (isUnsupportedRegExpFlagError(e)) throw new MonacoUnsupportedBrowserError(e);
+    throw e;
+  } finally {
+    resolve();
   }
-  await res.loadThemePromise;
-  resolve();
-  return {
-    monaco: res.default,
-    registerAction: res.registerAction,
-    customOptions: res.customOptions,
-    renderMarkdown: res.renderMarkdown,
-  };
 }
 
 export default load;
