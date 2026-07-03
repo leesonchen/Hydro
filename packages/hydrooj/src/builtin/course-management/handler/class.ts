@@ -152,6 +152,14 @@ function rewriteDagPids(dag: any[], mapping: Map<number, number>) {
     }));
 }
 
+function copyCourseLecture(template: CourseTdoc, dag: any[]) {
+    const lecture = template.lecture || {};
+    return Object.fromEntries(
+        dag.map((node) => [node._id, lecture[node._id] || lecture[String(node._id) as any] || ''])
+            .filter(([, content]) => typeof content === 'string' && content.length),
+    );
+}
+
 // 班级列表页面
 export class ClassHandler extends Handler {
     async prepare() {
@@ -475,6 +483,7 @@ export class ClassEditHandler extends Handler {
                 }
             }
             const newDag = rewriteDagPids(parsedDag, mapping);
+            const newLecture = copyCourseLecture(template, newDag);
             const allPids = Array.from(new Set(newDag.flatMap((node) => node.pids)));
 
             const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
@@ -495,11 +504,15 @@ export class ClassEditHandler extends Handler {
                     dag: newDag,
                     assign: [gdoc.name],
                     maintainer: gdoc.teachers,
-                    lecture: template.lecture,
+                    lecture: newLecture,
                     files: template.files,
                     ...lessonWindow,
                 },
             );
+
+            // ContestModel.add may be extended by hooks; explicitly persist copied lectures after creation
+            // so cross-domain course copies do not lose lecture bodies.
+            if (Object.keys(newLecture).length) await ContestModel.edit(domainId, newTid, { lecture: newLecture });
 
             // 复制文件
             if (template.files?.length) {

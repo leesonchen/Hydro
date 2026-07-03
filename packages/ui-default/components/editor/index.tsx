@@ -47,7 +47,8 @@ export default class Editor extends DOMAttachedObject {
       if ((this.options.language || 'markdown') === 'markdown') await this.initMarkdownEditor();
       else {
         this.$dom.show();
-        this.isValid = false;
+        this.valueCache = String(this.$dom.val() ?? '');
+        this.isValid = true;
       }
     }
   }
@@ -293,9 +294,14 @@ export default class Editor extends DOMAttachedObject {
       if (this.editor) return this.editor.setValue(val);
       this.setMarkdownEditorValue?.(val);
       this.markdownEditor?.resetHistory?.();
+      if (!this.markdownEditor) {
+        this.valueCache = val;
+        this.$dom.val(val);
+        this.$dom.text(val);
+      }
     }
     if (this.editor) return this.editor.getValue({ lineEnding: '\n', preserveBOM: false });
-    return this.valueCache;
+    return this.valueCache ?? this.$dom.val();
   }
 
   focus() {
