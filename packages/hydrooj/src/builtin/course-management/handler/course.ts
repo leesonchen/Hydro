@@ -361,6 +361,28 @@ function getTemplateCategory(assign: string[] = []) {
     return (category || '').trim();
 }
 
+function getCourseLectureContent(lecture: CourseTdoc['lecture'], nodeId: number) {
+    if (!lecture) return '';
+    const content = lecture[nodeId] || (lecture as Record<string, string>)[String(nodeId)];
+    return typeof content === 'string' && content.length ? content : '';
+}
+
+function copyLectureForTemplate(source: CourseTdoc | undefined, dag: DagNode[]) {
+    const lecture: Record<number, string> = {};
+    if (!source?.lecture) return { dag, lecture };
+    const nextDag = dag.map((node) => {
+        const content = getCourseLectureContent(source.lecture, node._id);
+        if (!content) return node;
+        lecture[node._id] = content;
+        if (node.lecture) return node;
+        return {
+            ...node,
+            lecture: node.title || `Lecture ${node._id}`,
+        };
+    });
+    return { dag: nextDag, lecture };
+}
+
 function getTemplateCategoryKey(course: any) {
     return course.templateCategory ? `templates::${course.templateCategory}` : TEMPLATE_UNCATEGORIZED_KEY;
 }
@@ -1023,6 +1045,8 @@ export class CourseEditHandler extends Handler {
         const updateAt = new Date();
         const editingTemplate = !!this.tdoc?.assign?.includes('teachers');
         const saveAsTemplate = !!(tid && isTemplate && !editingTemplate);
+        const sourceTid = tid;
+        const sourceCourseForTemplate = saveAsTemplate ? this.tdoc : undefined;
         const assignGroup = isTemplate ? 'teachers' : (assign[0] || '');
 
         if (isTemplate) {
@@ -1086,9 +1110,12 @@ export class CourseEditHandler extends Handler {
         const finalAssign = isTemplate
             ? (templateCategory ? ['teachers', templateCategory] : ['teachers'])
             : [...nonDigitAssign, ...extraStudents.map((s) => s.toString())];
+        const copiedLecture = copyLectureForTemplate(sourceCourseForTemplate, dag);
+        const finalDag = copiedLecture.dag;
+        const finalLecture = copiedLecture.lecture;
 
         await ContestModel.edit(domainId, tid, {
-            dag,
+            dag: finalDag,
             assign: finalAssign,
             editor,
             updateAt,
@@ -1097,7 +1124,15 @@ export class CourseEditHandler extends Handler {
             lessonDurationHours: normalizedLessonDurationHours,
             lessonBeginAt: lessonBeginAt.toDate(),
             lessonEndAt: lessonEndAt.toDate(),
+            ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
+            ...(sourceCourseForTemplate?.files?.length ? { files: sourceCourseForTemplate.files } : {}),
         });
+        if (sourceCourseForTemplate?.files?.length && sourceTid) {
+            await Promise.all(sourceCourseForTemplate.files.map((f) => StorageModel.copy(
+                `contest/${domainId}/${sourceTid}/public/${f.name}`,
+                `contest/${domainId}/${tid}/public/${f.name}`,
+            )));
+        }
         // 清除旧的 extraStudents 字段（已合并到 assign）
         await DocumentModel.set(domainId, DocumentModel.TYPE_CONTEST, tid, undefined, { extraStudents: '' as any });
 
