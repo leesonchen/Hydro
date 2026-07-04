@@ -7,33 +7,21 @@ import {
     ContestNotFoundError, FileLimitExceededError, FileUploadError, ForbiddenError, HomeworkNotLiveError, NotAssignedError, ValidationError,
 } from '../error';
 import { PenaltyRules, Tdoc } from '../interface';
+import { getReferenceCodeSolutions, isReferenceCodeSolution, REFERENCE_CODE_TITLE } from '../lib/referenceCode';
 import { PERM, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
+import * as document from '../model/document';
 import problem from '../model/problem';
 import record from '../model/record';
 import solution from '../model/solution';
 import storage from '../model/storage';
 import system from '../model/system';
 import user from '../model/user';
-import * as document from '../model/document';
 import {
     Handler, param, post, Types,
 } from '../service/server';
 import { ContestCodeHandler, ContestFileDownloadHandler, ContestScoreboardHandler } from './contest';
-
-const REFERENCE_CODE_TITLE = '【参考代码】';
-
-function isReferenceCodeSolutionByContent(content = '') {
-    const firstLine = content.split(/\r?\n/).find((line) => line.trim());
-    if (!firstLine) return false;
-    const title = firstLine.trim().replace(/^#+\s*/, '');
-    return title.startsWith(REFERENCE_CODE_TITLE);
-}
-
-function isReferenceCodeSolution(doc: any) {
-    return doc?.title === REFERENCE_CODE_TITLE || isReferenceCodeSolutionByContent(doc?.content || '');
-}
 
 const validatePenaltyRules = (input: string) => {
     try {
@@ -355,9 +343,7 @@ class HomeworkProblemReferenceHandler extends Handler {
     @param('tid', Types.ObjectId)
     @param('pid', Types.UnsignedInt)
     async get(domainId: string, tid: ObjectId, pid: number) {
-        const refs = (await solution.getMulti(domainId, pid).toArray())
-            .filter((doc: any) => isReferenceCodeSolution(doc))
-            .sort((a: any, b: any) => a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime());
+        const refs = await getReferenceCodeSolutions(domainId, this.pdoc);
         const uids = Array.from(new Set([
             this.pdoc.owner,
             this.tdoc.owner,

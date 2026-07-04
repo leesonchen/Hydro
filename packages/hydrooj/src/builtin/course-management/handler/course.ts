@@ -1,32 +1,21 @@
 import assert from 'assert';
+import { getReferenceCodeSolutions, isReferenceCodeSolution, REFERENCE_CODE_TITLE } from '../../../lib/referenceCode';
 import {
     _, BadRequestError, ContestModel, ContestNotFoundError, ContestScoreboardHiddenError,
     DocumentModel, ForbiddenError, Handler, moment, NotAssignedError, ObjectId, OplogModel,
-    param, PERM, post, ProblemModel, ProblemNotFoundError, sortFiles, StorageModel, SystemModel,
-    SolutionModel, STATUS, Types, UserModel, ValidationError,
+    param, PERM, post, ProblemModel, ProblemNotFoundError, SolutionModel, sortFiles, STATUS, StorageModel, SystemModel,
+    Types, UserModel, ValidationError,
 } from '../../../plugin-api';
 import bus from '../../../service/bus';
-import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
-import type { CourseTdoc, DagNode } from '../model/course';
 import { ClassModel } from '../model/class';
+import type { CourseTdoc, DagNode } from '../model/course';
+import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
 
-const REFERENCE_CODE_TITLE = '【参考代码】';
 const TEMPLATE_ALL_KEY = 'templates::__all';
 const TEMPLATE_UNCATEGORIZED_KEY = 'templates::__uncategorized';
 
 function fillMessage(template: string, ...params: Array<string | number>) {
     return template.replace(/\{(\d+)\}/g, (_, index) => String(params[Number(index)] ?? ''));
-}
-
-function isReferenceCodeSolutionByContent(content = '') {
-    const firstLine = content.split(/\r?\n/).find((line) => line.trim());
-    if (!firstLine) return false;
-    const title = firstLine.trim().replace(/^#+\s*/, '');
-    return title.startsWith(REFERENCE_CODE_TITLE);
-}
-
-function isReferenceCodeSolution(doc: any) {
-    return doc?.title === REFERENCE_CODE_TITLE || isReferenceCodeSolutionByContent(doc?.content || '');
 }
 
 function normalizeTemplateIds(templateIds: any) {
@@ -1599,9 +1588,7 @@ export class CourseProblemReferenceHandler extends Handler {
     @param('tid', Types.ObjectId)
     @param('pid', Types.UnsignedInt)
     async get(domainId: string, tid: ObjectId, pid: number) {
-        const refs = (await SolutionModel.getMulti(domainId, pid).toArray())
-            .filter((doc: any) => isReferenceCodeSolution(doc))
-            .sort((a: any, b: any) => a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime());
+        const refs = await getReferenceCodeSolutions(domainId, this.pdoc);
         const uids = Array.from(new Set([
             this.pdoc.owner,
             this.tdoc.owner,

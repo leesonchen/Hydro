@@ -1,20 +1,21 @@
+import './model/course'; // 注册课程规则
+
 import Schema from 'schemastery';
+import { hasReferenceCodeSolution } from '../../lib/referenceCode';
 import {
     ContestModel,
     Context,
     ForbiddenError,
     ObjectId,
     PERM,
-    STATUS,
     SettingModel,
-    SolutionModel,
+    STATUS,
 } from '../../plugin-api';
+import { ClassEditHandler, ClassHandler } from './handler/class';
 import {
     CourseDetailHandler, CourseEditHandler, CourseFileDownloadHandler,
     CourseLectureHandler, CourseMainHandler, CourseManageHandler, CourseProblemReferenceHandler, CourseScoreboardHandler,
 } from './handler/course';
-import { ClassEditHandler, ClassHandler } from './handler/class';
-import './model/course'; // 注册课程规则
 
 export const name = 'course-management';
 
@@ -358,14 +359,11 @@ export async function apply(ctx: Context, config: any) {
                 || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
                 || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
             const accepted = handler.tsdoc?.detail?.[String(handler.pdoc?.docId)]?.status === STATUS.STATUS_ACCEPTED;
-            const REFERENCE_CODE_TITLE = '【参考代码】';
             // 检查是否存在参考代码
             const pid = handler.pdoc?.docId;
             let hasRef = false;
             if (pid) {
-                const refs = await SolutionModel.getMulti(handler.args.domainId, pid)
-                    .project({ docId: 1, title: 1 }).toArray();
-                hasRef = refs.some((d: any) => d.title === REFERENCE_CODE_TITLE);
+                hasRef = await hasReferenceCodeSolution(handler.args.domainId, handler.pdoc);
             }
             if (handler.tdoc.rule === 'course') {
                 handler.response.body.canViewCourseReference = !!(canEdit || accepted);
