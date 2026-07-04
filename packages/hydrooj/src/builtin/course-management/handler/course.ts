@@ -1604,6 +1604,7 @@ export class CourseProblemReferenceHandler extends Handler {
             refs,
             udict,
             canEdit: this.canEdit,
+            currentDomainId: domainId,
             canViewCourseReference: true,
             tid,
             pid,

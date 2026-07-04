@@ -359,6 +359,7 @@ class HomeworkProblemReferenceHandler extends Handler {
             refs,
             udict,
             canEdit: this.canEdit,
+            currentDomainId: domainId,
             canViewHomeworkReference: true,
             canEditHomeworkReference: this.canEdit,
             hasHomeworkReferenceCode: refs.length > 0,
