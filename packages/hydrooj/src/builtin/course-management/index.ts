@@ -355,9 +355,7 @@ export async function apply(ctx: Context, config: any) {
         // 题解可见性（与参考代码使用相同的 AC 判断逻辑）
         handler.response.body.canViewSolution = false;
         if (handler.tdoc?.rule === 'course' || handler.tdoc?.rule === 'homework') {
-            const canEdit = handler.user.own(handler.tdoc)
-                || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-                || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+            const canEdit = handler.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
             const accepted = handler.tsdoc?.detail?.[String(handler.pdoc?.docId)]?.status === STATUS.STATUS_ACCEPTED;
             // 检查是否存在参考代码
             const pid = handler.pdoc?.docId;

@@ -3,22 +3,14 @@ import type { ProblemDoc } from '../model/problem';
 import ProblemModel from '../model/problem';
 
 export const REFERENCE_CODE_TITLE = '【参考代码】';
-const REFERENCE_CODE_CONTENT_REGEX = /^\s*(?:#+\s*)?【参考代码】/;
 
 interface ReferenceCodeProblemGroup {
     domainId: string;
     pids: number[];
 }
 
-export function isReferenceCodeSolutionByContent(content = '') {
-    const firstLine = content.split(/\r?\n/).find((line) => line.trim());
-    if (!firstLine) return false;
-    const title = firstLine.trim().replace(/^#+\s*/, '');
-    return title.startsWith(REFERENCE_CODE_TITLE);
-}
-
 export function isReferenceCodeSolution(doc: any) {
-    return doc?.title === REFERENCE_CODE_TITLE || isReferenceCodeSolutionByContent(doc?.content || '');
+    return doc?.title === REFERENCE_CODE_TITLE;
 }
 
 function getProblemSource(pdoc: ProblemDoc) {
@@ -35,24 +27,7 @@ function buildReferenceCodeBaseQuery(pids: number[]) {
 function buildReferenceCodeSolutionQuery(pids: number[]) {
     return {
         ...buildReferenceCodeBaseQuery(pids),
-        $or: [
-            { title: REFERENCE_CODE_TITLE },
-            { content: REFERENCE_CODE_CONTENT_REGEX },
-        ],
-    };
-}
-
-function buildReferenceCodeTitleQuery(pids: number[]) {
-    return {
-        ...buildReferenceCodeBaseQuery(pids),
         title: REFERENCE_CODE_TITLE,
-    };
-}
-
-function buildReferenceCodeContentQuery(pids: number[]) {
-    return {
-        ...buildReferenceCodeBaseQuery(pids),
-        content: REFERENCE_CODE_CONTENT_REGEX,
     };
 }
 
@@ -84,9 +59,7 @@ export async function getReferenceCodeSolutions(domainId: string, pdoc: ProblemD
     const refs = (await Promise.all(groups.map((group) => document
         .getMulti(group.domainId, document.TYPE_PROBLEM_SOLUTION, buildReferenceCodeSolutionQuery(group.pids) as any)
         .toArray()))).flat();
-    return refs
-        .filter((doc: any) => isReferenceCodeSolution(doc))
-        .sort((a: any, b: any) => a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime());
+    return refs.sort((a: any, b: any) => a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime());
 }
 
 export async function hasReferenceCodeSolution(domainId: string, pdoc: ProblemDoc) {
@@ -94,16 +67,7 @@ export async function hasReferenceCodeSolution(domainId: string, pdoc: ProblemDo
     for (const group of groups) {
         // eslint-disable-next-line no-await-in-loop
         const ref = await document
-            .getMulti(group.domainId, document.TYPE_PROBLEM_SOLUTION, buildReferenceCodeTitleQuery(group.pids) as any)
-            .project({ _id: 1 })
-            .limit(1)
-            .next();
-        if (ref) return true;
-    }
-    for (const group of groups) {
-        // eslint-disable-next-line no-await-in-loop
-        const ref = await document
-            .getMulti(group.domainId, document.TYPE_PROBLEM_SOLUTION, buildReferenceCodeContentQuery(group.pids) as any)
+            .getMulti(group.domainId, document.TYPE_PROBLEM_SOLUTION, buildReferenceCodeSolutionQuery(group.pids) as any)
             .project({ _id: 1 })
             .limit(1)
             .next();

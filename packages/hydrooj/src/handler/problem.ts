@@ -23,6 +23,7 @@ import {
 import {
     ProblemDoc, ProblemSearchOptions, ProblemStatusDoc, RecordDoc, User,
 } from '../interface';
+import { REFERENCE_CODE_TITLE } from '../lib/referenceCode';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
@@ -471,7 +472,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             user.getById(domainId, this.pdoc.owner),
         ]);
         const [scnt, dcnt] = await Promise.all([
-            solution.count(domainId, { parentId: this.pdoc.docId, title: { $ne: '【参考代码】' } }),
+            solution.count(domainId, { parentId: this.pdoc.docId, title: { $ne: REFERENCE_CODE_TITLE } }),
             discussion.count(domainId, { parentId: this.pdoc.docId }),
         ]);
         this.response.body = {
@@ -971,7 +972,7 @@ export class ProblemSolutionHandler extends ProblemDetailHandler {
         }
 
         let [psdocs, pcount, pscount] = await this.paginate(
-            solution.getMulti(domainId, this.pdoc.docId, { title: { $ne: '【参考代码】' } }),
+            solution.getMulti(domainId, this.pdoc.docId, { title: { $ne: REFERENCE_CODE_TITLE } }),
             page,
             'solution',
         );

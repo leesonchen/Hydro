@@ -320,7 +320,10 @@ class HomeworkProblemReferenceHandler extends Handler {
     async prepare(domainId: string, tid: ObjectId, pid: number) {
         this.tdoc = await contest.get(domainId, tid);
         if (this.tdoc.rule !== 'homework') throw new ContestNotFoundError(domainId, tid);
-        if (this.tdoc.assign?.length && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)) {
+        if (this.tdoc.assign?.length
+            && !this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK)
+            && !this.user.own(this.tdoc)
+            && !this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)) {
             const overlap = (this.tdoc.assign || []).filter((g) => this.user.group.includes(g));
             if (!overlap.length) {
                 throw new NotAssignedError('homework', this.tdoc.docId);
@@ -332,9 +335,7 @@ class HomeworkProblemReferenceHandler extends Handler {
         if (!this.tdoc.pids.includes(pid)) throw new NotAssignedError('homework', this.tdoc.docId);
 
         this.tsdoc = await contest.getStatus(domainId, tid, this.user._id);
-        this.canEdit = this.user.own(this.tdoc)
-            || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-            || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+        this.canEdit = this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
 
         const accepted = this.tsdoc?.detail?.[pid]?.status === STATUS.STATUS_ACCEPTED;
         if (!this.canEdit && !accepted) throw new ForbiddenError('通过后才可查看参考代码。');
