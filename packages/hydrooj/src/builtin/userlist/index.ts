@@ -112,6 +112,7 @@ export async function apply(ctx: Context, config: any) {
 
     // UI 注入（控制面板、用户下拉菜单）
     ctx.injectUI('ControlPanel', 'manage_users_list', { domainId: 'system' });
+    ctx.injectUI('DomainManage', 'manage_users_import', { family: 'Access Control', icon: 'user' });
     ctx.injectUI('UserDropdown', 'manage_users_list', {
         family: 'Moderate',
         icon: 'user',
