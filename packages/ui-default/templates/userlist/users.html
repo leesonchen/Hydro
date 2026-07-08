@@ -38,9 +38,6 @@
   <div class="section__header">
     <h1 class="section__title" data-heading>{{ _('Filter') }}</h1>
     <div class="section__tools">
-      {% if hasSystemWidePerm %}
-      <a class="primary rounded button" href="{{ url('manage_users_import') }}">{{ _('Import User') }}</a>
-      {% endif %}
       <button type="button" class="rounded button" name="batch_reset_password" disabled>{{ _('Bulk Reset Password') }}</button>
       <button type="button" class="rounded button" id="toggle-full-screen" style="display:none">{{ _('Full Screen') }}</button>
       <button type="button" class="rounded button" onclick="location.href=location.pathname">{{ _('Reset') }}</button>
