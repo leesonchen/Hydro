@@ -56,13 +56,13 @@ async function bulkCreateUsers(
     return errors;
 }
 
-// 系统用户导入
+// 用户导入：system 域走系统导入权限，子域走当前域编辑权限
 export class UserlistSystemUserImportHandler extends UserBaseHandler {
-    async prepare() {
-        if (hasStore) {
-            this.checkPerm(PERM.PERM_EDIT_DOMAIN);
-        } else {
+    async prepare({ domainId }: { domainId: string }) {
+        if (domainId === 'system') {
             this.checkSystemWidePerm('import');
+        } else {
+            this.checkPerm(PERM.PERM_EDIT_DOMAIN);
         }
     }
 
