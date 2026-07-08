@@ -7,7 +7,7 @@
     <div class="section__body">
       <h1>{{ tdoc['title'] }}</h1>
       <div class="contest-sidebar__status">
-      {% if tsdoc.attend %}
+      {% if tsdoc and tsdoc.attend %}
         <span class="icon icon-check"></span> {{ _('Claimed') }}
       {% else %}
         <span class="icon icon-schedule"></span> {{ _('Not Claimed') }}
@@ -25,6 +25,30 @@
     {% endif %}
     {% if not isTemplate %}
       {% set isTeacherEditor = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF) %}
+      {% if not isTeacherEditor and not (tsdoc and tsdoc.attend) and not model.contest.isDone(tdoc) %}
+        <li class="menu__item">
+      {% if handler.user.hasPerm(perm.PERM_ATTEND_HOMEWORK) and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+          <form action="{{ url('course_detail', tid=tdoc.docId) }}" method="POST">
+            <input type="hidden" name="operation" value="attend">
+            <button class="menu__link" type="submit">
+              <span class="icon icon-add"></span> {{ _('Claim Course') }}
+            </button>
+          </form>
+      {% elif not handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+          <a class="menu__link" href="javascript:showSignInDialog()">
+            <span class="icon icon-add"></span> {{ _('Login to Claim Course') }}
+          </a>
+      {% elif not handler.user._dudoc.join %}
+          <a class="menu__link" href="/domain/join?target={{ tdoc.domainId }}">
+            <span class="icon icon-add"></span> {{ _('Join Domain to Claim Course') }}
+          </a>
+      {% else %}
+          <a class="menu__link disabled" href="javascript:;">
+            <span class="icon icon-add"></span> {{ _('No Permission to Claim Course') }}
+          </a>
+      {% endif %}
+        </li>
+      {% endif %}
       {% set hasViewPerm = handler.user.hasPerm(perm.PERM_VIEW_HOMEWORK_SCOREBOARD) %}
       {% set tsAttend = tsdoc and tsdoc.attend %}
       {% set canViewScoreboard = isTeacherEditor or (tsAttend and (tdoc.publicScoreboard !== false) and hasViewPerm) %}
@@ -58,7 +82,7 @@
       <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={tid:tdoc.docId}) }}">
         <span class="icon icon-flag"></span> {{ _('All Submissions') }}
       </a></li>
-    {% elif not isTemplate and tsdoc.attend %}
+    {% elif not isTemplate and tsdoc and tsdoc.attend %}
       <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={uidOrName:handler.user._id, tid:tdoc.docId}) }}">
         <span class="icon icon-flag"></span> {{ _('My Recent Submissions') }}
       </a></li>
@@ -77,10 +101,10 @@
       <dt>{{ _('Plan') }}</dt><dd>{{ tdoc['dag']|length }}</dd>
       <dt>{{ _('Begin at') }}</dt><dd>{{ contest.render_time(tdoc.beginAt) }}</dd>
       <dt>{{ _('End at') }}</dt><dd>{{ contest.render_time(tdoc.endAt) }}</dd>
-      {% if tsdoc['startAt'] %}
+      {% if tsdoc and tsdoc['startAt'] %}
         <dt>{{ _('Join at') }}</dt><dd>{{ contest.render_time(tsdoc.startAt) }}</dd>
       {% endif %}
-      {% if tsdoc['progress'] %}
+      {% if tsdoc and tsdoc['progress'] %}
         <dt>{{ _('Progress') }}</dt><dd>{{ _('Completed') }} {{ tsdoc['progress'] }}%</dd>
         <div class="bp6-progress-bar bp6-intent-primary bp6-no-stripes">
           <div class="file-progress bp6-progress-meter" style="width: {{ tsdoc['progress']|default(0) }}%"></div>

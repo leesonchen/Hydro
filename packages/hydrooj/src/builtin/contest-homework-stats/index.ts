@@ -132,6 +132,9 @@ const buildActivityStats = (tdoc: any, tsdoc: any) => {
  * 其他赛制则显示总分并附带同样的计数，便于非 ACM 场景理解。
  */
 const buildCell = (tdoc: any, tsdoc: any): StatCell => {
+    if (tdoc.rule === 'course' && !tsdoc?.attend) {
+        return { display: '未认领' };
+    }
     const { acCount, submitNotAc, notSubmitted } = buildCounts(tdoc, tsdoc);
     if (tdoc.rule === 'acm') {
         return { display: `${acCount}/${submitNotAc}/${notSubmitted}` };

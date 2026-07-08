@@ -26,6 +26,92 @@ function normalizeTemplateIds(templateIds: any) {
         .filter(Boolean)));
 }
 
+type CompleteCondition = NonNullable<DagNode['completeCondition']>;
+
+function normalizeCondition(condition: any): CompleteCondition {
+    return condition || { type: 'all' };
+}
+
+function validateCondition(condition: any, field: string) {
+    assert(typeof condition === 'object', `${field} must be an object`);
+    assert(['all', 'problem', 'score'].includes(condition.type), `${field} type must be all, problem or score`);
+    if (condition.type === 'all') {
+        assert(!condition.value, `${field} value must not be set when type is all`);
+    } else {
+        assert(condition.value, `${field} value must be set when type is not all`);
+    }
+}
+
+function checkProblemRuleComplete(tsdoc: any, pids: number[], condition: CompleteCondition): boolean {
+    if (!tsdoc?.attend || !pids.length) return false;
+    let acceptCount = 0;
+    let totalScore = 0;
+    for (const pid of pids) {
+        const detail = tsdoc.detail?.[pid] || tsdoc.detail?.[String(pid)];
+        if (detail?.status === STATUS.STATUS_ACCEPTED) acceptCount++;
+        totalScore += detail?.score || 0;
+    }
+    if (condition.type === 'all') return acceptCount >= pids.length;
+    if (condition.type === 'problem') return acceptCount >= (condition.value || 0);
+    if (condition.type === 'score') return totalScore >= (condition.value || 0);
+    return false;
+}
+
+function getExtraStudentUids(tdoc: CourseTdoc) {
+    return (tdoc.assign || [])
+        .filter((g: string) => /^\d+$/.test(g))
+        .map((s: string) => parseInt(s, 10))
+        .filter((uid: number) => Number.isFinite(uid) && uid > 0);
+}
+
+function getAssignGroup(tdoc: CourseTdoc) {
+    return (tdoc.assign || []).find((g: string) => g !== 'teachers' && !/^\d+$/.test(g)) || '';
+}
+
+function isAssignedToCourse(tdoc: CourseTdoc, user: any) {
+    if (!tdoc.assign?.length) return true;
+    const userIdStr = user._id.toString();
+    return tdoc.assign.some((g: string) => user.group?.includes(g) || g === userIdStr);
+}
+
+async function getCourseAudience(domainId: string, tdoc: CourseTdoc) {
+    const groupName = getAssignGroup(tdoc);
+    const group = groupName ? await ClassModel.getGroupByName(domainId, groupName) : null;
+    const teacherUids = new Set<number>([
+        ...(group?.teachers || []),
+        tdoc.owner,
+        (tdoc as any).editor,
+    ].filter(Boolean));
+    const studentUids = new Set<number>([
+        ...(group?.students || []),
+        ...getExtraStudentUids(tdoc),
+    ].filter((uid) => !teacherUids.has(uid)));
+    return {
+        teacherUids: Array.from(teacherUids),
+        studentUids: Array.from(studentUids),
+        restrictToStudentRoster: !!group || getExtraStudentUids(tdoc).length > 0,
+    };
+}
+
+function canEditCourse(handler: Handler, tdoc: CourseTdoc) {
+    return handler.user.own(tdoc)
+        || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+        || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+}
+
+function canViewCourseLecture(handler: Handler, tdoc: CourseTdoc, node: DagNode, tsdoc: any) {
+    if (canEditCourse(handler, tdoc) || handler.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)) return true;
+    if (!tsdoc?.attend) return false;
+    const nodeId = node._id;
+    const lectureFlag = tsdoc.lectureAllow?.[nodeId];
+    if (lectureFlag === false || lectureFlag === 0) return false;
+    if (lectureFlag === true || lectureFlag === 1) return true;
+    if (node.lectureRule) {
+        return checkProblemRuleComplete(tsdoc, node.lectureRule.pids, node.lectureRule.condition);
+    }
+    return tsdoc.allow?.[nodeId] === true;
+}
+
 // 检查前置章节完成情况（按当前节点 completeCondition 聚合判断）
 function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc): boolean {
     if (!tsdoc) {
@@ -205,18 +291,7 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
             assert(node.pids instanceof Array);
             // 允许空题目：如果 pids 为空数组，则不强制要求有题目
 
-            if (node.completeCondition) {
-                assert(typeof node.completeCondition === 'object', 'completeCondition must be an object');
-                assert(
-                    ['all', 'problem', 'score'].includes(node.completeCondition.type),
-                    'completeCondition type must be all, problem or score',
-                );
-                if (node.completeCondition.type === 'all') {
-                    assert(!node.completeCondition.value, 'completeCondition value must not be set when type is all');
-                } else {
-                    assert(node.completeCondition.value, 'completeCondition value must be set when type is not all');
-                }
-            }
+            if (node.completeCondition) validateCondition(node.completeCondition, 'completeCondition');
 
             for (const nid of node.requireNids || []) {
                 assert(nodeIds.has(nid), `required nid ${nid} not found`);
@@ -231,6 +306,25 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
                 pids.push(pdoc.docId);
             }
 
+            let lectureRule: DagNode['lectureRule'];
+            if (node.lectureRule) {
+                assert(typeof node.lectureRule === 'object', 'lectureRule must be an object');
+                assert(node.lectureRule.pids instanceof Array, 'lectureRule pids must be an array');
+                assert(node.lectureRule.pids.length, 'lectureRule pids must not be empty');
+                const lectureRulePids: number[] = [];
+                for (const i in node.lectureRule.pids) {
+                    const pdoc = await ProblemModel.get(domainId, node.lectureRule.pids[i]);
+                    if (!pdoc) throw new ProblemNotFoundError(domainId, node.lectureRule.pids[i]);
+                    lectureRulePids.push(pdoc.docId);
+                }
+                const condition = normalizeCondition(node.lectureRule.condition);
+                validateCondition(condition, 'lectureRule condition');
+                lectureRule = {
+                    pids: Array.from(new Set(lectureRulePids)),
+                    condition,
+                };
+            }
+
             result.push({
                 _id: +node._id,
                 title: node.title,
@@ -238,7 +332,16 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
                 pids: Array.from(new Set(pids)),
                 ...(node.requireNids ? { requireNids: Array.from(new Set(node.requireNids)) } : {}),
                 completeCondition: node.completeCondition || { type: 'all' },
+                ...(lectureRule ? { lectureRule } : {}),
             });
+        }
+
+        const coursePids = new Set(result.flatMap((node) => node.pids));
+        for (const node of result) {
+            if (!node.lectureRule) continue;
+            for (const pid of node.lectureRule.pids) {
+                assert(coursePids.has(pid), `lectureRule pid ${pid} is not in course dag`);
+            }
         }
     } catch (e: any) {
         throw new ValidationError('dag', null, e instanceof ProblemNotFoundError ? e : e.message);
@@ -784,10 +887,8 @@ export class CourseDetailHandler extends Handler {
             PERM.PERM_EDIT_HOMEWORK_SELF,
             PERM.PERM_VIEW_HIDDEN_HOMEWORK,
         );
-        const userIdStr = this.user._id.toString();
-        const isInAssign = this.tdoc.assign?.some((g: string) => this.user.group?.includes(g) || g === userIdStr);
         if (!isTemplate && this.tdoc.assign?.length && !this.user.own(this.tdoc)
-            && !isInAssign
+            && !isAssignedToCourse(this.tdoc, this.user)
             && !canBypassAssign) {
             throw new NotAssignedError('course', this.tdoc.docId);
         }
@@ -803,54 +904,21 @@ export class CourseDetailHandler extends Handler {
             || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK);
         const canViewAllProblems = isTeacherEditor || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
 
-        // 如果是临时学生且尚未建状态，自动加入并复制当前开放的章节/讲义状态
-        const userIdStr = this.user._id.toString();
-        const isExtraStudent = this.tdoc.assign?.some((g: string) => g === userIdStr);
-        if (!tsdoc && isExtraStudent) {
-            const tsdocs = await ContestModel.getMultiStatus(domainId, { docId: tid }).toArray();
-            const mergedAllow: Record<number, boolean> = {};
-            const mergedLectureAllow: Record<number, boolean> = {};
-            for (const t of tsdocs) {
-                Object.entries(t.allow || {}).forEach(([k, v]) => {
-                    if (v) mergedAllow[+k] = true;
-                });
-                Object.entries(t.lectureAllow || {}).forEach(([k, v]) => {
-                    if (v) mergedLectureAllow[+k] = true;
-                });
-            }
-            await ContestModel.attend(domainId, tid, this.user._id);
-            await ContestModel.setStatus(domainId, tid, this.user._id, {
-                attend: true,
-                allow: mergedAllow,
-                lectureAllow: mergedLectureAllow,
-            });
-            tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
-        }
-
-        // 普通学生首次访问且已分配到课程时自动加入（attend）
-        const isInAssign = this.tdoc.assign?.some((g: string) => this.user.group?.includes(g) || g === userIdStr);
-        if (!tsdoc && isInAssign && !isTemplate) {
-            await ContestModel.attend(domainId, tid, this.user._id);
-            tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
-        }
-
-        // 如果用户未加入且有编辑权限，自动加入
-        if (!tsdoc && this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF)) {
-            await ContestModel.attend(domainId, tid, this.user._id);
-            tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
-        }
-
         const uids = Array.from(new Set([this.tdoc.owner, (this.tdoc as any).editor].filter(Boolean)));
         const udict = await UserModel.getListForRender(domainId, uids, ['displayName']);
 
         // 更新可访问章节
-        await updateAllowedNodes(domainId, tid, this.user._id, this.tdoc, tsdoc);
+        if (tsdoc?.attend) await updateAllowedNodes(domainId, tid, this.user._id, this.tdoc, tsdoc);
         if (tsdoc) {
             tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
         }
+        const lectureAccess: Record<number, boolean> = {};
+        for (const node of this.tdoc.dag || []) {
+            lectureAccess[node._id] = canViewCourseLecture(this, this.tdoc, node, tsdoc);
+        }
 
         this.response.template = 'course_detail.html';
-        this.response.body = { tdoc: this.tdoc, tsdoc, udict };
+        this.response.body = { tdoc: this.tdoc, tsdoc, udict, lectureAccess };
 
         // 查看学生列表（仅管理员）
         if ((checkstu || uid) && (this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF) || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK))) {
@@ -890,6 +958,24 @@ export class CourseDetailHandler extends Handler {
         }
 
         Object.assign(this.response.body, { pdict, psdict });
+    }
+
+    @param('tid', Types.ObjectId)
+    async postAttend(domainId: string, tid: ObjectId) {
+        this.checkPerm(PERM.PERM_ATTEND_HOMEWORK);
+        const isTemplate = this.tdoc.assign?.includes('teachers');
+        if (isTemplate) throw new ForbiddenError();
+        if (!isAssignedToCourse(this.tdoc, this.user)
+            && !this.user.own(this.tdoc)
+            && !this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)) {
+            throw new NotAssignedError('course', this.tdoc.docId);
+        }
+        if (ContestModel.isDone(this.tdoc)) {
+            throw new ForbiddenError((this as any).translate('This course is not live.'));
+        }
+        await ContestModel.attend(domainId, tid, this.user._id);
+        await updateAllowedNodes(domainId, tid, this.user._id, this.tdoc);
+        this.back();
     }
 }
 
@@ -1201,12 +1287,8 @@ export class CourseManageHandler extends Handler {
     async postUnrank(domainId: string, tid: ObjectId, uid: number, unrank?: boolean, clear?: boolean) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
         const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
-        const allAssign = (tdoc as CourseTdoc).assign || [];
-        const extraStudents = allAssign
-            .filter((g: string) => /^\d+$/.test(g))
-            .map((s: string) => parseInt(s, 10));
         const targets = uid === 0
-            ? Array.from(new Set([...(group?.students || []), ...extraStudents].filter(Boolean)))
+            ? Array.from(new Set([...(group?.students || []), ...getExtraStudentUids(tdoc)].filter(Boolean)))
             : [uid];
 
         if (!targets.length) {
@@ -1214,19 +1296,19 @@ export class CourseManageHandler extends Handler {
             return;
         }
 
-        // Ensure status exists for targets so scoreboard can read unrank consistently.
         const existing = await ContestModel.getMultiStatus(domainId, { docId: tid, uid: { $in: targets } }).toArray();
-        const existingUids = new Set(existing.map((t) => t.uid));
-        const toAttend = targets.filter((u) => !existingUids.has(u));
-        if (toAttend.length) {
-            await Promise.all(toAttend.map((u) => ContestModel.attend(domainId, tid, u)));
+        const attendedUids = new Set(existing.filter((t) => t.attend).map((t) => t.uid));
+        const effectiveTargets = targets.filter((u) => attendedUids.has(u));
+        if (!effectiveTargets.length) {
+            this.back();
+            return;
         }
 
         if (clear) {
             // Unset unrank so it falls back to default ranked behavior.
-            await Promise.all(targets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: null })));
+            await Promise.all(effectiveTargets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: null })));
         } else {
-            await Promise.all(targets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: !!unrank })));
+            await Promise.all(effectiveTargets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: !!unrank })));
         }
         this.back();
     }
@@ -1241,6 +1323,7 @@ export class CourseManageHandler extends Handler {
         if (group && group.students.includes(uid)) {
             if (allow) {
                 await ContestModel.attend(domainId, tid, uid);
+                await updateAllowedNodes(domainId, tid, uid, tdoc);
             } else {
                 await DocumentModel.deleteMultiStatus(domainId, DocumentModel.TYPE_CONTEST, { docId: tid, uid });
             }
@@ -1248,6 +1331,7 @@ export class CourseManageHandler extends Handler {
             // 处理临时学生（UID 已作为字符串存储在 assign 中）
             if (allow) {
                 await ContestModel.attend(domainId, tid, uid);
+                await updateAllowedNodes(domainId, tid, uid, tdoc);
             } else {
                 await DocumentModel.deleteMultiStatus(domainId, DocumentModel.TYPE_CONTEST, { docId: tid, uid });
             }
@@ -1262,7 +1346,10 @@ export class CourseManageHandler extends Handler {
 
             if (allow) {
                 const toAdd = group.students.filter((s) => !existingStatus.some((e) => e.uid === s));
-                await Promise.all(toAdd.map((s) => ContestModel.attend(domainId, tid, s)));
+                await Promise.all(toAdd.map(async (s) => {
+                    await ContestModel.attend(domainId, tid, s);
+                    await updateAllowedNodes(domainId, tid, s, tdoc);
+                }));
             } else {
                 const toRemove = group.students.filter((s) => existingStatus.some((e) => e.uid === s));
                 await DocumentModel.deleteMultiStatus(domainId, DocumentModel.TYPE_CONTEST, {
@@ -1295,17 +1382,10 @@ export class CourseManageHandler extends Handler {
         if (uid === 0) {
             // 批量操作：为所有班级学生设置权限
             const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
-            if (!group) throw new BadRequestError('没有找到班级');
-            
-            // 先确保所有学生都有课程状态（attend）
-            const existingUids = new Set(tsdocs.map((t) => t.uid));
-            const newStudents = group.students.filter((s) => !existingUids.has(s));
-            
-            // 为新学生创建状态
-            await Promise.all(newStudents.map((s) => ContestModel.attend(domainId, tid, s)));
-            
-            // 重新获取所有状态
-            const allTsdocs = await ContestModel.getMultiStatus(domainId, { docId: tid }).toArray();
+            const extraStudentUids = getExtraStudentUids(tdoc);
+            if (!group && !extraStudentUids.length) throw new BadRequestError('没有找到班级');
+            const targetUids = new Set([...(group?.students || []), ...extraStudentUids]);
+            const allTsdocs = tsdocs.filter((tsdoc) => targetUids.has(tsdoc.uid) && tsdoc.attend);
             
             // 为所有学生设置节点权限
             await Promise.all(allTsdocs.map((tsdoc) => {
@@ -1321,6 +1401,7 @@ export class CourseManageHandler extends Handler {
             }));
         } else {
             const tsdoc = tsdocs.find((t) => t.uid === uid);
+            if (!tsdoc?.attend) throw new BadRequestError('学生尚未认领课程');
             let newAllow;
             if (reset) {
                 // 重置：删除该节点的状态
@@ -1353,17 +1434,10 @@ export class CourseManageHandler extends Handler {
         if (uid === 0) {
             // 批量操作：为所有班级学生设置权限
             const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
-            if (!group) throw new BadRequestError('没有找到班级');
-            
-            // 先确保所有学生都有课程状态（attend）
-            const existingUids = new Set(tsdocs.map((t) => t.uid));
-            const newStudents = group.students.filter((s) => !existingUids.has(s));
-            
-            // 为新学生创建状态
-            await Promise.all(newStudents.map((s) => ContestModel.attend(domainId, tid, s)));
-            
-            // 重新获取所有状态
-            const allTsdocs = await ContestModel.getMultiStatus(domainId, { docId: tid }).toArray();
+            const extraStudentUids = getExtraStudentUids(tdoc);
+            if (!group && !extraStudentUids.length) throw new BadRequestError('没有找到班级');
+            const targetUids = new Set([...(group?.students || []), ...extraStudentUids]);
+            const allTsdocs = tsdocs.filter((tsdoc) => targetUids.has(tsdoc.uid) && tsdoc.attend);
             
             // 为所有学生设置讲义权限
             await Promise.all(allTsdocs.map((tsdoc) => {
@@ -1379,6 +1453,7 @@ export class CourseManageHandler extends Handler {
             }));
         } else {
             const tsdoc = tsdocs.find((t) => t.uid === uid);
+            if (!tsdoc?.attend) throw new BadRequestError('学生尚未认领课程');
             let newLectureAllow;
             if (reset) {
                 // 重置：删除该节点的状态
@@ -1408,11 +1483,8 @@ export class CourseLectureHandler extends Handler {
             PERM.PERM_EDIT_HOMEWORK_SELF,
             PERM.PERM_VIEW_HIDDEN_HOMEWORK,
         );
-        // 检查用户是否在 assign 中（assign 已包含 extraStudents）
-        const userIdStr = this.user._id.toString();
-        const isInAssign = tdoc.assign?.some((g: string) => this.user.group?.includes(g) || g === userIdStr);
         if (!isTemplate && tdoc.assign?.length && !this.user.own(tdoc)
-            && !isInAssign
+            && !isAssignedToCourse(tdoc, this.user)
             && !canBypassAssign) {
             throw new NotAssignedError('course', tdoc.docId);
         }
@@ -1424,18 +1496,22 @@ export class CourseLectureHandler extends Handler {
     @param('pjax', Types.Boolean)
     async get(domainId: string, tid: ObjectId, id: number, edit = false, pjax = false) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
-        const tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
+        let tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
+        const node = tdoc.dag.find((n) => n._id === id);
+        if (!node) throw new ValidationError('id', id, '节点不存在');
+        if (tsdoc?.attend) {
+            await updateAllowedNodes(domainId, tid, this.user._id, tdoc, tsdoc);
+            tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
+        }
 
         // 权限检查
         if (!this.user.own(tdoc)
             && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
             && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
             if (edit) throw new ForbiddenError();
-            const lectureFlag = tsdoc?.lectureAllow?.[id];
-            if (lectureFlag === false || lectureFlag === 0) throw new ForbiddenError('讲义尚未开放。');
+            if (!canViewCourseLecture(this, tdoc, node, tsdoc)) throw new ForbiddenError('讲义尚未开放。');
         }
 
-        const node = tdoc.dag.find((n) => n._id === id);
         const lectureContent = (tdoc.lecture?.[id] || '')
             .replace(/\(file:\/\//g, '(../file/')
             .replace(/="file:\/\//g, '="../file/');
@@ -1663,8 +1739,11 @@ export class CourseFileDownloadHandler extends Handler {
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
     async get(domainId: string, tid: ObjectId, filename: string, noDisposition = false) {
+        const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
         const tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
-        if (!tsdoc) throw new ForbiddenError();
+        if (!canEditCourse(this, tdoc) && !this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK) && !tsdoc?.attend) {
+            throw new ForbiddenError();
+        }
 
         this.response.addHeader('Cache-Control', 'public');
 
@@ -1717,10 +1796,13 @@ export class CourseScoreboardHandler extends Handler {
         }
 
         const pids = id ? (tdoc.dag.find((n) => n._id === id)?.pids || []) : [];
+        const audience = await getCourseAudience(domainId, tdoc);
         const config = {
             isExport: false,
             id,
             showDisplayName: this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO),
+            currentUid: this.user._id,
+            ...audience,
         };
 
         const [, rows, udict, pdict] = await getScoreboard(this, domainId, tid, config, pids);
@@ -1753,10 +1835,13 @@ export class CourseScoreboardHandler extends Handler {
         };
 
         const pids = id ? (tdoc.dag.find((n) => n._id === id)?.pids || []) : [];
+        const audience = await getCourseAudience(domainId, tdoc);
         const config = {
             isExport: true,
             id,
             showDisplayName: this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO),
+            currentUid: this.user._id,
+            ...audience,
         };
 
         const [, rows] = await getScoreboard(this, domainId, tid, config, pids);

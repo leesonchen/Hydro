@@ -126,7 +126,8 @@ function CourseManageApp() {
   const students = sortStudents(group?.students || [], udict);
   const extraStudentList = sortStudents(extraStudents || [], udict);
   const dag: any[] = tdoc?.dag || [];
-  const studentUids = group?.students || [];
+  const studentUids = Array.from(new Set([...(group?.students || []), ...(extraStudents || [])]));
+  const claimedStudentUids = studentUids.filter((uid) => !!tsdict?.[String(uid)]?.attend);
   const basePath = window.location.pathname.replace(/\/manage$/, '');
 
   const toggleNodeSelection = (nodeId: number) => {
@@ -192,10 +193,14 @@ function CourseManageApp() {
         <div className="columns">
           <div className="button-group">
             <button type="button" className="rounded primary button" onClick={() => post({ operation: 'visit', uid: 0, allow: true })}>
-              {i18n('Bulk Allow Access')}
+              批量代认领
             </button>
-            <button type="button" className="rounded button" onClick={() => post({ operation: 'visit', uid: 0, allow: false })}>
-              {i18n('Bulk Deny Access')}
+            <button
+              type="button"
+              className="rounded button"
+              onClick={() => confirmAndPost('确认取消所有班级学生的课程认领状态？', { operation: 'visit', uid: 0, allow: false })}
+            >
+              批量取消认领
             </button>
             <button
               type="button"
@@ -222,13 +227,13 @@ function CourseManageApp() {
                 <th style={{ width: 100 }}>UID</th>
                 <th>用户</th>
                 <th style={{ width: 160 }}>{i18n('Ranking Settings')}</th>
-                <th style={{ width: 200 }}>课程访问</th>
+                <th style={{ width: 200 }}>课程认领</th>
               </tr>
             </thead>
             <tbody>
               {students.map((uid) => {
                 const tsdoc = tsdict?.[uid];
-                const allowed = !!tsdoc;
+                const allowed = !!tsdoc?.attend;
                 const unrank = !!tsdoc?.unrank;
                 return (
                   <tr key={uid}>
@@ -252,9 +257,9 @@ function CourseManageApp() {
                         <button
                           type="button"
                           className="rounded button"
-                          onClick={() => post({ operation: 'visit', uid, allow: false })}
+                          onClick={() => confirmAndPost('确认取消该学生的课程认领状态？', { operation: 'visit', uid, allow: false })}
                         >
-                          {i18n('Deny Access')}
+                          取消认领
                         </button>
                       ) : (
                         <button
@@ -262,7 +267,7 @@ function CourseManageApp() {
                           className="rounded primary button"
                           onClick={() => post({ operation: 'visit', uid, allow: true })}
                         >
-                          {i18n('Allow Access')}
+                          代认领
                         </button>
                       )}
                     </td>
@@ -319,13 +324,13 @@ function CourseManageApp() {
                   <th style={{ width: 100 }}>UID</th>
                   <th>用户</th>
                   <th style={{ width: 160 }}>{i18n('Ranking Settings')}</th>
-                  <th style={{ width: 200 }}>课程访问</th>
+                  <th style={{ width: 200 }}>课程认领</th>
                 </tr>
               </thead>
               <tbody>
                 {extraStudentList.map((uid) => {
                   const tsdoc = tsdict?.[uid];
-                  const allowed = !!tsdoc;
+                  const allowed = !!tsdoc?.attend;
                   const unrank = !!tsdoc?.unrank;
                   return (
                     <tr key={uid}>
@@ -349,9 +354,9 @@ function CourseManageApp() {
                           <button
                             type="button"
                             className="rounded button"
-                            onClick={() => post({ operation: 'visit', uid, allow: false })}
+                            onClick={() => confirmAndPost('确认取消该学生的课程认领状态？', { operation: 'visit', uid, allow: false })}
                           >
-                            禁止访问
+                            取消认领
                           </button>
                         ) : (
                           <button
@@ -359,7 +364,7 @@ function CourseManageApp() {
                             className="rounded primary button"
                             onClick={() => post({ operation: 'visit', uid, allow: true })}
                           >
-                            允许访问
+                            代认领
                           </button>
                         )}
                       </td>
@@ -375,7 +380,7 @@ function CourseManageApp() {
   );
 
   const renderNodeTab = () => {
-    const canBulk = studentUids.length > 0;
+    const canBulk = claimedStudentUids.length > 0;
     
     return (
     <div>
@@ -416,11 +421,11 @@ function CourseManageApp() {
                 const nodeId = +node._id;
                 const hasLecture = !!(node?.lecture || tdoc?.lecture?.[nodeId]);
                 
-                const lectureAllowed = canBulk && studentUids.every((uid) => !!tsdict?.[String(uid)]?.lectureAllow?.[nodeId]);
-                const nodeAllowed = canBulk && studentUids
+                const lectureAllowed = canBulk && claimedStudentUids.every((uid) => !!tsdict?.[String(uid)]?.lectureAllow?.[nodeId]);
+                const nodeAllowed = canBulk && claimedStudentUids
                   .filter((uid) => !!tsdict?.[String(uid)])
                   .every((uid) => !!tsdict?.[String(uid)]?.allow?.[nodeId]);
-                const hasAllowStatus = canBulk && studentUids.some((uid) => {
+                const hasAllowStatus = canBulk && claimedStudentUids.some((uid) => {
                   const allow = tsdict?.[String(uid)]?.allow;
                   return allow && Object.prototype.hasOwnProperty.call(allow, nodeId);
                 });

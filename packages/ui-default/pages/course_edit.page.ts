@@ -208,6 +208,17 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         normalized.requireNids = Array.from(new Set((normalized.requireNids || [])
           .map((n: any) => +n)
           .filter((n: any) => Number.isFinite(n) && n > 0)));
+        if (normalized.lectureRule?.pids?.length) {
+          normalized.lectureRule = {
+            pids: Array.from(new Set((normalized.lectureRule.pids || [])
+              .map((p: any) => +p)
+              .filter((p: any) => Number.isFinite(p) && p > 0))),
+            condition: normalized.lectureRule.condition || { type: 'all' },
+          };
+          if (!normalized.lectureRule.pids.length) delete normalized.lectureRule;
+        } else {
+          delete normalized.lectureRule;
+        }
         return normalized;
       })
       .filter(Boolean) as any[];
@@ -272,6 +283,21 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
                 + '<label>讲义标题（可选）<input class="textbox dag-lecture" placeholder="（无）" /></label>'
               + '</div></div>'
               + '<div class="row"><div class="columns">'
+                + '<label>讲义解锁题目（可选，点击选择）<input class="textbox dag-lecture-rule-pids" placeholder="搜索题目 (ID/标题)" /></label>'
+              + '</div></div>'
+              + '<div class="row dag-lecture-rule-row"><div class="columns">'
+                + '<label>讲义解锁条件'
+                  + '<div class="input-group" style="display: flex; gap: 8px; align-items: center;">'
+                    + '<select class="select dag-lecture-rule-type">'
+                      + '<option value="all">全部通过</option>'
+                      + '<option value="problem">通过题目数</option>'
+                      + '<option value="score">通过总分</option>'
+                    + '</select>'
+                    + '<input class="textbox dag-lecture-rule-value" placeholder="数值" style="max-width: 140px;" />'
+                  + '</div>'
+                + '</label>'
+              + '</div></div>'
+              + '<div class="row"><div class="columns">'
                 + '<label>题目（必填，点击选择）<input class="textbox dag-problem-input" placeholder="搜索题目 (ID/标题)" /></label>'
               + '</div></div>'
               + '<div class="row"><div class="columns">'
@@ -301,6 +327,10 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         const $completeType = $section.find('.dag-complete-type');
         const $completeValue = $section.find('.dag-complete-value');
         const $lecture = $section.find('.dag-lecture');
+        const $lectureRulePids = $section.find('.dag-lecture-rule-pids');
+        const $lectureRuleRow = $section.find('.dag-lecture-rule-row');
+        const $lectureRuleType = $section.find('.dag-lecture-rule-type');
+        const $lectureRuleValue = $section.find('.dag-lecture-rule-value');
         const $moveUp = $section.find('.dag-move-up');
         const $moveDown = $section.find('.dag-move-down');
 
@@ -331,6 +361,85 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         };
         $lecture.on('blur', commitLecture);
         $lecture.on('change', commitLecture);
+
+        const updateLectureRuleVisibility = () => {
+          const hasPids = !!node.lectureRule?.pids?.length;
+          if (!hasPids) {
+            $lectureRuleRow.hide();
+            return;
+          }
+          $lectureRuleRow.show();
+          const type = String($lectureRuleType.val());
+          if (type === 'all') {
+            $lectureRuleValue.val('');
+            $lectureRuleValue.hide();
+          } else {
+            $lectureRuleValue.show();
+          }
+        };
+
+        const setLectureRulePids = (val: any) => {
+          const ids = (Array.isArray(val) ? val : String(val || '').split(','))
+            .map((v: any) => +String(v).trim())
+            .filter((v: any) => Number.isFinite(v) && v > 0);
+          const pids = Array.from(new Set(ids));
+          if (!pids.length) {
+            delete node.lectureRule;
+            updateLectureRuleVisibility();
+            return;
+          }
+          node.lectureRule = {
+            pids,
+            condition: node.lectureRule?.condition || { type: 'all' },
+          };
+          updateLectureRuleVisibility();
+        };
+
+        $lectureRulePids.val((node.lectureRule?.pids || []).join(','));
+        const lectureRuleSelect = ProblemSelectAutoComplete.getOrConstruct<ProblemSelectAutoComplete>($lectureRulePids, {
+          multi: true,
+          allowEmptyQuery: true,
+          freeSolo: false,
+        });
+        ensureAutocompleteMounted(lectureRuleSelect);
+        lectureRuleSelect?.onChange?.((val: any) => {
+          setLectureRulePids(val);
+          commit({ source: 'lecture rule pids' });
+        });
+        $lectureRulePids.on('blur', () => {
+          setLectureRulePids($lectureRulePids.val());
+          commit({ source: 'lecture rule pids' });
+        });
+        $lectureRulePids.on('change', () => {
+          setLectureRulePids($lectureRulePids.val());
+          commit({ source: 'lecture rule pids' });
+        });
+
+        const lectureRuleCondition = node.lectureRule?.condition || { type: 'all' };
+        $lectureRuleType.val(lectureRuleCondition.type || 'all');
+        $lectureRuleValue.val(lectureRuleCondition.value ?? '');
+        updateLectureRuleVisibility();
+        $lectureRuleType.on('change', () => {
+          if (!node.lectureRule?.pids?.length) return;
+          const type = String($lectureRuleType.val());
+          updateLectureRuleVisibility();
+          node.lectureRule.condition = { type } as any;
+          if (type !== 'all') {
+            const val = Number($lectureRuleValue.val());
+            if (Number.isFinite(val)) node.lectureRule.condition.value = val;
+          }
+          commit({ source: 'lecture rule type' });
+        });
+        const commitLectureRuleValue = () => {
+          if (!node.lectureRule?.pids?.length) return;
+          const type = String($lectureRuleType.val());
+          const val = Number($lectureRuleValue.val());
+          node.lectureRule.condition = { type } as any;
+          if (type !== 'all' && Number.isFinite(val)) node.lectureRule.condition.value = val;
+          commit({ source: 'lecture rule value' });
+        };
+        $lectureRuleValue.on('blur', commitLectureRuleValue);
+        $lectureRuleValue.on('change', commitLectureRuleValue);
 
         const updateCompleteVisibility = () => {
           const hasDeps = (node.requireNids || []).length > 0;
