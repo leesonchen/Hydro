@@ -4,7 +4,7 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 {% set isTemplate = tdoc.assign and ('teachers' in tdoc.assign) %}
-{% set isTeacherEditor = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+{% set isTeacherEditor = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF) %}
 <div class="row" data-sticky-parent>
   <div class="medium-9 columns">
     <div class="section">
@@ -16,14 +16,13 @@
       </div>
     </div>
     <div class="section">
-      {% if not isTemplate and not tsdoc %}
+      {% if not isTemplate and not isTeacherEditor and not (tsdoc and tsdoc.attend) %}
       <div class="section__body">
         <blockquote class="typo note">
-          <p>请联系教师开放此课程。</p>
+          <p>{{ _('Please claim the course to see the lessons.') }}</p>
         </blockquote>
       </div>
-      {% endif %}
-      {% if not isTemplate and not model.contest.isOngoing(tdoc, tsdoc) and not isTeacherEditor %}
+      {% elif not isTemplate and not model.contest.isOngoing(tdoc, tsdoc) and not isTeacherEditor %}
       <div class="section__body">
         <blockquote class="typo note">
           {% if model.contest.isNotStarted(tdoc) %}
@@ -35,11 +34,11 @@
       </div>
       {% else %}
       {%- for node in tdoc['dag'] -%}
-        {% set _canView = pdict and (isTeacherEditor or (not isTemplate and (tsdoc.allow[node['_id']] or tsdoc.lectureAllow[node['_id']]))) %}
         {% set _hasLecture = node['lecture'] %}
         {% set _hasProblems = node['pids'] and node['pids']|length > 0 %}
-        {% set _canViewProblems = isTeacherEditor or (not isTemplate and tsdoc.allow[node['_id']]) %}
-        {% set _shouldShow = _canView and (_hasLecture or (_hasProblems and _canViewProblems)) %}
+        {% set _canViewLecture = isTeacherEditor or (not isTemplate and lectureAccess and lectureAccess[node['_id']]) %}
+        {% set _canViewProblems = isTeacherEditor or (not isTemplate and tsdoc and tsdoc.allow[node['_id']]) %}
+        {% set _shouldShow = pdict and ((_hasLecture and _canViewLecture) or (_hasProblems and _canViewProblems)) %}
         {% if _shouldShow %}
         <div data-heading-extract-to="#menu-item-course_detail" class="training__section expanded">
           <div class="section__header clearfix">
@@ -74,13 +73,6 @@
             </ul>
           </div>
           <div class="training__section__detail">
-            {% if not _canView %}
-              <div class="section__body">
-                <blockquote class="typo note">
-                  <p>教师未开放本章节。</p>
-                </blockquote>
-              </div>
-            {% else %}
               {% if node['content'] %}
                 <div class="section__body typo">
                   {{ node['content']|markdown|safe }}
@@ -99,7 +91,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    {% if node['lecture'] %}
+                    {% if node['lecture'] and _canViewLecture %}
                       <tr>
                         <td class="col--status record-status--border"></td>
                         <td class="col--name col--problem-name">
@@ -110,7 +102,7 @@
                         </td>
                       </tr>
                     {% endif %}
-                    {% if isTeacherEditor or (not isTemplate and tsdoc.allow[node['_id']]) %}
+                    {% if _canViewProblems %}
                     {%- for pid in node['pids'] -%}
                       {% set pdoc=pdict[pid] %}
                       {% set psdoc=psdict[pid] %}
@@ -129,7 +121,6 @@
                   </tbody>
                 </table>
               </div>
-            {% endif %}
           </div>
         </div>
         {% endif %}

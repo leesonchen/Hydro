@@ -15,6 +15,13 @@ export interface DagNode {
         type: 'all' | 'problem' | 'score';
         value?: number;
     };
+    lectureRule?: {
+        pids: number[];
+        condition: {
+            type: 'all' | 'problem' | 'score';
+            value?: number;
+        };
+    };
     content?: string;
 }
 
@@ -178,7 +185,7 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
     async scoreboardRow(config, _, tdoc, pdict, udoc, rank, tsdoc, meta) {
         const detail = tsdoc.detail || {};
         const row: ScoreboardRow = [
-            { type: 'rank', value: rank.toString() },
+            { type: 'rank', value: meta?.rankLabel ?? rank.toString() },
             { type: 'user', value: udoc.uname, raw: tsdoc.uid },
         ];
 
@@ -192,12 +199,14 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
         row.push({ type: 'total_score', value: tsdoc.score?.[config.id] || 0 });
         row.push({ type: 'string', value: `${tsdoc.accept?.[config.id] || 0}` });
 
-        // 统计题目提交数和通过数
-        for (const j of tsdoc.journal || []) {
-            if (pdict[j.pid]) {
-                pdict[j.pid].nSubmit++;
-                if (j.status === STATUS.STATUS_ACCEPTED) {
-                    pdict[j.pid].nAccept++;
+        if (meta?.countProblemStats !== false) {
+            // 统计题目提交数和通过数
+            for (const j of tsdoc.journal || []) {
+                if (pdict[j.pid]) {
+                    pdict[j.pid].nSubmit++;
+                    if (j.status === STATUS.STATUS_ACCEPTED) {
+                        pdict[j.pid].nAccept++;
+                    }
                 }
             }
         }
@@ -270,7 +279,19 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
 
         const enablePenalty = (tdoc as CourseTdoc).enablePenalty !== false;
 
-        const tsdocs = (await cursor.toArray()).sort((a: any, b: any) => {
+        const courseConfig = config as any;
+        const teacherUids = new Set<number>(courseConfig.teacherUids || []);
+        const studentUids = new Set<number>(courseConfig.studentUids || []);
+        const restrictToStudentRoster = !!courseConfig.restrictToStudentRoster;
+        const allTsdocs = await cursor.toArray();
+        const studentTsdocs = allTsdocs.filter((doc: any) => doc?.attend
+            && !teacherUids.has(doc.uid)
+            && (!restrictToStudentRoster || studentUids.has(doc.uid)));
+        const selfTeacherTsdoc = !config.isExport && teacherUids.has(courseConfig.currentUid)
+            ? allTsdocs.find((doc: any) => doc.uid === courseConfig.currentUid)
+            : null;
+
+        const tsdocs = studentTsdocs.sort((a: any, b: any) => {
             const as = a.score?.[config.id] || 0;
             const bs = b.score?.[config.id] || 0;
             const dScore = bs - as;
@@ -293,14 +314,25 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
             if (enablePenalty && calcNaccept(a) !== calcNaccept(b)) return false;
             return calcLastSubmitTime(a) === calcLastSubmitTime(b);
         });
-        const uids = rankedDocs.map(([, doc]) => doc.uid);
+        const teacherRow = selfTeacherTsdoc ? [[0, selfTeacherTsdoc]] as [number, any][] : [];
+        const rowDocs = [...rankedDocs, ...teacherRow];
+        const uids = rowDocs.map(([, doc]) => doc.uid);
         const udict = await UserModel.getListForRender(tdoc.domainId, uids, ['displayName']);
 
         return [
             [
                 await this.scoreboardHeader(config, _, tdoc, pdict),
                 ...await Promise.all(
-                    rankedDocs.map(([rank, doc]) => this.scoreboardRow(config, _, tdoc, pdict, udict[doc.uid], rank, doc)),
+                    rowDocs.map(([rank, doc]) => this.scoreboardRow(
+                        config,
+                        _,
+                        tdoc,
+                        pdict,
+                        udict[doc.uid],
+                        rank,
+                        doc,
+                        doc === selfTeacherTsdoc ? { rankLabel: '-', countProblemStats: false } : undefined,
+                    )),
                 ),
             ],
             udict,
