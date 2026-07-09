@@ -31,10 +31,14 @@ function parseSetting(setting: any, key: string, value: any) {
 // 基类：检查权限
 export class UserBaseHandler extends Handler {
     async __prepare(args: { domainId: string }) {
+        this.checkUserListPerm(args.domainId);
+    }
+
+    checkUserListPerm(domainId: string, level: 'admin' | 'import' = 'admin') {
         if (hasYsr) {
             this.checkPerm(PERM.PERM_VIEW_HOMEWORK_HIDDEN_SCOREBOARD);
-        } else if (args.domainId === 'system') {
-            this.checkSystemWidePerm();
+        } else if (domainId === 'system') {
+            this.checkSystemWidePerm(level);
         } else {
             this.checkPerm(PERM.PERM_EDIT_DOMAIN);
         }

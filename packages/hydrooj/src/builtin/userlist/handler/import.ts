@@ -1,5 +1,5 @@
 import {
-    BadRequestError, DomainModel, Handler, MessageModel, param, PERM, PRIV,
+    BadRequestError, DomainModel, Handler, MessageModel, param, PRIV,
     Types, UserModel,
 } from '../../../plugin-api';
 import { UserBaseHandler, setHasStore } from './user';
@@ -58,18 +58,20 @@ async function bulkCreateUsers(
 
 // 用户导入：system 域走系统导入权限，子域走当前域编辑权限
 export class UserlistSystemUserImportHandler extends UserBaseHandler {
-    async prepare({ domainId }: { domainId: string }) {
-        if (domainId === 'system') {
-            this.checkSystemWidePerm('import');
-        } else {
-            this.checkPerm(PERM.PERM_EDIT_DOMAIN);
-        }
+    async __prepare({ domainId }: { domainId: string }) {
+        this.checkUserListPerm(domainId, 'import');
     }
 
     async get() {
-        this.response.body.users = [];
-        this.response.body.usersText = '';
-        this.response.body.isDraft = false;
+        const domainId = this.domain._id;
+        this.response.body = {
+            ...this.response.body,
+            users: [],
+            usersText: '',
+            isDraft: false,
+            domainId,
+            page_name: domainId === 'system' ? 'manage_users_import' : 'domain_users_import',
+        };
         this.response.template = 'userlist/manage_user_import.html';
     }
 
@@ -169,6 +171,8 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
         this.response.body.messages = messages;
         this.response.body.usersText = draft ? usersText : '';
         this.response.body.isDraft = draft;
+        this.response.body.domainId = domainId;
+        this.response.body.page_name = domainId === 'system' ? 'manage_users_import' : 'domain_users_import';
         this.response.template = 'userlist/manage_user_import.html';
     }
 }

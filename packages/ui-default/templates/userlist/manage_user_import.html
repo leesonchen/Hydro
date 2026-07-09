@@ -1,7 +1,7 @@
 {% import "components/user.html" as user %}
-{% extends "manage_base.html" %}
+{% extends "manage_base.html" if domainId === 'system' else "domain_base.html" %}
 
-{% block manage_content %}
+{% macro import_content() %}
 <div class="section">
   <div class="section__header">
     <h1 class="section__title" data-heading>{{ _('Import User') }}</h1>
@@ -90,4 +90,12 @@
   color: #388e3c;
 }
 </style>
+{% endmacro %}
+
+{% block manage_content %}
+  {{ import_content() }}
+{% endblock %}
+
+{% block domain_content %}
+  {{ import_content() }}
 {% endblock %}

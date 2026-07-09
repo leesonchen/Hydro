@@ -1361,7 +1361,7 @@ export class CourseManageHandler extends Handler {
             }).toArray();
 
             if (allow) {
-                const toAdd = group.students.filter((s) => !existingStatus.some((e) => e.uid === s));
+                const toAdd = group.students.filter((s) => !existingStatus.some((e) => e.uid === s && e.attend));
                 await Promise.all(toAdd.map(async (s) => {
                     await ContestModel.attend(domainId, tid, s);
                     await updateAllowedNodes(domainId, tid, s, tdoc);
