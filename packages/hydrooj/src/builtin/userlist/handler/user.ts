@@ -34,11 +34,11 @@ export class UserBaseHandler extends Handler {
         this.checkUserListPerm(args.domainId);
     }
 
-    checkUserListPerm(domainId: string, level: 'admin' | 'import' = 'admin') {
+    checkUserListPerm(domainId: string) {
         if (hasYsr) {
             this.checkPerm(PERM.PERM_VIEW_HOMEWORK_HIDDEN_SCOREBOARD);
         } else if (domainId === 'system') {
-            this.checkSystemWidePerm(level);
+            this.checkSystemWidePerm();
         } else {
             this.checkPerm(PERM.PERM_EDIT_DOMAIN);
         }
@@ -49,12 +49,11 @@ export class UserBaseHandler extends Handler {
         return `,${SystemModel.get('user-list.admin') || ''},`.includes(`,${this.user._id},`);
     }
 
-    checkSystemWidePerm(level = 'admin') {
+    checkSystemWidePerm() {
         if (hasYsr) {
             this.checkPerm(PERM.PERM_VIEW_HOMEWORK_HIDDEN_SCOREBOARD);
         } else {
             if (this.hasSystemPriv()) return;
-            if (level === 'import' && `,${SystemModel.get('user-list.import') || ''},`.includes(`,${this.user._id},`)) return;
             throw new PrivilegeError(PRIV.PRIV_EDIT_SYSTEM);
         }
     }

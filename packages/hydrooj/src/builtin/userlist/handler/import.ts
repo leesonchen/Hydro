@@ -56,10 +56,10 @@ async function bulkCreateUsers(
     return errors;
 }
 
-// 用户导入：system 域走系统导入权限，子域走当前域编辑权限
+// 用户导入属于系统级用户管理能力，即使从域管理入口进入也不能只依赖域管理权限。
 export class UserlistSystemUserImportHandler extends UserBaseHandler {
-    async __prepare({ domainId }: { domainId: string }) {
-        this.checkUserListPerm(domainId, 'import');
+    async __prepare() {
+        this.checkSystemWidePerm();
     }
 
     async get() {

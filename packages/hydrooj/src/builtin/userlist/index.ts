@@ -97,7 +97,6 @@ export async function apply(ctx: Context, config: any) {
         c.setting.SystemSetting(
             SettingModel.Setting('setting_system', 'user-list.defaultFields', '_id,uname,mail,displayName,school,studentId,phone,domains', 'text', 'user-list.defaultFields', '用户列表默认显示字段（逗号分隔）'),
             SettingModel.Setting('setting_system', 'user-list.admin', '', 'text', 'user-list.admin', '用户列表管理员 UID（逗号分隔）'),
-            SettingModel.Setting('setting_system', 'user-list.import', '', 'text', 'user-list.import', '用户导入权限 UID（逗号分隔）'),
         );
         c.setting.AccountSetting(
             SettingModel.Setting('setting_info', 'parentDomain', '', 'text', 'parentDomain', '所属域', SettingModel.FLAG_HIDDEN),
@@ -112,13 +111,14 @@ export async function apply(ctx: Context, config: any) {
 
     // UI 注入（控制面板、用户下拉菜单）
     ctx.injectUI('ControlPanel', 'manage_users_list', { domainId: 'system' });
-    ctx.injectUI('DomainManage', 'manage_users_import', { family: 'Access Control', icon: 'user' });
+    const canManageUserList = (h) => h.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)
+        || `,${SystemModel.get('user-list.admin') || ''},`.includes(`,${h.user._id},`);
+    ctx.injectUI('DomainManage', 'manage_users_import', { family: 'Access Control', icon: 'user' }, canManageUserList);
     ctx.injectUI('UserDropdown', 'manage_users_list', {
         family: 'Moderate',
         icon: 'user',
         domainId: 'system',
-    }, (h) => h.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)
-        || `,${SystemModel.get('user-list.admin') || ''},`.includes(`,${h.user._id},`));
+    }, canManageUserList);
 
     // 检测 store 插件并启用相关功能
     ctx.inject(['store'], (c) => {
