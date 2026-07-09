@@ -93,6 +93,26 @@ async function getCourseAudience(domainId: string, tdoc: CourseTdoc) {
     };
 }
 
+async function getCourseStudentUids(domainId: string, tdoc: CourseTdoc) {
+    const groupName = getAssignGroup(tdoc);
+    const group = groupName ? await ClassModel.getGroupByName(domainId, groupName) : null;
+    return Array.from(new Set([...(group?.students || []), ...getExtraStudentUids(tdoc)].filter(Boolean)));
+}
+
+function getStatusMap(tsdocs: any[]) {
+    return new Map<number, any>(tsdocs.map((tsdoc) => [tsdoc.uid, tsdoc]));
+}
+
+function getNodeAccessPatch(tsdoc: any, field: 'allow' | 'lectureAllow', node: number, allow?: boolean, reset?: boolean) {
+    const current = tsdoc?.[field] || {};
+    if (reset) {
+        if (!Object.prototype.hasOwnProperty.call(current, node)) return null;
+        const { [node]: _, ...rest } = current;
+        return rest;
+    }
+    return { ...current, [node]: allow };
+}
+
 function canEditCourse(handler: Handler, tdoc: CourseTdoc) {
     return handler.user.own(tdoc)
         || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
@@ -1286,29 +1306,25 @@ export class CourseManageHandler extends Handler {
     @param('clear', Types.Boolean, true)
     async postUnrank(domainId: string, tid: ObjectId, uid: number, unrank?: boolean, clear?: boolean) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
-        const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
-        const targets = uid === 0
-            ? Array.from(new Set([...(group?.students || []), ...getExtraStudentUids(tdoc)].filter(Boolean)))
-            : [uid];
+        const studentUids = await getCourseStudentUids(domainId, tdoc);
+        let targets: number[];
+        if (uid === 0) {
+            targets = studentUids;
+        } else {
+            if (!studentUids.includes(uid)) throw new BadRequestError('学生不在课程名单中');
+            targets = [uid];
+        }
 
         if (!targets.length) {
             this.back();
             return;
         }
 
-        const existing = await ContestModel.getMultiStatus(domainId, { docId: tid, uid: { $in: targets } }).toArray();
-        const attendedUids = new Set(existing.filter((t) => t.attend).map((t) => t.uid));
-        const effectiveTargets = targets.filter((u) => attendedUids.has(u));
-        if (!effectiveTargets.length) {
-            this.back();
-            return;
-        }
-
         if (clear) {
             // Unset unrank so it falls back to default ranked behavior.
-            await Promise.all(effectiveTargets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: null })));
+            await Promise.all(targets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: null })));
         } else {
-            await Promise.all(effectiveTargets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: !!unrank })));
+            await Promise.all(targets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: !!unrank })));
         }
         this.back();
     }
@@ -1381,34 +1397,24 @@ export class CourseManageHandler extends Handler {
 
         if (uid === 0) {
             // 批量操作：为所有班级学生设置权限
-            const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
-            const extraStudentUids = getExtraStudentUids(tdoc);
-            if (!group && !extraStudentUids.length) throw new BadRequestError('没有找到班级');
-            const targetUids = new Set([...(group?.students || []), ...extraStudentUids]);
-            const allTsdocs = tsdocs.filter((tsdoc) => targetUids.has(tsdoc.uid) && tsdoc.attend);
+            const targetUids = await getCourseStudentUids(domainId, tdoc);
+            if (!targetUids.length) throw new BadRequestError('没有找到班级');
+            const tsdict = getStatusMap(tsdocs);
             
             // 为所有学生设置节点权限
-            await Promise.all(allTsdocs.map((tsdoc) => {
-                let newAllow;
-                if (reset) {
-                    // 重置：删除该节点的状态
-                    const { [node]: _, ...rest } = tsdoc?.allow || {};
-                    newAllow = rest;
-                } else {
-                    newAllow = { ...tsdoc?.allow || {}, [node]: allow };
-                }
-                return ContestModel.setStatus(domainId, tid, tsdoc.uid, { allow: newAllow });
+            await Promise.all(targetUids.map((targetUid) => {
+                const newAllow = getNodeAccessPatch(tsdict.get(targetUid), 'allow', node, allow, reset);
+                if (!newAllow) return null;
+                return ContestModel.setStatus(domainId, tid, targetUid, { allow: newAllow });
             }));
         } else {
+            const targetUids = await getCourseStudentUids(domainId, tdoc);
+            if (!targetUids.includes(uid)) throw new BadRequestError('学生不在课程名单中');
             const tsdoc = tsdocs.find((t) => t.uid === uid);
-            if (!tsdoc?.attend) throw new BadRequestError('学生尚未认领课程');
-            let newAllow;
-            if (reset) {
-                // 重置：删除该节点的状态
-                const { [node]: _, ...rest } = tsdoc?.allow || {};
-                newAllow = rest;
-            } else {
-                newAllow = { ...tsdoc?.allow || {}, [node]: allow };
+            const newAllow = getNodeAccessPatch(tsdoc, 'allow', node, allow, reset);
+            if (!newAllow) {
+                this.back();
+                return;
             }
             await ContestModel.setStatus(domainId, tid, uid, { allow: newAllow });
         }
@@ -1433,34 +1439,24 @@ export class CourseManageHandler extends Handler {
 
         if (uid === 0) {
             // 批量操作：为所有班级学生设置权限
-            const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
-            const extraStudentUids = getExtraStudentUids(tdoc);
-            if (!group && !extraStudentUids.length) throw new BadRequestError('没有找到班级');
-            const targetUids = new Set([...(group?.students || []), ...extraStudentUids]);
-            const allTsdocs = tsdocs.filter((tsdoc) => targetUids.has(tsdoc.uid) && tsdoc.attend);
+            const targetUids = await getCourseStudentUids(domainId, tdoc);
+            if (!targetUids.length) throw new BadRequestError('没有找到班级');
+            const tsdict = getStatusMap(tsdocs);
             
             // 为所有学生设置讲义权限
-            await Promise.all(allTsdocs.map((tsdoc) => {
-                let newLectureAllow;
-                if (reset) {
-                    // 重置：删除该节点的状态
-                    const { [node]: _, ...rest } = tsdoc?.lectureAllow || {};
-                    newLectureAllow = rest;
-                } else {
-                    newLectureAllow = { ...tsdoc?.lectureAllow || {}, [node]: allow };
-                }
-                return ContestModel.setStatus(domainId, tid, tsdoc.uid, { lectureAllow: newLectureAllow });
+            await Promise.all(targetUids.map((targetUid) => {
+                const newLectureAllow = getNodeAccessPatch(tsdict.get(targetUid), 'lectureAllow', node, allow, reset);
+                if (!newLectureAllow) return null;
+                return ContestModel.setStatus(domainId, tid, targetUid, { lectureAllow: newLectureAllow });
             }));
         } else {
+            const targetUids = await getCourseStudentUids(domainId, tdoc);
+            if (!targetUids.includes(uid)) throw new BadRequestError('学生不在课程名单中');
             const tsdoc = tsdocs.find((t) => t.uid === uid);
-            if (!tsdoc?.attend) throw new BadRequestError('学生尚未认领课程');
-            let newLectureAllow;
-            if (reset) {
-                // 重置：删除该节点的状态
-                const { [node]: _, ...rest } = tsdoc?.lectureAllow || {};
-                newLectureAllow = rest;
-            } else {
-                newLectureAllow = { ...tsdoc?.lectureAllow || {}, [node]: allow };
+            const newLectureAllow = getNodeAccessPatch(tsdoc, 'lectureAllow', node, allow, reset);
+            if (!newLectureAllow) {
+                this.back();
+                return;
             }
             await ContestModel.setStatus(domainId, tid, uid, { lectureAllow: newLectureAllow });
         }
