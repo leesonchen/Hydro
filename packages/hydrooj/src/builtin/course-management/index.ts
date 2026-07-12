@@ -429,7 +429,10 @@ export async function apply(ctx: Context, config: any) {
         if (!tdoc || tdoc.rule !== 'course') return;
 
         // 检查是否是分配的课程（assign 已包含 extraStudents）
-        if (tdoc.assign?.length && !handler.user.own(tdoc) && !handler.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)) {
+        if (tdoc.assign?.length
+            && !handler.user.own(tdoc)
+            && !handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+            && !handler.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)) {
             const userGroups = new Set(handler.user.group || []);
             // 把用户ID转为字符串进行比较（因为 assign 中可能包含数字字符串）
             const userIdStr = handler.user._id.toString();

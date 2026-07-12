@@ -920,9 +920,15 @@ export class CourseDetailHandler extends Handler {
     async get(domainId: string, tid: ObjectId, uid = 0, checkstu = false) {
         let tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
         const isTemplate = this.tdoc.assign?.includes('teachers');
-        const isTeacherEditor = this.user.own(this.tdoc)
+        const isCourseTeacher = this.user.own(this.tdoc);
+        const isTeacherEditor = isCourseTeacher
             || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK);
         const canViewAllProblems = isTeacherEditor || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
+
+        if (!isTemplate && isCourseTeacher && !tsdoc?.attend) {
+            await ContestModel.attend(domainId, tid, this.user._id);
+            tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
+        }
 
         const uids = Array.from(new Set([this.tdoc.owner, (this.tdoc as any).editor].filter(Boolean)));
         const udict = await UserModel.getListForRender(domainId, uids, ['displayName']);
@@ -982,11 +988,14 @@ export class CourseDetailHandler extends Handler {
 
     @param('tid', Types.ObjectId)
     async postAttend(domainId: string, tid: ObjectId) {
-        this.checkPerm(PERM.PERM_ATTEND_HOMEWORK);
+        if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)) {
+            this.checkPerm(PERM.PERM_ATTEND_HOMEWORK);
+        }
         const isTemplate = this.tdoc.assign?.includes('teachers');
         if (isTemplate) throw new ForbiddenError();
         if (!isAssignedToCourse(this.tdoc, this.user)
             && !this.user.own(this.tdoc)
+            && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
             && !this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)) {
             throw new NotAssignedError('course', this.tdoc.docId);
         }

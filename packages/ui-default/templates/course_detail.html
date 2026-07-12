@@ -4,7 +4,7 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 {% set isTemplate = tdoc.assign and ('teachers' in tdoc.assign) %}
-{% set isTeacherEditor = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF) %}
+{% set isTeacherEditor = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
 <div class="row" data-sticky-parent>
   <div class="medium-9 columns">
     <div class="section">
@@ -113,7 +113,11 @@
                           <td class="col--status record-status--border"></td>
                         {% endif %}
                         <td class="col--name col--problem-name">
-                          {{ problem.render_problem_title(pdoc, tdoc=tdoc, show_tags=false) }}
+                          {% if tsdoc and tsdoc.attend %}
+                            {{ problem.render_problem_title(pdoc, tdoc=tdoc, show_tags=false) }}
+                          {% else %}
+                            {{ problem.render_problem_title(pdoc, show_tags=false) }}
+                          {% endif %}
                         </td>
                       </tr>
                     {%- endfor -%}

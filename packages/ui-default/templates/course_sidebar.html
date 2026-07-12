@@ -24,10 +24,11 @@
       </a></li>
     {% endif %}
     {% if not isTemplate %}
-      {% set isTeacherEditor = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF) %}
-      {% if not isTeacherEditor and not (tsdoc and tsdoc.attend) and not model.contest.isDone(tdoc) %}
+      {% set isCourseTeacher = handler.user.own(tdoc) %}
+      {% set isTeacherEditor = isCourseTeacher or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+      {% if not isCourseTeacher and not (tsdoc and tsdoc.attend) and not model.contest.isDone(tdoc) %}
         <li class="menu__item">
-      {% if handler.user.hasPerm(perm.PERM_ATTEND_HOMEWORK) and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+      {% if (handler.user.hasPerm(perm.PERM_ATTEND_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK)) and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
           <form action="{{ url('course_detail', tid=tdoc.docId) }}" method="POST">
             <input type="hidden" name="operation" value="attend">
             <button class="menu__link" type="submit">
