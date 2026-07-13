@@ -95,7 +95,7 @@
                     {% set isTemplateCategory = (group.key or '').startsWith('templates::') %}
                     {% set isAllTemplates = group.key == 'templates::__all' %}
                     {% set isUncategorized = group.key == 'templates::__uncategorized' %}
-                    <li class="class-tab {% if loop.first %}active{% endif %}" data-class="{{ cat.key }}-{{ loop.index0 }}" data-stats-group="{{ statsGroup }}">
+                    <li class="class-tab {% if loop.first %}active{% endif %}" data-class="{{ cat.key }}-{{ loop.index0 }}" data-group="{{ group.key }}" data-stats-group="{{ statsGroup }}">
                       <span class="class-tab-main">
                         <span class="class-name">
                           {% if isAllTemplates %}
@@ -159,7 +159,7 @@
                     </div>
                   {% endif %}
                   {% for group in cat.groups %}
-                  <div class="class-panel {% if loop.first %}active{% endif %}" data-class-panel="{{ cat.key }}-{{ loop.index0 }}">
+                  <div class="class-panel {% if loop.first %}active{% endif %}" data-class-panel="{{ cat.key }}-{{ loop.index0 }}" data-group="{{ group.key }}">
                     <ol class="section__list homework__list unified-list">
                     {%- for tdoc in group.tdocs -%}
                       <li class="section__list__item homework__item unified-item">
@@ -476,37 +476,78 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  const categoryTabs = document.querySelectorAll('.category-tab');
-  const categoryPanels = document.querySelectorAll('.category-panel');
+  const categoryTabs = Array.from(document.querySelectorAll('.category-tab'));
+  const categoryPanels = Array.from(document.querySelectorAll('.category-panel'));
+
+  function activateClass(panel, requestedGroup) {
+    const classTabs = Array.from(panel.querySelectorAll('.class-tab'));
+    const classPanels = Array.from(panel.querySelectorAll('.class-panel'));
+    const requestedTab = classTabs.find(tab => tab.getAttribute('data-group') === requestedGroup);
+    const classTab = requestedGroup
+      ? requestedTab || classTabs[0]
+      : classTabs.find(tab => tab.classList.contains('active')) || classTabs[0];
+    if (!classTab) return '';
+    const classKey = classTab.getAttribute('data-class');
+    classTabs.forEach(tab => tab.classList.toggle('active', tab === classTab));
+    classPanels.forEach(item => item.classList.toggle('active', item.getAttribute('data-class-panel') === classKey));
+    return classTab.getAttribute('data-group') || '';
+  }
+
+  function activateCategory(requestedCategory, requestedGroup) {
+    const requestedTab = categoryTabs.find(tab => tab.getAttribute('data-category') === requestedCategory);
+    const categoryTab = requestedCategory
+      ? requestedTab || categoryTabs[0]
+      : categoryTabs.find(tab => tab.classList.contains('active')) || categoryTabs[0];
+    if (!categoryTab) return null;
+    const category = categoryTab.getAttribute('data-category');
+    const panel = categoryPanels.find(item => item.getAttribute('data-panel') === category);
+    categoryTabs.forEach(tab => tab.classList.toggle('active', tab === categoryTab));
+    categoryPanels.forEach(item => item.classList.toggle('active', item === panel));
+    return { category, group: panel ? activateClass(panel, requestedGroup) : '' };
+  }
+
+  function writeNavigationState(state, method) {
+    if (!state) return;
+    const url = new URL(window.location.href);
+    if (method === 'pushState'
+      && url.searchParams.get('tab') === state.category
+      && (url.searchParams.get('group') || '') === state.group) return;
+    url.searchParams.set('tab', state.category);
+    if (state.group) url.searchParams.set('group', state.group);
+    else url.searchParams.delete('group');
+    window.history[method](null, '', `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  function restoreNavigationState(canonicalize = false) {
+    const params = new URLSearchParams(window.location.search);
+    const state = activateCategory(params.get('tab'), params.get('group'));
+    if (canonicalize) writeNavigationState(state, 'replaceState');
+    updateCourseStatisticsButton();
+  }
+
   categoryTabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const category = tab.getAttribute('data-category');
-      categoryTabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      categoryPanels.forEach(panel => {
-        if (panel.getAttribute('data-panel') === category) panel.classList.add('active');
-        else panel.classList.remove('active');
-      });
+      const panel = categoryPanels.find(item => item.getAttribute('data-panel') === category);
+      const activeClassTab = panel?.querySelector('.class-tab.active');
+      const state = activateCategory(category, activeClassTab?.getAttribute('data-group'));
+      writeNavigationState(state, 'pushState');
       updateCourseStatisticsButton();
     });
   });
-  document.querySelectorAll('.category-panel').forEach(panel => {
-    const classTabs = panel.querySelectorAll('.class-tab');
-    const classPanels = panel.querySelectorAll('.class-panel');
+  categoryPanels.forEach(panel => {
+    const classTabs = Array.from(panel.querySelectorAll('.class-tab'));
     classTabs.forEach(tab => {
       tab.addEventListener('click', () => {
-        const classKey = tab.getAttribute('data-class');
-        classTabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        classPanels.forEach(p => {
-          if (p.getAttribute('data-class-panel') === classKey) p.classList.add('active');
-          else p.classList.remove('active');
-        });
+        const category = panel.getAttribute('data-panel');
+        const state = activateCategory(category, tab.getAttribute('data-group'));
+        writeNavigationState(state, 'pushState');
         updateCourseStatisticsButton();
       });
     });
   });
-  updateCourseStatisticsButton();
+  window.addEventListener('popstate', () => restoreNavigationState(true));
+  restoreNavigationState(true);
 });
 
 (function() {
