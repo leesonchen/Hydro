@@ -394,6 +394,7 @@ export class UserEditHandler extends UserBaseHandler {
     async postResetPassword(domainId: string, uid: number, password = '123456') {
         if (!hasStore && !this.hasSystemPriv()) this.checkSystemWidePerm();
         await UserModel.setPassword(uid, password);
+        await UserModel.setById(uid, { requirePasswordChange: true });
         this.back();
     }
 
@@ -475,6 +476,7 @@ export class UserBatchOperationHandler extends Handler {
     async postResetPassword(domainId: string, uids: number[], password: string) {
         for (const uid of uids) {
             await UserModel.setPassword(uid, password);
+            await UserModel.setById(uid, { requirePasswordChange: true });
         }
         this.response.body = { ok: 1 };
     }
