@@ -672,30 +672,54 @@ export class CourseMainHandler extends Handler {
         if (tdocs.length !== ids.length) throw new BadRequestError('请选择有效的课程模板。');
         const assign = category ? ['teachers', category] : ['teachers'];
         await Promise.all(tdocs.map((tdoc) => ContestModel.edit(domainId, tdoc._id, { assign })));
-        this.response.redirect = this.url('course_main');
+    }
+
+    redirectToTemplateCategory(category: string, all?: boolean, type?: number) {
+        const query: Record<string, string | boolean | number> = {
+            tab: 'template',
+            group: category ? `templates::${category}` : TEMPLATE_UNCATEGORIZED_KEY,
+        };
+        if (all !== undefined) query.all = all;
+        if (type !== undefined) query.type = type;
+        this.response.redirect = this.url('course_main', { query });
     }
 
     @param('templateIds', Types.Any)
     @param('templateCategory', Types.String)
-    async postBatchSetTemplateCategory(domainId: string, templateIds: any, templateCategory: string) {
-        await this.updateTemplateCategories(domainId, templateIds, (templateCategory || '').trim());
+    @param('all', Types.Boolean, true)
+    @param('type', Types.Int, true)
+    async postBatchSetTemplateCategory(
+        domainId: string, templateIds: any, templateCategory: string, all?: boolean, type?: number,
+    ) {
+        const category = (templateCategory || '').trim();
+        await this.updateTemplateCategories(domainId, templateIds, category);
+        this.redirectToTemplateCategory(category, all, type);
     }
 
     @param('templateIds', Types.Any)
-    async postBatchClearTemplateCategory(domainId: string, templateIds: any) {
+    @param('all', Types.Boolean, true)
+    @param('type', Types.Int, true)
+    async postBatchClearTemplateCategory(
+        domainId: string, templateIds: any, all?: boolean, type?: number,
+    ) {
         await this.updateTemplateCategories(domainId, templateIds, '');
+        this.redirectToTemplateCategory('', all, type);
     }
 
     @param('oldCategory', Types.String)
     @param('newCategory', Types.String)
-    async postRenameTemplateCategory(domainId: string, oldCategory: string, newCategory: string) {
+    @param('all', Types.Boolean, true)
+    @param('type', Types.Int, true)
+    async postRenameTemplateCategory(
+        domainId: string, oldCategory: string, newCategory: string, all?: boolean, type?: number,
+    ) {
         this.checkPerm(PERM.PERM_EDIT_HOMEWORK);
         const trimmedOld = (oldCategory || '').trim();
         const trimmedNew = (newCategory || '').trim();
         if (!trimmedOld) throw new ValidationError('oldCategory');
         if (!trimmedNew) throw new ValidationError('newCategory');
         if (trimmedOld === trimmedNew) {
-            this.response.redirect = this.url('course_main');
+            this.redirectToTemplateCategory(trimmedOld, all, type);
             return;
         }
         const tdocs = await ContestModel.getMulti(domainId, {
@@ -705,7 +729,7 @@ export class CourseMainHandler extends Handler {
             .project({ _id: 1, assign: 1 })
             .toArray();
         if (!tdocs.length) {
-            this.response.redirect = this.url('course_main');
+            this.redirectToTemplateCategory(trimmedOld, all, type);
             return;
         }
         const conflictQuery: any = {
@@ -719,7 +743,7 @@ export class CourseMainHandler extends Handler {
         await Promise.all(tdocs.map((tdoc) => ContestModel.edit(domainId, tdoc._id, {
             assign: ['teachers', trimmedNew],
         })));
-        this.response.redirect = this.url('course_main');
+        this.redirectToTemplateCategory(trimmedNew, all, type);
     }
 }
 
