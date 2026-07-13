@@ -999,7 +999,7 @@ export class CourseDetailHandler extends Handler {
             && !this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)) {
             throw new NotAssignedError('course', this.tdoc.docId);
         }
-        if (ContestModel.isDone(this.tdoc)) {
+        if (ContestModel.isDone(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)) {
             throw new ForbiddenError((this as any).translate('This course is not live.'));
         }
         await ContestModel.attend(domainId, tid, this.user._id);
