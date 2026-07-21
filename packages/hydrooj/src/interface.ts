@@ -113,6 +113,10 @@ export interface GDoc {
     domainId: string;
     name: string;
     uids: number[];
+    archive?: boolean;
+    class?: boolean;
+    students?: number[];
+    teachers?: number[];
 }
 
 export interface UserPreferenceDoc {

@@ -117,3 +117,22 @@ user_sudo: Entering Sudo Mode
 wiki_about: About
 wiki_help: Help
 You must change your password before continuing.: You must change your password before continuing.
+Invitation Link: Invitation Link
+Group Invitation: Group Invitation
+Class Invitation: Class Invitation
+Invitation Expiration: Invitation Expiration
+Create Invitation Link: Create Invitation Link
+Regenerate Invitation Link: Regenerate Invitation Link
+Revoke Invitation Link: Revoke Invitation Link
+Join Group: Join Group
+Join Class: Join Class
+Join Group {0}: Join Group {0}
+Join Class {0}: Join Class {0}
+Users can join the group {0} with this link.: Users can join the group {0} with this link.
+Users can join the class {0} with this link.: Users can join the class {0} with this link.
+By clicking the button, you will join group {0} in domain {1}.: By clicking the button, you will join group {0} in domain {1}.
+By clicking the button, you will join class {0} in domain {1}.: By clicking the button, you will join class {0} in domain {1}.
+If you have not joined the domain yet, you will also join it with the default role.: If you have not joined the domain yet, you will also join it with the default role.
+You are already a member of this class or group. Continuing will repair your domain membership if needed.: You are already a member of this class or group. Continuing will repair your domain membership if needed.
+Successfully joined group.: Successfully joined group.
+Successfully joined class.: Successfully joined class.

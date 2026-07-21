@@ -1,0 +1,31 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="domain_join__container">
+  <div class="row columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">
+          {{ (_('Join Class {0}').format(group.name) if group.class else _('Join Group {0}').format(group.name)) }}
+        </h1>
+      </div>
+      <div class="section__body typo">
+        <p>
+          {{ (_('By clicking the button, you will join class {0} in domain {1}.').format(group.name, domainInfo.name) if group.class else _('By clicking the button, you will join group {0} in domain {1}.').format(group.name, domainInfo.name)) }}
+        </p>
+        <p>{{ _('If you have not joined the domain yet, you will also join it with the default role.') }}</p>
+        {% if alreadyMember %}
+        <blockquote class="note">{{ _('You are already a member of this class or group. Continuing will repair your domain membership if needed.') }}</blockquote>
+        {% endif %}
+      </div>
+      <div class="section__body">
+        <form method="POST">
+          <input type="hidden" name="token" value="{{ token }}">
+          <button type="submit" class="primary rounded button">
+            {{ _('Join Class') if group.class else _('Join Group') }}
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

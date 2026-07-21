@@ -16,6 +16,7 @@
         <col class="col--checkbox">
         <col class="col--group">
         <col class="col--user">
+        <col class="col--action">
       </colgroup>
       <thead>
         <tr>
@@ -26,6 +27,7 @@
           </th>
           <th class="col--group">{{ _('Group Name') }}</th>
           <th class="col--user">{{ _('Users') }}</th>
+          <th class="col--action">{{ _('Action') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -38,6 +40,7 @@
           </td>
           <td class="col--group">{{ gdoc.name }}<br><small class="supplementary group-member-count">{{ gdoc.uids.length }} {{ _('members') }}</small></td>
           <td class="col--user"><input type="text" value="{{ gdoc.uids.join(',') }}" data-gid="{{ gdoc.name }}"></input></td>
+          <td class="col--action"><a class="typo-a" href="{{ url('domain_group_invitation', {'id': gdoc._id}) }}">{{ _('Invitation Link') }}</a></td>
         </tr>
         {%- endfor -%}
       </tbody>

@@ -1,0 +1,42 @@
+{% extends "domain_base.html" %}
+{% block domain_content %}
+{% if currentInvitation %}
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title">{{ _('Invitation Link') }}</h1>
+  </div>
+  <div class="section__body typo">
+    <p>
+      {{ (_('Users can join the class {0} with this link.').format(group.name) if group.class else _('Users can join the group {0} with this link.').format(group.name)) }}
+    </p>
+    <pre><code class="language-data">{{ invitationUrl }}</code></pre>
+    <blockquote class="note">
+      {{ (_('The link will be expired at {0}').format(datetimeSpan(currentInvitation.expireAt, relative=false)))|safe }}
+    </blockquote>
+    <form method="POST">
+      <input type="hidden" name="operation" value="revoke">
+      <button class="rounded button" type="submit">{{ _('Revoke Invitation Link') }}</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+<div class="section">
+  <div class="section__header">
+    <h1 class="section__title">{{ _('Class Invitation') if group.class else _('Group Invitation') }}</h1>
+  </div>
+  <div class="section__body">
+    <form method="POST">
+      <input type="hidden" name="operation" value="create">
+      {{ form.form_select({
+        options:expirations,
+        label:'Invitation Expiration',
+        name:'expire',
+        value:168
+      }) }}
+      <button class="rounded primary button" type="submit">
+        {{ _('Regenerate Invitation Link') if currentInvitation else _('Create Invitation Link') }}
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}

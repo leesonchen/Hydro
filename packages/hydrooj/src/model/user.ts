@@ -512,6 +512,27 @@ class UserModel {
         deleteUserCache(domainId);
         return collGroup.updateOne({ domainId, name }, { $set: { uids } }, { upsert: true });
     }
+
+    static async addUserToGroup(domainId: string, group: string | ObjectId, uid: number) {
+        const query = typeof group === 'string'
+            ? { domainId, name: group }
+            : { domainId, _id: group };
+        const gdoc = await collGroup.findOne(query);
+        if (!gdoc) return null;
+        if (!gdoc.class && gdoc.uids.includes(uid)) return gdoc;
+        const isTeacher = gdoc.teachers?.includes(uid);
+        const isStudent = gdoc.students?.includes(uid);
+        if (gdoc.class && gdoc.uids.includes(uid) && (isTeacher || isStudent)) return gdoc;
+        const $addToSet = gdoc.class && !isTeacher
+            ? { uids: uid, students: uid }
+            : { uids: uid };
+        deleteUserCache(domainId);
+        return await collGroup.findOneAndUpdate(
+            query,
+            { $addToSet },
+            { returnDocument: 'after' },
+        );
+    }
 }
 
 export async function apply() {

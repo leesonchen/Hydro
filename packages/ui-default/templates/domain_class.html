@@ -32,7 +32,10 @@
           <td class="col--teachers">{{ gdoc.teachers|length }}</td>
           <td class="col--students">{{ gdoc.students|length }}</td>
           <td class="col--courses">{{ gdoc.courseCount|default(0) }}</td>
-          <td class="col--action"><a class="typo-a" href="{{ url('domain_class_edit', {'id': gdoc._id}) }}">{{ _('Edit') }}</a></td>
+          <td class="col--action">
+            <a class="typo-a" href="{{ url('domain_class_edit', {'id': gdoc._id}) }}">{{ _('Edit') }}</a>
+            · <a class="typo-a" href="{{ url('domain_group_invitation', {'id': gdoc._id}) }}">{{ _('Invitation Link') }}</a>
+          </td>
         </tr>
         {%- endfor -%}
       </tbody>

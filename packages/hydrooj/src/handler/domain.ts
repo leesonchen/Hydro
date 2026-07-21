@@ -1,13 +1,15 @@
 import { load } from 'js-yaml';
 import { Dictionary } from 'lodash';
 import moment from 'moment-timezone';
+import { ObjectId } from 'mongodb';
 import Schema from 'schemastery';
 import type { Context } from '../context';
 import {
     CannotDeleteSystemDomainError, DomainJoinAlreadyMemberError, DomainJoinForbiddenError, ForbiddenError,
-    InvalidJoinInvitationCodeError, NotFoundError, OnlyOwnerCanDeleteDomainError, PermissionError, RoleAlreadyExistError, ValidationError,
+    InvalidJoinInvitationCodeError, InvalidTokenError, NotFoundError, OnlyOwnerCanDeleteDomainError, PermissionError,
+    RoleAlreadyExistError, ValidationError,
 } from '../error';
-import type { DomainDoc } from '../interface';
+import type { DomainDoc, GDoc, TokenDoc } from '../interface';
 import avatar from '../lib/avatar';
 import { PERM, PERMS_BY_FAMILY, PRIV } from '../model/builtin';
 import * as discussion from '../model/discussion';
@@ -16,11 +18,16 @@ import MessageModel from '../model/message';
 import * as oplog from '../model/oplog';
 import { DOMAIN_SETTINGS, DOMAIN_SETTINGS_BY_KEY } from '../model/setting';
 import system from '../model/system';
+import token from '../model/token';
 import user from '../model/user';
 import {
     Handler, Mutation, param, post, Query, query, requireSudo, Types,
 } from '../service/server';
 import { log2 } from '../utils';
+
+const GROUP_INVITATION_EXPIRATIONS = Object.fromEntries(
+    Object.entries(domain.JOIN_EXPIRATION_RANGE).filter(([hours]) => +hours > 0),
+);
 
 class DomainRankHandler extends Handler {
     @query('page', Types.PositiveInt, true)
@@ -316,10 +323,11 @@ class DomainJoinApplicationsHandler extends ManageHandler {
 
 class DomainUserGroupHandler extends ManageHandler {
     async get({ domainId }) {
+        const groups = await user.listGroup(domainId);
         this.response.template = 'domain_group.html';
         this.response.body = {
             domain: this.domain,
-            groups: await user.listGroup(domainId),
+            groups: groups.filter((group) => !group.class),
         };
     }
 
@@ -334,6 +342,129 @@ class DomainUserGroupHandler extends ManageHandler {
     async postUpdate(domainId: string, name: string, uids: number[]) {
         await user.updateGroup(domainId, name, uids);
         this.back();
+    }
+}
+
+class DomainGroupInvitationHandler extends Handler {
+    group!: GDoc;
+
+    @param('id', Types.ObjectId)
+    async prepare(domainId: string, id: ObjectId) {
+        this.group = await user.collGroup.findOne({ domainId, _id: id });
+        if (!this.group) throw new NotFoundError(domainId, id);
+        const canManage = this.user.hasPerm(PERM.PERM_EDIT_DOMAIN)
+            || (this.group.class && this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF));
+        if (!canManage) throw new PermissionError(PERM.PERM_EDIT_DOMAIN);
+        this.domain = await domain.get(domainId);
+    }
+
+    async get({ domainId }) {
+        const currentInvitation = await token.getMulti(token.TYPE_GROUP_INVITATION, {
+            domainId,
+            groupId: this.group._id,
+            expireAt: { $gt: new Date() },
+        }).sort({ updateAt: -1 }).limit(1).next();
+        const prefix = (this.domain.host || [])[0] || system.get('server.url');
+        const urlPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
+        this.response.body = {
+            currentInvitation,
+            domain: this.domain,
+            expirations: GROUP_INVITATION_EXPIRATIONS,
+            group: this.group,
+            invitationUrl: currentInvitation
+                ? `${urlPrefix}d/${domainId}/domain/group/join?token=${encodeURIComponent(currentInvitation._id)}`
+                : '',
+        };
+        this.response.template = 'domain_group_invitation.html';
+    }
+
+    async postRevoke({ domainId }) {
+        await token.coll.deleteMany({
+            tokenType: token.TYPE_GROUP_INVITATION,
+            domainId,
+            groupId: this.group._id,
+        });
+        this.back();
+    }
+
+    @param('expire', Types.Int)
+    async postCreate({ domainId }, expire: number) {
+        if (this.group.class && this.group.archive) throw new ValidationError('group');
+        if (!GROUP_INVITATION_EXPIRATIONS[expire]) throw new ValidationError('expire');
+        await token.coll.deleteMany({
+            tokenType: token.TYPE_GROUP_INVITATION,
+            domainId,
+            groupId: this.group._id,
+        });
+        await token.add(token.TYPE_GROUP_INVITATION, expire * 60 * 60, {
+            domainId,
+            groupId: this.group._id,
+        });
+        this.back();
+    }
+}
+
+class DomainGroupJoinHandler extends Handler {
+    group!: GDoc;
+    invitation!: TokenDoc;
+    targetDomain!: DomainDoc;
+    noCheckPermView = true;
+
+    @param('token', Types.Content)
+    async prepare({ }, tokenId: string) {
+        this.invitation = await token.get(tokenId, token.TYPE_GROUP_INVITATION);
+        if (!this.invitation || this.invitation.expireAt <= new Date()) {
+            throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
+        }
+        const [group, targetDomain] = await Promise.all([
+            user.collGroup.findOne({
+                _id: this.invitation.groupId,
+                domainId: this.invitation.domainId,
+            }),
+            domain.get(this.invitation.domainId),
+        ]);
+        if (!targetDomain || !group || (group.class && group.archive)) {
+            throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
+        }
+        this.group = group;
+        this.targetDomain = targetDomain;
+    }
+
+    async get() {
+        this.response.body = {
+            alreadyMember: this.group.uids.includes(this.user._id),
+            domainInfo: {
+                name: this.targetDomain.name,
+            },
+            group: this.group,
+            token: this.invitation._id,
+        };
+        this.response.template = 'domain_group_join.html';
+    }
+
+    async post() {
+        const target = this.invitation.domainId;
+        const dudoc = await domain.collUser.findOne({ domainId: target, uid: this.user._id });
+        if (dudoc?.role === 'guest') {
+            throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
+        }
+        const added = await user.addUserToGroup(target, this.group._id, this.user._id);
+        if (!added) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
+        await Promise.all([
+            domain.setUserInDomain(target, this.user._id, {
+                join: true,
+                ...(!dudoc?.role ? { role: 'default' } : {}),
+            }),
+            oplog.log(this, 'domain.group.join', {
+                domainId: target,
+                groupId: this.group._id,
+                groupName: this.group.name,
+            }),
+        ]);
+        this.response.redirect = this.url('homepage', {
+            domainId: target,
+            query: { notification: this.group.class ? 'Successfully joined class.' : 'Successfully joined group.' },
+        });
     }
 }
 
@@ -394,7 +525,9 @@ class DomainJoinHandler extends Handler {
             const groups = await user.listGroup(target);
             const entry = groups.find((i) => i.name === this.joinSettings.group);
             if (!entry) throw new ValidationError('group');
-            await user.updateGroup(target, entry.name, [...entry.uids, this.user._id]);
+            if (entry.class && entry.archive) throw new ValidationError('group');
+            const added = await user.addUserToGroup(target, entry._id, this.user._id);
+            if (!added) throw new ValidationError('group');
         }
         await Promise.all([
             domain.setUserInDomain(target, this.user._id, {
@@ -484,6 +617,8 @@ export async function apply(ctx: Context) {
     ctx.Route('domain_permission', '/domain/permission', DomainPermissionHandler);
     ctx.Route('domain_role', '/domain/role', DomainRoleHandler);
     ctx.Route('domain_group', '/domain/group', DomainUserGroupHandler);
+    ctx.Route('domain_group_invitation', '/domain/group/:id/invitation', DomainGroupInvitationHandler);
+    ctx.Route('domain_group_join', '/domain/group/join', DomainGroupJoinHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('domain_join_applications', '/domain/join_applications', DomainJoinApplicationsHandler);
     ctx.Route('domain_join', '/domain/join', DomainJoinHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('domain_search', '/domain/search', DomainSearchHandler, PRIV.PRIV_USER_PROFILE);

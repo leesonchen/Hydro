@@ -964,3 +964,22 @@ Each problem can have at most 5 pinned solutions. Please unpin an existing solut
 Your permission: 您的权限
 Your role: 您的角色
 You must change your password before continuing.: 首次登录后必须修改密码才能继续。
+Invitation Link: 邀请链接
+Group Invitation: 分组邀请
+Class Invitation: 班级邀请
+Invitation Expiration: 邀请有效期
+Create Invitation Link: 创建邀请链接
+Regenerate Invitation Link: 重新生成邀请链接
+Revoke Invitation Link: 撤销邀请链接
+Join Group: 加入分组
+Join Class: 加入班级
+Join Group {0}: 加入分组 {0}
+Join Class {0}: 加入班级 {0}
+Users can join the group {0} with this link.: 用户可通过此链接加入分组 {0}。
+Users can join the class {0} with this link.: 用户可通过此链接加入班级 {0}。
+By clicking the button, you will join group {0} in domain {1}.: 点击按钮后，你将加入域 {1} 中的分组 {0}。
+By clicking the button, you will join class {0} in domain {1}.: 点击按钮后，你将加入域 {1} 中的班级 {0}。
+If you have not joined the domain yet, you will also join it with the default role.: 如果你尚未加入该域，系统也会以默认角色将你加入该域。
+You are already a member of this class or group. Continuing will repair your domain membership if needed.: 你已在该班级或分组中；继续操作可在需要时修复你的域成员状态。
+Successfully joined group.: 已成功加入分组。
+Successfully joined class.: 已成功加入班级。
