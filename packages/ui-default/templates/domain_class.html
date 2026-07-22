@@ -34,7 +34,9 @@
           <td class="col--courses">{{ gdoc.courseCount|default(0) }}</td>
           <td class="col--action">
             <a class="typo-a" href="{{ url('domain_class_edit', {'id': gdoc._id}) }}">{{ _('Edit') }}</a>
+            {% if not gdoc.archive %}
             · <a class="typo-a" href="{{ url('domain_group_invitation', {'id': gdoc._id}) }}">{{ _('Invitation Link') }}</a>
+            {% endif %}
           </td>
         </tr>
         {%- endfor -%}

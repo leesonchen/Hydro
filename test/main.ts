@@ -66,6 +66,8 @@ describe('App', () => {
         const suffix = Date.now().toString(36);
         const groupId = new ObjectId();
         const classId = new ObjectId();
+        const teachersClassId = new ObjectId();
+        const archivedClassId = new ObjectId();
         const groupName = `invite-group-${suffix}`;
         const className = `invite-class-${suffix}`;
         const targets = [
@@ -88,17 +90,64 @@ describe('App', () => {
                 class: true,
             },
         ];
+        const blockedTargets = [
+            {
+                _id: teachersClassId,
+                domainId: 'system',
+                name: 'teachers',
+                uids: [],
+                teachers: [],
+                students: [],
+                beginAt: new Date(),
+                endAt: new Date(Date.now() + 86400000),
+                archive: false,
+                class: true,
+            },
+            {
+                _id: archivedClassId,
+                domainId: 'system',
+                name: `archived-class-${suffix}`,
+                uids: [],
+                teachers: [],
+                students: [],
+                beginAt: new Date(),
+                endAt: new Date(Date.now() + 86400000),
+                archive: true,
+                class: true,
+            },
+        ];
 
         await Promise.all([
-            UserModel.collGroup.insertMany(targets as any),
+            UserModel.collGroup.insertMany([...targets, ...blockedTargets] as any),
             DomainModel.setUserRole('system', 2, 'root', true),
         ]);
         try {
             await agent.get('/d/system/domain/group').expect(200);
-            await agent.get('/d/system/domain/class').expect(200);
+            await agent.get('/d/system/domain/class')
+                .expect(200)
+                .expect((res) => {
+                    assert(res.text.includes(archivedClassId.toHexString()));
+                    assert(!res.text.includes(`/d/system/domain/group/${archivedClassId}/invitation`));
+                });
             await agent.post(`/d/system/domain/group/${groupId}/invitation`)
                 .send({ operation: 'create', expire: 0 })
                 .expect(403);
+
+            await Promise.all(blockedTargets.map(async (target) => {
+                await agent.get(`/d/system/domain/group/${target._id}/invitation`).expect(404);
+                await agent.post(`/d/system/domain/group/${target._id}/invitation`)
+                    .send({ operation: 'create', expire: 3 })
+                    .expect(404);
+
+                const [tokenId] = await TokenModel.add(TokenModel.TYPE_GROUP_INVITATION, 3600, {
+                    domainId: 'system',
+                    groupId: target._id,
+                });
+                await agent.get(`/d/system/domain/group/join?token=${tokenId}`).expect(403);
+                await agent.post('/d/system/domain/group/join')
+                    .send({ token: tokenId })
+                    .expect(403);
+            }));
 
             const invitations = await Promise.all(targets.map(async (target) => {
                 await agent.post(`/d/system/domain/group/${target._id}/invitation`)
@@ -144,10 +193,12 @@ describe('App', () => {
             await agent.get(`/d/system/domain/group/join?token=${classInvitation._id}`).expect(403);
         } finally {
             await Promise.all([
-                UserModel.collGroup.deleteMany({ _id: { $in: [groupId, classId] } }),
+                UserModel.collGroup.deleteMany({
+                    _id: { $in: [groupId, classId, teachersClassId, archivedClassId] },
+                }),
                 TokenModel.coll.deleteMany({
                     tokenType: TokenModel.TYPE_GROUP_INVITATION,
-                    groupId: { $in: [groupId, classId] },
+                    groupId: { $in: [groupId, classId, teachersClassId, archivedClassId] },
                 }),
                 DomainModel.setUserRole('system', 2, 'default', true),
             ]);

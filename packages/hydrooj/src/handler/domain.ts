@@ -29,6 +29,10 @@ const GROUP_INVITATION_EXPIRATIONS = Object.fromEntries(
     Object.entries(domain.JOIN_EXPIRATION_RANGE).filter(([hours]) => +hours > 0),
 );
 
+function isClassInvitationBlocked(group: GDoc) {
+    return !!group.class && (group.name === 'teachers' || !!group.archive);
+}
+
 class DomainRankHandler extends Handler {
     @query('page', Types.PositiveInt, true)
     async get(domainId: string, page = 1) {
@@ -352,6 +356,7 @@ class DomainGroupInvitationHandler extends Handler {
     async prepare(domainId: string, id: ObjectId) {
         this.group = await user.collGroup.findOne({ domainId, _id: id });
         if (!this.group) throw new NotFoundError(domainId, id);
+        if (isClassInvitationBlocked(this.group)) throw new NotFoundError(domainId, id);
         const canManage = this.user.hasPerm(PERM.PERM_EDIT_DOMAIN)
             || (this.group.class && this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF));
         if (!canManage) throw new PermissionError(PERM.PERM_EDIT_DOMAIN);
@@ -389,7 +394,6 @@ class DomainGroupInvitationHandler extends Handler {
 
     @param('expire', Types.Int)
     async postCreate({ domainId }, expire: number) {
-        if (this.group.class && this.group.archive) throw new ValidationError('group');
         if (!GROUP_INVITATION_EXPIRATIONS[expire]) throw new ValidationError('expire');
         await token.coll.deleteMany({
             tokenType: token.TYPE_GROUP_INVITATION,
@@ -423,7 +427,7 @@ class DomainGroupJoinHandler extends Handler {
             }),
             domain.get(this.invitation.domainId),
         ]);
-        if (!targetDomain || !group || (group.class && group.archive)) {
+        if (!targetDomain || !group || isClassInvitationBlocked(group)) {
             throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
         }
         this.group = group;
@@ -525,7 +529,7 @@ class DomainJoinHandler extends Handler {
             const groups = await user.listGroup(target);
             const entry = groups.find((i) => i.name === this.joinSettings.group);
             if (!entry) throw new ValidationError('group');
-            if (entry.class && entry.archive) throw new ValidationError('group');
+            if (isClassInvitationBlocked(entry)) throw new ValidationError('group');
             const added = await user.addUserToGroup(target, entry._id, this.user._id);
             if (!added) throw new ValidationError('group');
         }
