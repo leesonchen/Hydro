@@ -67,6 +67,7 @@ export const ClassModel = {
         intervalDays = 1,
         id?: ObjectId,
         revokeInvitation = false,
+        expectedName?: string,
     ) {
         deleteUserCache(domainId);
         const $set: Partial<ClassGDoc> = {
@@ -82,10 +83,13 @@ export const ClassModel = {
             archive,
         };
         if (revokeInvitation) $set.invitationTokenId = null;
+        const updatingExisting = !!id && expectedName !== undefined;
         return coll.updateOne(
-            id ? { domainId, _id: id } : { domainId, name },
+            id
+                ? { domainId, _id: id, ...(updatingExisting ? { name: expectedName } : {}) }
+                : { domainId, name },
             { $set },
-            { upsert: true },
+            { upsert: !updatingExisting },
         );
     },
 };

@@ -65,11 +65,13 @@ describe('App', () => {
         const TokenModel = global.Hydro.model.token;
         const DomainModel = global.Hydro.model.domain;
         const ContestModel = global.Hydro.model.contest;
+        const { ClassModel } = require('../packages/hydrooj/src/builtin/course-management/model/class');
         const suffix = Date.now().toString(36);
         const groupId = new ObjectId();
         const classId = new ObjectId();
         const teachersClassId = new ObjectId();
         const archivedClassId = new ObjectId();
+        const deletedClassId = new ObjectId();
         const legacyGroupId = new ObjectId();
         const alternateGroupId = new ObjectId();
         const groupName = `invite-group-${suffix}`;
@@ -77,6 +79,7 @@ describe('App', () => {
         const renamedClassName = `renamed-invite-class-${suffix}`;
         const creatorManagedClassName = `creator-managed-invite-class-${suffix}`;
         const unauthorizedClassName = `unauthorized-invite-class-${suffix}`;
+        const invalidClassNames = [Date.now().toString(), `invalid,class-${suffix}`];
         const creatorRole = `invite-class-creator-${suffix}`;
         const alternateDomainId = `invite-${suffix}`;
         let collisionCourseId: ObjectId | undefined;
@@ -417,34 +420,66 @@ describe('App', () => {
                 new Date(),
                 new Date(Date.now() + 86400000),
             );
-            await ContestModel.edit('system', collisionCourseId, { assign: [className] });
+            await ContestModel.edit('system', collisionCourseId, { assign: [className, '999999'] });
             await editClass(false, groupName, 403);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
             assert.equal(editedClass?.name, className);
             assert.equal(editedClass?.invitationTokenId, invitations[1]._id);
             const courseAfterRejectedCollision = await ContestModel.get('system', collisionCourseId);
-            assert.deepStrictEqual(courseAfterRejectedCollision.assign, [className]);
+            assert.deepStrictEqual(courseAfterRejectedCollision.assign, [className, '999999']);
 
             await UserModel.collGroup.deleteOne({ _id: teachersClassId });
             await editClass(false, 'teachers', 403);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
             assert.equal(editedClass?.name, className);
             assert.equal(editedClass?.invitationTokenId, invitations[1]._id);
-            assert.deepStrictEqual((await ContestModel.get('system', collisionCourseId)).assign, [className]);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [className, '999999'],
+            );
             await agent.post('/d/system/domain/class/create')
                 .send(classUpdatePayload({ name: 'teachers' }))
                 .expect(403);
             assert.equal(await UserModel.collGroup.findOne({ domainId: 'system', name: 'teachers' }), null);
+            await Promise.all(invalidClassNames.map((invalidName) => agent
+                .post('/d/system/domain/class/create')
+                .send(classUpdatePayload({ name: invalidName }))
+                .expect(403)));
+            assert.equal(await UserModel.collGroup.countDocuments({
+                domainId: 'system', name: { $in: invalidClassNames },
+            }), 0);
 
             await editClass(false, renamedClassName);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
             assert.equal(editedClass?.name, renamedClassName);
             assert.equal(editedClass?.invitationTokenId, invitations[1]._id);
-            assert.deepStrictEqual((await ContestModel.get('system', collisionCourseId)).assign, [renamedClassName]);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [renamedClassName, '999999'],
+            );
             await editClass(false);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
             assert.equal(editedClass?.name, className);
-            assert.deepStrictEqual((await ContestModel.get('system', collisionCourseId)).assign, [className]);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [className, '999999'],
+            );
+
+            const staleRename = await ClassModel.updateGroup(
+                'system', `stale-rename-${suffix}`, [3], [4],
+                editedClass.beginAt, editedClass.endAt, false, 1,
+                classId, false, `outdated-name-${suffix}`,
+            );
+            assert.equal(staleRename.matchedCount, 0);
+            assert.equal((await UserModel.collGroup.findOne({ _id: classId }))?.name, className);
+            const deletedClassUpdate = await ClassModel.updateGroup(
+                'system', `deleted-class-${suffix}`, [3], [4],
+                new Date(), new Date(Date.now() + 86400000), false, 1,
+                deletedClassId, false, `deleted-class-${suffix}`,
+            );
+            assert.equal(deletedClassUpdate.matchedCount, 0);
+            assert.equal(deletedClassUpdate.upsertedCount, 0);
+            assert.equal(await UserModel.collGroup.findOne({ _id: deletedClassId }), null);
 
             await Promise.all([3, 24].map((expire) => agent.post(`/d/system/domain/group/${groupId}/invitation`)
                 .send({ operation: 'create', expire })
@@ -519,13 +554,14 @@ describe('App', () => {
                         {
                             _id: {
                                 $in: [
-                                    groupId, classId, teachersClassId, archivedClassId,
+                                    groupId, classId, teachersClassId, archivedClassId, deletedClassId,
                                     legacyGroupId, alternateGroupId,
                                 ],
                             },
                         },
                         { domainId: 'system', name: creatorManagedClassName },
                         { domainId: 'system', name: unauthorizedClassName },
+                        { domainId: 'system', name: { $in: invalidClassNames } },
                     ],
                 }),
                 TokenModel.coll.deleteMany({

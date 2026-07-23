@@ -356,7 +356,10 @@ export class ClassEditHandler extends Handler {
 
         if (!intervalDays || intervalDays < 1) intervalDays = 1;
 
-        if (name === 'teachers') throw new ValidationError('name');
+        name = name.trim();
+        if (!name || name === 'teachers' || name.includes(',') || /^\d+$/.test(name)) {
+            throw new ValidationError('name');
+        }
         if (await UserModel.collGroup.findOne({
             domainId,
             name,
@@ -368,11 +371,13 @@ export class ClassEditHandler extends Handler {
         let shouldUpdateCourseTimes = true;
         let existingTdocs: any[] = [];
         let revokeClassInvitation = false;
+        let expectedName: string | undefined;
         let previousName: string | undefined;
 
         if (id) {
             const gdoc = await ClassModel.getGroupById(domainId, id);
             if (!gdoc) throw new NotFoundError(domainId, id);
+            expectedName = gdoc.name;
             revokeClassInvitation = gdoc.name === 'teachers' || !!gdoc.archive || archive;
 
             // 检查时间相关字段是否发生变化
@@ -402,7 +407,7 @@ export class ClassEditHandler extends Handler {
         ]));
         const mergedStudents = Array.from(new Set([...students, ...collectGroupUids(studentGroups)]));
 
-        await ClassModel.updateGroup(
+        const groupUpdate = await ClassModel.updateGroup(
             domainId,
             name,
             mergedTeachers,
@@ -413,14 +418,20 @@ export class ClassEditHandler extends Handler {
             intervalDays,
             id || new ObjectId(),
             revokeClassInvitation,
+            expectedName,
         );
+        if (id && !groupUpdate.matchedCount) {
+            throw new BadRequestError('Class has been modified. Please refresh and try again.');
+        }
 
         if (previousName) {
             const renamedTdocs = await ContestModel.getMulti(domainId, {
                 rule: 'course',
                 assign: { $in: [previousName] },
             }).toArray();
-            await Promise.all(renamedTdocs.map((t) => ContestModel.edit(domainId, t._id, { assign: [name] })));
+            await Promise.all(renamedTdocs.map((t) => ContestModel.edit(domainId, t._id, {
+                assign: (t.assign || []).map((item: string) => (item === previousName ? name : item)),
+            })));
         }
 
         // 更新所有关联课程的维护者（始终更新）
