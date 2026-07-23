@@ -1,3 +1,4 @@
+import { canCreateClass, canManageClass } from '../../../model/user';
 import {
     BadRequestError, ContestModel, DomainModel, Handler, moment, NotFoundError, ObjectId, param, PERM, PermissionError,
     ProblemModel, StorageModel, Types, UserModel, ValidationError,
@@ -185,11 +186,14 @@ function copyCourseLecture(template: CourseTdoc, sourceDag: any[], targetDag: an
 // 班级列表页面
 export class ClassHandler extends Handler {
     async prepare() {
-        this.checkPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF);
+        if (!canCreateClass(this.user) && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
+            throw new PermissionError(PERM.PERM_EDIT_HOMEWORK_SELF);
+        }
     }
 
     async get({ domainId }: { domainId: string }) {
-        const groups = await ClassModel.listGroup(domainId);
+        const groups = (await ClassModel.listGroup(domainId))
+            .filter((group) => canManageClass(this.user, group));
         
         // 过滤掉 teachers 特殊班级
         const filteredGroups = groups.filter((g) => g.name !== 'teachers');
@@ -207,6 +211,7 @@ export class ClassHandler extends Handler {
         
         this.response.template = 'domain_class.html';
         this.response.body = {
+            canCreateClass: canCreateClass(this.user),
             domain: this.domain,
             groups: groupsWithCourseCount,
         };
@@ -215,10 +220,15 @@ export class ClassHandler extends Handler {
 
 // 班级编辑页面
 export class ClassEditHandler extends Handler {
-    async prepare() {
-        if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK) && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
-            throw new PermissionError();
+    @param('id', Types.ObjectId, true)
+    async prepare(domainId: string, id?: ObjectId) {
+        if (!id) {
+            if (!canCreateClass(this.user)) throw new PermissionError(PERM.PERM_CREATE_HOMEWORK);
+            return;
         }
+        const group = await ClassModel.getGroupById(domainId, id);
+        if (!group) throw new NotFoundError(domainId, id);
+        if (!canManageClass(this.user, group)) throw new PermissionError(PERM.PERM_EDIT_HOMEWORK);
     }
 
     @param('id', Types.ObjectId, true)
@@ -346,6 +356,10 @@ export class ClassEditHandler extends Handler {
 
         if (!intervalDays || intervalDays < 1) intervalDays = 1;
 
+        if (!id && await UserModel.collGroup.findOne({ domainId, name })) {
+            throw new ValidationError('name');
+        }
+
         let shouldUpdateCourseTimes = true;
         let existingTdocs: any[] = [];
         let revokeClassInvitation = false;
@@ -353,7 +367,8 @@ export class ClassEditHandler extends Handler {
         if (id) {
             const gdoc = await ClassModel.getGroupById(domainId, id);
             if (!gdoc) throw new NotFoundError(domainId, id);
-            revokeClassInvitation = !!gdoc.archive || archive;
+            revokeClassInvitation = gdoc.name === 'teachers' || name === 'teachers'
+                || !!gdoc.archive || archive;
 
             // 检查时间相关字段是否发生变化
             const oldBeginAt = moment.utc(gdoc.beginAt).tz(this.user.timeZone);
@@ -392,7 +407,7 @@ export class ClassEditHandler extends Handler {
             endAt.toDate(),
             archive,
             intervalDays,
-            id,
+            id || new ObjectId(),
             revokeClassInvitation,
         );
 

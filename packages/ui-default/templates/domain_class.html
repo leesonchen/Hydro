@@ -4,7 +4,9 @@
   <div class="section__header">
     <h1 class="section__title">{{ _('Classes Manage') }}</h1>
     <div class="section__tools">
+      {% if canCreateClass %}
       <a class="primary rounded button" name="create_group" href={{ url('domain_class_create')}}>{{ _('Create Class') }}</a>
+      {% endif %}
     </div>
   </div>
   <div class="section__body no-padding domain-group">

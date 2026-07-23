@@ -19,7 +19,7 @@ import * as oplog from '../model/oplog';
 import { DOMAIN_SETTINGS, DOMAIN_SETTINGS_BY_KEY } from '../model/setting';
 import system from '../model/system';
 import token from '../model/token';
-import user from '../model/user';
+import user, { canManageClass } from '../model/user';
 import {
     Handler, Mutation, param, post, Query, query, requireSudo, Types,
 } from '../service/server';
@@ -31,14 +31,6 @@ const GROUP_INVITATION_EXPIRATIONS = Object.fromEntries(
 
 function isClassInvitationBlocked(group: GDoc) {
     return !!group.class && (group.name === 'teachers' || !!group.archive);
-}
-
-function getLatestActiveGroupInvitation(domainId: string, groupId: ObjectId) {
-    return token.getMulti(token.TYPE_GROUP_INVITATION, {
-        domainId,
-        groupId,
-        expireAt: { $gt: new Date() },
-    }).sort({ updateAt: -1, _id: -1 }).limit(1).next();
 }
 
 class DomainRankHandler extends Handler {
@@ -365,12 +357,9 @@ class DomainGroupInvitationHandler extends Handler {
         this.group = await user.collGroup.findOne({ domainId, _id: id });
         if (!this.group) throw new NotFoundError(domainId, id);
         if (isClassInvitationBlocked(this.group)) throw new NotFoundError(domainId, id);
-        const canManage = this.user.hasPerm(PERM.PERM_EDIT_DOMAIN)
-            || (this.group.class && (
-                this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-                || (this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)
-                    && !!this.group.teachers?.includes(this.user._id))
-            ));
+        const canManage = this.group.class
+            ? canManageClass(this.user, this.group)
+            : this.user.hasPerm(PERM.PERM_EDIT_DOMAIN);
         if (!canManage) throw new PermissionError(PERM.PERM_EDIT_DOMAIN);
         this.domain = await domain.get(domainId);
     }
@@ -378,9 +367,7 @@ class DomainGroupInvitationHandler extends Handler {
     async get({ domainId }) {
         const invitationTokenId = this.group.invitationTokenId;
         let currentInvitation: TokenDoc | null = null;
-        if (invitationTokenId === undefined) {
-            currentInvitation = await getLatestActiveGroupInvitation(domainId, this.group._id);
-        } else if (invitationTokenId) {
+        if (invitationTokenId) {
             currentInvitation = await token.getMulti(token.TYPE_GROUP_INVITATION, {
                 domainId,
                 groupId: this.group._id,
@@ -411,7 +398,6 @@ class DomainGroupInvitationHandler extends Handler {
             { domainId, _id: this.group._id },
             { $set: { invitationTokenId: null } },
         );
-        await token.coll.deleteMany({ tokenType: token.TYPE_GROUP_INVITATION, domainId, groupId: this.group._id });
         this.back();
     }
 
@@ -450,36 +436,11 @@ class DomainGroupJoinHandler extends Handler {
             }),
             domain.get(this.invitation.domainId),
         ]);
-        if (!targetDomain || !group || isClassInvitationBlocked(group)) {
+        if (!targetDomain || !group || isClassInvitationBlocked(group)
+            || group.invitationTokenId !== this.invitation._id) {
             throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
         }
-        let activeGroup = group;
-        if (activeGroup.invitationTokenId === undefined) {
-            const latestInvitation = await getLatestActiveGroupInvitation(
-                this.invitation.domainId, activeGroup._id,
-            );
-            if (latestInvitation?._id !== this.invitation._id) {
-                throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
-            }
-            const migratedGroup = await user.collGroup.findOneAndUpdate(
-                {
-                    _id: activeGroup._id,
-                    domainId: this.invitation.domainId,
-                    invitationTokenId: { $exists: false },
-                },
-                { $set: { invitationTokenId: this.invitation._id } },
-                { returnDocument: 'after' },
-            );
-            activeGroup = migratedGroup || await user.collGroup.findOne({
-                _id: activeGroup._id,
-                domainId: this.invitation.domainId,
-            });
-        }
-        if (!activeGroup || isClassInvitationBlocked(activeGroup)
-            || activeGroup.invitationTokenId !== this.invitation._id) {
-            throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
-        }
-        this.group = activeGroup;
+        this.group = group;
         this.targetDomain = targetDomain;
     }
 

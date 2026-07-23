@@ -186,6 +186,19 @@ declare module '@hydrooj/framework' {
     interface UserModel extends User { }
 }
 
+export function canCreateClass(user: User) {
+    return user.hasPerm(
+        PERM.PERM_EDIT_DOMAIN,
+        PERM.PERM_CREATE_HOMEWORK,
+        PERM.PERM_EDIT_HOMEWORK,
+    );
+}
+
+export function canManageClass(user: User, group: Pick<GDoc, 'teachers'>) {
+    return user.hasPerm(PERM.PERM_EDIT_DOMAIN, PERM.PERM_EDIT_HOMEWORK)
+        || (user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF) && !!group.teachers?.includes(user._id));
+}
+
 export function handleMailLower(mail: string) {
     const [n, d] = mail.trim().toLowerCase().split('@');
     const [name] = n.split('+');

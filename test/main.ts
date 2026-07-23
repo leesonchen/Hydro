@@ -72,7 +72,33 @@ describe('App', () => {
         const alternateGroupId = new ObjectId();
         const groupName = `invite-group-${suffix}`;
         const className = `invite-class-${suffix}`;
+        const managerCreatedClassName = `manager-created-invite-class-${suffix}`;
+        const unauthorizedClassName = `unauthorized-invite-class-${suffix}`;
         const alternateDomainId = `invite-${suffix}`;
+        const classUpdatePayload = ({
+            archive = false,
+            name = className,
+            students = '4',
+            teachers = '3',
+        }: {
+            archive?: boolean;
+            name?: string;
+            students?: string;
+            teachers?: string;
+        } = {}) => ({
+            operation: 'update',
+            name,
+            teachers,
+            students,
+            teacherGroups: '',
+            studentGroups: '',
+            beginAtDate: '2026-7-23',
+            beginAtTime: '0:00',
+            EndAtDate: '2026-7-24',
+            EndAtTime: '23:59',
+            intervalDays: 1,
+            archive,
+        });
         const targets = [
             {
                 _id: groupId,
@@ -150,16 +176,42 @@ describe('App', () => {
             await agent.post(`/d/system/domain/group/${groupId}/invitation`)
                 .send({ operation: 'create', expire: 0 })
                 .expect(403);
+            await agent.post('/d/system/domain/class/create')
+                .send(classUpdatePayload({ name: managerCreatedClassName }))
+                .expect(302);
+            const managerCreatedClass = await UserModel.collGroup.findOne({
+                domainId: 'system', name: managerCreatedClassName,
+            });
+            assert(managerCreatedClass?.class);
+            await UserModel.collGroup.deleteOne({ _id: managerCreatedClass._id });
 
             await DomainModel.setUserRole('system', 2, 'default', true);
+            await agent.get('/d/system/domain/class')
+                .expect(200)
+                .expect((res) => {
+                    assert(!res.text.includes(classId.toHexString()));
+                    assert(!res.text.includes('/d/system/domain/class/create'));
+                });
             const unauthorizedClassInvitation = await agent
                 .get(`/d/system/domain/group/${classId}/invitation`);
+            await agent.post(`/d/system/domain/class/${classId}/edit`)
+                .send(classUpdatePayload({ teachers: '2' }))
+                .expect(403);
+            await agent.post('/d/system/domain/class/create')
+                .send(classUpdatePayload({ name: unauthorizedClassName, teachers: '2' }))
+                .expect(403);
+            assert.equal(await UserModel.collGroup.findOne({
+                domainId: 'system', name: unauthorizedClassName,
+            }), null);
             await UserModel.collGroup.updateOne(
                 { _id: classId },
                 { $addToSet: { teachers: 2 } },
             );
             const teacherClassInvitation = await agent
                 .get(`/d/system/domain/group/${classId}/invitation`);
+            await agent.post(`/d/system/domain/class/${classId}/edit`)
+                .send(classUpdatePayload({ teachers: '2,3' }))
+                .expect(302);
             await Promise.all([
                 UserModel.collGroup.updateOne(
                     { _id: classId },
@@ -190,12 +242,25 @@ describe('App', () => {
                     { $set: { updateAt: new Date() } },
                 ),
             ]);
-            const staleLegacyInvitation = await agent
+            const legacyOldInvitation = await agent
                 .get(`/d/system/domain/group/join?token=${legacyOldTokenId}`);
-            const activeLegacyInvitation = await agent
-                .post('/d/system/domain/group/join')
-                .send({ token: legacyLatestTokenId });
-            const migratedLegacyGroup = await UserModel.collGroup.findOne({ _id: legacyGroupId });
+            const legacyLatestInvitation = await agent
+                .get(`/d/system/domain/group/join?token=${legacyLatestTokenId}`);
+            const unmigratedLegacyGroup = await UserModel.collGroup.findOne({ _id: legacyGroupId });
+            await agent.get(`/d/system/domain/group/${legacyGroupId}/invitation`)
+                .expect(200)
+                .expect((res) => {
+                    assert(!res.text.includes(legacyOldTokenId));
+                    assert(!res.text.includes(legacyLatestTokenId));
+                });
+            await agent.post(`/d/system/domain/group/${legacyGroupId}/invitation`)
+                .send({ operation: 'create', expire: 3 })
+                .expect(302);
+            const regeneratedLegacyGroup = await UserModel.collGroup.findOne({ _id: legacyGroupId });
+            assert(regeneratedLegacyGroup?.invitationTokenId);
+            const regeneratedLegacyInvitation = await agent.get(
+                `/d/system/domain/group/join?token=${regeneratedLegacyGroup.invitationTokenId}`,
+            );
 
             const [alternateTokenId] = await TokenModel.add(
                 TokenModel.TYPE_GROUP_INVITATION, 3600, {
@@ -216,17 +281,19 @@ describe('App', () => {
             assert.deepStrictEqual({
                 unauthorizedClassInvitation: unauthorizedClassInvitation.status,
                 teacherClassInvitation: teacherClassInvitation.status,
-                staleLegacyInvitation: staleLegacyInvitation.status,
-                activeLegacyInvitation: activeLegacyInvitation.status,
-                activeLegacyPointer: migratedLegacyGroup?.invitationTokenId,
+                legacyOldInvitation: legacyOldInvitation.status,
+                legacyLatestInvitation: legacyLatestInvitation.status,
+                legacyPointerBeforeRegeneration: unmigratedLegacyGroup?.invitationTokenId,
+                regeneratedLegacyInvitation: regeneratedLegacyInvitation.status,
                 crossDomainInvitation: crossDomainInvitation.status,
                 canonicalDomainInvitation: canonicalDomainInvitation.status,
             }, {
                 unauthorizedClassInvitation: 403,
                 teacherClassInvitation: 200,
-                staleLegacyInvitation: 403,
-                activeLegacyInvitation: 302,
-                activeLegacyPointer: legacyLatestTokenId,
+                legacyOldInvitation: 403,
+                legacyLatestInvitation: 403,
+                legacyPointerBeforeRegeneration: undefined,
+                regeneratedLegacyInvitation: 200,
                 crossDomainInvitation: 403,
                 canonicalDomainInvitation: 200,
             });
@@ -282,21 +349,9 @@ describe('App', () => {
                 systemDomain.host = originalHost;
             }
 
-            const editClass = (archive: boolean) => agent.post(`/d/system/domain/class/${classId}/edit`)
-                .send({
-                    operation: 'update',
-                    name: className,
-                    teachers: '3',
-                    students: '4',
-                    teacherGroups: '',
-                    studentGroups: '',
-                    beginAtDate: '2026-7-23',
-                    beginAtTime: '0:00',
-                    EndAtDate: '2026-7-24',
-                    EndAtTime: '23:59',
-                    intervalDays: 1,
-                    archive,
-                })
+            const editClass = (archive: boolean, name = className) => agent
+                .post(`/d/system/domain/class/${classId}/edit`)
+                .send(classUpdatePayload({ archive, name }))
                 .expect(302);
 
             await editClass(false);
@@ -328,6 +383,30 @@ describe('App', () => {
             assert(regeneratedClassInvitation);
             invitations[1] = regeneratedClassInvitation;
 
+            await UserModel.collGroup.deleteOne({ _id: teachersClassId });
+            await editClass(false, 'teachers');
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert.equal(editedClass?.name, 'teachers');
+            assert.equal(editedClass?.invitationTokenId, null);
+            await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(403);
+
+            await editClass(false);
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert.equal(editedClass?.name, className);
+            assert.equal(editedClass?.invitationTokenId, null);
+            await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(403);
+
+            await agent.post(`/d/system/domain/group/${classId}/invitation`)
+                .send({ operation: 'create', expire: 3 })
+                .expect(302);
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert(editedClass?.invitationTokenId);
+            const invitationAfterRename = await TokenModel.get(
+                editedClass.invitationTokenId, TokenModel.TYPE_GROUP_INVITATION,
+            );
+            assert(invitationAfterRename);
+            invitations[1] = invitationAfterRename;
+
             await Promise.all([3, 24].map((expire) => agent.post(`/d/system/domain/group/${groupId}/invitation`)
                 .send({ operation: 'create', expire })
                 .expect(302)));
@@ -349,6 +428,36 @@ describe('App', () => {
                 .get(`/d/system/domain/group/join?token=${invitation._id}`)
                 .expect(403)));
             invitations[0] = activeGroupInvitation;
+
+            await Promise.all([
+                agent.post(`/d/system/domain/group/${groupId}/invitation`)
+                    .send({ operation: 'revoke' })
+                    .expect(302),
+                agent.post(`/d/system/domain/group/${groupId}/invitation`)
+                    .send({ operation: 'create', expire: 3 })
+                    .expect(302),
+            ]);
+            let groupAfterConcurrentRevoke = await UserModel.collGroup.findOne({ _id: groupId });
+            if (!groupAfterConcurrentRevoke?.invitationTokenId) {
+                await agent.post(`/d/system/domain/group/${groupId}/invitation`)
+                    .send({ operation: 'create', expire: 3 })
+                    .expect(302);
+                groupAfterConcurrentRevoke = await UserModel.collGroup.findOne({ _id: groupId });
+            }
+            assert(groupAfterConcurrentRevoke?.invitationTokenId);
+            const invitationAfterConcurrentRevoke = await TokenModel.get(
+                groupAfterConcurrentRevoke.invitationTokenId, TokenModel.TYPE_GROUP_INVITATION,
+            );
+            assert(invitationAfterConcurrentRevoke);
+            const invitationsAfterConcurrentRevoke = await TokenModel.getMulti(
+                TokenModel.TYPE_GROUP_INVITATION, { domainId: 'system', groupId },
+            ).toArray();
+            await Promise.all(invitationsAfterConcurrentRevoke
+                .filter((invitation) => invitation._id !== invitationAfterConcurrentRevoke._id)
+                .map((invitation) => agent
+                    .get(`/d/system/domain/group/join?token=${invitation._id}`)
+                    .expect(403)));
+            invitations[0] = invitationAfterConcurrentRevoke;
 
             await DomainModel.setUserInDomain('system', 2, { join: false, role: 'default' });
             await Promise.all(invitations.map(async (invitation) => {
@@ -376,12 +485,18 @@ describe('App', () => {
         } finally {
             await Promise.all([
                 UserModel.collGroup.deleteMany({
-                    _id: {
-                        $in: [
-                            groupId, classId, teachersClassId, archivedClassId,
-                            legacyGroupId, alternateGroupId,
-                        ],
-                    },
+                    $or: [
+                        {
+                            _id: {
+                                $in: [
+                                    groupId, classId, teachersClassId, archivedClassId,
+                                    legacyGroupId, alternateGroupId,
+                                ],
+                            },
+                        },
+                        { domainId: 'system', name: managerCreatedClassName },
+                        { domainId: 'system', name: unauthorizedClassName },
+                    ],
                 }),
                 TokenModel.coll.deleteMany({
                     tokenType: TokenModel.TYPE_GROUP_INVITATION,
