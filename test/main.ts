@@ -68,8 +68,11 @@ describe('App', () => {
         const classId = new ObjectId();
         const teachersClassId = new ObjectId();
         const archivedClassId = new ObjectId();
+        const legacyGroupId = new ObjectId();
+        const alternateGroupId = new ObjectId();
         const groupName = `invite-group-${suffix}`;
         const className = `invite-class-${suffix}`;
+        const alternateDomainId = `invite-${suffix}`;
         const targets = [
             {
                 _id: groupId,
@@ -116,9 +119,24 @@ describe('App', () => {
                 class: true,
             },
         ];
+        const legacyGroup = {
+            _id: legacyGroupId,
+            domainId: 'system',
+            name: `legacy-invite-group-${suffix}`,
+            uids: [],
+        };
+        const alternateGroup = {
+            _id: alternateGroupId,
+            domainId: alternateDomainId,
+            name: `alternate-invite-group-${suffix}`,
+            uids: [],
+        };
 
+        await DomainModel.add(alternateDomainId, 2, `Invitation Test ${suffix}`, '');
         await Promise.all([
-            UserModel.collGroup.insertMany([...targets, ...blockedTargets] as any),
+            UserModel.collGroup.insertMany([
+                ...targets, ...blockedTargets, legacyGroup, alternateGroup,
+            ] as any),
             DomainModel.setUserRole('system', 2, 'root', true),
         ]);
         try {
@@ -132,6 +150,86 @@ describe('App', () => {
             await agent.post(`/d/system/domain/group/${groupId}/invitation`)
                 .send({ operation: 'create', expire: 0 })
                 .expect(403);
+
+            await DomainModel.setUserRole('system', 2, 'default', true);
+            const unauthorizedClassInvitation = await agent
+                .get(`/d/system/domain/group/${classId}/invitation`);
+            await UserModel.collGroup.updateOne(
+                { _id: classId },
+                { $addToSet: { teachers: 2 } },
+            );
+            const teacherClassInvitation = await agent
+                .get(`/d/system/domain/group/${classId}/invitation`);
+            await Promise.all([
+                UserModel.collGroup.updateOne(
+                    { _id: classId },
+                    { $pull: { teachers: 2 } },
+                ),
+                DomainModel.setUserRole('system', 2, 'root', true),
+            ]);
+
+            const [legacyOldTokenId] = await TokenModel.add(
+                TokenModel.TYPE_GROUP_INVITATION, 3600, {
+                    domainId: 'system',
+                    groupId: legacyGroupId,
+                },
+            );
+            const [legacyLatestTokenId] = await TokenModel.add(
+                TokenModel.TYPE_GROUP_INVITATION, 3600, {
+                    domainId: 'system',
+                    groupId: legacyGroupId,
+                },
+            );
+            await Promise.all([
+                TokenModel.coll.updateOne(
+                    { _id: legacyOldTokenId },
+                    { $set: { updateAt: new Date(Date.now() - 1000) } },
+                ),
+                TokenModel.coll.updateOne(
+                    { _id: legacyLatestTokenId },
+                    { $set: { updateAt: new Date() } },
+                ),
+            ]);
+            const staleLegacyInvitation = await agent
+                .get(`/d/system/domain/group/join?token=${legacyOldTokenId}`);
+            const activeLegacyInvitation = await agent
+                .post('/d/system/domain/group/join')
+                .send({ token: legacyLatestTokenId });
+            const migratedLegacyGroup = await UserModel.collGroup.findOne({ _id: legacyGroupId });
+
+            const [alternateTokenId] = await TokenModel.add(
+                TokenModel.TYPE_GROUP_INVITATION, 3600, {
+                    domainId: alternateDomainId,
+                    groupId: alternateGroupId,
+                },
+            );
+            await UserModel.collGroup.updateOne(
+                { _id: alternateGroupId },
+                { $set: { invitationTokenId: alternateTokenId } },
+            );
+            const crossDomainInvitation = await agent
+                .post('/d/system/domain/group/join')
+                .send({ token: alternateTokenId });
+            const canonicalDomainInvitation = await agent
+                .get(`/d/${alternateDomainId}/domain/group/join?token=${alternateTokenId}`);
+
+            assert.deepStrictEqual({
+                unauthorizedClassInvitation: unauthorizedClassInvitation.status,
+                teacherClassInvitation: teacherClassInvitation.status,
+                staleLegacyInvitation: staleLegacyInvitation.status,
+                activeLegacyInvitation: activeLegacyInvitation.status,
+                activeLegacyPointer: migratedLegacyGroup?.invitationTokenId,
+                crossDomainInvitation: crossDomainInvitation.status,
+                canonicalDomainInvitation: canonicalDomainInvitation.status,
+            }, {
+                unauthorizedClassInvitation: 403,
+                teacherClassInvitation: 200,
+                staleLegacyInvitation: 403,
+                activeLegacyInvitation: 302,
+                activeLegacyPointer: legacyLatestTokenId,
+                crossDomainInvitation: 403,
+                canonicalDomainInvitation: 200,
+            });
 
             await Promise.all(blockedTargets.map(async (target) => {
                 await agent.get(`/d/system/domain/group/${target._id}/invitation`).expect(404);
@@ -278,13 +376,24 @@ describe('App', () => {
         } finally {
             await Promise.all([
                 UserModel.collGroup.deleteMany({
-                    _id: { $in: [groupId, classId, teachersClassId, archivedClassId] },
+                    _id: {
+                        $in: [
+                            groupId, classId, teachersClassId, archivedClassId,
+                            legacyGroupId, alternateGroupId,
+                        ],
+                    },
                 }),
                 TokenModel.coll.deleteMany({
                     tokenType: TokenModel.TYPE_GROUP_INVITATION,
-                    groupId: { $in: [groupId, classId, teachersClassId, archivedClassId] },
+                    groupId: {
+                        $in: [
+                            groupId, classId, teachersClassId, archivedClassId,
+                            legacyGroupId, alternateGroupId,
+                        ],
+                    },
                 }),
                 DomainModel.setUserRole('system', 2, 'default', true),
+                DomainModel.del(alternateDomainId),
             ]);
         }
     });

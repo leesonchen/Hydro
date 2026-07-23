@@ -519,12 +519,7 @@ class UserModel {
         const query: Filter<GDoc> = typeof group === 'string'
             ? { domainId, name: group }
             : { domainId, _id: group };
-        if (invitationTokenId) {
-            query.$or = [
-                { invitationTokenId },
-                { invitationTokenId: { $exists: false } },
-            ];
-        }
+        if (invitationTokenId) query.invitationTokenId = invitationTokenId;
         const gdoc = await collGroup.findOne(query);
         if (!gdoc) return null;
         if (!invitationTokenId && !gdoc.class && gdoc.uids.includes(uid)) return gdoc;
