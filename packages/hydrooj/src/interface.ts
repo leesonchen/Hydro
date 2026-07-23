@@ -115,6 +115,7 @@ export interface GDoc {
     uids: number[];
     archive?: boolean;
     class?: boolean;
+    invitationTokenId?: string | null;
     students?: number[];
     teachers?: number[];
 }

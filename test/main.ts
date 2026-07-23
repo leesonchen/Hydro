@@ -158,12 +158,99 @@ describe('App', () => {
                     groupId: target._id,
                 }).sort({ updateAt: -1 }).limit(1).next();
                 assert(invitation);
+                const invitedGroup = await UserModel.collGroup.findOne({ _id: target._id });
+                assert.equal(invitedGroup?.invitationTokenId, invitation._id);
 
                 await agent.get(`/d/system/domain/group/${target._id}/invitation`)
                     .expect(200)
                     .expect((res) => assert(res.text.includes(invitation._id)));
                 return invitation;
             }));
+
+            const systemDomain = await DomainModel.get('system');
+            assert(systemDomain);
+            const originalHost = systemDomain.host;
+            systemDomain.host = ['invite.example.test'];
+            try {
+                await agent.get(`/d/system/domain/group/${groupId}/invitation`)
+                    .expect(200)
+                    .expect((res) => {
+                        assert.match(
+                            res.text,
+                            new RegExp(`https?://invite\\.example\\.test/d/system/domain/group/join\\?token=${invitations[0]._id}`),
+                        );
+                    });
+            } finally {
+                systemDomain.host = originalHost;
+            }
+
+            const editClass = (archive: boolean) => agent.post(`/d/system/domain/class/${classId}/edit`)
+                .send({
+                    operation: 'update',
+                    name: className,
+                    teachers: '3',
+                    students: '4',
+                    teacherGroups: '',
+                    studentGroups: '',
+                    beginAtDate: '2026-7-23',
+                    beginAtTime: '0:00',
+                    EndAtDate: '2026-7-24',
+                    EndAtTime: '23:59',
+                    intervalDays: 1,
+                    archive,
+                })
+                .expect(302);
+
+            await editClass(false);
+            let editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert(editedClass);
+            assert.equal(editedClass.invitationTokenId, invitations[1]._id);
+            await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(200);
+
+            await editClass(true);
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert(editedClass?.archive);
+            assert.equal(editedClass.invitationTokenId, null);
+            await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(403);
+
+            await editClass(false);
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert.equal(editedClass?.archive, false);
+            assert.equal(editedClass?.invitationTokenId, null);
+            await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(403);
+
+            await agent.post(`/d/system/domain/group/${classId}/invitation`)
+                .send({ operation: 'create', expire: 3 })
+                .expect(302);
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert(editedClass?.invitationTokenId);
+            const regeneratedClassInvitation = await TokenModel.get(
+                editedClass.invitationTokenId, TokenModel.TYPE_GROUP_INVITATION,
+            );
+            assert(regeneratedClassInvitation);
+            invitations[1] = regeneratedClassInvitation;
+
+            await Promise.all([3, 24].map((expire) => agent.post(`/d/system/domain/group/${groupId}/invitation`)
+                .send({ operation: 'create', expire })
+                .expect(302)));
+            const concurrentlyUpdatedGroup = await UserModel.collGroup.findOne({ _id: groupId });
+            assert(concurrentlyUpdatedGroup?.invitationTokenId);
+            const groupInvitations = await TokenModel.getMulti(TokenModel.TYPE_GROUP_INVITATION, {
+                domainId: 'system',
+                groupId,
+            }).toArray();
+            const activeGroupInvitation = groupInvitations.find(
+                (invitation) => invitation._id === concurrentlyUpdatedGroup.invitationTokenId,
+            );
+            assert(activeGroupInvitation);
+            const staleGroupInvitations = groupInvitations.filter(
+                (invitation) => invitation._id !== activeGroupInvitation._id,
+            );
+            assert(staleGroupInvitations.length >= 2);
+            await Promise.all(staleGroupInvitations.map((invitation) => agent
+                .get(`/d/system/domain/group/join?token=${invitation._id}`)
+                .expect(403)));
+            invitations[0] = activeGroupInvitation;
 
             await DomainModel.setUserInDomain('system', 2, { join: false, role: 'default' });
             await Promise.all(invitations.map(async (invitation) => {
@@ -176,21 +263,18 @@ describe('App', () => {
             const group = await UserModel.collGroup.findOne({ _id: groupId });
             assert.deepStrictEqual(group?.uids, [2]);
             const courseClass = await UserModel.collGroup.findOne({ _id: classId }) as any;
-            assert.deepStrictEqual(courseClass?.uids, [2]);
-            assert.deepStrictEqual(courseClass?.students, [2]);
+            assert.deepStrictEqual(courseClass?.uids, [3, 4, 2]);
+            assert.deepStrictEqual(courseClass?.teachers, [3]);
+            assert.deepStrictEqual(courseClass?.students, [4, 2]);
             const domainUser = await DomainModel.collUser.findOne({ domainId: 'system', uid: 2 });
             assert.equal(domainUser?.join, true);
             assert.equal(domainUser?.role, 'default');
 
-            const classInvitation = await TokenModel.getMulti(TokenModel.TYPE_GROUP_INVITATION, {
-                groupId: classId,
-            }).limit(1).next();
-            assert(classInvitation);
             await TokenModel.coll.updateOne(
-                { _id: classInvitation._id },
+                { _id: invitations[1]._id },
                 { $set: { expireAt: new Date(0) } },
             );
-            await agent.get(`/d/system/domain/group/join?token=${classInvitation._id}`).expect(403);
+            await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(403);
         } finally {
             await Promise.all([
                 UserModel.collGroup.deleteMany({

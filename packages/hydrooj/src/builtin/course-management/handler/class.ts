@@ -348,10 +348,12 @@ export class ClassEditHandler extends Handler {
 
         let shouldUpdateCourseTimes = true;
         let existingTdocs: any[] = [];
+        let revokeClassInvitation = false;
 
         if (id) {
             const gdoc = await ClassModel.getGroupById(domainId, id);
             if (!gdoc) throw new NotFoundError(domainId, id);
+            revokeClassInvitation = !!gdoc.archive || archive;
 
             // 检查时间相关字段是否发生变化
             const oldBeginAt = moment.utc(gdoc.beginAt).tz(this.user.timeZone);
@@ -373,8 +375,6 @@ export class ClassEditHandler extends Handler {
 
                 await Promise.all(tdocs.map((t) => ContestModel.edit(domainId, t._id, { assign: [name] })));
             }
-
-            await ClassModel.delGroup(domainId, id);
         }
 
         const groupDocs = (await UserModel.listGroup(domainId)).filter((g: any) => !g?.class);
@@ -392,6 +392,8 @@ export class ClassEditHandler extends Handler {
             endAt.toDate(),
             archive,
             intervalDays,
+            id,
+            revokeClassInvitation,
         );
 
         // 更新所有关联课程的维护者（始终更新）

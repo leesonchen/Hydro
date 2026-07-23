@@ -364,12 +364,20 @@ class DomainGroupInvitationHandler extends Handler {
     }
 
     async get({ domainId }) {
-        const currentInvitation = await token.getMulti(token.TYPE_GROUP_INVITATION, {
-            domainId,
-            groupId: this.group._id,
-            expireAt: { $gt: new Date() },
-        }).sort({ updateAt: -1 }).limit(1).next();
-        const prefix = (this.domain.host || [])[0] || system.get('server.url');
+        const invitationTokenId = this.group.invitationTokenId;
+        const currentInvitation = invitationTokenId === null
+            ? null
+            : await token.getMulti(token.TYPE_GROUP_INVITATION, {
+                domainId,
+                groupId: this.group._id,
+                expireAt: { $gt: new Date() },
+                ...(invitationTokenId ? { _id: invitationTokenId } : {}),
+            }).sort({ updateAt: -1 }).limit(1).next();
+        const serverUrl = system.get('server.url');
+        const protocol = /^https?:\/\//i.exec(serverUrl)?.[0] || `${this.context.protocol}://`;
+        const prefix = (this.domain.host || [])[0]
+            ? `${protocol}${this.domain.host[0]}`
+            : serverUrl;
         const urlPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
         this.response.body = {
             currentInvitation,
@@ -384,26 +392,25 @@ class DomainGroupInvitationHandler extends Handler {
     }
 
     async postRevoke({ domainId }) {
-        await token.coll.deleteMany({
-            tokenType: token.TYPE_GROUP_INVITATION,
-            domainId,
-            groupId: this.group._id,
-        });
+        await user.collGroup.updateOne(
+            { domainId, _id: this.group._id },
+            { $set: { invitationTokenId: null } },
+        );
+        await token.coll.deleteMany({ tokenType: token.TYPE_GROUP_INVITATION, domainId, groupId: this.group._id });
         this.back();
     }
 
     @param('expire', Types.Int)
     async postCreate({ domainId }, expire: number) {
         if (!GROUP_INVITATION_EXPIRATIONS[expire]) throw new ValidationError('expire');
-        await token.coll.deleteMany({
-            tokenType: token.TYPE_GROUP_INVITATION,
+        const [invitationTokenId] = await token.add(token.TYPE_GROUP_INVITATION, expire * 60 * 60, {
             domainId,
             groupId: this.group._id,
         });
-        await token.add(token.TYPE_GROUP_INVITATION, expire * 60 * 60, {
-            domainId,
-            groupId: this.group._id,
-        });
+        await user.collGroup.updateOne(
+            { domainId, _id: this.group._id },
+            { $set: { invitationTokenId } },
+        );
         this.back();
     }
 }
@@ -427,7 +434,8 @@ class DomainGroupJoinHandler extends Handler {
             }),
             domain.get(this.invitation.domainId),
         ]);
-        if (!targetDomain || !group || isClassInvitationBlocked(group)) {
+        if (!targetDomain || !group || isClassInvitationBlocked(group)
+            || (group.invitationTokenId !== undefined && group.invitationTokenId !== this.invitation._id)) {
             throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
         }
         this.group = group;
@@ -452,7 +460,9 @@ class DomainGroupJoinHandler extends Handler {
         if (dudoc?.role === 'guest') {
             throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
         }
-        const added = await user.addUserToGroup(target, this.group._id, this.user._id);
+        const added = await user.addUserToGroup(
+            target, this.group._id, this.user._id, this.invitation._id,
+        );
         if (!added) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
         await Promise.all([
             domain.setUserInDomain(target, this.user._id, {

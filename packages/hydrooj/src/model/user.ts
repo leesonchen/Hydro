@@ -513,16 +513,24 @@ class UserModel {
         return collGroup.updateOne({ domainId, name }, { $set: { uids } }, { upsert: true });
     }
 
-    static async addUserToGroup(domainId: string, group: string | ObjectId, uid: number) {
-        const query = typeof group === 'string'
+    static async addUserToGroup(
+        domainId: string, group: string | ObjectId, uid: number, invitationTokenId?: string,
+    ) {
+        const query: Filter<GDoc> = typeof group === 'string'
             ? { domainId, name: group }
             : { domainId, _id: group };
+        if (invitationTokenId) {
+            query.$or = [
+                { invitationTokenId },
+                { invitationTokenId: { $exists: false } },
+            ];
+        }
         const gdoc = await collGroup.findOne(query);
         if (!gdoc) return null;
-        if (!gdoc.class && gdoc.uids.includes(uid)) return gdoc;
+        if (!invitationTokenId && !gdoc.class && gdoc.uids.includes(uid)) return gdoc;
         const isTeacher = gdoc.teachers?.includes(uid);
         const isStudent = gdoc.students?.includes(uid);
-        if (gdoc.class && gdoc.uids.includes(uid) && (isTeacher || isStudent)) return gdoc;
+        if (!invitationTokenId && gdoc.class && gdoc.uids.includes(uid) && (isTeacher || isStudent)) return gdoc;
         const $addToSet = gdoc.class && !isTeacher
             ? { uids: uid, students: uid }
             : { uids: uid };

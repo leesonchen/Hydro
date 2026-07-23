@@ -15,6 +15,7 @@ export interface ClassGDoc {
     intervalDays?: number;
     archive: boolean;
     class: true;
+    invitationTokenId?: string | null;
 }
 
 export const ClassModel = {
@@ -64,24 +65,26 @@ export const ClassModel = {
         endAt: Date,
         archive = false,
         intervalDays = 1,
+        id?: ObjectId,
+        revokeInvitation = false,
     ) {
         deleteUserCache(domainId);
+        const $set: Partial<ClassGDoc> = {
+            domainId,
+            name,
+            uids: [...teachers, ...students],
+            students,
+            teachers,
+            class: true as const,
+            beginAt,
+            endAt,
+            intervalDays,
+            archive,
+        };
+        if (revokeInvitation) $set.invitationTokenId = null;
         return coll.updateOne(
-            { domainId, name },
-            {
-                $set: {
-                    domainId,
-                    name,
-                    uids: [...teachers, ...students],
-                    students,
-                    teachers,
-                    class: true as const,
-                    beginAt,
-                    endAt,
-                    intervalDays,
-                    archive,
-                },
-            },
+            id ? { domainId, _id: id } : { domainId, name },
+            { $set },
             { upsert: true },
         );
     },
