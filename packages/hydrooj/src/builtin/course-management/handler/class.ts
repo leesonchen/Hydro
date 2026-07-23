@@ -356,19 +356,24 @@ export class ClassEditHandler extends Handler {
 
         if (!intervalDays || intervalDays < 1) intervalDays = 1;
 
-        if (!id && await UserModel.collGroup.findOne({ domainId, name })) {
+        if (name === 'teachers') throw new ValidationError('name');
+        if (await UserModel.collGroup.findOne({
+            domainId,
+            name,
+            ...(id ? { _id: { $ne: id } } : {}),
+        })) {
             throw new ValidationError('name');
         }
 
         let shouldUpdateCourseTimes = true;
         let existingTdocs: any[] = [];
         let revokeClassInvitation = false;
+        let previousName: string | undefined;
 
         if (id) {
             const gdoc = await ClassModel.getGroupById(domainId, id);
             if (!gdoc) throw new NotFoundError(domainId, id);
-            revokeClassInvitation = gdoc.name === 'teachers' || name === 'teachers'
-                || !!gdoc.archive || archive;
+            revokeClassInvitation = gdoc.name === 'teachers' || !!gdoc.archive || archive;
 
             // 检查时间相关字段是否发生变化
             const oldBeginAt = moment.utc(gdoc.beginAt).tz(this.user.timeZone);
@@ -381,21 +386,20 @@ export class ClassEditHandler extends Handler {
 
             shouldUpdateCourseTimes = beginAtChanged || endAtChanged || intervalChanged;
 
-            // 如果班级名称改变，更新所有关联的课程
-            if (gdoc.name !== name) {
-                const tdocs = await ContestModel.getMulti(domainId, {
-                    rule: 'course',
-                    assign: { $in: [gdoc.name] },
-                }).toArray();
-
-                await Promise.all(tdocs.map((t) => ContestModel.edit(domainId, t._id, { assign: [name] })));
-            }
+            if (gdoc.name !== name) previousName = gdoc.name;
         }
 
         const groupDocs = (await UserModel.listGroup(domainId)).filter((g: any) => !g?.class);
         const groupMap = new Map<string, number[]>(groupDocs.map((g: any) => [g.name, (g.uids || []) as number[]]));
         const collectGroupUids = (groupNames: string[]) => groupNames.flatMap((groupName) => groupMap.get(groupName) || []);
-        const mergedTeachers = Array.from(new Set([...teachers, ...collectGroupUids(teacherGroups)]));
+        const creatorTeachers = !id && !this.user.hasPerm(PERM.PERM_EDIT_DOMAIN, PERM.PERM_EDIT_HOMEWORK)
+            ? [this.user._id]
+            : [];
+        const mergedTeachers = Array.from(new Set([
+            ...teachers,
+            ...collectGroupUids(teacherGroups),
+            ...creatorTeachers,
+        ]));
         const mergedStudents = Array.from(new Set([...students, ...collectGroupUids(studentGroups)]));
 
         await ClassModel.updateGroup(
@@ -410,6 +414,14 @@ export class ClassEditHandler extends Handler {
             id || new ObjectId(),
             revokeClassInvitation,
         );
+
+        if (previousName) {
+            const renamedTdocs = await ContestModel.getMulti(domainId, {
+                rule: 'course',
+                assign: { $in: [previousName] },
+            }).toArray();
+            await Promise.all(renamedTdocs.map((t) => ContestModel.edit(domainId, t._id, { assign: [name] })));
+        }
 
         // 更新所有关联课程的维护者（始终更新）
         const tdocs = await ContestModel.getMulti(domainId, {

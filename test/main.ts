@@ -6,6 +6,7 @@ import {
     after, before, describe, it,
 } from 'node:test';
 import * as supertest from 'supertest';
+import { PERM } from '@hydrooj/common';
 
 const Root = {
     username: 'root',
@@ -63,6 +64,7 @@ describe('App', () => {
         const UserModel = global.Hydro.model.user;
         const TokenModel = global.Hydro.model.token;
         const DomainModel = global.Hydro.model.domain;
+        const ContestModel = global.Hydro.model.contest;
         const suffix = Date.now().toString(36);
         const groupId = new ObjectId();
         const classId = new ObjectId();
@@ -72,9 +74,12 @@ describe('App', () => {
         const alternateGroupId = new ObjectId();
         const groupName = `invite-group-${suffix}`;
         const className = `invite-class-${suffix}`;
-        const managerCreatedClassName = `manager-created-invite-class-${suffix}`;
+        const renamedClassName = `renamed-invite-class-${suffix}`;
+        const creatorManagedClassName = `creator-managed-invite-class-${suffix}`;
         const unauthorizedClassName = `unauthorized-invite-class-${suffix}`;
+        const creatorRole = `invite-class-creator-${suffix}`;
         const alternateDomainId = `invite-${suffix}`;
+        let collisionCourseId: ObjectId | undefined;
         const classUpdatePayload = ({
             archive = false,
             name = className,
@@ -158,7 +163,14 @@ describe('App', () => {
             uids: [],
         };
 
-        await DomainModel.add(alternateDomainId, 2, `Invitation Test ${suffix}`, '');
+        await Promise.all([
+            DomainModel.add(alternateDomainId, 2, `Invitation Test ${suffix}`, ''),
+            DomainModel.addRole(
+                'system',
+                creatorRole,
+                PERM.PERM_DEFAULT | PERM.PERM_CREATE_HOMEWORK,
+            ),
+        ]);
         await Promise.all([
             UserModel.collGroup.insertMany([
                 ...targets, ...blockedTargets, legacyGroup, alternateGroup,
@@ -176,21 +188,34 @@ describe('App', () => {
             await agent.post(`/d/system/domain/group/${groupId}/invitation`)
                 .send({ operation: 'create', expire: 0 })
                 .expect(403);
+            await DomainModel.setUserRole('system', 2, creatorRole, true);
             await agent.post('/d/system/domain/class/create')
-                .send(classUpdatePayload({ name: managerCreatedClassName }))
+                .send(classUpdatePayload({ name: creatorManagedClassName }))
                 .expect(302);
-            const managerCreatedClass = await UserModel.collGroup.findOne({
-                domainId: 'system', name: managerCreatedClassName,
+            const creatorManagedClass = await UserModel.collGroup.findOne({
+                domainId: 'system', name: creatorManagedClassName,
             });
-            assert(managerCreatedClass?.class);
-            await UserModel.collGroup.deleteOne({ _id: managerCreatedClass._id });
+            assert(creatorManagedClass?.class);
+            assert.deepStrictEqual(creatorManagedClass.teachers, [3, 2]);
+            await agent.get('/d/system/domain/class')
+                .expect(200)
+                .expect((res) => {
+                    const body = JSON.parse(res.text);
+                    assert.equal(body.canCreateClass, true);
+                    assert(body.groups.some((group: any) => group._id === creatorManagedClass._id.toHexString()));
+                });
+            await agent.post(`/d/system/domain/class/${creatorManagedClass._id}/edit`)
+                .send(classUpdatePayload({ name: creatorManagedClassName, teachers: '2,3' }))
+                .expect(302);
+            await UserModel.collGroup.deleteOne({ _id: creatorManagedClass._id });
 
             await DomainModel.setUserRole('system', 2, 'default', true);
             await agent.get('/d/system/domain/class')
                 .expect(200)
                 .expect((res) => {
-                    assert(!res.text.includes(classId.toHexString()));
-                    assert(!res.text.includes('/d/system/domain/class/create'));
+                    const body = JSON.parse(res.text);
+                    assert.equal(body.canCreateClass, false);
+                    assert(!body.groups.some((group: any) => group._id === classId.toHexString()));
                 });
             const unauthorizedClassInvitation = await agent
                 .get(`/d/system/domain/group/${classId}/invitation`);
@@ -349,10 +374,10 @@ describe('App', () => {
                 systemDomain.host = originalHost;
             }
 
-            const editClass = (archive: boolean, name = className) => agent
+            const editClass = (archive: boolean, name = className, status = 302) => agent
                 .post(`/d/system/domain/class/${classId}/edit`)
                 .send(classUpdatePayload({ archive, name }))
-                .expect(302);
+                .expect(status);
 
             await editClass(false);
             let editedClass = await UserModel.collGroup.findOne({ _id: classId });
@@ -383,29 +408,43 @@ describe('App', () => {
             assert(regeneratedClassInvitation);
             invitations[1] = regeneratedClassInvitation;
 
-            await UserModel.collGroup.deleteOne({ _id: teachersClassId });
-            await editClass(false, 'teachers');
+            collisionCourseId = await ContestModel.add(
+                'system',
+                `Invitation rename collision ${suffix}`,
+                '',
+                2,
+                'course',
+                new Date(),
+                new Date(Date.now() + 86400000),
+            );
+            await ContestModel.edit('system', collisionCourseId, { assign: [className] });
+            await editClass(false, groupName, 403);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
-            assert.equal(editedClass?.name, 'teachers');
-            assert.equal(editedClass?.invitationTokenId, null);
-            await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(403);
+            assert.equal(editedClass?.name, className);
+            assert.equal(editedClass?.invitationTokenId, invitations[1]._id);
+            const courseAfterRejectedCollision = await ContestModel.get('system', collisionCourseId);
+            assert.deepStrictEqual(courseAfterRejectedCollision.assign, [className]);
 
+            await UserModel.collGroup.deleteOne({ _id: teachersClassId });
+            await editClass(false, 'teachers', 403);
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert.equal(editedClass?.name, className);
+            assert.equal(editedClass?.invitationTokenId, invitations[1]._id);
+            assert.deepStrictEqual((await ContestModel.get('system', collisionCourseId)).assign, [className]);
+            await agent.post('/d/system/domain/class/create')
+                .send(classUpdatePayload({ name: 'teachers' }))
+                .expect(403);
+            assert.equal(await UserModel.collGroup.findOne({ domainId: 'system', name: 'teachers' }), null);
+
+            await editClass(false, renamedClassName);
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert.equal(editedClass?.name, renamedClassName);
+            assert.equal(editedClass?.invitationTokenId, invitations[1]._id);
+            assert.deepStrictEqual((await ContestModel.get('system', collisionCourseId)).assign, [renamedClassName]);
             await editClass(false);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
             assert.equal(editedClass?.name, className);
-            assert.equal(editedClass?.invitationTokenId, null);
-            await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(403);
-
-            await agent.post(`/d/system/domain/group/${classId}/invitation`)
-                .send({ operation: 'create', expire: 3 })
-                .expect(302);
-            editedClass = await UserModel.collGroup.findOne({ _id: classId });
-            assert(editedClass?.invitationTokenId);
-            const invitationAfterRename = await TokenModel.get(
-                editedClass.invitationTokenId, TokenModel.TYPE_GROUP_INVITATION,
-            );
-            assert(invitationAfterRename);
-            invitations[1] = invitationAfterRename;
+            assert.deepStrictEqual((await ContestModel.get('system', collisionCourseId)).assign, [className]);
 
             await Promise.all([3, 24].map((expire) => agent.post(`/d/system/domain/group/${groupId}/invitation`)
                 .send({ operation: 'create', expire })
@@ -429,35 +468,26 @@ describe('App', () => {
                 .expect(403)));
             invitations[0] = activeGroupInvitation;
 
-            await Promise.all([
-                agent.post(`/d/system/domain/group/${groupId}/invitation`)
-                    .send({ operation: 'revoke' })
-                    .expect(302),
-                agent.post(`/d/system/domain/group/${groupId}/invitation`)
-                    .send({ operation: 'create', expire: 3 })
-                    .expect(302),
-            ]);
-            let groupAfterConcurrentRevoke = await UserModel.collGroup.findOne({ _id: groupId });
-            if (!groupAfterConcurrentRevoke?.invitationTokenId) {
-                await agent.post(`/d/system/domain/group/${groupId}/invitation`)
-                    .send({ operation: 'create', expire: 3 })
-                    .expect(302);
-                groupAfterConcurrentRevoke = await UserModel.collGroup.findOne({ _id: groupId });
-            }
-            assert(groupAfterConcurrentRevoke?.invitationTokenId);
-            const invitationAfterConcurrentRevoke = await TokenModel.get(
-                groupAfterConcurrentRevoke.invitationTokenId, TokenModel.TYPE_GROUP_INVITATION,
+            await agent.post(`/d/system/domain/group/${groupId}/invitation`)
+                .send({ operation: 'revoke' })
+                .expect(302);
+            const revokedGroup = await UserModel.collGroup.findOne({ _id: groupId });
+            assert.equal(revokedGroup?.invitationTokenId, null);
+            assert(await TokenModel.get(activeGroupInvitation._id, TokenModel.TYPE_GROUP_INVITATION));
+            await agent.get(`/d/system/domain/group/join?token=${activeGroupInvitation._id}`).expect(403);
+
+            await agent.post(`/d/system/domain/group/${groupId}/invitation`)
+                .send({ operation: 'create', expire: 3 })
+                .expect(302);
+            const groupAfterRecreate = await UserModel.collGroup.findOne({ _id: groupId });
+            assert(groupAfterRecreate?.invitationTokenId);
+            const invitationAfterRecreate = await TokenModel.get(
+                groupAfterRecreate.invitationTokenId, TokenModel.TYPE_GROUP_INVITATION,
             );
-            assert(invitationAfterConcurrentRevoke);
-            const invitationsAfterConcurrentRevoke = await TokenModel.getMulti(
-                TokenModel.TYPE_GROUP_INVITATION, { domainId: 'system', groupId },
-            ).toArray();
-            await Promise.all(invitationsAfterConcurrentRevoke
-                .filter((invitation) => invitation._id !== invitationAfterConcurrentRevoke._id)
-                .map((invitation) => agent
-                    .get(`/d/system/domain/group/join?token=${invitation._id}`)
-                    .expect(403)));
-            invitations[0] = invitationAfterConcurrentRevoke;
+            assert(invitationAfterRecreate);
+            assert.notEqual(invitationAfterRecreate._id, activeGroupInvitation._id);
+            await agent.get(`/d/system/domain/group/join?token=${activeGroupInvitation._id}`).expect(403);
+            invitations[0] = invitationAfterRecreate;
 
             await DomainModel.setUserInDomain('system', 2, { join: false, role: 'default' });
             await Promise.all(invitations.map(async (invitation) => {
@@ -494,7 +524,7 @@ describe('App', () => {
                                 ],
                             },
                         },
-                        { domainId: 'system', name: managerCreatedClassName },
+                        { domainId: 'system', name: creatorManagedClassName },
                         { domainId: 'system', name: unauthorizedClassName },
                     ],
                 }),
@@ -507,8 +537,12 @@ describe('App', () => {
                         ],
                     },
                 }),
-                DomainModel.setUserRole('system', 2, 'default', true),
                 DomainModel.del(alternateDomainId),
+                ...(collisionCourseId ? [ContestModel.del('system', collisionCourseId)] : []),
+            ]);
+            await Promise.all([
+                DomainModel.setUserRole('system', 2, 'default', true),
+                DomainModel.deleteRoles('system', [creatorRole]),
             ]);
         }
     });

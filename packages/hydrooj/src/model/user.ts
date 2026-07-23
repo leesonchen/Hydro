@@ -196,7 +196,8 @@ export function canCreateClass(user: User) {
 
 export function canManageClass(user: User, group: Pick<GDoc, 'teachers'>) {
     return user.hasPerm(PERM.PERM_EDIT_DOMAIN, PERM.PERM_EDIT_HOMEWORK)
-        || (user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF) && !!group.teachers?.includes(user._id));
+        || (user.hasPerm(PERM.PERM_CREATE_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF)
+            && !!group.teachers?.includes(user._id));
 }
 
 export function handleMailLower(mail: string) {
