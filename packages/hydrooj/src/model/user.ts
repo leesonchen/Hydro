@@ -1,7 +1,9 @@
 import { escapeRegExp, omit, pick, uniq } from 'lodash';
 import { LRUCache } from 'lru-cache';
 import { Collection, Filter, ObjectId } from 'mongodb';
-import { LoginError, UserAlreadyExistError, UserNotFoundError } from '../error';
+import {
+    LoginError, UserAlreadyExistError, UserNotFoundError, ValidationError,
+} from '../error';
 import {
     Authenticator, BaseUserDict, FileInfo, GDoc,
     OwnerInfo, Udict, Udoc, VUdoc,
@@ -517,14 +519,29 @@ class UserModel {
         return groups;
     }
 
-    static delGroup(domainId: string, name: string) {
+    static async delGroup(domainId: string, name: string) {
         deleteUserCache(domainId);
-        return collGroup.deleteOne({ domainId, name });
+        const result = await collGroup.deleteOne({ domainId, name, class: { $ne: true } });
+        if (!result.deletedCount && await collGroup.findOne({ domainId, name, class: true })) {
+            throw new ValidationError('name');
+        }
+        return result;
     }
 
-    static updateGroup(domainId: string, name: string, uids: number[]) {
+    static async updateGroup(domainId: string, name: string, uids: number[]) {
         deleteUserCache(domainId);
-        return collGroup.updateOne({ domainId, name }, { $set: { uids } }, { upsert: true });
+        const query: Filter<GDoc> = { domainId, name, class: { $ne: true } };
+        if (await collGroup.findOne({ domainId, name, class: true })) {
+            throw new ValidationError('name');
+        }
+        try {
+            return await collGroup.updateOne(query, { $set: { uids } }, { upsert: true });
+        } catch (error) {
+            if ((error as { code?: number }).code !== 11000) throw error;
+            const existing = await collGroup.findOne({ domainId, name });
+            if (existing?.class) throw new ValidationError('name');
+            return await collGroup.updateOne(query, { $set: { uids } }, { upsert: true });
+        }
     }
 
     static async addUserToGroup(

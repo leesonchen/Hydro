@@ -182,6 +182,13 @@ describe('App', () => {
         ]);
         try {
             await agent.get('/d/system/domain/group').expect(200);
+            await assert.rejects(UserModel.updateGroup('system', className, [2, 5]));
+            await assert.rejects(UserModel.delGroup('system', className));
+            const classAfterRejectedGroupMutations = await UserModel.collGroup.findOne({ _id: classId });
+            assert(classAfterRejectedGroupMutations?.class);
+            assert.deepStrictEqual(classAfterRejectedGroupMutations.uids, [2]);
+            assert.deepStrictEqual(classAfterRejectedGroupMutations.teachers, []);
+            assert.deepStrictEqual(classAfterRejectedGroupMutations.students, []);
             await agent.get('/d/system/domain/class')
                 .expect(200)
                 .expect((res) => {
@@ -448,6 +455,28 @@ describe('App', () => {
             assert.equal(await UserModel.collGroup.countDocuments({
                 domainId: 'system', name: { $in: invalidClassNames },
             }), 0);
+
+            let rejectCourseRename = true;
+            const disposeRenameFailure = global.app.on('contest/before-edit', (tdoc: any, $set: any) => {
+                if (rejectCourseRename
+                    && tdoc.docId.equals(collisionCourseId)
+                    && $set.assign?.includes(renamedClassName)) {
+                    rejectCourseRename = false;
+                    throw new Error('Injected class rename failure');
+                }
+            });
+            try {
+                await editClass(false, renamedClassName, 500);
+            } finally {
+                disposeRenameFailure();
+            }
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert.equal(editedClass?.name, className);
+            assert.equal(editedClass?.invitationTokenId, invitations[1]._id);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [className, '999999'],
+            );
 
             await editClass(false, renamedClassName);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });

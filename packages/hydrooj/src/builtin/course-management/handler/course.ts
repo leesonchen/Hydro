@@ -1176,6 +1176,7 @@ export class CourseEditHandler extends Handler {
         const sourceTid = tid;
         const sourceCourseForTemplate = saveAsTemplate ? this.tdoc : undefined;
         const assignGroup = isTemplate ? 'teachers' : (assign[0] || '');
+        let assignGroupId: ObjectId | undefined;
 
         if (isTemplate) {
             assign = ['teachers'];
@@ -1195,6 +1196,7 @@ export class CourseEditHandler extends Handler {
             const group = await ClassModel.getGroupByName(domainId, assign[0]);
             if (!group) throw new BadRequestError('班级不存在');
             if (group.archive) throw new BadRequestError('班级已归档');
+            assignGroupId = group._id;
         }
 
         if ((!tid || saveAsTemplate) && assignGroup) {
@@ -1235,7 +1237,7 @@ export class CourseEditHandler extends Handler {
         const nonDigitAssign = isTemplate
             ? []
             : assign.filter((g: string) => !/^\d+$/.test(g));
-        const finalAssign = isTemplate
+        let finalAssign = isTemplate
             ? (templateCategory ? ['teachers', templateCategory] : ['teachers'])
             : [...nonDigitAssign, ...extraStudents.map((s) => s.toString())];
         const copiedLecture = copyLectureForTemplate(sourceCourseForTemplate, dag);
@@ -1255,6 +1257,20 @@ export class CourseEditHandler extends Handler {
             ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
             ...(sourceCourseForTemplate?.files?.length ? { files: sourceCourseForTemplate.files } : {}),
         });
+        let persistedAssignGroup = assignGroup;
+        for (let attempt = 0; assignGroupId && attempt < 5; attempt++) {
+            // A class rename can finish while this course request is being saved. Re-read by immutable id
+            // after persisting so either this request or the rename migration observes the old name.
+            // eslint-disable-next-line no-await-in-loop
+            const currentGroup = await ClassModel.getGroupById(domainId, assignGroupId);
+            if (!currentGroup || currentGroup.name === persistedAssignGroup) break;
+            finalAssign = finalAssign.map(
+                (item) => (item === persistedAssignGroup ? currentGroup.name : item),
+            );
+            persistedAssignGroup = currentGroup.name;
+            // eslint-disable-next-line no-await-in-loop
+            await ContestModel.edit(domainId, tid, { assign: finalAssign });
+        }
         if (sourceCourseForTemplate?.files?.length && sourceTid) {
             await Promise.all(sourceCourseForTemplate.files.map((f) => StorageModel.copy(
                 `contest/${domainId}/${sourceTid}/public/${f.name}`,

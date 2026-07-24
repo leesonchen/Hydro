@@ -26,6 +26,63 @@ function calcLessonTimeRange(beginAt: moment.Moment, lessonDurationHours: number
     };
 }
 
+type CourseAssignmentSnapshot = {
+    assign: string[];
+    tid: ObjectId;
+};
+
+async function restoreCourseAssignments(domainId: string, snapshots: CourseAssignmentSnapshot[]) {
+    const results = await Promise.allSettled(snapshots.map(
+        ({ assign, tid }) => ContestModel.edit(domainId, tid, { assign }),
+    ));
+    const errors = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => result.reason);
+    if (errors.length) throw new AggregateError(errors, 'Failed to restore course assignments.');
+}
+
+async function renameClassCourses(domainId: string, previousName: string, name: string) {
+    const snapshots = new Map<string, CourseAssignmentSnapshot>();
+    try {
+        for (let pass = 0; pass < 10; pass++) {
+            const tdocs = await ContestModel.getMulti(domainId, {
+                rule: 'course',
+                assign: { $in: [previousName] },
+            }).toArray();
+            if (!tdocs.length) {
+                return () => restoreCourseAssignments(domainId, [...snapshots.values()]);
+            }
+            const results = await Promise.allSettled(tdocs.map(async (tdoc) => {
+                const key = tdoc._id.toString();
+                if (!snapshots.has(key)) {
+                    snapshots.set(key, {
+                        assign: [...(tdoc.assign || [])],
+                        tid: tdoc._id,
+                    });
+                }
+                await ContestModel.edit(domainId, tdoc._id, {
+                    assign: (tdoc.assign || []).map((item: string) => (item === previousName ? name : item)),
+                });
+            }));
+            const failure = results.find(
+                (result): result is PromiseRejectedResult => result.status === 'rejected',
+            );
+            if (failure) throw failure.reason;
+        }
+        throw new Error('Course assignments kept changing while the class was being renamed.');
+    } catch (error) {
+        try {
+            await restoreCourseAssignments(domainId, [...snapshots.values()]);
+        } catch (rollbackError) {
+            throw new AggregateError(
+                [error, rollbackError],
+                'Failed to rename class courses and restore their assignments.',
+            );
+        }
+        throw error;
+    }
+}
+
 function fillMessage(template: string, ...params: Array<string | number>) {
     return template.replace(/\{(\d+)\}/g, (_, index) => String(params[Number(index)] ?? ''));
 }
@@ -407,31 +464,64 @@ export class ClassEditHandler extends Handler {
         ]));
         const mergedStudents = Array.from(new Set([...students, ...collectGroupUids(studentGroups)]));
 
-        const groupUpdate = await ClassModel.updateGroup(
-            domainId,
-            name,
-            mergedTeachers,
-            mergedStudents,
-            beginAt.toDate(),
-            endAt.toDate(),
-            archive,
-            intervalDays,
-            id || new ObjectId(),
-            revokeClassInvitation,
-            expectedName,
-        );
-        if (id && !groupUpdate.matchedCount) {
-            throw new BadRequestError('Class has been modified. Please refresh and try again.');
+        let restoreRenamedCourses: (() => Promise<void>) | undefined;
+        if (previousName) {
+            const renameResult = await ClassModel.renameGroup(domainId, id!, previousName, name);
+            if (!renameResult.matchedCount) {
+                throw new BadRequestError('Class has been modified. Please refresh and try again.');
+            }
+            try {
+                restoreRenamedCourses = await renameClassCourses(domainId, previousName, name);
+                expectedName = name;
+            } catch (error) {
+                const rollback = await ClassModel.renameGroup(domainId, id!, name, previousName);
+                if (!rollback.matchedCount) {
+                    throw new AggregateError(
+                        [error],
+                        'Failed to rename class courses and restore the class name.',
+                    );
+                }
+                throw error;
+            }
         }
 
-        if (previousName) {
-            const renamedTdocs = await ContestModel.getMulti(domainId, {
-                rule: 'course',
-                assign: { $in: [previousName] },
-            }).toArray();
-            await Promise.all(renamedTdocs.map((t) => ContestModel.edit(domainId, t._id, {
-                assign: (t.assign || []).map((item: string) => (item === previousName ? name : item)),
-            })));
+        try {
+            const groupUpdate = await ClassModel.updateGroup(
+                domainId,
+                name,
+                mergedTeachers,
+                mergedStudents,
+                beginAt.toDate(),
+                endAt.toDate(),
+                archive,
+                intervalDays,
+                id || new ObjectId(),
+                revokeClassInvitation,
+                expectedName,
+            );
+            if (id && !groupUpdate.matchedCount) {
+                throw new BadRequestError('Class has been modified. Please refresh and try again.');
+            }
+        } catch (error) {
+            if (!previousName) throw error;
+            const rollbackErrors: unknown[] = [error];
+            try {
+                await restoreRenamedCourses?.();
+            } catch (rollbackError) {
+                rollbackErrors.push(rollbackError);
+            }
+            try {
+                const rollback = await ClassModel.renameGroup(domainId, id!, name, previousName);
+                if (!rollback.matchedCount) {
+                    rollbackErrors.push(new Error('The class name changed again before it could be restored.'));
+                }
+            } catch (rollbackError) {
+                rollbackErrors.push(rollbackError);
+            }
+            if (rollbackErrors.length > 1) {
+                throw new AggregateError(rollbackErrors, 'Failed to update the renamed class and restore its state.');
+            }
+            throw error;
         }
 
         // 更新所有关联课程的维护者（始终更新）

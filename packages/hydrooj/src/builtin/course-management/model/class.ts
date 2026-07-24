@@ -56,6 +56,14 @@ export const ClassModel = {
         return coll.deleteOne({ domainId, _id: id });
     },
 
+    async renameGroup(domainId: string, id: ObjectId, expectedName: string, name: string) {
+        deleteUserCache(domainId);
+        return coll.updateOne(
+            { domainId, _id: id, class: true, name: expectedName },
+            { $set: { name } },
+        );
+    },
+
     async updateGroup(
         domainId: string,
         name: string,
@@ -86,8 +94,8 @@ export const ClassModel = {
         const updatingExisting = !!id && expectedName !== undefined;
         return coll.updateOne(
             id
-                ? { domainId, _id: id, ...(updatingExisting ? { name: expectedName } : {}) }
-                : { domainId, name },
+                ? { domainId, _id: id, class: true, ...(updatingExisting ? { name: expectedName } : {}) }
+                : { domainId, name, class: true },
             { $set },
             { upsert: !updatingExisting },
         );
