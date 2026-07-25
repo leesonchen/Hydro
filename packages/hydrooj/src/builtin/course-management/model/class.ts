@@ -4,6 +4,7 @@ import {
 import { deleteUserCache } from '../../../model/user';
 
 const coll = db.collection('user.group');
+const CLASS_EDIT_LOCK_TIMEOUT_MS = 30 * 60 * 1000;
 
 export interface ClassGDoc {
     _id: ObjectId;
@@ -18,6 +19,10 @@ export interface ClassGDoc {
     archive: boolean;
     class: true;
     invitationTokenId?: string | null;
+    classEditLock?: {
+        token: string;
+        expiresAt: Date;
+    };
 }
 
 export const ClassModel = {
@@ -51,6 +56,44 @@ export const ClassModel = {
         return await coll.findOne({ domainId, name, class: true }) as ClassGDoc | null;
     },
 
+    async acquireEditLock(domainId: string, id: ObjectId, expectedName: string, token: string) {
+        const now = new Date();
+        return await coll.updateOne(
+            {
+                domainId,
+                _id: id,
+                class: true,
+                name: expectedName,
+                $or: [
+                    { classEditLock: { $exists: false } },
+                    { 'classEditLock.expiresAt': { $lte: now } },
+                ],
+            },
+            {
+                $set: {
+                    classEditLock: {
+                        token,
+                        expiresAt: new Date(now.getTime() + CLASS_EDIT_LOCK_TIMEOUT_MS),
+                    },
+                },
+            },
+        );
+    },
+
+    async refreshEditLock(domainId: string, id: ObjectId, token: string) {
+        return await coll.updateOne(
+            { domainId, _id: id, class: true, 'classEditLock.token': token },
+            { $set: { 'classEditLock.expiresAt': new Date(Date.now() + CLASS_EDIT_LOCK_TIMEOUT_MS) } },
+        );
+    },
+
+    async releaseEditLock(domainId: string, id: ObjectId, token: string) {
+        return await coll.updateOne(
+            { domainId, _id: id, class: true, 'classEditLock.token': token },
+            { $unset: { classEditLock: '' } },
+        );
+    },
+
     async delGroup(domainId: string, id: ObjectId) {
         const doc = await coll.findOne({ domainId, _id: id, class: true });
         if (!doc) throw new NotFoundError('Group not found');
@@ -58,10 +101,16 @@ export const ClassModel = {
         return coll.deleteOne({ domainId, _id: id });
     },
 
-    async renameGroup(domainId: string, id: ObjectId, expectedName: string, name: string) {
+    async renameGroup(domainId: string, id: ObjectId, expectedName: string, name: string, editToken: string) {
         deleteUserCache(domainId);
         return coll.updateOne(
-            { domainId, _id: id, class: true, name: expectedName },
+            {
+                domainId,
+                _id: id,
+                class: true,
+                name: expectedName,
+                'classEditLock.token': editToken,
+            },
             { $set: { name } },
         );
     },
@@ -78,6 +127,7 @@ export const ClassModel = {
         id?: ObjectId,
         revokeInvitation = false,
         expectedName?: string,
+        editToken?: string,
     ) {
         deleteUserCache(domainId);
         const $set: Partial<ClassGDoc> = {
@@ -97,7 +147,17 @@ export const ClassModel = {
         try {
             return await coll.updateOne(
                 id
-                    ? { domainId, _id: id, class: true, ...(updatingExisting ? { name: expectedName } : {}) }
+                    ? {
+                        domainId,
+                        _id: id,
+                        class: true,
+                        ...(updatingExisting ? {
+                            name: expectedName,
+                            ...(editToken
+                                ? { 'classEditLock.token': editToken }
+                                : { classEditLock: { $exists: false } }),
+                        } : {}),
+                    }
                     : { domainId, name, class: true },
                 { $set },
                 { upsert: !updatingExisting },

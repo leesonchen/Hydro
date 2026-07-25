@@ -88,6 +88,7 @@ describe('App', () => {
         const creatorRole = `invite-class-creator-${suffix}`;
         const alternateDomainId = `invite-${suffix}`;
         let collisionCourseId: ObjectId | undefined;
+        let importedUser: any;
         const classUpdatePayload = ({
             archive = false,
             name = className,
@@ -207,10 +208,14 @@ describe('App', () => {
                 await UserModel.setPriv(2, originalRootPriv);
             }
             assert(importResponse.text.includes(`Group ${className} conflicts with an existing class.`));
-            const importedUser = await UserModel.getByEmail('system', importedEmail);
+            importedUser = await UserModel.getByEmail('system', importedEmail);
             assert(importedUser);
             assert.deepStrictEqual((await UserModel.collGroup.findOne({ _id: classId }))?.uids, [2]);
-            await UserModel.coll.deleteOne({ _id: importedUser._id });
+            await Promise.all([
+                UserModel.coll.deleteOne({ _id: importedUser._id }),
+                DomainModel.collUser.deleteOne({ domainId: 'system', uid: importedUser._id }),
+            ]);
+            UserModel._deleteUserCache(importedUser);
             await assert.rejects(UserModel.updateGroup('system', className, [2, 5]));
             await assert.rejects(UserModel.delGroup('system', className));
             const classAfterRejectedGroupMutations = await UserModel.collGroup.findOne({ _id: classId });
@@ -540,28 +545,40 @@ describe('App', () => {
             );
 
             const originalUpdateGroup = ClassModel.updateGroup;
-            let interleavedRename = false;
+            const originalRenameGroup = ClassModel.renameGroup;
+            let rollbackRenameInterleaved = false;
             (ClassModel as any).updateGroup = async (...args: any[]) => {
-                if (!interleavedRename && args[0] === 'system' && args[1] === renamedClassName) {
-                    interleavedRename = true;
-                    await editClass(false, concurrentRenamedClassName);
-                    throw new Error('Injected class update failure after a later rename');
+                if (args[0] === 'system' && args[1] === renamedClassName) {
+                    throw new Error('Injected class update failure before rollback');
                 }
                 return (originalUpdateGroup as any)(...args);
+            };
+            (ClassModel as any).renameGroup = async (...args: any[]) => {
+                const result = await (originalRenameGroup as any)(...args);
+                if (!rollbackRenameInterleaved
+                    && args[0] === 'system'
+                    && args[2] === renamedClassName
+                    && args[3] === className
+                    && result.matchedCount) {
+                    rollbackRenameInterleaved = true;
+                    await editClass(false, concurrentRenamedClassName, 400);
+                }
+                return result;
             };
             try {
                 await editClass(false, renamedClassName, 500);
             } finally {
                 (ClassModel as any).updateGroup = originalUpdateGroup;
+                (ClassModel as any).renameGroup = originalRenameGroup;
             }
-            assert(interleavedRename);
+            assert(rollbackRenameInterleaved);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
-            assert.equal(editedClass?.name, concurrentRenamedClassName);
+            assert.equal(editedClass?.name, className);
+            assert.equal(editedClass?.classEditLock, undefined);
             assert.deepStrictEqual(
                 (await ContestModel.get('system', collisionCourseId)).assign,
-                [concurrentRenamedClassName, '999999'],
+                [className, '999999'],
             );
-            await editClass(false, className);
 
             await editClass(false, renamedClassName);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
@@ -662,6 +679,7 @@ describe('App', () => {
             );
             await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(403);
         } finally {
+            if (importedUser) UserModel._deleteUserCache(importedUser);
             await Promise.all([
                 UserModel.collGroup.deleteMany({
                     $or: [
@@ -688,6 +706,9 @@ describe('App', () => {
                     },
                 }),
                 UserModel.coll.deleteOne({ mailLower: importedEmail.toLowerCase() }),
+                ...(importedUser ? [DomainModel.collUser.deleteOne({
+                    domainId: 'system', uid: importedUser._id,
+                })] : []),
                 DomainModel.del(alternateDomainId),
                 ...(collisionCourseId ? [ContestModel.del('system', collisionCourseId)] : []),
             ]);

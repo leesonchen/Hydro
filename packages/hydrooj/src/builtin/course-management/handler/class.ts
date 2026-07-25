@@ -41,10 +41,22 @@ async function restoreCourseAssignments(domainId: string, snapshots: CourseAssig
     if (errors.length) throw new AggregateError(errors, 'Failed to restore course assignments.');
 }
 
-async function renameClassCourses(domainId: string, classId: ObjectId, previousName: string, name: string) {
+async function refreshClassEditLock(domainId: string, classId: ObjectId, editToken: string) {
+    const refreshed = await ClassModel.refreshEditLock(domainId, classId, editToken);
+    if (!refreshed.matchedCount) throw new Error('The class edit lock was lost.');
+}
+
+async function renameClassCourses(
+    domainId: string,
+    classId: ObjectId,
+    previousName: string,
+    name: string,
+    editToken: string,
+) {
     const snapshots = new Map<string, CourseAssignmentSnapshot>();
     try {
         for (let pass = 0; pass < 10; pass++) {
+            await refreshClassEditLock(domainId, classId, editToken);
             const tdocs = await ContestModel.getMulti(domainId, {
                 rule: 'course',
                 assign: { $in: [previousName] },
@@ -74,7 +86,8 @@ async function renameClassCourses(domainId: string, classId: ObjectId, previousN
         const rollbackErrors: unknown[] = [error];
         let classRestored = false;
         try {
-            const rollback = await ClassModel.renameGroup(domainId, classId, name, previousName);
+            await refreshClassEditLock(domainId, classId, editToken);
+            const rollback = await ClassModel.renameGroup(domainId, classId, name, previousName, editToken);
             classRestored = !!rollback.matchedCount;
             if (!classRestored) {
                 rollbackErrors.push(new Error('The class name changed again before it could be restored.'));
@@ -477,57 +490,94 @@ export class ClassEditHandler extends Handler {
         ]));
         const mergedStudents = Array.from(new Set([...students, ...collectGroupUids(studentGroups)]));
 
-        let restoreRenamedCourses: (() => Promise<void>) | undefined;
-        if (previousName) {
-            const renameResult = await ClassModel.renameGroup(domainId, id!, previousName, name);
-            if (!renameResult.matchedCount) {
-                throw new BadRequestError('Class has been modified. Please refresh and try again.');
+        const editToken = id ? new ObjectId().toHexString() : undefined;
+        if (id) {
+            const lock = await ClassModel.acquireEditLock(domainId, id, expectedName!, editToken!);
+            if (!lock.matchedCount) {
+                throw new BadRequestError('Class is being edited. Please refresh and try again.');
             }
-            restoreRenamedCourses = await renameClassCourses(domainId, id!, previousName, name);
-            expectedName = name;
         }
 
         try {
-            const groupUpdate = await ClassModel.updateGroup(
-                domainId,
-                name,
-                mergedTeachers,
-                mergedStudents,
-                beginAt.toDate(),
-                endAt.toDate(),
-                archive,
-                intervalDays,
-                id || new ObjectId(),
-                revokeClassInvitation,
-                expectedName,
-            );
-            if (id && !groupUpdate.matchedCount) {
-                throw new BadRequestError('Class has been modified. Please refresh and try again.');
-            }
-        } catch (error) {
-            if (!previousName) throw error;
-            const rollbackErrors: unknown[] = [error];
-            let classRestored = false;
-            try {
-                const rollback = await ClassModel.renameGroup(domainId, id!, name, previousName);
-                classRestored = !!rollback.matchedCount;
-                if (!classRestored) {
-                    rollbackErrors.push(new Error('The class name changed again before it could be restored.'));
+            let restoreRenamedCourses: (() => Promise<void>) | undefined;
+            if (previousName) {
+                const renameResult = await ClassModel.renameGroup(
+                    domainId,
+                    id!,
+                    previousName,
+                    name,
+                    editToken!,
+                );
+                if (!renameResult.matchedCount) {
+                    throw new BadRequestError('Class has been modified. Please refresh and try again.');
                 }
-            } catch (rollbackError) {
-                rollbackErrors.push(rollbackError);
+                restoreRenamedCourses = await renameClassCourses(
+                    domainId,
+                    id!,
+                    previousName,
+                    name,
+                    editToken!,
+                );
+                expectedName = name;
             }
-            if (classRestored) {
+
+            try {
+                if (id) await refreshClassEditLock(domainId, id, editToken!);
+                const groupUpdate = await ClassModel.updateGroup(
+                    domainId,
+                    name,
+                    mergedTeachers,
+                    mergedStudents,
+                    beginAt.toDate(),
+                    endAt.toDate(),
+                    archive,
+                    intervalDays,
+                    id || new ObjectId(),
+                    revokeClassInvitation,
+                    expectedName,
+                    editToken,
+                );
+                if (id && !groupUpdate.matchedCount) {
+                    throw new BadRequestError('Class has been modified. Please refresh and try again.');
+                }
+            } catch (error) {
+                if (!previousName) throw error;
+                const rollbackErrors: unknown[] = [error];
+                let classRestored = false;
                 try {
-                    await restoreRenamedCourses?.();
+                    await refreshClassEditLock(domainId, id!, editToken!);
+                    const rollback = await ClassModel.renameGroup(
+                        domainId,
+                        id!,
+                        name,
+                        previousName,
+                        editToken!,
+                    );
+                    classRestored = !!rollback.matchedCount;
+                    if (!classRestored) {
+                        rollbackErrors.push(new Error('The class name changed again before it could be restored.'));
+                    }
                 } catch (rollbackError) {
                     rollbackErrors.push(rollbackError);
                 }
+                if (classRestored) {
+                    try {
+                        await restoreRenamedCourses?.();
+                    } catch (rollbackError) {
+                        rollbackErrors.push(rollbackError);
+                    }
+                }
+                if (rollbackErrors.length > 1) {
+                    throw new AggregateError(rollbackErrors, 'Failed to update the renamed class and restore its state.');
+                }
+                throw error;
             }
-            if (rollbackErrors.length > 1) {
-                throw new AggregateError(rollbackErrors, 'Failed to update the renamed class and restore its state.');
+        } finally {
+            if (id && editToken) {
+                try {
+                    await ClassModel.releaseEditLock(domainId, id, editToken);
+                } catch { }
             }
-            throw error;
         }
 
         // 更新所有关联课程的维护者（始终更新）

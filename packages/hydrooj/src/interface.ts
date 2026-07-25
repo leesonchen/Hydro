@@ -118,6 +118,10 @@ export interface GDoc {
     invitationTokenId?: string | null;
     students?: number[];
     teachers?: number[];
+    classEditLock?: {
+        token: string;
+        expiresAt: Date;
+    };
 }
 
 export interface UserPreferenceDoc {
