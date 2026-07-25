@@ -1180,7 +1180,10 @@ export class CourseEditHandler extends Handler {
 
         if (isTemplate) {
             assign = ['teachers'];
-            const teachersGroup = await ClassModel.getGroupByName(domainId, 'teachers');
+            const teachersGroup = (await UserModel.listGroup(domainId, undefined, ['teachers']))[0];
+            if (teachersGroup && !teachersGroup.class) {
+                throw new BadRequestError('teachers 已被普通用户组占用');
+            }
             if (!teachersGroup) {
                 await ClassModel.updateGroup(
                     domainId,

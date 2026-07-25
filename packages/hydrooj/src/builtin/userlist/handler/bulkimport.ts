@@ -1,5 +1,5 @@
 import {
-    DomainModel, Handler, param, PERM, PRIV, Types, UserModel,
+    DomainModel, Handler, param, PERM, PRIV, Types, UserModel, ValidationError,
 } from '../../../plugin-api';
 
 // 批量设置用户权限（域内）
@@ -66,7 +66,16 @@ export class BulkImportHandler extends Handler {
             }
         }
 
+        const allGroups = await UserModel.listGroup(domainId);
+        const classGroupNames = new Set(
+            allGroups.filter((existing: any) => existing.class).map((existing: any) => existing.name),
+        );
         for (const group of Object.keys(groupMap)) {
+            if (classGroupNames.has(group)) {
+                messages.push(`Domain ${domainId}: Group ${group} conflicts with an existing class.`);
+                delete groupMap[group];
+                continue;
+            }
             messages.push(`Domain ${domainId}: found ${groupMap[group].length} users to add group ${group}.`);
         }
 
@@ -81,11 +90,22 @@ export class BulkImportHandler extends Handler {
             }
 
             // 设置用户组
-            const allGroups = await UserModel.listGroup(domainId);
+            const currentGroups = await UserModel.listGroup(domainId);
             for (const group of Object.keys(groupMap)) {
-                const existing = allGroups.find((g: any) => g.name === group)?.uids || [];
+                const existingGroup = currentGroups.find((g: any) => g.name === group);
+                if (existingGroup?.class) {
+                    messages.push(`Domain ${domainId}: Group ${group} conflicts with an existing class.`);
+                    continue;
+                }
+                const existing = existingGroup?.uids || [];
                 const merged = [...new Set([...groupMap[group], ...existing])];
-                await UserModel.updateGroup(domainId, group, merged);
+                try {
+                    await UserModel.updateGroup(domainId, group, merged);
+                } catch (error) {
+                    if (!(error instanceof ValidationError)) throw error;
+                    messages.push(`Domain ${domainId}: Group ${group} conflicts with an existing class.`);
+                    continue;
+                }
                 completes.push(`Groups:${domainId}/${group}`);
             }
         }

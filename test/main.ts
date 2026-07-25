@@ -72,13 +72,18 @@ describe('App', () => {
         const teachersClassId = new ObjectId();
         const archivedClassId = new ObjectId();
         const deletedClassId = new ObjectId();
+        const regularTeachersGroupId = new ObjectId();
         const legacyGroupId = new ObjectId();
         const alternateGroupId = new ObjectId();
         const groupName = `invite-group-${suffix}`;
         const className = `invite-class-${suffix}`;
         const renamedClassName = `renamed-invite-class-${suffix}`;
+        const concurrentRenamedClassName = `concurrent-renamed-class-${suffix}`;
         const creatorManagedClassName = `creator-managed-invite-class-${suffix}`;
         const unauthorizedClassName = `unauthorized-invite-class-${suffix}`;
+        const importedUsername = `classimport${suffix}`;
+        const importedEmail = `${importedUsername}@example.com`;
+        const templateTitle = `Conflicting teachers template ${suffix}`;
         const invalidClassNames = [Date.now().toString(), `invalid,class-${suffix}`];
         const creatorRole = `invite-class-creator-${suffix}`;
         const alternateDomainId = `invite-${suffix}`;
@@ -182,6 +187,30 @@ describe('App', () => {
         ]);
         try {
             await agent.get('/d/system/domain/group').expect(200);
+            const originalRootPriv = (await UserModel.getById('system', 2)).priv;
+            await UserModel.setSuperAdmin(2);
+            let importResponse: any;
+            try {
+                importResponse = await agent.post('/manage/users/import')
+                    .send({
+                        users: [
+                            importedEmail,
+                            importedUsername,
+                            '123456',
+                            'Imported User',
+                            JSON.stringify({ group: className }),
+                        ].join('\t'),
+                        draft: false,
+                    })
+                    .expect(200);
+            } finally {
+                await UserModel.setPriv(2, originalRootPriv);
+            }
+            assert(importResponse.text.includes(`Group ${className} conflicts with an existing class.`));
+            const importedUser = await UserModel.getByEmail('system', importedEmail);
+            assert(importedUser);
+            assert.deepStrictEqual((await UserModel.collGroup.findOne({ _id: classId }))?.uids, [2]);
+            await UserModel.coll.deleteOne({ _id: importedUser._id });
             await assert.rejects(UserModel.updateGroup('system', className, [2, 5]));
             await assert.rejects(UserModel.delGroup('system', className));
             const classAfterRejectedGroupMutations = await UserModel.collGroup.findOne({ _id: classId });
@@ -436,6 +465,38 @@ describe('App', () => {
             assert.deepStrictEqual(courseAfterRejectedCollision.assign, [className, '999999']);
 
             await UserModel.collGroup.deleteOne({ _id: teachersClassId });
+            await UserModel.collGroup.insertOne({
+                _id: regularTeachersGroupId,
+                domainId: 'system',
+                name: 'teachers',
+                uids: [2],
+            });
+            await agent.post('/d/system/course/create?isTemplate=true')
+                .send({
+                    title: templateTitle,
+                    content: 'Template content',
+                    dag: JSON.stringify([{ _id: 1, title: 'Lesson', pids: [], requireNids: [] }]),
+                    beginAt: '2026-7-26 0:00',
+                    endAt: '2026-7-27 23:59',
+                    lessonDurationHours: 2,
+                    lessonBeginAt: '2026-7-26 0:00',
+                    lessonEndAt: '2026-7-26 2:00',
+                    isTemplate: true,
+                    templateCategory: '',
+                    assign: '',
+                    extraStudents: '',
+                    publicScoreboard: true,
+                    enablePenalty: true,
+                })
+                .expect(400);
+            const regularTeachersGroup = await UserModel.collGroup.findOne({ _id: regularTeachersGroupId });
+            assert(regularTeachersGroup);
+            assert.equal(regularTeachersGroup.class, undefined);
+            assert.equal(
+                (await ContestModel.getMulti('system', { rule: 'course', title: templateTitle }).toArray()).length,
+                0,
+            );
+            await UserModel.collGroup.deleteOne({ _id: regularTeachersGroupId });
             await editClass(false, 'teachers', 403);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
             assert.equal(editedClass?.name, className);
@@ -477,6 +538,30 @@ describe('App', () => {
                 (await ContestModel.get('system', collisionCourseId)).assign,
                 [className, '999999'],
             );
+
+            const originalUpdateGroup = ClassModel.updateGroup;
+            let interleavedRename = false;
+            (ClassModel as any).updateGroup = async (...args: any[]) => {
+                if (!interleavedRename && args[0] === 'system' && args[1] === renamedClassName) {
+                    interleavedRename = true;
+                    await editClass(false, concurrentRenamedClassName);
+                    throw new Error('Injected class update failure after a later rename');
+                }
+                return (originalUpdateGroup as any)(...args);
+            };
+            try {
+                await editClass(false, renamedClassName, 500);
+            } finally {
+                (ClassModel as any).updateGroup = originalUpdateGroup;
+            }
+            assert(interleavedRename);
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert.equal(editedClass?.name, concurrentRenamedClassName);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [concurrentRenamedClassName, '999999'],
+            );
+            await editClass(false, className);
 
             await editClass(false, renamedClassName);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
@@ -584,7 +669,7 @@ describe('App', () => {
                             _id: {
                                 $in: [
                                     groupId, classId, teachersClassId, archivedClassId, deletedClassId,
-                                    legacyGroupId, alternateGroupId,
+                                    regularTeachersGroupId, legacyGroupId, alternateGroupId,
                                 ],
                             },
                         },
@@ -602,6 +687,7 @@ describe('App', () => {
                         ],
                     },
                 }),
+                UserModel.coll.deleteOne({ mailLower: importedEmail.toLowerCase() }),
                 DomainModel.del(alternateDomainId),
                 ...(collisionCourseId ? [ContestModel.del('system', collisionCourseId)] : []),
             ]);

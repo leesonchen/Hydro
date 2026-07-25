@@ -1,6 +1,6 @@
 import {
     BadRequestError, DomainModel, Handler, MessageModel, param, PRIV,
-    Types, UserModel,
+    Types, UserModel, ValidationError,
 } from '../../../plugin-api';
 import { UserBaseHandler, setHasStore } from './user';
 
@@ -17,6 +17,13 @@ async function bulkCreateUsers(
 ) {
     const uidByEmail: Record<string, number> = {};
     const errors: string[] = [];
+    const initialGroups = await UserModel.listGroup(domainId);
+    const conflictingGroups = new Set(
+        initialGroups.filter((group: any) => group.class && groupMap[group.name]).map((group: any) => group.name),
+    );
+    for (const group of conflictingGroups) {
+        errors.push(`Group ${group} conflicts with an existing class.`);
+    }
 
     for (const u of users) {
         try {
@@ -46,10 +53,21 @@ async function bulkCreateUsers(
     // 设置用户组
     const allGroups = await UserModel.listGroup(domainId);
     for (const group in groupMap) {
+        if (conflictingGroups.has(group)) continue;
         const uids = groupMap[group].map((email) => uidByEmail[email]).filter((uid) => uid);
-        const existing = allGroups.find((g: any) => g.name === group)?.uids || [];
+        const existingGroup = allGroups.find((g: any) => g.name === group);
+        if (existingGroup?.class) {
+            errors.push(`Group ${group} conflicts with an existing class.`);
+            continue;
+        }
+        const existing = existingGroup?.uids || [];
         if (uids.length) {
-            await UserModel.updateGroup(domainId, group, Array.from(new Set([...existing, ...uids])));
+            try {
+                await UserModel.updateGroup(domainId, group, Array.from(new Set([...existing, ...uids])));
+            } catch (error) {
+                if (!(error instanceof ValidationError)) throw error;
+                errors.push(`Group ${group} conflicts with an existing class.`);
+            }
         }
     }
 
@@ -82,6 +100,9 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
         const users: any[] = [];
         const messages: string[] = [];
         const groupMap: Record<string, string[]> = {};
+        const classGroupNames = new Set(
+            (await UserModel.listGroup(domainId)).filter((group: any) => group.class).map((group: any) => group.name),
+        );
 
         for (const idx in lines) {
             const line = lines[idx];
@@ -114,6 +135,10 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
                             for (const g of extraData.group.split(',')) {
                                 if (/^[0-9]+$/.test(g)) {
                                     messages.push(`Line ${+idx + 1}: Invalid group ${g}.`);
+                                    continue;
+                                }
+                                if (classGroupNames.has(g)) {
+                                    messages.push(`Line ${+idx + 1}: Group ${g} conflicts with an existing class.`);
                                     continue;
                                 }
                                 groupMap[g] ||= [];

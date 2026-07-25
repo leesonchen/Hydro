@@ -41,7 +41,7 @@ async function restoreCourseAssignments(domainId: string, snapshots: CourseAssig
     if (errors.length) throw new AggregateError(errors, 'Failed to restore course assignments.');
 }
 
-async function renameClassCourses(domainId: string, previousName: string, name: string) {
+async function renameClassCourses(domainId: string, classId: ObjectId, previousName: string, name: string) {
     const snapshots = new Map<string, CourseAssignmentSnapshot>();
     try {
         for (let pass = 0; pass < 10; pass++) {
@@ -71,13 +71,26 @@ async function renameClassCourses(domainId: string, previousName: string, name: 
         }
         throw new Error('Course assignments kept changing while the class was being renamed.');
     } catch (error) {
+        const rollbackErrors: unknown[] = [error];
+        let classRestored = false;
         try {
-            await restoreCourseAssignments(domainId, [...snapshots.values()]);
+            const rollback = await ClassModel.renameGroup(domainId, classId, name, previousName);
+            classRestored = !!rollback.matchedCount;
+            if (!classRestored) {
+                rollbackErrors.push(new Error('The class name changed again before it could be restored.'));
+            }
         } catch (rollbackError) {
-            throw new AggregateError(
-                [error, rollbackError],
-                'Failed to rename class courses and restore their assignments.',
-            );
+            rollbackErrors.push(rollbackError);
+        }
+        if (classRestored) {
+            try {
+                await restoreCourseAssignments(domainId, [...snapshots.values()]);
+            } catch (rollbackError) {
+                rollbackErrors.push(rollbackError);
+            }
+        }
+        if (rollbackErrors.length > 1) {
+            throw new AggregateError(rollbackErrors, 'Failed to rename class courses and restore their state.');
         }
         throw error;
     }
@@ -470,19 +483,8 @@ export class ClassEditHandler extends Handler {
             if (!renameResult.matchedCount) {
                 throw new BadRequestError('Class has been modified. Please refresh and try again.');
             }
-            try {
-                restoreRenamedCourses = await renameClassCourses(domainId, previousName, name);
-                expectedName = name;
-            } catch (error) {
-                const rollback = await ClassModel.renameGroup(domainId, id!, name, previousName);
-                if (!rollback.matchedCount) {
-                    throw new AggregateError(
-                        [error],
-                        'Failed to rename class courses and restore the class name.',
-                    );
-                }
-                throw error;
-            }
+            restoreRenamedCourses = await renameClassCourses(domainId, id!, previousName, name);
+            expectedName = name;
         }
 
         try {
@@ -505,18 +507,22 @@ export class ClassEditHandler extends Handler {
         } catch (error) {
             if (!previousName) throw error;
             const rollbackErrors: unknown[] = [error];
-            try {
-                await restoreRenamedCourses?.();
-            } catch (rollbackError) {
-                rollbackErrors.push(rollbackError);
-            }
+            let classRestored = false;
             try {
                 const rollback = await ClassModel.renameGroup(domainId, id!, name, previousName);
-                if (!rollback.matchedCount) {
+                classRestored = !!rollback.matchedCount;
+                if (!classRestored) {
                     rollbackErrors.push(new Error('The class name changed again before it could be restored.'));
                 }
             } catch (rollbackError) {
                 rollbackErrors.push(rollbackError);
+            }
+            if (classRestored) {
+                try {
+                    await restoreRenamedCourses?.();
+                } catch (rollbackError) {
+                    rollbackErrors.push(rollbackError);
+                }
             }
             if (rollbackErrors.length > 1) {
                 throw new AggregateError(rollbackErrors, 'Failed to update the renamed class and restore its state.');

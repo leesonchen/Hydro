@@ -1,4 +1,6 @@
-import { db, NotFoundError, ObjectId } from '../../../plugin-api';
+import {
+    db, NotFoundError, ObjectId, ValidationError,
+} from '../../../plugin-api';
 import { deleteUserCache } from '../../../model/user';
 
 const coll = db.collection('user.group');
@@ -92,12 +94,17 @@ export const ClassModel = {
         };
         if (revokeInvitation) $set.invitationTokenId = null;
         const updatingExisting = !!id && expectedName !== undefined;
-        return coll.updateOne(
-            id
-                ? { domainId, _id: id, class: true, ...(updatingExisting ? { name: expectedName } : {}) }
-                : { domainId, name, class: true },
-            { $set },
-            { upsert: !updatingExisting },
-        );
+        try {
+            return await coll.updateOne(
+                id
+                    ? { domainId, _id: id, class: true, ...(updatingExisting ? { name: expectedName } : {}) }
+                    : { domainId, name, class: true },
+                { $set },
+                { upsert: !updatingExisting },
+            );
+        } catch (error) {
+            if ((error as { code?: number }).code === 11000) throw new ValidationError('name');
+            throw error;
+        }
     },
 };
