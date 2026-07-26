@@ -719,6 +719,53 @@ describe('App', () => {
                 maintainer: [3],
             });
 
+            const reassignCoursePayload = {
+                title: `Invitation rename collision ${suffix}`,
+                content: 'Course content',
+                dag: JSON.stringify([{ _id: 1, title: 'Lesson', pids: [], requireNids: [] }]),
+                beginAt: '2026-7-26 0:00',
+                endAt: '2026-7-27 23:59',
+                lessonDurationHours: 2,
+                lessonBeginAt: '2026-7-26 0:00',
+                lessonEndAt: '2026-7-26 2:00',
+                isTemplate: false,
+                templateCategory: '',
+                assign: deleteLockedClassName,
+                extraStudents: '999999',
+                publicScoreboard: true,
+                enablePenalty: true,
+            };
+            const sourceLockToken = new ObjectId().toHexString();
+            const sourceLock = await ClassModel.acquireEditLock(
+                'system', classId, className, sourceLockToken,
+            );
+            assert.equal(sourceLock.matchedCount, 1);
+            try {
+                await agent.post(`/d/system/course/${collisionCourseId}/edit`)
+                    .send(reassignCoursePayload)
+                    .expect(400);
+            } finally {
+                await ClassModel.releaseEditLock('system', classId, sourceLockToken);
+            }
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [className, '999999'],
+            );
+            await agent.post(`/d/system/course/${collisionCourseId}/edit`)
+                .send(reassignCoursePayload)
+                .expect(302);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [deleteLockedClassName, '999999'],
+            );
+            await agent.post(`/d/system/course/${collisionCourseId}/edit`)
+                .send({ ...reassignCoursePayload, assign: className })
+                .expect(302);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [className, '999999'],
+            );
+
             deleteConditionalCourseId = await ContestModel.add(
                 'system',
                 `Conditional delete course ${suffix}`,

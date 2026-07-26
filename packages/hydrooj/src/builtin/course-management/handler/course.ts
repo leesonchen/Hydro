@@ -1176,11 +1176,11 @@ export class CourseEditHandler extends Handler {
         const sourceTid = tid;
         const sourceCourseForTemplate = saveAsTemplate ? this.tdoc : undefined;
         const assignGroup = isTemplate ? 'teachers' : (assign[0] || '');
-        let assignGroupId: ObjectId | undefined;
+        let targetClassGroup: { _id: ObjectId, name: string } | undefined;
 
         if (isTemplate) {
             assign = ['teachers'];
-            const teachersGroup = (await UserModel.listGroup(domainId, undefined, ['teachers']))[0];
+            let teachersGroup = (await UserModel.listGroup(domainId, undefined, ['teachers']))[0];
             if (teachersGroup && !teachersGroup.class) {
                 throw new BadRequestError('teachers 已被普通用户组占用');
             }
@@ -1194,36 +1194,47 @@ export class CourseEditHandler extends Handler {
                     endAt.toDate(),
                     false,
                 );
+                teachersGroup = await ClassModel.getGroupByName(domainId, 'teachers') || undefined;
             }
+            if (!teachersGroup?.class) throw new BadRequestError('班级不存在');
+            targetClassGroup = teachersGroup;
         } else if (assign.length) {
             const group = await ClassModel.getGroupByName(domainId, assign[0]);
             if (!group) throw new BadRequestError('班级不存在');
             if (group.archive) throw new BadRequestError('班级已归档');
-            assignGroupId = group._id;
+            targetClassGroup = group;
         }
 
-        if ((!tid || saveAsTemplate) && assignGroup && !assignGroupId) {
-            await ensureCourseTitleAvailable(domainId, title, assignGroup, undefined, (this as any).translate?.bind(this));
+        const classGroups = new Map<string, { _id: ObjectId, name: string }>();
+        if (targetClassGroup) classGroups.set(targetClassGroup._id.toHexString(), targetClassGroup);
+        const sourceAssignGroup = this.tdoc
+            ? (this.tdoc.assign?.includes('teachers') ? 'teachers' : getAssignGroup(this.tdoc))
+            : '';
+        if (sourceAssignGroup && sourceAssignGroup !== targetClassGroup?.name) {
+            const sourceClassGroup = await ClassModel.getGroupByName(domainId, sourceAssignGroup);
+            if (sourceClassGroup) classGroups.set(sourceClassGroup._id.toHexString(), sourceClassGroup);
         }
 
-        const classEditToken = assignGroupId ? new ObjectId().toHexString() : undefined;
-        if (assignGroupId) {
-            const lock = await ClassModel.acquireEditLock(
-                domainId,
-                assignGroupId,
-                assignGroup,
-                classEditToken!,
-            );
-            if (!lock.matchedCount) {
-                throw new BadRequestError('Class is being edited. Please refresh and try again.');
-            }
-        }
+        const classGroupsToLock = [...classGroups.values()]
+            .sort((a, b) => a._id.toHexString().localeCompare(b._id.toHexString()));
+        const classEditToken = classGroupsToLock.length ? new ObjectId().toHexString() : undefined;
+        const lockedClassGroups: Array<{ _id: ObjectId, name: string }> = [];
 
         try {
-            if (assignGroupId) {
-                const refreshed = await ClassModel.refreshEditLock(domainId, assignGroupId, classEditToken!);
+            for (const group of classGroupsToLock) {
+                // eslint-disable-next-line no-await-in-loop
+                const lock = await ClassModel.acquireEditLock(domainId, group._id, group.name, classEditToken!);
+                if (!lock.matchedCount) {
+                    throw new BadRequestError('Class is being edited. Please refresh and try again.');
+                }
+                lockedClassGroups.push(group);
+            }
+            await Promise.all(lockedClassGroups.map(async (group) => {
+                const refreshed = await ClassModel.refreshEditLock(domainId, group._id, classEditToken!);
                 if (!refreshed.matchedCount) throw new BadRequestError('The class edit lock was lost.');
-                const lockedGroup = await ClassModel.getGroupById(domainId, assignGroupId);
+            }));
+            if (targetClassGroup) {
+                const lockedGroup = await ClassModel.getGroupById(domainId, targetClassGroup._id);
                 if (!lockedGroup) throw new BadRequestError('班级不存在');
                 if (lockedGroup.archive) throw new BadRequestError('班级已归档');
                 if (!tid || saveAsTemplate) {
@@ -1290,21 +1301,21 @@ export class CourseEditHandler extends Handler {
                 ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
                 ...(sourceCourseForTemplate?.files?.length ? { files: sourceCourseForTemplate.files } : {}),
             });
+            if (sourceCourseForTemplate?.files?.length && sourceTid) {
+                await Promise.all(sourceCourseForTemplate.files.map((f) => StorageModel.copy(
+                    `contest/${domainId}/${sourceTid}/public/${f.name}`,
+                    `contest/${domainId}/${tid}/public/${f.name}`,
+                )));
+            }
+            // 清除旧的 extraStudents 字段（已合并到 assign）
+            await DocumentModel.set(domainId, DocumentModel.TYPE_CONTEST, tid, undefined, { extraStudents: '' as any });
         } finally {
-            if (assignGroupId && classEditToken) {
-                try {
-                    await ClassModel.releaseEditLock(domainId, assignGroupId, classEditToken);
-                } catch { }
+            if (classEditToken) {
+                await Promise.allSettled(lockedClassGroups.map(
+                    (group) => ClassModel.releaseEditLock(domainId, group._id, classEditToken),
+                ));
             }
         }
-        if (sourceCourseForTemplate?.files?.length && sourceTid) {
-            await Promise.all(sourceCourseForTemplate.files.map((f) => StorageModel.copy(
-                `contest/${domainId}/${sourceTid}/public/${f.name}`,
-                `contest/${domainId}/${tid}/public/${f.name}`,
-            )));
-        }
-        // 清除旧的 extraStudents 字段（已合并到 assign）
-        await DocumentModel.set(domainId, DocumentModel.TYPE_CONTEST, tid, undefined, { extraStudents: '' as any });
 
         this.response.body = { tid };
         this.response.redirect = this.url('course_detail', { tid });
