@@ -56,7 +56,9 @@ async function renameClassCourses(
     const renamedCourseIds = new Map<string, ObjectId>();
     try {
         for (let pass = 0; pass < 10; pass++) {
+            // eslint-disable-next-line no-await-in-loop
             await refreshClassEditLock(domainId, classId, editToken);
+            // eslint-disable-next-line no-await-in-loop
             const tdocs = await ContestModel.getMulti(domainId, {
                 rule: 'course',
                 assign: { $in: [previousName] },
@@ -69,6 +71,7 @@ async function renameClassCourses(
                     previousName,
                 );
             }
+            // eslint-disable-next-line no-await-in-loop
             const results = await Promise.allSettled(tdocs.map(async (tdoc) => {
                 renamedCourseIds.set(tdoc._id.toString(), tdoc._id);
                 await ContestModel.replaceAssignGroup(
@@ -740,6 +743,7 @@ export class ClassEditHandler extends Handler {
                 const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
                 const lessonWindow = calcLessonTimeRange(beginAt, getLessonDurationHours(template));
 
+                // eslint-disable-next-line no-await-in-loop
                 await refreshClassEditLock(domainId, id, editToken);
                 // 创建新课程
                 const newTid = await ContestModel.add(
