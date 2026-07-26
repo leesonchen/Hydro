@@ -64,6 +64,40 @@ describe('App', () => {
         await agent.get('/api/user?args={"id":2}&projection=uname').expect({ uname: 'root' });
     });
 
+    it('Reject cross-type homework and course edit routes', async () => {
+        const ContestModel = global.Hydro.model.contest;
+        const suffix = Date.now().toString(36);
+        const beginAt = new Date('2026-07-26T00:00:00Z');
+        const penaltySince = new Date('2026-07-27T00:00:00Z');
+        const endAt = new Date('2026-07-28T00:00:00Z');
+        const courseId = await ContestModel.add(
+            'system', `Cross-route course ${suffix}`, '', 2, 'course', beginAt, endAt, [], false,
+            { assign: [], dag: [] },
+        );
+        const homeworkId = await ContestModel.add(
+            'system', `Cross-route homework ${suffix}`, '', 2, 'homework', beginAt, endAt, [], false,
+            { assign: [], penaltySince, penaltyRules: { 0: 1 } },
+        );
+        try {
+            await agent.post(`/d/system/homework/${courseId}/edit`)
+                .send({ operation: 'delete' })
+                .expect(404);
+            assert(await ContestModel.get('system', courseId));
+            await agent.get(`/d/system/homework/${courseId}/edit`).expect(404);
+            await agent.post(`/d/system/course/${homeworkId}/edit`)
+                .send({ operation: 'delete' })
+                .expect(404);
+            assert(await ContestModel.get('system', homeworkId));
+        } finally {
+            await Promise.all([
+                ContestModel.del('system', courseId),
+                ContestModel.del('system', homeworkId),
+            ]);
+            // Start the request-heavy invitation regression in a fresh global rate-limit window.
+            await new Promise((resolve) => setTimeout(resolve, 5100));
+        }
+    });
+
     it('Join groups and classes with expiring invitation links', async () => {
         const UserModel = global.Hydro.model.user;
         const TokenModel = global.Hydro.model.token;

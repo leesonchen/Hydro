@@ -1042,6 +1042,7 @@ export class CourseEditHandler extends Handler {
         if (tid) {
             this.tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
             if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
+            if (this.tdoc.rule !== 'course') throw new ContestNotFoundError(domainId, tid);
             if (!this.user.own(this.tdoc)) {
                 this.checkPerm(PERM.PERM_EDIT_HOMEWORK);
             }

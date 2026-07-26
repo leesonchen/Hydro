@@ -149,6 +149,13 @@ class HomeworkDetailHandler extends Handler {
 
 class HomeworkEditHandler extends Handler {
     @param('tid', Types.ObjectId, true)
+    async prepare(domainId: string, tid?: ObjectId) {
+        if (!tid) return;
+        const tdoc = await contest.get(domainId, tid);
+        if (tdoc.rule !== 'homework') throw new ContestNotFoundError(domainId, tid);
+    }
+
+    @param('tid', Types.ObjectId, true)
     async get(domainId: string, tid: ObjectId) {
         const tdoc = tid ? await contest.get(domainId, tid) : null;
         if (!tid) this.checkPerm(PERM.PERM_CREATE_HOMEWORK);
