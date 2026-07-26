@@ -840,12 +840,84 @@ export async function edit(domainId: string, tid: ObjectId, $set: Partial<Tdoc>)
     return res;
 }
 
+export async function editIfAssigned(
+    domainId: string,
+    tid: ObjectId,
+    assignGroup: string,
+    $set: Partial<Tdoc>,
+) {
+    if ($set.rule && !RULES[$set.rule]) throw new ValidationError('rule');
+    const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
+    if (!tdoc) throw new ContestNotFoundError(domainId, tid);
+    await bus.parallel('contest/before-edit', tdoc, $set);
+    RULES[$set.rule || tdoc.rule].check(Object.assign(tdoc, $set));
+    const res = await document.coll.findOneAndUpdate(
+        {
+            domainId,
+            docType: document.TYPE_CONTEST,
+            docId: tid,
+            assign: assignGroup,
+        },
+        { $set },
+        { returnDocument: 'after' },
+    );
+    if (res) await bus.parallel('contest/edit', res as Tdoc);
+    return res as Tdoc | null;
+}
+
+export async function replaceAssignGroup(
+    domainId: string,
+    tid: ObjectId,
+    expectedGroup: string,
+    assignGroup: string,
+) {
+    const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
+    if (!tdoc) throw new ContestNotFoundError(domainId, tid);
+    if (!tdoc.assign?.includes(expectedGroup)) return null;
+    const $set = {
+        assign: tdoc.assign.map((item) => (item === expectedGroup ? assignGroup : item)),
+    };
+    await bus.parallel('contest/before-edit', tdoc, $set);
+    RULES[tdoc.rule].check(Object.assign(tdoc, $set));
+    const res = await document.coll.findOneAndUpdate(
+        {
+            domainId,
+            docType: document.TYPE_CONTEST,
+            docId: tid,
+            assign: expectedGroup,
+        },
+        { $set: { 'assign.$[item]': assignGroup } },
+        {
+            arrayFilters: [{ item: expectedGroup }],
+            returnDocument: 'after',
+        },
+    );
+    if (res) await bus.parallel('contest/edit', res as Tdoc);
+    return res as Tdoc | null;
+}
+
 export async function del(domainId: string, tid: ObjectId) {
     await Promise.all([
         bus.parallel('contest/del', domainId, tid),
         document.deleteOne(domainId, document.TYPE_CONTEST, tid),
         document.deleteMultiStatus(domainId, document.TYPE_CONTEST, { docId: tid }),
     ]);
+}
+
+export async function delIfAssigned(domainId: string, tid: ObjectId, assignGroup: string) {
+    const result = await document.coll.deleteOne({
+        domainId,
+        docType: document.TYPE_CONTEST,
+        docId: tid,
+        rule: 'course',
+        assign: assignGroup,
+    });
+    if (!result.deletedCount) return false;
+    await Promise.all([
+        bus.parallel('contest/del', domainId, tid),
+        document.deleteMultiStatus(domainId, document.TYPE_CONTEST, { docId: tid }),
+    ]);
+    return true;
 }
 
 export async function get(domainId: string, tid: ObjectId): Promise<Tdoc> {
@@ -1149,7 +1221,10 @@ global.Hydro.model.contest = {
     getMultiStatus,
     attend,
     edit,
+    editIfAssigned,
+    replaceAssignGroup,
     del,
+    delIfAssigned,
     get,
     getRelated,
     updateStatus,

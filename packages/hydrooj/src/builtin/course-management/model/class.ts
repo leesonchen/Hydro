@@ -94,11 +94,16 @@ export const ClassModel = {
         );
     },
 
-    async delGroup(domainId: string, id: ObjectId) {
-        const doc = await coll.findOne({ domainId, _id: id, class: true });
-        if (!doc) throw new NotFoundError('Group not found');
+    async delGroup(domainId: string, id: ObjectId, editToken: string) {
+        const result = await coll.deleteOne({
+            domainId,
+            _id: id,
+            class: true,
+            'classEditLock.token': editToken,
+        });
+        if (!result.deletedCount) throw new NotFoundError('Group not found');
         deleteUserCache(domainId);
-        return coll.deleteOne({ domainId, _id: id });
+        return result;
     },
 
     async renameGroup(domainId: string, id: ObjectId, expectedName: string, name: string, editToken: string) {

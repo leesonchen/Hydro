@@ -26,14 +26,14 @@ function calcLessonTimeRange(beginAt: moment.Moment, lessonDurationHours: number
     };
 }
 
-type CourseAssignmentSnapshot = {
-    assign: string[];
-    tid: ObjectId;
-};
-
-async function restoreCourseAssignments(domainId: string, snapshots: CourseAssignmentSnapshot[]) {
-    const results = await Promise.allSettled(snapshots.map(
-        ({ assign, tid }) => ContestModel.edit(domainId, tid, { assign }),
+async function restoreCourseAssignments(
+    domainId: string,
+    tids: ObjectId[],
+    name: string,
+    previousName: string,
+) {
+    const results = await Promise.allSettled(tids.map(
+        (tid) => ContestModel.replaceAssignGroup(domainId, tid, name, previousName),
     ));
     const errors = results
         .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
@@ -53,7 +53,7 @@ async function renameClassCourses(
     name: string,
     editToken: string,
 ) {
-    const snapshots = new Map<string, CourseAssignmentSnapshot>();
+    const renamedCourseIds = new Map<string, ObjectId>();
     try {
         for (let pass = 0; pass < 10; pass++) {
             await refreshClassEditLock(domainId, classId, editToken);
@@ -62,19 +62,21 @@ async function renameClassCourses(
                 assign: { $in: [previousName] },
             }).toArray();
             if (!tdocs.length) {
-                return () => restoreCourseAssignments(domainId, [...snapshots.values()]);
+                return () => restoreCourseAssignments(
+                    domainId,
+                    [...renamedCourseIds.values()],
+                    name,
+                    previousName,
+                );
             }
             const results = await Promise.allSettled(tdocs.map(async (tdoc) => {
-                const key = tdoc._id.toString();
-                if (!snapshots.has(key)) {
-                    snapshots.set(key, {
-                        assign: [...(tdoc.assign || [])],
-                        tid: tdoc._id,
-                    });
-                }
-                await ContestModel.edit(domainId, tdoc._id, {
-                    assign: (tdoc.assign || []).map((item: string) => (item === previousName ? name : item)),
-                });
+                renamedCourseIds.set(tdoc._id.toString(), tdoc._id);
+                await ContestModel.replaceAssignGroup(
+                    domainId,
+                    tdoc._id,
+                    previousName,
+                    name,
+                );
             }));
             const failure = results.find(
                 (result): result is PromiseRejectedResult => result.status === 'rejected',
@@ -97,7 +99,12 @@ async function renameClassCourses(
         }
         if (classRestored) {
             try {
-                await restoreCourseAssignments(domainId, [...snapshots.values()]);
+                await restoreCourseAssignments(
+                    domainId,
+                    [...renamedCourseIds.values()],
+                    name,
+                    previousName,
+                );
             } catch (rollbackError) {
                 rollbackErrors.push(rollbackError);
             }
@@ -392,14 +399,31 @@ export class ClassEditHandler extends Handler {
         const gdoc = await ClassModel.getGroupById(domainId, id);
         if (!gdoc) throw new NotFoundError(domainId, id);
 
-        // 删除所有关联的课程
-        const tdocs = await ContestModel.getMulti(domainId, {
-            rule: 'course',
-            assign: { $in: [gdoc.name] },
-        }).toArray();
+        const editToken = new ObjectId().toHexString();
+        const lock = await ClassModel.acquireEditLock(domainId, id, gdoc.name, editToken);
+        if (!lock.matchedCount) {
+            throw new BadRequestError('Class is being edited. Please refresh and try again.');
+        }
 
-        await Promise.all(tdocs.map((t) => ContestModel.del(domainId, t._id)));
-        await ClassModel.delGroup(domainId, id);
+        try {
+            const lockedGroup = await ClassModel.getGroupById(domainId, id);
+            if (!lockedGroup) throw new NotFoundError(domainId, id);
+            await refreshClassEditLock(domainId, id, editToken);
+            if (!canManageClass(this.user, lockedGroup)) throw new PermissionError(PERM.PERM_EDIT_HOMEWORK);
+
+            // 删除所有仍关联到该班级的课程
+            const tdocs = await ContestModel.getMulti(domainId, {
+                rule: 'course',
+                assign: { $in: [gdoc.name] },
+            }).toArray();
+
+            await Promise.all(tdocs.map((t) => ContestModel.delIfAssigned(domainId, t._id, gdoc.name)));
+            await ClassModel.delGroup(domainId, id, editToken);
+        } finally {
+            try {
+                await ClassModel.releaseEditLock(domainId, id, editToken);
+            } catch { }
+        }
 
         this.response.redirect = this.url('domain_class');
     }
@@ -499,6 +523,12 @@ export class ClassEditHandler extends Handler {
         }
 
         try {
+            if (id) {
+                const lockedGroup = await ClassModel.getGroupById(domainId, id);
+                if (!lockedGroup) throw new NotFoundError(domainId, id);
+                await refreshClassEditLock(domainId, id, editToken!);
+                if (!canManageClass(this.user, lockedGroup)) throw new PermissionError(PERM.PERM_EDIT_HOMEWORK);
+            }
             let restoreRenamedCourses: (() => Promise<void>) | undefined;
             if (previousName) {
                 const renameResult = await ClassModel.renameGroup(
@@ -572,38 +602,37 @@ export class ClassEditHandler extends Handler {
                 }
                 throw error;
             }
+            // 更新所有关联课程的维护者（始终更新）
+            const tdocs = await ContestModel.getMulti(domainId, {
+                rule: 'course',
+                assign: { $in: [name] },
+            }).sort({ beginAt: 1, _id: 1 }).toArray();
+
+            // 只有时间相关字段变化时，才更新课程时间
+            if (shouldUpdateCourseTimes) {
+                await Promise.all(tdocs.map((t, index) => {
+                    const baseBeginAt = beginAt.clone().add(index * intervalDays, 'days');
+                    const { beginAt: courseBeginAt, endAt: courseEndAt } = calcCourseTimeRange(baseBeginAt, endAt);
+                    const lessonWindow = calcLessonTimeRange(courseBeginAt, getLessonDurationHours(t as CourseTdoc));
+                    return ContestModel.editIfAssigned(domainId, t._id, name, {
+                        beginAt: courseBeginAt.toDate(),
+                        endAt: courseEndAt.toDate(),
+                        ...lessonWindow,
+                        maintainer: mergedTeachers,
+                    });
+                }));
+            } else {
+                // 仅更新维护者
+                await Promise.all(tdocs.map((t) => ContestModel.editIfAssigned(domainId, t._id, name, {
+                    maintainer: mergedTeachers,
+                })));
+            }
         } finally {
             if (id && editToken) {
                 try {
                     await ClassModel.releaseEditLock(domainId, id, editToken);
                 } catch { }
             }
-        }
-
-        // 更新所有关联课程的维护者（始终更新）
-        const tdocs = await ContestModel.getMulti(domainId, {
-            rule: 'course',
-            assign: { $in: [name] },
-        }).sort({ beginAt: 1, _id: 1 }).toArray();
-
-        // 只有时间相关字段变化时，才更新课程时间
-        if (shouldUpdateCourseTimes) {
-            await Promise.all(tdocs.map((t, index) => {
-                const baseBeginAt = beginAt.clone().add(index * intervalDays, 'days');
-                const { beginAt: courseBeginAt, endAt: courseEndAt } = calcCourseTimeRange(baseBeginAt, endAt);
-                const lessonWindow = calcLessonTimeRange(courseBeginAt, getLessonDurationHours(t as CourseTdoc));
-                return ContestModel.edit(domainId, t._id, {
-                    beginAt: courseBeginAt.toDate(),
-                    endAt: courseEndAt.toDate(),
-                    ...lessonWindow,
-                    maintainer: mergedTeachers,
-                });
-            }));
-        } else {
-            // 仅更新维护者
-            await Promise.all(tdocs.map((t) => ContestModel.edit(domainId, t._id, {
-                maintainer: mergedTeachers,
-            })));
         }
 
         this.response.redirect = this.url('domain_class');
@@ -646,99 +675,117 @@ export class ClassEditHandler extends Handler {
     @param('id', Types.ObjectId)
     @param('template', Types.CommaSeperatedArray)
     async postCopy(domainId: string, id: ObjectId, templateIds: string[]) {
-        const gdoc = await ClassModel.getGroupById(domainId, id);
+        let gdoc = await ClassModel.getGroupById(domainId, id);
         if (!gdoc) throw new NotFoundError(domainId, id);
         const user = (this as any).user;
-
-        const intervalDays = typeof gdoc.intervalDays === 'number' && gdoc.intervalDays > 0 ? gdoc.intervalDays : 1;
-        const classBeginAt = moment.utc(gdoc.beginAt).tz(user.timeZone);
-        const classEndAt = moment.utc(gdoc.endAt).tz(this.user.timeZone);
-
-        const lastCourse = await ContestModel.getMulti(domainId, {
-            rule: 'course',
-            assign: { $in: [gdoc.name] },
-        }).sort({ beginAt: -1, _id: -1 }).limit(1).next();
-
-        let nextBaseBeginAt = lastCourse
-            ? moment.utc(lastCourse.beginAt).tz(user.timeZone).add(intervalDays, 'days')
-            : classBeginAt.clone();
-
-        const tdocs: any[] = [];
-
-        for (const templateValue of templateIds) {
-            const [sourceDomainIdRaw, templateIdRaw] = String(templateValue || '').split(':');
-            const sourceDomainId = (sourceDomainIdRaw || '').trim().toLowerCase();
-            const templateId = (templateIdRaw || '').trim();
-            if (!sourceDomainId || !templateId) continue;
-
-            await assertCourseCopyAllowed(sourceDomainId, domainId, (this as any).translate?.bind(this));
-
-            const template = await ContestModel.get(sourceDomainId, new ObjectId(templateId)) as CourseTdoc;
-            if (!template) continue;
-
-            const { title, content, dag } = template;
-            await ensureCourseTitleAvailable(domainId, title, gdoc.name, (this as any).translate?.bind(this));
-
-            const parsedDag = await parseDag(sourceDomainId, JSON.stringify(dag));
-            const sourcePids = Array.from(new Set(parsedDag.flatMap((node) => node.pids)));
-            let { mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids, (this as any).translate?.bind(this));
-            if (missing.length) {
-                await copyMissingProblemsToTarget(domainId, missing, user._id, (this as any).translate?.bind(this));
-                ({ mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids, (this as any).translate?.bind(this)));
-                if (missing.length) {
-                    const missingText = missing.map((item) => `${item.pid} -> ${item.originDomainId}:${item.originPid}`).join(', ');
-                    throw new BadRequestError(fillMessage((this as any).translate?.('Missing referenced problems in target domain: {0}') || 'Missing referenced problems in target domain: {0}', missingText));
-                }
-            }
-            const newDag = rewriteDagPids(parsedDag, mapping);
-            const copiedLecture = copyCourseLecture(template, parsedDag, newDag);
-            const finalDag = copiedLecture.dag;
-            const newLecture = copiedLecture.lecture;
-            const allPids = Array.from(new Set(finalDag.flatMap((node) => node.pids)));
-
-            const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
-            const lessonWindow = calcLessonTimeRange(beginAt, getLessonDurationHours(template));
-
-            // 创建新课程
-            const newTid = await ContestModel.add(
-                domainId,
-                title,
-                content,
-                user._id,
-                'course',
-                beginAt.toDate(),
-                endAt.toDate(),
-                allPids,
-                false,
-                {
-                    dag: finalDag,
-                    assign: [gdoc.name],
-                    maintainer: gdoc.teachers,
-                    lecture: newLecture,
-                    files: template.files,
-                    ...lessonWindow,
-                },
-            );
-
-            // ContestModel.add may be extended by hooks; explicitly persist copied lectures after creation
-            // so cross-domain course copies do not lose lecture bodies.
-            if (Object.keys(newLecture).length) await ContestModel.edit(domainId, newTid, { lecture: newLecture });
-
-            // 复制文件
-            if (template.files?.length) {
-                await Promise.all(template.files.map((f) => StorageModel.copy(
-                    `contest/${sourceDomainId}/${templateId}/public/${f.name}`,
-                    `contest/${domainId}/${newTid}/public/${f.name}`,
-                )));
-            }
-
-            const newTdoc = await ContestModel.get(domainId, newTid);
-            (newTdoc as any).url = this.url('course_detail', { tid: newTid });
-            tdocs.push(newTdoc);
-
-            nextBaseBeginAt = nextBaseBeginAt.clone().add(intervalDays, 'days');
+        const editToken = new ObjectId().toHexString();
+        const lock = await ClassModel.acquireEditLock(domainId, id, gdoc.name, editToken);
+        if (!lock.matchedCount) {
+            throw new BadRequestError('Class is being edited. Please refresh and try again.');
         }
 
-        this.response.body = { tdocs };
+        try {
+            const lockedGroup = await ClassModel.getGroupById(domainId, id);
+            if (!lockedGroup) throw new NotFoundError(domainId, id);
+            await refreshClassEditLock(domainId, id, editToken);
+            if (!canManageClass(this.user, lockedGroup)) throw new PermissionError(PERM.PERM_EDIT_HOMEWORK);
+            gdoc = lockedGroup;
+
+            const intervalDays = typeof gdoc.intervalDays === 'number' && gdoc.intervalDays > 0 ? gdoc.intervalDays : 1;
+            const classBeginAt = moment.utc(gdoc.beginAt).tz(user.timeZone);
+            const classEndAt = moment.utc(gdoc.endAt).tz(this.user.timeZone);
+
+            const lastCourse = await ContestModel.getMulti(domainId, {
+                rule: 'course',
+                assign: { $in: [gdoc.name] },
+            }).sort({ beginAt: -1, _id: -1 }).limit(1).next();
+
+            let nextBaseBeginAt = lastCourse
+                ? moment.utc(lastCourse.beginAt).tz(user.timeZone).add(intervalDays, 'days')
+                : classBeginAt.clone();
+
+            const tdocs: any[] = [];
+
+            for (const templateValue of templateIds) {
+                const [sourceDomainIdRaw, templateIdRaw] = String(templateValue || '').split(':');
+                const sourceDomainId = (sourceDomainIdRaw || '').trim().toLowerCase();
+                const templateId = (templateIdRaw || '').trim();
+                if (!sourceDomainId || !templateId) continue;
+
+                await assertCourseCopyAllowed(sourceDomainId, domainId, (this as any).translate?.bind(this));
+
+                const template = await ContestModel.get(sourceDomainId, new ObjectId(templateId)) as CourseTdoc;
+                if (!template) continue;
+
+                const { title, content, dag } = template;
+                await ensureCourseTitleAvailable(domainId, title, gdoc.name, (this as any).translate?.bind(this));
+
+                const parsedDag = await parseDag(sourceDomainId, JSON.stringify(dag));
+                const sourcePids = Array.from(new Set(parsedDag.flatMap((node) => node.pids)));
+                let { mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids, (this as any).translate?.bind(this));
+                if (missing.length) {
+                    await copyMissingProblemsToTarget(domainId, missing, user._id, (this as any).translate?.bind(this));
+                    ({ mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids, (this as any).translate?.bind(this)));
+                    if (missing.length) {
+                        const missingText = missing.map((item) => `${item.pid} -> ${item.originDomainId}:${item.originPid}`).join(', ');
+                        throw new BadRequestError(fillMessage((this as any).translate?.('Missing referenced problems in target domain: {0}') || 'Missing referenced problems in target domain: {0}', missingText));
+                    }
+                }
+                const newDag = rewriteDagPids(parsedDag, mapping);
+                const copiedLecture = copyCourseLecture(template, parsedDag, newDag);
+                const finalDag = copiedLecture.dag;
+                const newLecture = copiedLecture.lecture;
+                const allPids = Array.from(new Set(finalDag.flatMap((node) => node.pids)));
+
+                const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
+                const lessonWindow = calcLessonTimeRange(beginAt, getLessonDurationHours(template));
+
+                await refreshClassEditLock(domainId, id, editToken);
+                // 创建新课程
+                const newTid = await ContestModel.add(
+                    domainId,
+                    title,
+                    content,
+                    user._id,
+                    'course',
+                    beginAt.toDate(),
+                    endAt.toDate(),
+                    allPids,
+                    false,
+                    {
+                        dag: finalDag,
+                        assign: [gdoc.name],
+                        maintainer: gdoc.teachers,
+                        lecture: newLecture,
+                        files: template.files,
+                        ...lessonWindow,
+                    },
+                );
+
+                // ContestModel.add may be extended by hooks; explicitly persist copied lectures after creation
+                // so cross-domain course copies do not lose lecture bodies.
+                if (Object.keys(newLecture).length) await ContestModel.edit(domainId, newTid, { lecture: newLecture });
+
+                // 复制文件
+                if (template.files?.length) {
+                    await Promise.all(template.files.map((f) => StorageModel.copy(
+                        `contest/${sourceDomainId}/${templateId}/public/${f.name}`,
+                        `contest/${domainId}/${newTid}/public/${f.name}`,
+                    )));
+                }
+
+                const newTdoc = await ContestModel.get(domainId, newTid);
+                (newTdoc as any).url = this.url('course_detail', { tid: newTid });
+                tdocs.push(newTdoc);
+
+                nextBaseBeginAt = nextBaseBeginAt.clone().add(intervalDays, 'days');
+            }
+
+            this.response.body = { tdocs };
+        } finally {
+            try {
+                await ClassModel.releaseEditLock(domainId, id, editToken);
+            } catch { }
+        }
     }
 }

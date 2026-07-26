@@ -72,11 +72,13 @@ describe('App', () => {
         const teachersClassId = new ObjectId();
         const archivedClassId = new ObjectId();
         const deletedClassId = new ObjectId();
+        const deleteLockedClassId = new ObjectId();
         const regularTeachersGroupId = new ObjectId();
         const legacyGroupId = new ObjectId();
         const alternateGroupId = new ObjectId();
         const groupName = `invite-group-${suffix}`;
         const className = `invite-class-${suffix}`;
+        const deleteLockedClassName = `delete-locked-class-${suffix}`;
         const renamedClassName = `renamed-invite-class-${suffix}`;
         const concurrentRenamedClassName = `concurrent-renamed-class-${suffix}`;
         const creatorManagedClassName = `creator-managed-invite-class-${suffix}`;
@@ -84,10 +86,14 @@ describe('App', () => {
         const importedUsername = `classimport${suffix}`;
         const importedEmail = `${importedUsername}@example.com`;
         const templateTitle = `Conflicting teachers template ${suffix}`;
+        const lockedCourseTitle = `Locked class course ${suffix}`;
+        const lockedCopyTitle = `Locked class template ${suffix}`;
         const invalidClassNames = [Date.now().toString(), `invalid,class-${suffix}`];
         const creatorRole = `invite-class-creator-${suffix}`;
         const alternateDomainId = `invite-${suffix}`;
         let collisionCourseId: ObjectId | undefined;
+        let deleteConditionalCourseId: ObjectId | undefined;
+        let lockedTemplateCourseId: ObjectId | undefined;
         let importedUser: any;
         const classUpdatePayload = ({
             archive = false,
@@ -125,6 +131,18 @@ describe('App', () => {
                 domainId: 'system',
                 name: className,
                 uids: [2],
+                teachers: [],
+                students: [],
+                beginAt: new Date(),
+                endAt: new Date(Date.now() + 86400000),
+                archive: false,
+                class: true,
+            },
+            {
+                _id: deleteLockedClassId,
+                domainId: 'system',
+                name: deleteLockedClassName,
+                uids: [],
                 teachers: [],
                 students: [],
                 beginAt: new Date(),
@@ -544,6 +562,28 @@ describe('App', () => {
                 [className, '999999'],
             );
 
+            let rejectAfterCourseRename = true;
+            const disposePostRenameFailure = global.app.on('contest/edit', (tdoc: any) => {
+                if (rejectAfterCourseRename
+                    && tdoc.docId.equals(collisionCourseId)
+                    && tdoc.assign?.includes(renamedClassName)) {
+                    rejectAfterCourseRename = false;
+                    throw new Error('Injected failure after class course rename');
+                }
+            });
+            try {
+                await editClass(false, renamedClassName, 500);
+            } finally {
+                disposePostRenameFailure();
+            }
+            assert.equal(rejectAfterCourseRename, false);
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert.equal(editedClass?.name, className);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [className, '999999'],
+            );
+
             const originalUpdateGroup = ClassModel.updateGroup;
             const originalRenameGroup = ClassModel.renameGroup;
             let rollbackRenameInterleaved = false;
@@ -594,6 +634,167 @@ describe('App', () => {
             assert.deepStrictEqual(
                 (await ContestModel.get('system', collisionCourseId)).assign,
                 [className, '999999'],
+            );
+
+            let concurrentCourseEdit = false;
+            const disposeConcurrentCourseEdit = global.app.on('contest/before-edit', async (tdoc: any, $set: any) => {
+                if (!concurrentCourseEdit
+                    && tdoc.docId.equals(collisionCourseId)
+                    && $set.assign?.includes(renamedClassName)) {
+                    concurrentCourseEdit = true;
+                    await ContestModel.edit('system', collisionCourseId!, {
+                        assign: [className, '999999', '888888'],
+                    });
+                }
+            });
+            try {
+                await editClass(false, renamedClassName);
+            } finally {
+                disposeConcurrentCourseEdit();
+            }
+            assert(concurrentCourseEdit);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [renamedClassName, '999999', '888888'],
+            );
+            await editClass(false);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [className, '999999', '888888'],
+            );
+            await ContestModel.edit('system', collisionCourseId, { assign: [className, '999999'] });
+
+            let propagationEditRejected = false;
+            const disposePropagationEdit = global.app.on('contest/before-edit', async (tdoc: any, $set: any) => {
+                if (!propagationEditRejected
+                    && tdoc.docId.equals(collisionCourseId)
+                    && $set.maintainer?.includes(3)) {
+                    propagationEditRejected = true;
+                    await agent.post(`/d/system/domain/class/${classId}/edit`)
+                        .send(classUpdatePayload({ teachers: '2' }))
+                        .expect(400);
+                }
+            });
+            try {
+                await editClass(false);
+            } finally {
+                disposePropagationEdit();
+            }
+            assert(propagationEditRejected);
+            editedClass = await UserModel.collGroup.findOne({ _id: classId });
+            assert.deepStrictEqual(editedClass?.teachers, [3]);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).maintainer,
+                [3],
+            );
+
+            await ContestModel.edit('system', collisionCourseId, { maintainer: [2] });
+            let propagationMovePreserved = false;
+            const disposePropagationMove = global.app.on('contest/before-edit', async (tdoc: any, $set: any) => {
+                if (!propagationMovePreserved
+                    && tdoc.docId.equals(collisionCourseId)
+                    && $set.maintainer?.includes(3)) {
+                    propagationMovePreserved = true;
+                    await ContestModel.edit('system', collisionCourseId!, {
+                        assign: [deleteLockedClassName, '999999'],
+                    });
+                }
+            });
+            try {
+                await editClass(false);
+            } finally {
+                disposePropagationMove();
+            }
+            assert(propagationMovePreserved);
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).assign,
+                [deleteLockedClassName, '999999'],
+            );
+            assert.deepStrictEqual(
+                (await ContestModel.get('system', collisionCourseId)).maintainer,
+                [2],
+            );
+            await ContestModel.edit('system', collisionCourseId, {
+                assign: [className, '999999'],
+                maintainer: [3],
+            });
+
+            deleteConditionalCourseId = await ContestModel.add(
+                'system',
+                `Conditional delete course ${suffix}`,
+                '',
+                2,
+                'course',
+                new Date(),
+                new Date(Date.now() + 86400000),
+                [],
+                false,
+                { assign: [deleteLockedClassName] },
+            );
+            await ContestModel.edit('system', deleteConditionalCourseId, { assign: [className] });
+            assert.equal(
+                await ContestModel.delIfAssigned('system', deleteConditionalCourseId, deleteLockedClassName),
+                false,
+            );
+            assert(await ContestModel.get('system', deleteConditionalCourseId));
+
+            lockedTemplateCourseId = await ContestModel.add(
+                'system',
+                lockedCopyTitle,
+                '',
+                2,
+                'course',
+                new Date(),
+                new Date(Date.now() + 86400000),
+                [],
+                false,
+                {
+                    assign: ['teachers'],
+                    dag: [],
+                },
+            );
+
+            const deleteLockToken = new ObjectId().toHexString();
+            const deleteLock = await ClassModel.acquireEditLock(
+                'system', deleteLockedClassId, deleteLockedClassName, deleteLockToken,
+            );
+            assert.equal(deleteLock.matchedCount, 1);
+            try {
+                await agent.post('/d/system/course/create')
+                    .send({
+                        title: lockedCourseTitle,
+                        content: 'Locked course content',
+                        dag: JSON.stringify([{ _id: 1, title: 'Lesson', pids: [], requireNids: [] }]),
+                        beginAt: '2026-7-26 0:00',
+                        endAt: '2026-7-27 23:59',
+                        lessonDurationHours: 2,
+                        lessonBeginAt: '2026-7-26 0:00',
+                        lessonEndAt: '2026-7-26 2:00',
+                        isTemplate: false,
+                        templateCategory: '',
+                        assign: deleteLockedClassName,
+                        extraStudents: '',
+                        publicScoreboard: true,
+                        enablePenalty: true,
+                    })
+                    .expect(400);
+                await agent.post(`/d/system/domain/class/${deleteLockedClassId}/edit`)
+                    .send({ operation: 'copy', template: `system:${lockedTemplateCourseId}` })
+                    .expect(400);
+                await agent.post(`/d/system/domain/class/${deleteLockedClassId}/edit`)
+                    .send({ operation: 'delete' })
+                    .expect(400);
+            } finally {
+                await ClassModel.releaseEditLock('system', deleteLockedClassId, deleteLockToken);
+            }
+            assert(await UserModel.collGroup.findOne({ _id: deleteLockedClassId }));
+            assert.equal(
+                (await ContestModel.getMulti('system', {
+                    rule: 'course',
+                    title: { $in: [lockedCourseTitle, lockedCopyTitle] },
+                    assign: deleteLockedClassName,
+                }).toArray()).length,
+                0,
             );
 
             const staleRename = await ClassModel.updateGroup(
@@ -687,7 +888,7 @@ describe('App', () => {
                             _id: {
                                 $in: [
                                     groupId, classId, teachersClassId, archivedClassId, deletedClassId,
-                                    regularTeachersGroupId, legacyGroupId, alternateGroupId,
+                                    deleteLockedClassId, regularTeachersGroupId, legacyGroupId, alternateGroupId,
                                 ],
                             },
                         },
@@ -711,6 +912,8 @@ describe('App', () => {
                 })] : []),
                 DomainModel.del(alternateDomainId),
                 ...(collisionCourseId ? [ContestModel.del('system', collisionCourseId)] : []),
+                ...(deleteConditionalCourseId ? [ContestModel.del('system', deleteConditionalCourseId)] : []),
+                ...(lockedTemplateCourseId ? [ContestModel.del('system', lockedTemplateCourseId)] : []),
             ]);
             await Promise.all([
                 DomainModel.setUserRole('system', 2, 'default', true),

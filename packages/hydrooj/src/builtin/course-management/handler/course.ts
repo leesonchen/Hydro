@@ -1202,77 +1202,100 @@ export class CourseEditHandler extends Handler {
             assignGroupId = group._id;
         }
 
-        if ((!tid || saveAsTemplate) && assignGroup) {
+        if ((!tid || saveAsTemplate) && assignGroup && !assignGroupId) {
             await ensureCourseTitleAvailable(domainId, title, assignGroup, undefined, (this as any).translate?.bind(this));
         }
 
-        if (tid && !saveAsTemplate) {
+        const classEditToken = assignGroupId ? new ObjectId().toHexString() : undefined;
+        if (assignGroupId) {
+            const lock = await ClassModel.acquireEditLock(
+                domainId,
+                assignGroupId,
+                assignGroup,
+                classEditToken!,
+            );
+            if (!lock.matchedCount) {
+                throw new BadRequestError('Class is being edited. Please refresh and try again.');
+            }
+        }
+
+        try {
+            if (assignGroupId) {
+                const refreshed = await ClassModel.refreshEditLock(domainId, assignGroupId, classEditToken!);
+                if (!refreshed.matchedCount) throw new BadRequestError('The class edit lock was lost.');
+                const lockedGroup = await ClassModel.getGroupById(domainId, assignGroupId);
+                if (!lockedGroup) throw new BadRequestError('班级不存在');
+                if (lockedGroup.archive) throw new BadRequestError('班级已归档');
+                if (!tid || saveAsTemplate) {
+                    await ensureCourseTitleAvailable(
+                        domainId,
+                        title,
+                        assignGroup,
+                        undefined,
+                        (this as any).translate?.bind(this),
+                    );
+                }
+            }
+            if (tid && !saveAsTemplate) {
+                await ContestModel.edit(domainId, tid, {
+                    title,
+                    content,
+                    pids,
+                    beginAt: beginAt.toDate(),
+                    endAt: endAt.toDate(),
+                    lessonDurationHours: normalizedLessonDurationHours,
+                    lessonBeginAt: lessonBeginAt.toDate(),
+                    lessonEndAt: lessonEndAt.toDate(),
+                    editor,
+                    updateAt,
+                    publicScoreboard,
+                    enablePenalty,
+                });
+                await ContestModel.recalcStatus(domainId, tid);
+            } else {
+                tid = await ContestModel.add(
+                    domainId,
+                    title,
+                    content,
+                    this.user._id,
+                    'course',
+                    beginAt.toDate(),
+                    endAt.toDate(),
+                    pids,
+                );
+            }
+
+            // 合并 extraStudents 到 assign（转为字符串）
+            // 先过滤掉 assign 中旧的数字字符串（之前的 extraStudents），再添加新的
+            const nonDigitAssign = isTemplate
+                ? []
+                : assign.filter((g: string) => !/^\d+$/.test(g));
+            const finalAssign = isTemplate
+                ? (templateCategory ? ['teachers', templateCategory] : ['teachers'])
+                : [...nonDigitAssign, ...extraStudents.map((s) => s.toString())];
+            const copiedLecture = copyLectureForTemplate(sourceCourseForTemplate, dag);
+            const finalDag = copiedLecture.dag;
+            const finalLecture = copiedLecture.lecture;
+
             await ContestModel.edit(domainId, tid, {
-                title,
-                content,
-                pids,
-                beginAt: beginAt.toDate(),
-                endAt: endAt.toDate(),
-                lessonDurationHours: normalizedLessonDurationHours,
-                lessonBeginAt: lessonBeginAt.toDate(),
-                lessonEndAt: lessonEndAt.toDate(),
+                dag: finalDag,
+                assign: finalAssign,
                 editor,
                 updateAt,
                 publicScoreboard,
                 enablePenalty,
+                lessonDurationHours: normalizedLessonDurationHours,
+                lessonBeginAt: lessonBeginAt.toDate(),
+                lessonEndAt: lessonEndAt.toDate(),
+                ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
+                ...(sourceCourseForTemplate?.files?.length ? { files: sourceCourseForTemplate.files } : {}),
             });
-            await ContestModel.recalcStatus(domainId, tid);
-        } else {
-            tid = await ContestModel.add(
-                domainId,
-                title,
-                content,
-                this.user._id,
-                'course',
-                beginAt.toDate(),
-                endAt.toDate(),
-                pids,
-            );
-        }
-
-        // 合并 extraStudents 到 assign（转为字符串）
-        // 先过滤掉 assign 中旧的数字字符串（之前的 extraStudents），再添加新的
-        const nonDigitAssign = isTemplate
-            ? []
-            : assign.filter((g: string) => !/^\d+$/.test(g));
-        let finalAssign = isTemplate
-            ? (templateCategory ? ['teachers', templateCategory] : ['teachers'])
-            : [...nonDigitAssign, ...extraStudents.map((s) => s.toString())];
-        const copiedLecture = copyLectureForTemplate(sourceCourseForTemplate, dag);
-        const finalDag = copiedLecture.dag;
-        const finalLecture = copiedLecture.lecture;
-
-        await ContestModel.edit(domainId, tid, {
-            dag: finalDag,
-            assign: finalAssign,
-            editor,
-            updateAt,
-            publicScoreboard,
-            enablePenalty,
-            lessonDurationHours: normalizedLessonDurationHours,
-            lessonBeginAt: lessonBeginAt.toDate(),
-            lessonEndAt: lessonEndAt.toDate(),
-            ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
-            ...(sourceCourseForTemplate?.files?.length ? { files: sourceCourseForTemplate.files } : {}),
-        });
-        let persistedAssignGroup = assignGroup;
-        for (let attempt = 0; assignGroupId && attempt < 5; attempt++) {
-            // A class rename can finish while this course request is being saved. Re-read by immutable id
-            // after persisting so either this request or the rename migration observes the old name.
-            // eslint-disable-next-line no-await-in-loop
-            const currentGroup = await ClassModel.getGroupById(domainId, assignGroupId);
-            if (!currentGroup || currentGroup.name === persistedAssignGroup) break;
-            finalAssign = finalAssign.map(
-                (item) => (item === persistedAssignGroup ? currentGroup.name : item),
-            );
-            persistedAssignGroup = currentGroup.name;
-            // eslint-disable-next-line no-await-in-loop
-            await ContestModel.edit(domainId, tid, { assign: finalAssign });
+        } finally {
+            if (assignGroupId && classEditToken) {
+                try {
+                    await ClassModel.releaseEditLock(domainId, assignGroupId, classEditToken);
+                } catch { }
+            }
         }
         if (sourceCourseForTemplate?.files?.length && sourceTid) {
             await Promise.all(sourceCourseForTemplate.files.map((f) => StorageModel.copy(
