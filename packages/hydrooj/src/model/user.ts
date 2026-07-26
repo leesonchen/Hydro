@@ -553,17 +553,33 @@ class UserModel {
         if (invitationTokenId) query.invitationTokenId = invitationTokenId;
         const gdoc = await collGroup.findOne(query);
         if (!gdoc) return null;
+        if (gdoc.class && gdoc.name === 'teachers') return null;
         if (!invitationTokenId && !gdoc.class && gdoc.uids.includes(uid)) return gdoc;
         const isTeacher = gdoc.teachers?.includes(uid);
         const isStudent = gdoc.students?.includes(uid);
         if (!invitationTokenId && gdoc.class && gdoc.uids.includes(uid) && (isTeacher || isStudent)) return gdoc;
+        if (gdoc.class) {
+            Object.assign(query, {
+                class: true,
+                name: gdoc.name,
+                archive: { $ne: true },
+                teachers: isTeacher ? uid : { $ne: uid },
+                $or: [
+                    { classEditLock: { $exists: false } },
+                    { 'classEditLock.expiresAt': { $lte: new Date() } },
+                ],
+            });
+        }
         const $addToSet = gdoc.class && !isTeacher
             ? { uids: uid, students: uid }
             : { uids: uid };
         deleteUserCache(domainId);
         return await collGroup.findOneAndUpdate(
             query,
-            { $addToSet },
+            {
+                $addToSet,
+                ...(gdoc.class ? { $unset: { classEditLock: '' } } : {}),
+            },
             { returnDocument: 'after' },
         );
     }

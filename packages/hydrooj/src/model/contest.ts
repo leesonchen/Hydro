@@ -843,7 +843,7 @@ export async function edit(domainId: string, tid: ObjectId, $set: Partial<Tdoc>)
 export async function editIfAssigned(
     domainId: string,
     tid: ObjectId,
-    assignGroup: string,
+    assignGroup: string | string[],
     $set: Partial<Tdoc>,
 ) {
     if ($set.rule && !RULES[$set.rule]) throw new ValidationError('rule');
@@ -911,6 +911,22 @@ export async function delIfAssigned(domainId: string, tid: ObjectId, assignGroup
         docId: tid,
         rule: 'course',
         assign: assignGroup,
+    });
+    if (!result.deletedCount) return false;
+    await Promise.all([
+        bus.parallel('contest/del', domainId, tid),
+        document.deleteMultiStatus(domainId, document.TYPE_CONTEST, { docId: tid }),
+    ]);
+    return true;
+}
+
+export async function delIfAssignUnchanged(domainId: string, tid: ObjectId, expectedAssign: string[]) {
+    const result = await document.coll.deleteOne({
+        domainId,
+        docType: document.TYPE_CONTEST,
+        docId: tid,
+        rule: 'course',
+        assign: expectedAssign,
     });
     if (!result.deletedCount) return false;
     await Promise.all([
@@ -1225,6 +1241,7 @@ global.Hydro.model.contest = {
     replaceAssignGroup,
     del,
     delIfAssigned,
+    delIfAssignUnchanged,
     get,
     getRelated,
     updateStatus,

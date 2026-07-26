@@ -1,7 +1,7 @@
+import { deleteUserCache } from '../../../model/user';
 import {
     db, NotFoundError, ObjectId, ValidationError,
 } from '../../../plugin-api';
-import { deleteUserCache } from '../../../model/user';
 
 const coll = db.collection('user.group');
 const CLASS_EDIT_LOCK_TIMEOUT_MS = 30 * 60 * 1000;
@@ -108,16 +108,21 @@ export const ClassModel = {
 
     async renameGroup(domainId: string, id: ObjectId, expectedName: string, name: string, editToken: string) {
         deleteUserCache(domainId);
-        return coll.updateOne(
-            {
-                domainId,
-                _id: id,
-                class: true,
-                name: expectedName,
-                'classEditLock.token': editToken,
-            },
-            { $set: { name } },
-        );
+        try {
+            return await coll.updateOne(
+                {
+                    domainId,
+                    _id: id,
+                    class: true,
+                    name: expectedName,
+                    'classEditLock.token': editToken,
+                },
+                { $set: { name } },
+            );
+        } catch (error) {
+            if ((error as { code?: number }).code === 11000) throw new ValidationError('name');
+            throw error;
+        }
     },
 
     async updateGroup(

@@ -317,7 +317,7 @@ export class ClassEditHandler extends Handler {
             return;
         }
         const group = await ClassModel.getGroupById(domainId, id);
-        if (!group) throw new NotFoundError(domainId, id);
+        if (!group || group.name === 'teachers') throw new NotFoundError(domainId, id);
         if (!canManageClass(this.user, group)) throw new PermissionError(PERM.PERM_EDIT_HOMEWORK);
     }
 

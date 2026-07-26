@@ -5,7 +5,7 @@ import { ObjectId } from 'mongodb';
 import Schema from 'schemastery';
 import type { Context } from '../context';
 import {
-    CannotDeleteSystemDomainError, DomainJoinAlreadyMemberError, DomainJoinForbiddenError, ForbiddenError,
+    BadRequestError, CannotDeleteSystemDomainError, DomainJoinAlreadyMemberError, DomainJoinForbiddenError, ForbiddenError,
     InvalidJoinInvitationCodeError, InvalidTokenError, NotFoundError, OnlyOwnerCanDeleteDomainError, PermissionError,
     RoleAlreadyExistError, ValidationError,
 } from '../error';
@@ -31,6 +31,33 @@ const GROUP_INVITATION_EXPIRATIONS = Object.fromEntries(
 
 function isClassInvitationBlocked(group: GDoc) {
     return !!group.class && (group.name === 'teachers' || !!group.archive);
+}
+
+function getGroupInvitationMutationQuery(handler: Handler, domainId: string, group: GDoc) {
+    if (!group.class) return { domainId, _id: group._id, class: { $ne: true } };
+    const canManageAnyClass = handler.user.hasPerm(PERM.PERM_EDIT_DOMAIN, PERM.PERM_EDIT_HOMEWORK);
+    return {
+        domainId,
+        _id: group._id,
+        class: true,
+        name: group.name,
+        archive: { $ne: true },
+        ...(canManageAnyClass ? {} : { teachers: handler.user._id }),
+        $or: [
+            { classEditLock: { $exists: false } },
+            { 'classEditLock.expiresAt': { $lte: new Date() } },
+        ],
+    };
+}
+
+async function throwGroupInvitationMutationError(handler: Handler, domainId: string, id: ObjectId): Promise<never> {
+    const current = await user.collGroup.findOne({ domainId, _id: id });
+    if (!current || isClassInvitationBlocked(current)) throw new NotFoundError(domainId, id);
+    const canManage = current.class
+        ? canManageClass(handler.user, current)
+        : handler.user.hasPerm(PERM.PERM_EDIT_DOMAIN);
+    if (!canManage) throw new PermissionError(PERM.PERM_EDIT_DOMAIN);
+    throw new BadRequestError('Class is being edited. Please refresh and try again.');
 }
 
 class DomainRankHandler extends Handler {
@@ -394,10 +421,14 @@ class DomainGroupInvitationHandler extends Handler {
     }
 
     async postRevoke({ domainId }) {
-        await user.collGroup.updateOne(
-            { domainId, _id: this.group._id },
-            { $set: { invitationTokenId: null } },
+        const result = await user.collGroup.updateOne(
+            getGroupInvitationMutationQuery(this, domainId, this.group),
+            {
+                $set: { invitationTokenId: null },
+                ...(this.group.class ? { $unset: { classEditLock: '' } } : {}),
+            },
         );
+        if (!result.matchedCount) await throwGroupInvitationMutationError(this, domainId, this.group._id);
         this.back();
     }
 
@@ -408,10 +439,17 @@ class DomainGroupInvitationHandler extends Handler {
             domainId,
             groupId: this.group._id,
         });
-        await user.collGroup.updateOne(
-            { domainId, _id: this.group._id },
-            { $set: { invitationTokenId } },
+        const result = await user.collGroup.updateOne(
+            getGroupInvitationMutationQuery(this, domainId, this.group),
+            {
+                $set: { invitationTokenId },
+                ...(this.group.class ? { $unset: { classEditLock: '' } } : {}),
+            },
         );
+        if (!result.matchedCount) {
+            await token.del(invitationTokenId, token.TYPE_GROUP_INVITATION);
+            await throwGroupInvitationMutationError(this, domainId, this.group._id);
+        }
         this.back();
     }
 }

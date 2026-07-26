@@ -1139,6 +1139,7 @@ export class CourseEditHandler extends Handler {
         publicScoreboard = true,
         enablePenalty = true,
     ) {
+        if (this.args.operation) return;
         assign = Array.from(new Set((assign || []).map((s) => (s || '').trim()).filter(Boolean)));
         templateCategory = (templateCategory || '').trim();
         const extraStudents = Array.from(new Set((extraStudentsStr || [])
@@ -1210,6 +1211,7 @@ export class CourseEditHandler extends Handler {
         const sourceAssignGroup = this.tdoc
             ? (this.tdoc.assign?.includes('teachers') ? 'teachers' : getAssignGroup(this.tdoc))
             : '';
+        let lockedSourceAssign = [...(this.tdoc?.assign || [])];
         if (sourceAssignGroup && sourceAssignGroup !== targetClassGroup?.name) {
             const sourceClassGroup = await ClassModel.getGroupByName(domainId, sourceAssignGroup);
             if (sourceClassGroup) classGroups.set(sourceClassGroup._id.toHexString(), sourceClassGroup);
@@ -1233,6 +1235,16 @@ export class CourseEditHandler extends Handler {
                 const refreshed = await ClassModel.refreshEditLock(domainId, group._id, classEditToken!);
                 if (!refreshed.matchedCount) throw new BadRequestError('The class edit lock was lost.');
             }));
+            if (tid) {
+                const lockedCourse = await ContestModel.get(domainId, tid) as CourseTdoc;
+                const lockedSourceAssignGroup = lockedCourse.assign?.includes('teachers')
+                    ? 'teachers'
+                    : getAssignGroup(lockedCourse);
+                if (lockedSourceAssignGroup !== sourceAssignGroup) {
+                    throw new BadRequestError('Course assignment changed. Please refresh and try again.');
+                }
+                lockedSourceAssign = [...(lockedCourse.assign || [])];
+            }
             if (targetClassGroup) {
                 const lockedGroup = await ClassModel.getGroupById(domainId, targetClassGroup._id);
                 if (!lockedGroup) throw new BadRequestError('班级不存在');
@@ -1247,35 +1259,6 @@ export class CourseEditHandler extends Handler {
                     );
                 }
             }
-            if (tid && !saveAsTemplate) {
-                await ContestModel.edit(domainId, tid, {
-                    title,
-                    content,
-                    pids,
-                    beginAt: beginAt.toDate(),
-                    endAt: endAt.toDate(),
-                    lessonDurationHours: normalizedLessonDurationHours,
-                    lessonBeginAt: lessonBeginAt.toDate(),
-                    lessonEndAt: lessonEndAt.toDate(),
-                    editor,
-                    updateAt,
-                    publicScoreboard,
-                    enablePenalty,
-                });
-                await ContestModel.recalcStatus(domainId, tid);
-            } else {
-                tid = await ContestModel.add(
-                    domainId,
-                    title,
-                    content,
-                    this.user._id,
-                    'course',
-                    beginAt.toDate(),
-                    endAt.toDate(),
-                    pids,
-                );
-            }
-
             // 合并 extraStudents 到 assign（转为字符串）
             // 先过滤掉 assign 中旧的数字字符串（之前的 extraStudents），再添加新的
             const nonDigitAssign = isTemplate
@@ -1288,19 +1271,53 @@ export class CourseEditHandler extends Handler {
             const finalDag = copiedLecture.dag;
             const finalLecture = copiedLecture.lecture;
 
-            await ContestModel.edit(domainId, tid, {
-                dag: finalDag,
-                assign: finalAssign,
-                editor,
-                updateAt,
-                publicScoreboard,
-                enablePenalty,
-                lessonDurationHours: normalizedLessonDurationHours,
-                lessonBeginAt: lessonBeginAt.toDate(),
-                lessonEndAt: lessonEndAt.toDate(),
-                ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
-                ...(sourceCourseForTemplate?.files?.length ? { files: sourceCourseForTemplate.files } : {}),
-            });
+            if (tid && !saveAsTemplate) {
+                const updated = await ContestModel.editIfAssigned(domainId, tid, lockedSourceAssign, {
+                    title,
+                    content,
+                    pids,
+                    beginAt: beginAt.toDate(),
+                    endAt: endAt.toDate(),
+                    lessonDurationHours: normalizedLessonDurationHours,
+                    lessonBeginAt: lessonBeginAt.toDate(),
+                    lessonEndAt: lessonEndAt.toDate(),
+                    editor,
+                    updateAt,
+                    publicScoreboard,
+                    enablePenalty,
+                    dag: finalDag,
+                    assign: finalAssign,
+                    ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
+                });
+                if (!updated) {
+                    throw new BadRequestError('Course assignment changed. Please refresh and try again.');
+                }
+                await ContestModel.recalcStatus(domainId, tid);
+            } else {
+                tid = await ContestModel.add(
+                    domainId,
+                    title,
+                    content,
+                    this.user._id,
+                    'course',
+                    beginAt.toDate(),
+                    endAt.toDate(),
+                    pids,
+                );
+                await ContestModel.edit(domainId, tid, {
+                    dag: finalDag,
+                    assign: finalAssign,
+                    editor,
+                    updateAt,
+                    publicScoreboard,
+                    enablePenalty,
+                    lessonDurationHours: normalizedLessonDurationHours,
+                    lessonBeginAt: lessonBeginAt.toDate(),
+                    lessonEndAt: lessonEndAt.toDate(),
+                    ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
+                    ...(sourceCourseForTemplate?.files?.length ? { files: sourceCourseForTemplate.files } : {}),
+                });
+            }
             if (sourceCourseForTemplate?.files?.length && sourceTid) {
                 await Promise.all(sourceCourseForTemplate.files.map((f) => StorageModel.copy(
                     `contest/${domainId}/${sourceTid}/public/${f.name}`,
@@ -1328,7 +1345,41 @@ export class CourseEditHandler extends Handler {
         } else {
             this.checkPerm(PERM.PERM_EDIT_HOMEWORK);
         }
-        await ContestModel.del(domainId, tid);
+        const currentCourse = await ContestModel.get(domainId, tid) as CourseTdoc;
+        let expectedAssign = currentCourse.assign || [];
+        const assignGroup = currentCourse.assign?.includes('teachers')
+            ? 'teachers'
+            : getAssignGroup(currentCourse);
+        const classGroup = assignGroup ? await ClassModel.getGroupByName(domainId, assignGroup) : null;
+        const editToken = classGroup ? new ObjectId().toHexString() : undefined;
+        if (classGroup) {
+            const lock = await ClassModel.acquireEditLock(domainId, classGroup._id, classGroup.name, editToken!);
+            if (!lock.matchedCount) {
+                throw new BadRequestError('Class is being edited. Please refresh and try again.');
+            }
+        }
+        try {
+            if (classGroup) {
+                const lockedCourse = await ContestModel.get(domainId, tid) as CourseTdoc;
+                const lockedAssignGroup = lockedCourse.assign?.includes('teachers')
+                    ? 'teachers'
+                    : getAssignGroup(lockedCourse);
+                if (lockedAssignGroup !== classGroup.name) {
+                    throw new BadRequestError('Course assignment changed. Please refresh and try again.');
+                }
+                expectedAssign = lockedCourse.assign || [];
+            }
+            const deleted = await ContestModel.delIfAssignUnchanged(domainId, tid, expectedAssign);
+            if (!deleted) {
+                throw new BadRequestError('Course assignment changed. Please refresh and try again.');
+            }
+        } finally {
+            if (classGroup && editToken) {
+                try {
+                    await ClassModel.releaseEditLock(domainId, classGroup._id, editToken);
+                } catch { }
+            }
+        }
         this.response.redirect = this.url('course_main');
     }
 }
