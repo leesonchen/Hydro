@@ -8,7 +8,6 @@ import {
 } from '../error';
 import { Logger } from '../logger';
 import { PRIV, STATUS } from '../model/builtin';
-import domain from '../model/domain';
 import record from '../model/record';
 import * as setting from '../model/setting';
 import system from '../model/system';
@@ -233,83 +232,15 @@ class SystemConfigHandler extends SystemHandler {
     }
 }
 
-/* eslint-disable no-await-in-loop */
 class SystemUserImportHandler extends SystemHandler {
     async get() {
-        this.response.body.users = [];
-        this.response.template = 'manage_user_import.html';
+        this.response.redirect = this.url('manage_users_import');
     }
 
-    @param('users', Types.Content)
-    @param('draft', Types.Boolean)
-    async post(domainId: string, _users: string, draft: boolean) {
-        const users = _users.split('\n');
-        const udocs: { email: string, username: string, password: string, displayName?: string, [key: string]: any }[] = [];
-        const messages = [];
-        const mapping = Object.create(null);
-        const groups: Record<string, string[]> = Object.create(null);
-        for (const i in users) {
-            const u = users[i];
-            if (!u.trim()) continue;
-            let [email, username, password, displayName, extra] = u.split('\t').map((t) => t.trim());
-            if (!email || !username || !password) {
-                const data = u.split(',').map((t) => t.trim());
-                [email, username, password, displayName, extra] = data;
-                if (data.length > 5) extra = data.slice(4).join(',');
-            }
-            if (email && username && password) {
-                if (!Types.Email[1](email)) messages.push(`Line ${+i + 1}: Invalid email.`);
-                else if (!Types.Username[1](username)) messages.push(`Line ${+i + 1}: Invalid username`);
-                else if (!Types.Password[1](password)) messages.push(`Line ${+i + 1}: Invalid password`);
-                else if (udocs.find((t) => t.email === email) || await user.getByEmail('system', email)) {
-                    messages.push(`Line ${+i + 1}: Email ${email} already exists.`);
-                } else if (udocs.find((t) => t.username === username) || await user.getByUname('system', username)) {
-                    messages.push(`Line ${+i + 1}: Username ${username} already exists.`);
-                } else {
-                    const payload: any = {};
-                    try {
-                        const data = JSON.parse(extra);
-                        if (data.group) {
-                            groups[data.group] ||= [];
-                            groups[data.group].push(email);
-                        }
-                        Object.assign(payload, data);
-                    } catch (e) { }
-                    Object.assign(payload, {
-                        email, username, password, displayName,
-                    });
-                    await this.ctx.serial('user/import/parse', payload, messages);
-                    udocs.push(payload);
-                }
-            } else messages.push(`Line ${+i + 1}: Input invalid.`);
-        }
-        messages.push(`${udocs.length} users found.`);
-        if (!draft) {
-            for (const udoc of udocs) {
-                try {
-                    const uid = await user.create(udoc.email, udoc.username, udoc.password);
-                    mapping[udoc.email] = uid;
-                    await user.setById(uid, { requirePasswordChange: true });
-                    if (udoc.displayName) await domain.setUserInDomain(domainId, uid, { displayName: udoc.displayName });
-                    if (udoc.school) await user.setById(uid, { school: udoc.school });
-                    if (udoc.studentId) await user.setById(uid, { studentId: udoc.studentId });
-                    await this.ctx.serial('user/import/create', uid, udoc);
-                } catch (e) {
-                    messages.push(e.message);
-                }
-            }
-            const existing = await user.listGroup(domainId);
-            for (const name in groups) {
-                const uids = groups[name].map((i) => mapping[i]).filter((i) => i);
-                const current = existing.find((i) => i.name === name)?.uids || [];
-                if (uids.length) await user.updateGroup(domainId, name, Array.from(new Set([...current, ...uids])));
-            }
-        }
-        this.response.body.users = udocs;
-        this.response.body.messages = messages;
+    async post() {
+        this.response.redirect = this.url('manage_users_import');
     }
 }
-/* eslint-enable no-await-in-loop */
 
 const Priv = omit(PRIV, ['PRIV_DEFAULT', 'PRIV_NEVER', 'PRIV_NONE', 'PRIV_ALL']);
 const allPriv = Math.sum(Object.values(Priv));

@@ -176,6 +176,26 @@ class DomainModel {
         deleteUserCache(domainId);
     }
 
+    static async leave(domainId: string, uid: number) {
+        const udoc = await UserModel.getById(domainId, uid);
+        deleteUserCache(udoc);
+        return await collUser.updateOne(
+            {
+                domainId,
+                uid,
+                join: true,
+                role: { $ne: 'guest' },
+            },
+            {
+                $set: {
+                    join: false,
+                    requireInvitation: true,
+                    role: 'default',
+                },
+            },
+        );
+    }
+
     static async getRoles(domainId: string, count?: boolean): Promise<any[]>;
     static async getRoles(domain: DomainDoc, count?: boolean): Promise<any[]>;
     @ArgMethod

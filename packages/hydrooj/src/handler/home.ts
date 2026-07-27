@@ -183,6 +183,25 @@ function shouldTraceLanguage(that: Handler) {
     return that.request.query?.__trace_lang === '1';
 }
 
+class HomePasswordHandler extends Handler {
+    async get() {
+        this.response.template = 'home_password.html';
+    }
+
+    @param('currentPassword', Types.String)
+    @param('password', Types.Password)
+    @param('verifyPassword', Types.Password)
+    async post({ }, currentPassword: string, password: string, verifyPassword: string) {
+        await this.limitRate('change_password', 60, 5, '{{user}}');
+        if (password !== verifyPassword) throw new VerifyPasswordError();
+        await this.user.checkPassword(currentPassword);
+        if (password === currentPassword) throw new ValidationError('password', 'same');
+        await user.setPassword(this.user._id, password);
+        await token.delByUid(this.user._id);
+        this.response.redirect = this.url('user_login');
+    }
+}
+
 class HomeSecurityHandler extends Handler {
     @requireSudo
     async get() {
@@ -214,23 +233,6 @@ class HomeSecurityHandler extends Handler {
     }
 
     @requireSudo
-    @param('current', Types.String)
-    @param('password', Types.Password)
-    @param('verifyPassword', Types.Password)
-    async postChangePassword(domainId: string, current: string, password: string, verify: string) {
-        if (password !== verify) throw new VerifyPasswordError();
-        if (this.session.sudoUid) {
-            const udoc = await user.getById(domainId, this.session.sudoUid);
-            if (!udoc) throw new UserNotFoundError(this.session.sudoUid);
-            await udoc.checkPassword(current);
-        } else await this.user.checkPassword(current);
-        if (password === current) throw new ValidationError('password', 'same');
-        await user.setPassword(this.user._id, password);
-        await token.delByUid(this.user._id);
-        this.response.redirect = this.url('user_login');
-    }
-
-    @requireSudo
     @param('password', Types.Password)
     @param('mail', Types.Email)
     async postChangeMail(domainId: string, current: string, email: string) {
@@ -259,6 +261,7 @@ class HomeSecurityHandler extends Handler {
         this.response.template = 'user_changemail_mail_sent.html';
     }
 
+    @requireSudo
     @param('platform', Types.String)
     async postLinkAccount({ }, platform: string) {
         if (!this.ctx.oauth.providers[platform]) throw new ValidationError('platform');
@@ -266,6 +269,7 @@ class HomeSecurityHandler extends Handler {
         await this.ctx.oauth.providers[platform].get.call(this);
     }
 
+    @requireSudo
     @param('platform', Types.String)
     async postUnlinkAccount({ }, platform: string) {
         if (!this.ctx.oauth.providers[platform]) throw new ValidationError('platform');
@@ -273,6 +277,7 @@ class HomeSecurityHandler extends Handler {
         this.back();
     }
 
+    @requireSudo
     @param('tokenDigest', Types.String)
     async postDeleteToken({ }, tokenDigest: string) {
         const sessions = await token.getSessionListByUid(this.user._id);
@@ -286,6 +291,7 @@ class HomeSecurityHandler extends Handler {
         throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_SESSION], tokenDigest);
     }
 
+    @requireSudo
     async postDeleteAllTokens() {
         await token.delByUid(this.user._id, token.TYPE_SESSION);
         this.response.redirect = this.url('user_login');
@@ -606,7 +612,7 @@ class HomeDomainHandler extends Handler {
         if (id === 'system') throw new BadRequestError();
         const ddoc = await domain.get(id);
         if (!ddoc) throw new NotFoundError(id);
-        await domain.setJoin(id, this.user._id, false);
+        await domain.leave(id, this.user._id);
         this.back();
     }
 }
@@ -691,6 +697,7 @@ class HomeMessagesHandler extends Handler {
 export const inject = ['oauth'];
 export function apply(ctx: Context) {
     ctx.Route('homepage', '/', HomeHandler);
+    ctx.Route('home_password', '/home/security/password', HomePasswordHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('home_security', '/home/security', HomeSecurityHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_changemail_with_code', '/home/changeMail/:code', UserChangemailWithCodeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('home_settings', '/home/settings/:category', HomeSettingsHandler, PRIV.PRIV_USER_PROFILE);

@@ -11,46 +11,7 @@
       </div>
     </div>
   {% endif %}
-  <div class="medium-6 columns">
-    <div class="section">
-      <div class="section__header">
-        <h1 class="section__title" id="password" data-heading>{{ _('Change Password') }}</h1>
-      </div>
-      <div class="section__body">
-        {% if handler.user.requirePasswordChange %}
-          <blockquote class="warn">{{ _('You must change your password before continuing.') }}</blockquote>
-        {% endif %}
-        <form method="post">
-          {{ form.form_text({
-               type:'password',
-               label:"SuperUser's Password" if sudoUid else 'Current Password',
-               columns:10,
-               name:'current',
-               required:true
-             }) }}
-          {{ form.form_text({
-               type:'password',
-               label:'New Password',
-               columns:10,
-               name:'password',
-               required:true
-             }) }}
-          {{ form.form_text({
-               type:'password',
-               label:'Repeat Password',
-               columns:10,
-               name:'verifyPassword',
-               required:true
-             }) }}
-          <div class="row"><div class="columns">
-            <input type="hidden" name="operation" value="change_password">
-            <input type="submit" class="rounded primary button" value="{{ _('Change Password') }}">
-          </div></div>
-        </form>
-      </div>
-    </div>
-  </div>
-  <div class="medium-6 columns">
+  <div class="medium-12 columns">
     <div class="section">
       <div class="section__header">
         <h1 class="section__title" id="linked-accounts" data-heading>{{ _('Linked Accounts') }}</h1>

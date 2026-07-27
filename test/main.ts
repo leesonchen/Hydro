@@ -64,6 +64,223 @@ describe('App', () => {
         await agent.get('/api/user?args={"id":2}&projection=uname').expect({ uname: 'root' });
     });
 
+    it('Require explicit invitations after leaving and scope class invitations', async () => {
+        const DomainModel = global.Hydro.model.domain;
+        const OplogModel = global.Hydro.model.oplog;
+        const TokenModel = global.Hydro.model.token;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const domainId = `rejoin${suffix}`;
+        const groupId = new ObjectId();
+        const classId = new ObjectId();
+        const groupName = `invite-target-${suffix}`;
+        const teacherRole = `class-teacher-${suffix}`;
+        const uname = `rejoin${suffix}`;
+        const mail = `${uname}@example.com`;
+        let uid: number | undefined;
+
+        await DomainModel.add(domainId, 1, `Rejoin test ${suffix}`, '');
+        try {
+            await DomainModel.addRole(
+                domainId,
+                teacherRole,
+                PERM.PERM_DEFAULT | PERM.PERM_CREATE_HOMEWORK | PERM.PERM_EDIT_HOMEWORK_SELF,
+            );
+            await DomainModel.edit(domainId, {
+                _join: { method: DomainModel.JOIN_METHOD_ALL, role: 'default', group: groupName, expire: null },
+            });
+            uid = await UserModel.create(mail, uname, '123456');
+            await DomainModel.setUserInDomain(domainId, uid, { join: true, role: teacherRole });
+            await UserModel.collGroup.insertMany([
+                { _id: groupId, domainId, name: groupName, uids: [] },
+                {
+                    _id: classId,
+                    domainId,
+                    name: `teacher-invite-${suffix}`,
+                    uids: [2],
+                    teachers: [2],
+                    students: [],
+                    beginAt: new Date(),
+                    endAt: new Date(Date.now() + 86400000),
+                    archive: false,
+                    class: true,
+                },
+            ] as any);
+            const invitedAgent = supertest.agent(require('hydrooj').httpServer);
+            await invitedAgent.post('/login').send({ uname, password: '123456' }).expect(302);
+            await invitedAgent.post('/home/domain')
+                .send({ operation: 'leave', id: domainId }).expect(302);
+            let dudoc = await DomainModel.collUser.findOne({ domainId, uid });
+            assert.deepStrictEqual(
+                { join: dudoc?.join, role: dudoc?.role, requireInvitation: dudoc?.requireInvitation },
+                { join: false, role: 'default', requireInvitation: true },
+            );
+            await invitedAgent.get(`/d/${domainId}/domain/join`).expect(403);
+
+            const code = `code${suffix}`;
+            await DomainModel.edit(domainId, {
+                _join: {
+                    method: DomainModel.JOIN_METHOD_CODE,
+                    role: 'default',
+                    group: groupName,
+                    expire: null,
+                    code,
+                },
+            });
+            await invitedAgent.post(`/d/${domainId}/domain/join`).send({ code }).expect(302);
+            dudoc = await DomainModel.collUser.findOne({ domainId, uid });
+            assert.equal(dudoc?.requireInvitation, undefined);
+            assert((await UserModel.collGroup.findOne({ _id: groupId }))?.uids.includes(uid));
+
+            await invitedAgent.post('/home/domain')
+                .send({ operation: 'leave', id: domainId }).expect(302);
+            await DomainModel.setUserRole(domainId, 2, teacherRole, true);
+            await agent.post(`/d/${domainId}/domain/group/${classId}/invitation`)
+                .send({ operation: 'create', expire: 3 }).expect(302);
+            let classDoc = await UserModel.collGroup.findOne({ _id: classId });
+            const teacherToken = await TokenModel.get(
+                classDoc?.invitationTokenId, TokenModel.TYPE_GROUP_INVITATION,
+            );
+            assert.equal(teacherToken?.allowExternalDomainJoin, false);
+            await invitedAgent.post(`/d/${domainId}/domain/group/join`)
+                .send({ token: teacherToken._id }).expect(403);
+
+            await DomainModel.setUserInDomain(domainId, uid, { join: true, role: 'default' });
+            await invitedAgent.post(`/d/${domainId}/domain/group/join`)
+                .send({ token: teacherToken._id }).expect(302);
+            assert((await UserModel.collGroup.findOne({ _id: classId }))?.students.includes(uid));
+
+            await invitedAgent.post('/home/domain')
+                .send({ operation: 'leave', id: domainId }).expect(302);
+            await Promise.all([
+                UserModel.collGroup.updateOne(
+                    { _id: classId }, { $pull: { uids: uid, students: uid } },
+                ),
+                DomainModel.setUserRole(domainId, 2, 'root', true),
+            ]);
+            await agent.post(`/d/${domainId}/domain/group/${classId}/invitation`)
+                .send({ operation: 'create', expire: 24 }).expect(302);
+            classDoc = await UserModel.collGroup.findOne({ _id: classId });
+            const managerToken = await TokenModel.get(
+                classDoc?.invitationTokenId, TokenModel.TYPE_GROUP_INVITATION,
+            );
+            assert.equal(managerToken?.allowExternalDomainJoin, true);
+            await invitedAgent.post(`/d/${domainId}/domain/group/join`)
+                .send({ token: managerToken._id }).expect(302);
+            dudoc = await DomainModel.collUser.findOne({ domainId, uid });
+            assert.deepStrictEqual(
+                { join: dudoc?.join, role: dudoc?.role, requireInvitation: dudoc?.requireInvitation },
+                { join: true, role: 'default', requireInvitation: undefined },
+            );
+            await agent.post(`/d/${domainId}/domain/group/${classId}/invitation`)
+                .send({ operation: 'revoke' }).expect(302);
+            assert.equal(await OplogModel.coll.countDocuments({
+                domainId, groupId: classId, type: 'domain.group.invitation.create',
+            }), 2);
+            assert.equal(await OplogModel.coll.countDocuments({
+                domainId, groupId: classId, type: 'domain.group.invitation.revoke',
+            }), 1);
+
+            await DomainModel.setUserInDomain(domainId, uid, {
+                join: false,
+                requireInvitation: false,
+                role: 'guest',
+            });
+            await invitedAgent.post('/home/domain')
+                .send({ operation: 'leave', id: domainId }).expect(302);
+            dudoc = await DomainModel.collUser.findOne({ domainId, uid });
+            assert.deepStrictEqual(
+                { join: dudoc?.join, role: dudoc?.role, requireInvitation: dudoc?.requireInvitation },
+                { join: false, role: 'guest', requireInvitation: false },
+            );
+        } finally {
+            if (uid) {
+                const udoc = await UserModel.getById('system', uid);
+                if (udoc) UserModel._deleteUserCache(udoc);
+                await UserModel.coll.deleteOne({ _id: uid });
+                await DomainModel.collUser.deleteOne({ domainId: 'system', uid });
+            }
+            await Promise.all([
+                UserModel.collGroup.deleteMany({ domainId }),
+                TokenModel.coll.deleteMany({ domainId, tokenType: TokenModel.TYPE_GROUP_INVITATION }),
+                OplogModel.coll.deleteMany({ domainId }),
+                DomainModel.del(domainId),
+            ]);
+        }
+    });
+
+    it('Use the new user import entry only', async () => {
+        const UserModel = global.Hydro.model.user;
+        const root = await UserModel.getById('system', 2);
+        const originalPriv = root.priv;
+        await UserModel.setSuperAdmin(2);
+        try {
+            await agent.get('/manage/userimport')
+                .expect(302)
+                .expect('location', '/manage/users/import');
+            await agent.get('/manage/users/import').expect(200);
+        } finally {
+            await UserModel.setPriv(2, originalPriv);
+        }
+    });
+
+    it('Require sudo for direct security mutations', async () => {
+        const securityAgent = supertest.agent(require('hydrooj').httpServer);
+        await securityAgent.post('/login')
+            .send({ uname: Root.username, password: Root.password }).expect(302);
+        await securityAgent.post('/home/security')
+            .send({ operation: 'delete_all_tokens' })
+            .expect(302)
+            .expect('location', '/user/sudo');
+    });
+
+    it('Change a required password without entering sudo mode first', async () => {
+        const DomainModel = global.Hydro.model.domain;
+        const TokenModel = global.Hydro.model.token;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const mail = `password-${suffix}@example.com`;
+        const uname = `password${suffix}`;
+        const uid = await UserModel.create(mail, uname, '123456');
+        let udoc = await UserModel.getById('system', uid);
+        await UserModel.setById(uid, { requirePasswordChange: true });
+        const passwordAgent = supertest.agent(require('hydrooj').httpServer);
+        try {
+            await passwordAgent.post('/login')
+                .send({ uname, password: '123456' }).expect(302);
+            await passwordAgent.get('/')
+                .expect(302)
+                .expect('location', '/home/security/password');
+            await passwordAgent.get('/home/security/password')
+                .expect(200);
+            await passwordAgent.post('/home/security/password')
+                .send({
+                    currentPassword: 'wrong-password',
+                    password: '654321',
+                    verifyPassword: '654321',
+                })
+                .expect(403);
+            await passwordAgent.post('/home/security/password')
+                .send({
+                    currentPassword: '123456',
+                    password: '654321',
+                    verifyPassword: '654321',
+                })
+                .expect(302)
+                .expect('location', '/login');
+            udoc = await UserModel.getById('system', uid);
+            assert.equal(udoc.requirePasswordChange, false);
+            await udoc.checkPassword('654321');
+        } finally {
+            if (udoc) UserModel._deleteUserCache(udoc);
+            await Promise.all([
+                TokenModel.delByUid(uid),
+                UserModel.coll.deleteOne({ _id: uid }),
+                DomainModel.collUser.deleteOne({ domainId: 'system', uid }),
+            ]);
+        }
+    });
+
     it('Reject cross-type homework and course edit routes', async () => {
         const ContestModel = global.Hydro.model.contest;
         const suffix = Date.now().toString(36);

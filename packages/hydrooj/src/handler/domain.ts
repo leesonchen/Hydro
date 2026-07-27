@@ -429,15 +429,23 @@ class DomainGroupInvitationHandler extends Handler {
             },
         );
         if (!result.matchedCount) await throwGroupInvitationMutationError(this, domainId, this.group._id);
+        await oplog.log(this, 'domain.group.invitation.revoke', {
+            groupId: this.group._id,
+            groupName: this.group.name,
+            groupType: this.group.class ? 'class' : 'group',
+        });
         this.back();
     }
 
     @param('expire', Types.Int)
     async postCreate({ domainId }, expire: number) {
         if (!GROUP_INVITATION_EXPIRATIONS[expire]) throw new ValidationError('expire');
+        const allowExternalDomainJoin = !this.group.class
+            || this.user.hasPerm(PERM.PERM_EDIT_DOMAIN);
         const [invitationTokenId] = await token.add(token.TYPE_GROUP_INVITATION, expire * 60 * 60, {
             domainId,
             groupId: this.group._id,
+            allowExternalDomainJoin,
         });
         const result = await user.collGroup.updateOne(
             getGroupInvitationMutationQuery(this, domainId, this.group),
@@ -450,6 +458,13 @@ class DomainGroupInvitationHandler extends Handler {
             await token.del(invitationTokenId, token.TYPE_GROUP_INVITATION);
             await throwGroupInvitationMutationError(this, domainId, this.group._id);
         }
+        await oplog.log(this, 'domain.group.invitation.create', {
+            allowExternalDomainJoin,
+            expireHours: expire,
+            groupId: this.group._id,
+            groupName: this.group.name,
+            groupType: this.group.class ? 'class' : 'group',
+        });
         this.back();
     }
 }
@@ -457,6 +472,7 @@ class DomainGroupInvitationHandler extends Handler {
 class DomainGroupJoinHandler extends Handler {
     group!: GDoc;
     invitation!: TokenDoc;
+    domainUser: any;
     targetDomain!: DomainDoc;
     noCheckPermView = true;
 
@@ -467,17 +483,34 @@ class DomainGroupJoinHandler extends Handler {
             || this.invitation.domainId !== domainId) {
             throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
         }
-        const [group, targetDomain] = await Promise.all([
+        const [group, targetDomain, domainUser] = await Promise.all([
             user.collGroup.findOne({
                 _id: this.invitation.groupId,
                 domainId: this.invitation.domainId,
             }),
             domain.get(this.invitation.domainId),
+            domain.collUser.findOne({
+                domainId: this.invitation.domainId,
+                uid: this.user._id,
+            }),
         ]);
         if (!targetDomain || !group || isClassInvitationBlocked(group)
             || group.invitationTokenId !== this.invitation._id) {
             throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
         }
+        if (domainUser?.role === 'guest') {
+            throw new DomainJoinForbiddenError(
+                this.invitation.domainId,
+                'You are banned by the domain moderator.',
+            );
+        }
+        if (!domainUser?.join && group.class && this.invitation.allowExternalDomainJoin !== true) {
+            throw new DomainJoinForbiddenError(
+                this.invitation.domainId,
+                'This class invitation is only available to existing domain members.',
+            );
+        }
+        this.domainUser = domainUser;
         this.group = group;
         this.targetDomain = targetDomain;
     }
@@ -496,18 +529,17 @@ class DomainGroupJoinHandler extends Handler {
 
     async post() {
         const target = this.invitation.domainId;
-        const dudoc = await domain.collUser.findOne({ domainId: target, uid: this.user._id });
-        if (dudoc?.role === 'guest') {
-            throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
-        }
         const added = await user.addUserToGroup(
             target, this.group._id, this.user._id, this.invitation._id,
         );
         if (!added) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
         await Promise.all([
-            domain.setUserInDomain(target, this.user._id, {
-                join: true,
-                ...(!dudoc?.role ? { role: 'default' } : {}),
+            domain.updateUserInDomain(target, this.user._id, {
+                $set: {
+                    join: true,
+                    ...(!this.domainUser?.join ? { role: 'default' } : {}),
+                },
+                $unset: { requireInvitation: '' },
             }),
             oplog.log(this, 'domain.group.join', {
                 domainId: target,
@@ -543,6 +575,9 @@ class DomainJoinHandler extends Handler {
         if (assignedRole !== 'default') delete this.joinSettings;
         else if (!this.joinSettings) throw new DomainJoinForbiddenError(target, 'The link is either invalid or expired.');
         if (assignedRole === 'guest') throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
+        if (dudoc?.requireInvitation && this.joinSettings?.method !== domain.JOIN_METHOD_CODE) {
+            throw new DomainJoinForbiddenError(target, 'An invitation is required to rejoin this domain.');
+        }
     }
 
     @param('code', Types.Content, true)
@@ -584,9 +619,12 @@ class DomainJoinHandler extends Handler {
             if (!added) throw new ValidationError('group');
         }
         await Promise.all([
-            domain.setUserInDomain(target, this.user._id, {
-                join: true,
-                ...(this.joinSettings ? { role: this.joinSettings.role } : {}),
+            domain.updateUserInDomain(target, this.user._id, {
+                $set: {
+                    join: true,
+                    ...(this.joinSettings ? { role: this.joinSettings.role } : {}),
+                },
+                $unset: { requireInvitation: '' },
             }),
             oplog.log(this, 'domain.join', {}),
         ]);

@@ -335,12 +335,11 @@ export async function apply(ctx: Context) {
             if (!h.user?._id || !h.user.requirePasswordChange) return;
             const normalizePath = (path: string) => path.replace(/^\/d\/[^/]+(?=\/)/, '');
             const allowedPaths = new Set([
-                h.url('home_security'),
-                h.url('user_sudo'),
+                h.url('home_password'),
                 h.url('user_logout'),
             ].map(normalizePath));
             if (allowedPaths.has(normalizePath(h.request.path))) return;
-            h.response.redirect = h.url('home_security');
+            h.response.redirect = h.url('home_password');
             return 'cleanup';
         });
         on('handler/create/ws', async (h) => {
