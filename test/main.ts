@@ -244,6 +244,68 @@ describe('App', () => {
                 role: 'default',
                 requireInvitation: true,
             });
+            const originalRollbackUpdateOne = UserModel.collGroup.updateOne;
+            const callRollbackUpdateOne = originalRollbackUpdateOne.bind(UserModel.collGroup);
+            const originalRollbackJoinUserInDomain = DomainModel.joinUserInDomain;
+            let rollbackFailureInjected = false;
+            (UserModel.collGroup as any).updateOne = async (filter: any, update: any, options: any) => {
+                if (!rollbackFailureInjected
+                    && filter._id?.toString() === classId.toString()
+                    && update.$pull?.students === uid) {
+                    rollbackFailureInjected = true;
+                    throw new Error('Injected group membership rollback failure');
+                }
+                return await callRollbackUpdateOne(filter, update, options);
+            };
+            DomainModel.joinUserInDomain = async (...args) => {
+                await DomainModel.setUserRole(domainId, uid, 'guest');
+                return await originalRollbackJoinUserInDomain(...args);
+            };
+            try {
+                await invitedAgent.post(`/d/${domainId}/domain/group/join`)
+                    .send({ token: managerToken._id }).expect(500);
+            } finally {
+                (UserModel.collGroup as any).updateOne = originalRollbackUpdateOne;
+                DomainModel.joinUserInDomain = originalRollbackJoinUserInDomain;
+            }
+            assert(rollbackFailureInjected);
+            const failedRollbackGroup = await UserModel.collGroup.findOne({ _id: classId });
+            assert(failedRollbackGroup?.uids.includes(uid));
+            assert(failedRollbackGroup?.students.includes(uid));
+            assert(failedRollbackGroup?.classEditLock);
+            const editAfterRollbackFailure = await callRollbackUpdateOne(
+                {
+                    _id: classId,
+                    class: true,
+                    $or: [
+                        { classEditLock: { $exists: false } },
+                        { 'classEditLock.expiresAt': { $lte: new Date() } },
+                    ],
+                },
+                {
+                    $set: {
+                        classEditLock: {
+                            token: new ObjectId().toHexString(),
+                            expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+                        },
+                    },
+                },
+            );
+            assert.equal(editAfterRollbackFailure.matchedCount, 0);
+            await Promise.all([
+                callRollbackUpdateOne(
+                    { _id: classId },
+                    {
+                        $pull: { uids: uid, students: uid },
+                        $unset: { classEditLock: '' },
+                    },
+                ),
+                DomainModel.setUserInDomain(domainId, uid, {
+                    join: false,
+                    role: 'default',
+                    requireInvitation: true,
+                }),
+            ]);
             const originalConcurrentAddUserToGroup = UserModel.addUserToGroupWithChanges;
             UserModel.addUserToGroupWithChanges = async (...args) => {
                 await Promise.all([

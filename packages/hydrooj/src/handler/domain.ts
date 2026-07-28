@@ -555,21 +555,25 @@ class DomainGroupJoinHandler extends Handler {
                 'classEditLock.token': classEditLockToken,
             } : {}),
         };
-        try {
-            if (added.uids && added.students) {
-                await user.collGroup.updateOne(
-                    { ...groupQuery, teachers: { $ne: uid } },
-                    { $pull: { uids: uid, students: uid } },
-                );
-            } else if (added.uids) {
-                await user.collGroup.updateOne(
-                    { ...groupQuery, teachers: { $ne: uid }, students: { $ne: uid } },
-                    { $pull: { uids: uid } },
-                );
-            } else {
-                await user.collGroup.updateOne(groupQuery, { $pull: { students: uid } });
-            }
-        } finally {
+        const releaseLock = classEditLockToken ? { $unset: { classEditLock: '' as const } } : {};
+        let result;
+        if (added.uids && added.students) {
+            result = await user.collGroup.updateOne(
+                { ...groupQuery, teachers: { $ne: uid } },
+                { $pull: { uids: uid, students: uid }, ...releaseLock },
+            );
+        } else if (added.uids) {
+            result = await user.collGroup.updateOne(
+                { ...groupQuery, teachers: { $ne: uid }, students: { $ne: uid } },
+                { $pull: { uids: uid }, ...releaseLock },
+            );
+        } else {
+            result = await user.collGroup.updateOne(
+                groupQuery,
+                { $pull: { students: uid }, ...releaseLock },
+            );
+        }
+        if (!result.matchedCount) {
             await this.releaseGroupMembershipLock(classEditLockToken);
         }
         deleteUserCache(this.invitation.domainId);
