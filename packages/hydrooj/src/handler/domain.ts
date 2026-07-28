@@ -19,7 +19,9 @@ import * as oplog from '../model/oplog';
 import { DOMAIN_SETTINGS, DOMAIN_SETTINGS_BY_KEY } from '../model/setting';
 import system from '../model/system';
 import token from '../model/token';
-import user, { canManageClass, deleteUserCache } from '../model/user';
+import user, {
+    canManageClass, deleteUserCache, type GroupMembershipMutation,
+} from '../model/user';
 import {
     Handler, Mutation, param, post, Query, query, requireSudo, Types,
 } from '../service/server';
@@ -525,32 +527,50 @@ class DomainGroupJoinHandler extends Handler {
         this.response.template = 'domain_group_join.html';
     }
 
-    private async rollbackNewGroupMembership(added: { students: boolean, uids: boolean }) {
+    private async releaseGroupMembershipLock(classEditLockToken?: string) {
+        if (!classEditLockToken) return;
+        await user.collGroup.updateOne(
+            {
+                domainId: this.invitation.domainId,
+                _id: this.group._id,
+                class: true,
+                'classEditLock.token': classEditLockToken,
+            },
+            { $unset: { classEditLock: '' } },
+        );
+    }
+
+    private async rollbackNewGroupMembership(membership: GroupMembershipMutation) {
         const uid = this.user._id;
-        if (!added.uids && !added.students) return;
+        const { added, classEditLockToken } = membership;
+        if (!added.uids && !added.students) {
+            await this.releaseGroupMembershipLock(classEditLockToken);
+            return;
+        }
         const groupQuery = {
             domainId: this.invitation.domainId,
             _id: this.group._id,
             ...(this.group.class ? {
                 class: true,
-                $or: [
-                    { classEditLock: { $exists: false } },
-                    { 'classEditLock.expiresAt': { $lte: new Date() } },
-                ],
+                'classEditLock.token': classEditLockToken,
             } : {}),
         };
-        if (added.uids && added.students) {
-            await user.collGroup.updateOne(
-                { ...groupQuery, teachers: { $ne: uid } },
-                { $pull: { uids: uid, students: uid } },
-            );
-        } else if (added.uids) {
-            await user.collGroup.updateOne(
-                { ...groupQuery, teachers: { $ne: uid }, students: { $ne: uid } },
-                { $pull: { uids: uid } },
-            );
-        } else {
-            await user.collGroup.updateOne(groupQuery, { $pull: { students: uid } });
+        try {
+            if (added.uids && added.students) {
+                await user.collGroup.updateOne(
+                    { ...groupQuery, teachers: { $ne: uid } },
+                    { $pull: { uids: uid, students: uid } },
+                );
+            } else if (added.uids) {
+                await user.collGroup.updateOne(
+                    { ...groupQuery, teachers: { $ne: uid }, students: { $ne: uid } },
+                    { $pull: { uids: uid } },
+                );
+            } else {
+                await user.collGroup.updateOne(groupQuery, { $pull: { students: uid } });
+            }
+        } finally {
+            await this.releaseGroupMembershipLock(classEditLockToken);
         }
         deleteUserCache(this.invitation.domainId);
     }
@@ -568,13 +588,21 @@ class DomainGroupJoinHandler extends Handler {
                 ? await domain.joinUserInDomain(target, this.user._id)
                 : await domain.collUser.findOne({ domainId: target, uid: this.user._id });
         } catch (error) {
-            await this.rollbackNewGroupMembership(membership.added);
+            await this.rollbackNewGroupMembership(membership);
             throw error;
         }
         if (currentDomainUser?.role === 'guest') {
-            await this.rollbackNewGroupMembership(membership.added);
+            await this.rollbackNewGroupMembership(membership);
             throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
         }
+        if (!canJoinDomain && !currentDomainUser?.join) {
+            await this.rollbackNewGroupMembership(membership);
+            throw new DomainJoinForbiddenError(
+                target,
+                'This class invitation is only available to existing domain members.',
+            );
+        }
+        await this.releaseGroupMembershipLock(membership.classEditLockToken);
         await oplog.log(this, 'domain.group.join', {
             domainId: target,
             groupId: this.group._id,

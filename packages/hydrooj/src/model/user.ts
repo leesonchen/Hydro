@@ -25,9 +25,11 @@ export const coll: Collection<Udoc> = db.collection('user');
 export const collV: Collection<VUdoc> = db.collection('vuser');
 export const collGroup: Collection<GDoc> = db.collection('user.group');
 const cache = new LRUCache<string, User>({ max: 10000, ttl: 300 * 1000 });
+const GROUP_MEMBERSHIP_MUTATION_LOCK_TIMEOUT_MS = 30 * 60 * 1000;
 
 export interface GroupMembershipMutation {
     group: GDoc;
+    classEditLockToken?: string;
     added: {
         students: boolean;
         uids: boolean;
@@ -588,18 +590,33 @@ class UserModel {
         const $addToSet = gdoc.class && !isTeacher
             ? { uids: uid, students: uid }
             : { uids: uid };
+        const classEditLockToken = trackChanges && gdoc.class
+            ? new ObjectId().toHexString()
+            : undefined;
         deleteUserCache(domainId);
         const result = await collGroup.findOneAndUpdate(
             query,
             {
                 $addToSet,
-                ...(gdoc.class ? { $unset: { classEditLock: '' } } : {}),
+                ...(gdoc.class
+                    ? classEditLockToken
+                        ? {
+                            $set: {
+                                classEditLock: {
+                                    token: classEditLockToken,
+                                    expiresAt: new Date(Date.now() + GROUP_MEMBERSHIP_MUTATION_LOCK_TIMEOUT_MS),
+                                },
+                            },
+                        }
+                        : { $unset: { classEditLock: '' } }
+                    : {}),
             },
             { returnDocument: trackChanges ? 'before' : 'after' },
         );
         if (!result) return null;
         return {
             group: result,
+            classEditLockToken,
             added: trackChanges
                 ? {
                     students: !!gdoc.class && !isTeacher && !result.students?.includes(uid),

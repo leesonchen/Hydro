@@ -153,7 +153,7 @@ describe('App', () => {
             };
             try {
                 await invitedAgent.post(`/d/${domainId}/domain/group/join`)
-                    .send({ token: teacherToken._id }).expect(302);
+                    .send({ token: teacherToken._id }).expect(403);
             } finally {
                 UserModel.addUserToGroupWithChanges = originalAddUserToGroup;
             }
@@ -162,7 +162,9 @@ describe('App', () => {
                 { join: dudoc?.join, role: dudoc?.role, requireInvitation: dudoc?.requireInvitation },
                 { join: false, role: 'default', requireInvitation: true },
             );
-            assert((await UserModel.collGroup.findOne({ _id: classId }))?.students.includes(uid));
+            const rejectedFormerMember = await UserModel.collGroup.findOne({ _id: classId });
+            assert(!rejectedFormerMember?.uids.includes(uid));
+            assert(!rejectedFormerMember?.students.includes(uid));
 
             await Promise.all([
                 UserModel.collGroup.updateOne(
@@ -196,6 +198,47 @@ describe('App', () => {
             const rejectedGroup = await UserModel.collGroup.findOne({ _id: classId });
             assert(!rejectedGroup?.uids.includes(uid));
             assert(!rejectedGroup?.students.includes(uid));
+            await DomainModel.setUserInDomain(domainId, uid, {
+                join: false,
+                role: 'default',
+                requireInvitation: true,
+            });
+            let concurrentEditLockMatched = -1;
+            const originalLockedJoinUserInDomain = DomainModel.joinUserInDomain;
+            DomainModel.joinUserInDomain = async (...args) => {
+                const concurrentEditLock = await UserModel.collGroup.updateOne(
+                    {
+                        _id: classId,
+                        class: true,
+                        $or: [
+                            { classEditLock: { $exists: false } },
+                            { 'classEditLock.expiresAt': { $lte: new Date() } },
+                        ],
+                    },
+                    {
+                        $set: {
+                            classEditLock: {
+                                token: new ObjectId().toHexString(),
+                                expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+                            },
+                        },
+                    },
+                );
+                concurrentEditLockMatched = concurrentEditLock.matchedCount;
+                await DomainModel.setUserRole(domainId, uid, 'guest');
+                return await originalLockedJoinUserInDomain(...args);
+            };
+            try {
+                await invitedAgent.post(`/d/${domainId}/domain/group/join`)
+                    .send({ token: managerToken._id }).expect(403);
+            } finally {
+                DomainModel.joinUserInDomain = originalLockedJoinUserInDomain;
+            }
+            assert.equal(concurrentEditLockMatched, 0);
+            const rejectedDuringClassEdit = await UserModel.collGroup.findOne({ _id: classId });
+            assert(!rejectedDuringClassEdit?.uids.includes(uid));
+            assert(!rejectedDuringClassEdit?.students.includes(uid));
+            assert.equal(rejectedDuringClassEdit?.classEditLock, undefined);
             await DomainModel.setUserInDomain(domainId, uid, {
                 join: false,
                 role: 'default',
