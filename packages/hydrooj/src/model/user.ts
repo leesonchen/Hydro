@@ -26,6 +26,14 @@ export const collV: Collection<VUdoc> = db.collection('vuser');
 export const collGroup: Collection<GDoc> = db.collection('user.group');
 const cache = new LRUCache<string, User>({ max: 10000, ttl: 300 * 1000 });
 
+export interface GroupMembershipMutation {
+    group: GDoc;
+    added: {
+        students: boolean;
+        uids: boolean;
+    };
+}
+
 export function deleteUserCache(udoc: { _id: number, uname: string, mail: string } | string | true | undefined | null, receiver = false) {
     if (!udoc) return false;
     if (!receiver) {
@@ -544,9 +552,10 @@ class UserModel {
         }
     }
 
-    static async addUserToGroup(
+    private static async addUserToGroupInternal(
         domainId: string, group: string | ObjectId, uid: number, invitationTokenId?: string,
-    ) {
+        trackChanges = false,
+    ): Promise<GroupMembershipMutation | null> {
         const query: Filter<GDoc> = typeof group === 'string'
             ? { domainId, name: group }
             : { domainId, _id: group };
@@ -554,10 +563,16 @@ class UserModel {
         const gdoc = await collGroup.findOne(query);
         if (!gdoc) return null;
         if (gdoc.class && gdoc.name === 'teachers') return null;
-        if (!invitationTokenId && !gdoc.class && gdoc.uids.includes(uid)) return gdoc;
+        const unchanged = (): GroupMembershipMutation => ({
+            group: gdoc,
+            added: { students: false, uids: false },
+        });
+        if (!invitationTokenId && !gdoc.class && gdoc.uids.includes(uid)) return unchanged();
         const isTeacher = gdoc.teachers?.includes(uid);
         const isStudent = gdoc.students?.includes(uid);
-        if (!invitationTokenId && gdoc.class && gdoc.uids.includes(uid) && (isTeacher || isStudent)) return gdoc;
+        if (!invitationTokenId && gdoc.class && gdoc.uids.includes(uid) && (isTeacher || isStudent)) {
+            return unchanged();
+        }
         if (gdoc.class) {
             Object.assign(query, {
                 class: true,
@@ -574,14 +589,37 @@ class UserModel {
             ? { uids: uid, students: uid }
             : { uids: uid };
         deleteUserCache(domainId);
-        return await collGroup.findOneAndUpdate(
+        const result = await collGroup.findOneAndUpdate(
             query,
             {
                 $addToSet,
                 ...(gdoc.class ? { $unset: { classEditLock: '' } } : {}),
             },
-            { returnDocument: 'after' },
+            { returnDocument: trackChanges ? 'before' : 'after' },
         );
+        if (!result) return null;
+        return {
+            group: result,
+            added: trackChanges
+                ? {
+                    students: !!gdoc.class && !isTeacher && !result.students?.includes(uid),
+                    uids: !result.uids.includes(uid),
+                }
+                : { students: false, uids: false },
+        };
+    }
+
+    static async addUserToGroup(
+        domainId: string, group: string | ObjectId, uid: number, invitationTokenId?: string,
+    ) {
+        const result = await UserModel.addUserToGroupInternal(domainId, group, uid, invitationTokenId);
+        return result?.group || null;
+    }
+
+    static async addUserToGroupWithChanges(
+        domainId: string, group: string | ObjectId, uid: number, invitationTokenId: string,
+    ) {
+        return await UserModel.addUserToGroupInternal(domainId, group, uid, invitationTokenId, true);
     }
 }
 

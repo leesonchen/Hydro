@@ -19,7 +19,7 @@ import * as oplog from '../model/oplog';
 import { DOMAIN_SETTINGS, DOMAIN_SETTINGS_BY_KEY } from '../model/setting';
 import system from '../model/system';
 import token from '../model/token';
-import user, { canManageClass } from '../model/user';
+import user, { canManageClass, deleteUserCache } from '../model/user';
 import {
     Handler, Mutation, param, post, Query, query, requireSudo, Types,
 } from '../service/server';
@@ -472,7 +472,6 @@ class DomainGroupInvitationHandler extends Handler {
 class DomainGroupJoinHandler extends Handler {
     group!: GDoc;
     invitation!: TokenDoc;
-    domainUser: any;
     targetDomain!: DomainDoc;
     noCheckPermView = true;
 
@@ -510,7 +509,6 @@ class DomainGroupJoinHandler extends Handler {
                 'This class invitation is only available to existing domain members.',
             );
         }
-        this.domainUser = domainUser;
         this.group = group;
         this.targetDomain = targetDomain;
     }
@@ -527,26 +525,61 @@ class DomainGroupJoinHandler extends Handler {
         this.response.template = 'domain_group_join.html';
     }
 
+    private async rollbackNewGroupMembership(added: { students: boolean, uids: boolean }) {
+        const uid = this.user._id;
+        if (!added.uids && !added.students) return;
+        const groupQuery = {
+            domainId: this.invitation.domainId,
+            _id: this.group._id,
+            ...(this.group.class ? {
+                class: true,
+                $or: [
+                    { classEditLock: { $exists: false } },
+                    { 'classEditLock.expiresAt': { $lte: new Date() } },
+                ],
+            } : {}),
+        };
+        if (added.uids && added.students) {
+            await user.collGroup.updateOne(
+                { ...groupQuery, teachers: { $ne: uid } },
+                { $pull: { uids: uid, students: uid } },
+            );
+        } else if (added.uids) {
+            await user.collGroup.updateOne(
+                { ...groupQuery, teachers: { $ne: uid }, students: { $ne: uid } },
+                { $pull: { uids: uid } },
+            );
+        } else {
+            await user.collGroup.updateOne(groupQuery, { $pull: { students: uid } });
+        }
+        deleteUserCache(this.invitation.domainId);
+    }
+
     async post() {
         const target = this.invitation.domainId;
-        const added = await user.addUserToGroup(
+        const membership = await user.addUserToGroupWithChanges(
             target, this.group._id, this.user._id, this.invitation._id,
         );
-        if (!added) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
-        await Promise.all([
-            domain.updateUserInDomain(target, this.user._id, {
-                $set: {
-                    join: true,
-                    ...(!this.domainUser?.join ? { role: 'default' } : {}),
-                },
-                $unset: { requireInvitation: '' },
-            }),
-            oplog.log(this, 'domain.group.join', {
-                domainId: target,
-                groupId: this.group._id,
-                groupName: this.group.name,
-            }),
-        ]);
+        if (!membership) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
+        const canJoinDomain = !this.group.class || this.invitation.allowExternalDomainJoin === true;
+        let currentDomainUser;
+        try {
+            currentDomainUser = canJoinDomain
+                ? await domain.joinUserInDomain(target, this.user._id)
+                : await domain.collUser.findOne({ domainId: target, uid: this.user._id });
+        } catch (error) {
+            await this.rollbackNewGroupMembership(membership.added);
+            throw error;
+        }
+        if (currentDomainUser?.role === 'guest') {
+            await this.rollbackNewGroupMembership(membership.added);
+            throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
+        }
+        await oplog.log(this, 'domain.group.join', {
+            domainId: target,
+            groupId: this.group._id,
+            groupName: this.group.name,
+        });
         this.response.redirect = this.url('homepage', {
             domainId: target,
             query: { notification: this.group.class ? 'Successfully joined class.' : 'Successfully joined group.' },

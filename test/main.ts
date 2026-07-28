@@ -146,12 +146,24 @@ describe('App', () => {
                 .send({ token: teacherToken._id }).expect(403);
 
             await DomainModel.setUserInDomain(domainId, uid, { join: true, role: 'default' });
-            await invitedAgent.post(`/d/${domainId}/domain/group/join`)
-                .send({ token: teacherToken._id }).expect(302);
+            const originalAddUserToGroup = UserModel.addUserToGroupWithChanges;
+            UserModel.addUserToGroupWithChanges = async (...args) => {
+                await DomainModel.leave(domainId, uid);
+                return await originalAddUserToGroup(...args);
+            };
+            try {
+                await invitedAgent.post(`/d/${domainId}/domain/group/join`)
+                    .send({ token: teacherToken._id }).expect(302);
+            } finally {
+                UserModel.addUserToGroupWithChanges = originalAddUserToGroup;
+            }
+            dudoc = await DomainModel.collUser.findOne({ domainId, uid });
+            assert.deepStrictEqual(
+                { join: dudoc?.join, role: dudoc?.role, requireInvitation: dudoc?.requireInvitation },
+                { join: false, role: 'default', requireInvitation: true },
+            );
             assert((await UserModel.collGroup.findOne({ _id: classId }))?.students.includes(uid));
 
-            await invitedAgent.post('/home/domain')
-                .send({ operation: 'leave', id: domainId }).expect(302);
             await Promise.all([
                 UserModel.collGroup.updateOne(
                     { _id: classId }, { $pull: { uids: uid, students: uid } },
@@ -165,6 +177,95 @@ describe('App', () => {
                 classDoc?.invitationTokenId, TokenModel.TYPE_GROUP_INVITATION,
             );
             assert.equal(managerToken?.allowExternalDomainJoin, true);
+            const originalManagerAddUserToGroup = UserModel.addUserToGroupWithChanges;
+            UserModel.addUserToGroupWithChanges = async (...args) => {
+                await DomainModel.setUserRole(domainId, uid, 'guest');
+                return await originalManagerAddUserToGroup(...args);
+            };
+            try {
+                await invitedAgent.post(`/d/${domainId}/domain/group/join`)
+                    .send({ token: managerToken._id }).expect(403);
+            } finally {
+                UserModel.addUserToGroupWithChanges = originalManagerAddUserToGroup;
+            }
+            dudoc = await DomainModel.collUser.findOne({ domainId, uid });
+            assert.deepStrictEqual(
+                { join: dudoc?.join, role: dudoc?.role, requireInvitation: dudoc?.requireInvitation },
+                { join: false, role: 'guest', requireInvitation: true },
+            );
+            const rejectedGroup = await UserModel.collGroup.findOne({ _id: classId });
+            assert(!rejectedGroup?.uids.includes(uid));
+            assert(!rejectedGroup?.students.includes(uid));
+            await DomainModel.setUserInDomain(domainId, uid, {
+                join: false,
+                role: 'default',
+                requireInvitation: true,
+            });
+            const originalConcurrentAddUserToGroup = UserModel.addUserToGroupWithChanges;
+            UserModel.addUserToGroupWithChanges = async (...args) => {
+                await Promise.all([
+                    UserModel.collGroup.updateOne(
+                        { _id: classId },
+                        { $addToSet: { uids: uid, teachers: uid } },
+                    ),
+                    DomainModel.setUserRole(domainId, uid, 'guest'),
+                ]);
+                return await originalConcurrentAddUserToGroup(...args);
+            };
+            try {
+                await invitedAgent.post(`/d/${domainId}/domain/group/join`)
+                    .send({ token: managerToken._id }).expect(403);
+            } finally {
+                UserModel.addUserToGroupWithChanges = originalConcurrentAddUserToGroup;
+            }
+            const concurrentlyPromotedGroup = await UserModel.collGroup.findOne({ _id: classId });
+            assert(concurrentlyPromotedGroup?.uids.includes(uid));
+            assert(concurrentlyPromotedGroup?.teachers.includes(uid));
+            assert(!concurrentlyPromotedGroup?.students.includes(uid));
+            await Promise.all([
+                UserModel.collGroup.updateOne(
+                    { _id: classId }, { $pull: { uids: uid, students: uid, teachers: uid } },
+                ),
+                DomainModel.setUserInDomain(domainId, uid, {
+                    join: false,
+                    role: 'default',
+                    requireInvitation: true,
+                }),
+            ]);
+            const originalJoinUserInDomain = DomainModel.joinUserInDomain;
+            DomainModel.joinUserInDomain = async (...args) => {
+                await Promise.all([
+                    UserModel.collGroup.updateOne(
+                        { _id: classId },
+                        {
+                            $addToSet: { uids: uid, teachers: uid },
+                            $pull: { students: uid },
+                        },
+                    ),
+                    DomainModel.setUserRole(domainId, uid, 'guest'),
+                ]);
+                return await originalJoinUserInDomain(...args);
+            };
+            try {
+                await invitedAgent.post(`/d/${domainId}/domain/group/join`)
+                    .send({ token: managerToken._id }).expect(403);
+            } finally {
+                DomainModel.joinUserInDomain = originalJoinUserInDomain;
+            }
+            const promotedAfterInvitation = await UserModel.collGroup.findOne({ _id: classId });
+            assert(promotedAfterInvitation?.uids.includes(uid));
+            assert(promotedAfterInvitation?.teachers.includes(uid));
+            assert(!promotedAfterInvitation?.students.includes(uid));
+            await Promise.all([
+                UserModel.collGroup.updateOne(
+                    { _id: classId }, { $pull: { uids: uid, students: uid, teachers: uid } },
+                ),
+                DomainModel.setUserInDomain(domainId, uid, {
+                    join: false,
+                    role: 'default',
+                    requireInvitation: true,
+                }),
+            ]);
             await invitedAgent.post(`/d/${domainId}/domain/group/join`)
                 .send({ token: managerToken._id }).expect(302);
             dudoc = await DomainModel.collUser.findOne({ domainId, uid });
@@ -277,6 +378,52 @@ describe('App', () => {
                 TokenModel.delByUid(uid),
                 UserModel.coll.deleteOne({ _id: uid }),
                 DomainModel.collUser.deleteOne({ domainId: 'system', uid }),
+            ]);
+        }
+    });
+
+    it('Rate limit password verification for privileged users', async () => {
+        const DomainModel = global.Hydro.model.domain;
+        const TokenModel = global.Hydro.model.token;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const dummyMail = `password-rate-dummy-${suffix}@example.com`;
+        const dummyUname = `passwordratedummy${suffix}`;
+        const mail = `password-rate-${suffix}@example.com`;
+        const uname = `passwordrate${suffix}`;
+        const dummyUid = await UserModel.create(dummyMail, dummyUname, '123456');
+        const uid = await UserModel.create(mail, uname, '123456');
+        await UserModel.setSuperAdmin(uid);
+        const passwordAgent = supertest.agent(require('hydrooj').httpServer);
+        try {
+            await passwordAgent.post('/login')
+                .send({ uname, password: '123456' }).expect(302);
+            for (let attempt = 0; attempt < 5; attempt++) {
+                // eslint-disable-next-line no-await-in-loop
+                await passwordAgent.post('/home/security/password')
+                    .send({
+                        currentPassword: 'wrong-password',
+                        password: '654321',
+                        verifyPassword: '654321',
+                    })
+                    .expect(403)
+                    .expect(/Invalid password/);
+            }
+            await passwordAgent.post('/home/security/password')
+                .send({
+                    currentPassword: 'wrong-password',
+                    password: '654321',
+                    verifyPassword: '654321',
+                })
+                .expect(403)
+                .expect(/Too frequent operations/);
+        } finally {
+            const udoc = await UserModel.getById('system', uid);
+            if (udoc) UserModel._deleteUserCache(udoc);
+            await Promise.all([
+                TokenModel.delByUid(uid),
+                UserModel.coll.deleteMany({ _id: { $in: [dummyUid, uid] } }),
+                DomainModel.collUser.deleteMany({ domainId: 'system', uid: { $in: [dummyUid, uid] } }),
             ]);
         }
     });

@@ -8696,3 +8696,9 @@ test-reports/ai-record-verification/01-login.png
 test-reports/ai-record-verification/02-record-detail.png
 test-reports/ai-record-verification/report.md
 test-reports/ai-record-verification/results.json
+
+# Local Navicat database exports
+/ai_problem_profile.js
+/ai_problem_profile_jobs.js
+/problem_ai_profile.js
+/problem_ai_profile_jobs.js

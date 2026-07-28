@@ -289,6 +289,31 @@ class DomainModel {
         return await collUser.updateOne({ domainId, uid }, update, { upsert: true });
     }
 
+    static async joinUserInDomain(domainId: string, uid: number) {
+        const udoc = await UserModel.getById(domainId, uid);
+        const result = await collUser.findOneAndUpdate(
+            { domainId, uid },
+            [{
+                $set: {
+                    join: { $cond: [{ $eq: ['$role', 'guest'] }, '$join', true] },
+                    role: {
+                        $cond: [
+                            { $eq: ['$role', 'guest'] },
+                            '$role',
+                            { $cond: [{ $eq: ['$join', true] }, '$role', 'default'] },
+                        ],
+                    },
+                    requireInvitation: {
+                        $cond: [{ $eq: ['$role', 'guest'] }, '$requireInvitation', '$$REMOVE'],
+                    },
+                },
+            }],
+            { upsert: true, returnDocument: 'after' },
+        );
+        deleteUserCache(udoc);
+        return result;
+    }
+
     @ArgMethod
     static async incUserInDomain(domainId: string, uid: number, field: string, n: number = 1) {
         // @ts-ignore

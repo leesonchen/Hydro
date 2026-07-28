@@ -192,7 +192,7 @@ class HomePasswordHandler extends Handler {
     @param('password', Types.Password)
     @param('verifyPassword', Types.Password)
     async post({ }, currentPassword: string, password: string, verifyPassword: string) {
-        await this.limitRate('change_password', 60, 5, '{{user}}');
+        await this.limitRate('change_password', 60, 5, '{{user}}', true);
         if (password !== verifyPassword) throw new VerifyPasswordError();
         await this.user.checkPassword(currentPassword);
         if (password === currentPassword) throw new ValidationError('password', 'same');

@@ -34,7 +34,10 @@ declare module '@hydrooj/framework' {
         paginate<T>(cursor: FindCursor<T>, page: number, key: string): Promise<[docs: T[], numPages: number, count: number]>;
         paginate<T>(cursor: FindCursor<T>, page: number, limit: number): Promise<[docs: T[], numPages: number, count: number]>;
         progress(message: string, params: any[]): void;
-        limitRate(op: string, periodSecs: number, maxOperations: number, defaultKey?: string): Promise<void>;
+        limitRate(
+            op: string, periodSecs: number, maxOperations: number,
+            defaultKey?: string, enforceForPrivilegedUser?: boolean,
+        ): Promise<void>;
         renderTitle(str: string): string;
     }
 }
@@ -240,9 +243,10 @@ export async function apply(ctx: Context) {
             },
             async limitRate(
                 op: string, periodSecs: number, maxOperations: number, defaultKey = system.get('limit.by_user') ? '{{ip}}@{{user}}' : '{{ip}}',
+                enforceForPrivilegedUser = false,
             ) {
                 if (ignoredLimit.includes(op)) return;
-                if (this.user && this.user.hasPriv(PRIV.PRIV_UNLIMITED_ACCESS)) return;
+                if (!enforceForPrivilegedUser && this.user?.hasPriv(PRIV.PRIV_UNLIMITED_ACCESS)) return;
                 const overrideLimit = system.get(`limit.${op}`);
                 if (overrideLimit) maxOperations = overrideLimit;
                 // deprecated: remove boolean support in future
