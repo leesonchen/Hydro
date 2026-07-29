@@ -44,7 +44,7 @@ export default async (ctx: KoaContext, next: Next) => {
     ctx.HydroContext.args = args;
     const header = ctx.request.headers.authorization;
     const sid = header?.toLowerCase().startsWith('bearer ') ? header.slice(7) : ctx.cookies.get('sid');
-    const session = sid ? await token.get(sid instanceof Array ? sid[0] : sid, token.TYPE_SESSION) : null;
+    const session = sid ? await token.get(sid, token.TYPE_SESSION) : null;
     ctx.session = Object.create(session || { uid: 0, scope: PERM.PERM_ALL.toString() });
     await next();
     const request = ctx.HydroContext.request;
