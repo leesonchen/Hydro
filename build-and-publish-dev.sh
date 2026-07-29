@@ -252,12 +252,12 @@ check_tools() {
 check_publish_registry() {
     echo -e "${YELLOW}3. 检查发布仓库和登录状态...${NC}"
 
-    if ! npm ping --registry "$NPM_REGISTRY" >/dev/null 2>&1; then
+    if ! npm ping --registry "$NPM_REGISTRY"; then
         echo -e "${RED}错误: 无法连接到 npm 仓库: $NPM_REGISTRY${NC}"
         exit 1
     fi
 
-    if ! npm whoami --registry "$NPM_REGISTRY" >/dev/null 2>&1; then
+    if ! npm whoami --registry "$NPM_REGISTRY"; then
         echo -e "${RED}错误: 当前未登录私有 npm 仓库: $NPM_REGISTRY${NC}"
         echo -e "${YELLOW}请先执行: npm login --registry $NPM_REGISTRY${NC}"
         exit 1
