@@ -23,8 +23,11 @@ export const UiContextBase: UiContextBase = {
 export default async (ctx: KoaContext, next: Next) => {
     // Base Layer
     const { domainId, domainInfo } = ctx;
+    const isExplicitDomainRoute = /^\/d\/[^/]+\//.test(ctx.originalPath);
     const args = {
-        domainId, ...ctx.params, ...ctx.query, ...ctx.request.body, __start: Date.now(),
+        domainId, ...ctx.params, ...ctx.query, ...ctx.request.body,
+        ...(isExplicitDomainRoute ? { domainId } : {}),
+        __start: Date.now(),
     };
     const UiContext: any = cloneDeep(UiContextBase);
     if (!process.env.DEV) {
@@ -40,9 +43,7 @@ export default async (ctx: KoaContext, next: Next) => {
     ctx.HydroContext.domain = domainInfo;
     ctx.HydroContext.args = args;
     const header = ctx.request.headers.authorization;
-    const sid = header
-        ? header.split(' ')[1] // Accept bearer token
-        : ctx.cookies.get('sid') || ctx.query.sid; // FIXME maybe a better way for shared conn?
+    const sid = header?.toLowerCase().startsWith('bearer ') ? header.slice(7) : ctx.cookies.get('sid');
     const session = sid ? await token.get(sid instanceof Array ? sid[0] : sid, token.TYPE_SESSION) : null;
     ctx.session = Object.create(session || { uid: 0, scope: PERM.PERM_ALL.toString() });
     await next();
@@ -65,12 +66,12 @@ export default async (ctx: KoaContext, next: Next) => {
     if (!request.websocket) {
         const options: any = {
             expires: new Date(Date.now() + expireSeconds * 1000),
-            httpOnly: false,
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: ctx.request.secure,
         };
         if (system.get('session.domain') && ctx.request.secure && ctx.request.host.endsWith(system.get('session.domain'))) {
             options.domain = system.get('session.domain');
-            options.sameSite = 'none';
-            options.secure = true;
         }
         ctx.cookies.set('sid', ctx.session._id, options);
     }

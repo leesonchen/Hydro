@@ -205,8 +205,10 @@ export class ApiHandler extends Handler {
         await this.ctx.parallel('handler/api/before', this);
         // @ts-ignore
         await this.ctx.parallel(`handler/api/before/${op}`, this);
+        const apiArgs = { ...this.args, ...(this.args.args || {}) };
+        if (/^\/d\/[^/]+\//.test(this.context.originalPath)) apiArgs.domainId = this.context.domainId;
         const result = await this.ctx.api.execute(
-            this, op, { domainId: this.args.domainId, ...this.args, ...(this.args.args || {}) },
+            this, op, apiArgs,
             (m, args) => (this.ctx.parallel as any)(m, args), this.args.projection,
         );
         if (BinaryResponse.check(result)) {
@@ -238,8 +240,10 @@ export class ApiConnectionHandler extends ConnectionHandler {
         await this.ctx.parallel('handler/api/before', this);
         // @ts-ignore
         await this.ctx.parallel(`handler/api/before/${op}`, this);
+        const apiArgs = { ...this.args, ...(this.args.args || {}) };
+        if (/^\/d\/[^/]+\//.test(this.context.originalPath)) apiArgs.domainId = this.context.domainId;
         this.dispose = await this.ctx.api.execute(
-            this, op, { domainId: this.args.domainId, ...this.args, ...(this.args.args || {}) },
+            this, op, apiArgs,
             (m, args) => (this.ctx.parallel as any)(m, args), this.args.projection, (p) => this.send(p),
         );
     }

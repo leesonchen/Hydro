@@ -72,7 +72,7 @@ const initWorkerMode = (endpoint) => {
   window.addEventListener('beforeunload', () => {
     worker.port.postMessage({ type: 'unload' });
   });
-  worker.port.postMessage({ type: 'conn', path: endpoint, cookie: document.cookie });
+  worker.port.postMessage({ type: 'conn', path: endpoint });
   worker.port.onmessage = async (message) => {
     if (process.env.NODE_ENV !== 'production') console.log('onmessage: ', message);
     const { payload, type } = message.data;
@@ -139,7 +139,6 @@ const messagePage = new AutoloadPage('messagePage', (pagename) => {
       sock.send(JSON.stringify({
         operation: 'subscribe',
         request_id: Math.random().toString(16).substring(2),
-        credential: document.cookie.split('sid=')[1].split(';')[0],
         channels: ['message'],
       }));
     };

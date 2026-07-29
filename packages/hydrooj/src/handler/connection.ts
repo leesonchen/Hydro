@@ -1,7 +1,6 @@
 import { Context } from '../context';
 import { ForbiddenError } from '../error';
 import SystemModel from '../model/system';
-import TokenModel from '../model/token';
 import UserModel from '../model/user';
 import { ConnectionHandler } from '../service/server';
 import { Logger } from '../utils';
@@ -65,15 +64,12 @@ class WebsocketEventsConnectionManagerHandler extends ConnectionHandler {
     async subscribe(payload: any) {
         const accept = [];
         const reject = [];
-        const session = payload.credential
-            ? await TokenModel.get(payload.credential, TokenModel.TYPE_SESSION)
-            : null;
         const op = payload.operation || '';
         if (op === 'resume' && !this.privileged) {
             this.send({ operation: 'resume_failed' });
             return;
         }
-        const user = op === 'resume' ? null : await UserModel.getById('system', session?.uid || 0);
+        const user = op === 'resume' ? null : await UserModel.getById('system', this.session.uid || 0);
         for (const channel of payload.channels || []) {
             try {
                 const result = op === 'resume'

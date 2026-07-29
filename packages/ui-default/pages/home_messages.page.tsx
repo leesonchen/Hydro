@@ -55,7 +55,6 @@ const page = new NamedPage('home_messages', () => {
       sock.send(JSON.stringify({
         operation: 'subscribe',
         request_id: Math.random().toString(16).substring(2),
-        credential: document.cookie.split('sid=')[1].split(';')[0],
         channels: ['message'],
       }));
     };

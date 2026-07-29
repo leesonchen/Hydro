@@ -7,11 +7,9 @@ declare const self: SharedWorkerGlobalScope;
 console.log('SharedWorker init');
 
 let conn: ReconnectingWebsocket;
-let lcookie: string;
 const ports: Set<MessagePort> = new Set();
 interface RequestInitSharedConnPayload {
   type: 'conn';
-  cookie: string;
   path: string;
 }
 interface RequestAckPayload {
@@ -62,10 +60,9 @@ function onMessage(message: any) {
   }, 3000);
 }
 
-function initConn(path: string, port: MessagePort, cookie: any) {
+function initConn(path: string, port: MessagePort) {
   ports.add(port);
   console.log('Init connection');
-  lcookie = cookie.split('sid=')[1].split(';')[0];
   if (conn) return;
   const url = new URL(path, location.origin);
   conn = new ReconnectingWebsocket(url.toString().replace('http', 'ws'));
@@ -75,7 +72,6 @@ function initConn(path: string, port: MessagePort, cookie: any) {
     conn.send(JSON.stringify({
       operation: 'subscribe',
       request_id: Math.random().toString(16).substring(2),
-      credential: lcookie,
       channels: ['message'],
     }));
   };
@@ -101,7 +97,7 @@ self.onconnect = function (e) {
   const port = e.ports[0];
 
   port.addEventListener('message', (msg: { data: RequestPayload }) => {
-    if (msg.data.type === 'conn') initConn(msg.data.path, port, msg.data.cookie);
+    if (msg.data.type === 'conn') initConn(msg.data.path, port);
     if (msg.data.type === 'ack') ack[msg.data.id]?.(msg.data.payload);
     if (msg.data.type === 'unload') ports.delete(port);
   });

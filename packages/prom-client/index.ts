@@ -24,13 +24,18 @@ class MetricsHandler extends Handler {
     notUsage = true;
 
     async get() {
+        const [name, password] = SystemModel.getMany(['prom-client.name', 'prom-client.password']);
+        if (!name || !password || (name === 'admin' && password === 'admin')) {
+            this.response.status = 503;
+            this.response.body = {};
+            return;
+        }
         if (!this.request.headers.authorization) {
             this.response.status = 401;
             this.response.body = {};
             this.response.addHeader('WWW-Authenticate', 'Basic');
             return;
         }
-        const [name, password] = SystemModel.getMany(['prom-client.name', 'prom-client.password']);
         const key = this.request.headers.authorization.split('Basic ')?.[1];
         if (!key || key !== Buffer.from(`${name}:${password}`).toString('base64')) {
             this.response.status = 403;
@@ -45,8 +50,8 @@ class MetricsHandler extends Handler {
 export function apply(ctx: Context) {
     ctx.setting.SystemSetting(Schema.object({
         'prom-client': Schema.object({
-            name: Schema.string().description('basic auth username while requesting metrics').default('admin'),
-            password: Schema.string().role('password').description('basic auth password while requesting metrics').default('admin'),
+            name: Schema.string().description('basic auth username while requesting metrics').default(''),
+            password: Schema.string().role('secret').description('basic auth password while requesting metrics').default(''),
             gateway: Schema.string().role('gateway').description('Leave blank to disable push gateway').default(''),
             collect_rate: Schema.number().role('collect_rate').default(1).description('Collect rate'),
         }),

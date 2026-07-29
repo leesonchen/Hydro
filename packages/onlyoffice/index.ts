@@ -1,7 +1,7 @@
 import { sign } from 'jsonwebtoken';
 import { } from '@hydrooj/ui-default/backendlib/markdown-it-media';
 import {
-    Context, Handler, Schema, superagent, SystemModel, UiContextBase, ValidationError,
+    Context, Handler, PRIV, Schema, superagent, SystemModel, UiContextBase, ValidationError,
 } from 'hydrooj';
 
 declare module 'hydrooj' {
@@ -11,28 +11,33 @@ declare module 'hydrooj' {
 }
 
 class OnlyofficeJWTHandler extends Handler {
-    noCheckPermView = true;
     notUsage = true;
 
     async get({ url }) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const secret = SystemModel.get('onlyoffice.jwtsecret');
+        if (!secret || secret === 'secret') throw new ValidationError('onlyoffice.jwtsecret');
+        let documentUrl: URL;
         if (SystemModel.get('onlyoffice.externalSign')) {
-            const res = await superagent.get(SystemModel.get('onlyoffice.externalSign')).query({ url });
+            documentUrl = this.validateDocumentUrl(url);
+            const res = await superagent.get(SystemModel.get('onlyoffice.externalSign')).query({ url: documentUrl.toString() });
             this.response.body = res.body;
             return;
         }
-        let path: string;
         try {
-            path = new URL(url).pathname;
+            documentUrl = this.validateDocumentUrl(url);
         } catch (e) {
+            if (e instanceof ValidationError) throw e;
             throw new ValidationError('url');
         }
+        const path = documentUrl.pathname;
         const allowDownload = !!SystemModel.get('onlyoffice.allowDownload');
         const payload = {
             document: {
                 fileType: path.split('.').pop(),
                 key: Math.random().toString(36).substring(2),
                 title: decodeURIComponent(path.split('/').pop()),
-                url,
+                url: documentUrl.toString(),
                 permissions: {
                     comment: false,
                     copy: allowDownload,
@@ -63,11 +68,34 @@ class OnlyofficeJWTHandler extends Handler {
                 },
             },
         };
-        const token = sign(payload, SystemModel.get('onlyoffice.jwtsecret'));
+        const token = sign(payload, secret);
         this.response.body = {
             ...payload,
             token,
         };
+    }
+
+    private validateDocumentUrl(input: string) {
+        const serverUrl = SystemModel.get('server.url');
+        let server: URL;
+        let documentUrl: URL;
+        try {
+            server = new URL(serverUrl);
+            documentUrl = new URL(input);
+        } catch {
+            throw new ValidationError('url');
+        }
+        if (!['http:', 'https:'].includes(documentUrl.protocol)) throw new ValidationError('url');
+        const origins = new Set([server.origin]);
+        for (const host of this.domain.host || []) {
+            try {
+                origins.add(new URL(/^https?:\/\//i.test(host) ? host : `${server.protocol}//${host}`).origin);
+            } catch {
+                // Ignore malformed administrator-configured host aliases.
+            }
+        }
+        if (!origins.has(documentUrl.origin)) throw new ValidationError('url');
+        return documentUrl;
     }
 }
 
@@ -94,7 +122,7 @@ export function apply(ctx: Context) {
     ctx.setting.SystemSetting(Schema.object({
         onlyoffice: Schema.object({
             api: Schema.string().description('OnlyOffice API URL').role('url').default('https://documentserver/web-apps/apps/api/documents/api.js'),
-            jwtsecret: Schema.string().description('JWT Secret').default('secret'),
+            jwtsecret: Schema.string().role('secret').description('JWT Secret').default(''),
             pdf: Schema.boolean().description('Handle pdf documents').default(false),
             externalSign: Schema.string().description('External Sign URL').default(''),
         }),

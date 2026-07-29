@@ -5,13 +5,10 @@ export default class Sock {
   sock: ReconnectingWebSocket;
   interval: NodeJS.Timeout;
 
-  constructor(public url: string, nocookie = false, shorty = false) {
+  constructor(public url: string, _nocookie = false, shorty = false) {
     const i = new URL(url, window.location.href);
     if (shorty) {
       i.searchParams.append('shorty', 'on');
-    }
-    if (i.host !== window.location.host && !nocookie && document.cookie.includes('sid=')) {
-      i.searchParams.append('sid', document.cookie.split('sid=')[1].split(';')[0]);
     }
     i.protocol = i.protocol.replace('http', 'ws');
     this.url = i.toString();

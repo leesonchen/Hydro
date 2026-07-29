@@ -244,9 +244,17 @@ export class Handler extends HandlerCommon {
     }
 
     async init() {
-        if (this.request.method === 'post' && this.request.headers.referer && !this.context.cors && !this.allowCors) {
+        const contentType = this.request.headers['content-type']?.split(';', 1)[0]?.toLowerCase();
+        const isFormRequest = contentType === 'application/x-www-form-urlencoded'
+            || contentType === 'multipart/form-data' || contentType === 'text/plain';
+        const hasCookieSession = !!this.context.cookies.get('sid');
+        const hasBearerToken = /^Bearer\s+/i.test(this.request.headers.authorization || '');
+        if (this.request.method === 'post' && isFormRequest && hasCookieSession && !hasBearerToken
+            && !this.context.cors && !this.allowCors) {
             try {
-                const host = new URL(this.request.headers.referer).host;
+                const source = this.request.headers.origin || this.request.headers.referer;
+                if (!source) throw new CsrfTokenError();
+                const host = new URL(source).host;
                 if (host !== this.request.host) throw new CsrfTokenError(host);
             } catch (e) {
                 throw e instanceof CsrfTokenError ? e : new CsrfTokenError();

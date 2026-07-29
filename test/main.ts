@@ -57,7 +57,57 @@ describe('App', () => {
             .send({ uname: Root.username, password: Root.password })
             .expect(302)
             .then((res) => res.headers['set-cookie']);
+        assert(cookie.some((item) => /httponly/i.test(item)));
+        assert(cookie.some((item) => /samesite=lax/i.test(item)));
         Root.creditionals = cookie;
+    });
+
+    it('Rejects session IDs supplied through the query string', async () => {
+        const sid = /(?:^|;\s*)sid=([^;]+)/.exec(Root.creditionals[0])?.[1];
+        assert(sid);
+        const request = require('supertest');
+        await request(require('hydrooj').httpServer)
+            .get(`/home/settings/preference?sid=${encodeURIComponent(sid)}`)
+            .expect(302);
+    });
+
+    it('Does not let another domain owner mutate this domain through API arguments', async () => {
+        const DomainModel = global.Hydro.model.domain;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const targetDomainId = `api-target-${suffix}`;
+        const attackerDomainId = `api-attacker-${suffix}`;
+        const uname = `apiattacker${suffix}`;
+        const uid = await UserModel.create(`${uname}@example.com`, uname, '123456');
+        const attacker = supertest.agent(require('hydrooj').httpServer);
+
+        await Promise.all([
+            DomainModel.add(targetDomainId, 2, `API target ${suffix}`, ''),
+            DomainModel.add(attackerDomainId, uid, `API attacker ${suffix}`, ''),
+        ]);
+        try {
+            await DomainModel.setUserRole(targetDomainId, uid, 'default', true);
+            await attacker.post('/login').send({ uname, password: '123456' }).expect(302);
+            await attacker.post(`/d/${targetDomainId}/api/domain.group`)
+                .set('Accept', 'application/json')
+                .send({ domainId: attackerDomainId, name: `blocked-${suffix}`, uids: [uid] })
+                .expect(403);
+            assert.equal(await UserModel.collGroup.countDocuments({ domainId: targetDomainId, name: `blocked-${suffix}` }), 0);
+        } finally {
+            await Promise.all([
+                DomainModel.coll.deleteMany({ _id: { $in: [targetDomainId, attackerDomainId] } }),
+                DomainModel.collUser.deleteMany({ domainId: { $in: [targetDomainId, attackerDomainId] } }),
+                UserModel.collGroup.deleteMany({ domainId: { $in: [targetDomainId, attackerDomainId] } }),
+            ]);
+        }
+    });
+
+    it('Rejects cross-origin cookie-authenticated form submissions', async () => {
+        await agent.post('/home/domain')
+            .type('form')
+            .set('Origin', 'https://attacker.example')
+            .send({ operation: 'leave', id: 'system' })
+            .expect(403);
     });
 
     it('API registered user', async () => {
