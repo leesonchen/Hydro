@@ -116,13 +116,15 @@ export function Media(md: MarkdownIt, { pdfToolbar = false }: { pdfToolbar?: boo
       if (kind === 'external') return `<p>Embedding an external PDF is no longer supported.</p> <a href="${md.utils.escapeHtml(src)}">Download</a>`;
       if (kind === 'invalid') return '<p>Embedding this PDF URL is not supported.</p>';
       const fragmentPos = src.indexOf('#');
-      const pdfUrl = fragmentPos === -1 ? src : src.slice(0, fragmentPos);
-      const fragment = fragmentPos === -1 ? '' : src.slice(fragmentPos);
-      const pdfSrc = kind === 'data' ? src : `${pdfUrl}${pdfUrl.includes('?') ? '&' : '?'}noDisposition=1${fragment}`;
+      const sourceUrl = fragmentPos === -1 ? src : src.slice(0, fragmentPos);
+      const fragment = fragmentPos === -1 ? '' : src.slice(fragmentPos + 1);
+      const pdfUrl = kind === 'data' ? sourceUrl : `${sourceUrl}${sourceUrl.includes('?') ? '&' : '?'}noDisposition=1`;
+      const pdfSrc = `${pdfUrl}${fragment ? `#${fragment}` : ''}`;
+      const viewerFragment = [fragment, `toolbar=${pdfToolbar ? '0' : '1'}`, 'navpanes=0', 'view=FitH'].filter(Boolean).join('&');
       return `\
         <object classid="clsid:${uuid().toUpperCase()}">
           <param name="SRC" value="${md.utils.escapeHtml(pdfSrc)}">
-          <embed type="application/pdf" width="100%" style="min-height:100vh;border:none;" fullscreen="yes" src="${md.utils.escapeHtml(`${pdfSrc}#toolbar=${pdfToolbar ? '0' : '1'}&navpanes=0&view=FitH`)}">
+          <embed type="application/pdf" width="100%" style="min-height:100vh;border:none;" fullscreen="yes" src="${md.utils.escapeHtml(`${pdfUrl}#${viewerFragment}`)}">
             <noembed></noembed>
           </embed>
         </object>`;
