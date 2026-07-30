@@ -7,6 +7,7 @@ import {
 } from 'node:test';
 import * as supertest from 'supertest';
 import { PERM } from '@hydrooj/common';
+import { getApiArgs } from '@hydrooj/framework';
 
 const Root = {
     username: 'root',
@@ -69,6 +70,14 @@ describe('App', () => {
         await request(require('hydrooj').httpServer)
             .get(`/home/settings/preference?sid=${encodeURIComponent(sid)}`)
             .expect(302);
+    });
+
+    it('Does not let API RPC messages override an explicit route domain', () => {
+        const args = getApiArgs({
+            domainId: 'route-domain',
+            originalPath: '/d/route-domain/api/rpc/conn',
+        }, { domainId: 'forged-domain', initial: 0 });
+        assert.equal(args.domainId, 'route-domain');
     });
 
     it('Does not let another domain owner mutate this domain through API arguments', async () => {

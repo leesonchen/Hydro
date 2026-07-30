@@ -19,7 +19,7 @@ RELEASES_DIR="$HYDRO_HOME/dev-releases"
 BACKUPS_DIR="$HYDRO_HOME/dev-backups"
 ACTIVE_RELEASE_FILE="$RELEASES_DIR/active"
 HYDRO_BIN_LINK="/usr/local/bin/hydrooj"
-PACKAGE_KEYS=("hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
+PACKAGE_KEYS=("framework" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
 SELECTED_PACKAGE_KEYS=()
 declare -A CURRENT_PACKAGE_VERSIONS=()
 declare -A REMOTE_PACKAGE_VERSIONS=()
@@ -53,8 +53,8 @@ log_error() {
 usage() {
     cat <<USAGE
 用法:
-  ./install-dev-from-private-npm.sh [install] [--packages all|hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
-  ./install-dev-from-private-npm.sh update [--packages all|hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
+  ./install-dev-from-private-npm.sh [install] [--packages all|framework,hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
+  ./install-dev-from-private-npm.sh update [--packages all|framework,hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
   ./install-dev-from-private-npm.sh update hydrojudge
   ./install-dev-from-private-npm.sh check-updates
   ./install-dev-from-private-npm.sh upgrade-interactive
@@ -144,6 +144,9 @@ package_version_from_dir() {
 
 package_name_for_key() {
     case "$1" in
+        framework)
+            echo "@hydrooj/framework"
+            ;;
         hydrooj)
             echo "hydrooj"
             ;;
@@ -173,8 +176,11 @@ normalize_package_key() {
         all)
             echo "all"
             ;;
-        hydrooj|ui-default|hydrojudge|fps-importer|a11y|import-hoj)
+        framework|hydrooj|ui-default|hydrojudge|fps-importer|a11y|import-hoj)
             echo "$1"
+            ;;
+        @hydrooj/framework)
+            echo "framework"
             ;;
         @hydrooj/ui-default)
             echo "ui-default"
@@ -253,7 +259,7 @@ parse_update_args() {
             --packages=*)
                 parse_package_selector "${1#--packages=}"
                 ;;
-            all|hydrooj|ui-default|hydrojudge|fps-importer|a11y|import-hoj|@hydrooj/ui-default|@hydrooj/hydrojudge|@hydrooj/fps-importer|@hydrooj/a11y|@hydrooj/import-hoj)
+            all|framework|hydrooj|ui-default|hydrojudge|fps-importer|a11y|import-hoj|@hydrooj/framework|@hydrooj/ui-default|@hydrooj/hydrojudge|@hydrooj/fps-importer|@hydrooj/a11y|@hydrooj/import-hoj)
                 parse_package_selector "$1"
                 ;;
             *)

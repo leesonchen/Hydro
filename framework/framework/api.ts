@@ -181,6 +181,12 @@ export class ApiService extends Service {
     }
 }
 
+export function getApiArgs(context: any, args: Record<string, any>) {
+    const apiArgs = { ...args };
+    if (/^\/d\/[^/]+\//.test(context.originalPath)) apiArgs.domainId = context.domainId;
+    return apiArgs;
+}
+
 declare module 'cordis' {
     interface Context {
         api: ApiService;
@@ -205,8 +211,7 @@ export class ApiHandler extends Handler {
         await this.ctx.parallel('handler/api/before', this);
         // @ts-ignore
         await this.ctx.parallel(`handler/api/before/${op}`, this);
-        const apiArgs = { ...this.args, ...(this.args.args || {}) };
-        if (/^\/d\/[^/]+\//.test(this.context.originalPath)) apiArgs.domainId = this.context.domainId;
+        const apiArgs = getApiArgs(this.context, { ...this.args, ...(this.args.args || {}) });
         const result = await this.ctx.api.execute(
             this, op, apiArgs,
             (m, args) => (this.ctx.parallel as any)(m, args), this.args.projection,
@@ -240,8 +245,7 @@ export class ApiConnectionHandler extends ConnectionHandler {
         await this.ctx.parallel('handler/api/before', this);
         // @ts-ignore
         await this.ctx.parallel(`handler/api/before/${op}`, this);
-        const apiArgs = { ...this.args, ...(this.args.args || {}) };
-        if (/^\/d\/[^/]+\//.test(this.context.originalPath)) apiArgs.domainId = this.context.domainId;
+        const apiArgs = getApiArgs(this.context, { ...this.args, ...(this.args.args || {}) });
         this.dispose = await this.ctx.api.execute(
             this, op, apiArgs,
             (m, args) => (this.ctx.parallel as any)(m, args), this.args.projection, (p) => this.send(p),
@@ -262,8 +266,9 @@ export class ApiConnectionHandler extends ConnectionHandler {
             throw new BadRequestError('Only subscription operations are supported');
         }
         handleArguments(message);
+        const apiArgs = getApiArgs(this.context, message.args);
         const result = await this.ctx.api.execute(
-            this, message.op, message.args, (m, args) => (this.ctx.parallel as any)(m, args), message.projection,
+            this, message.op, apiArgs, (m, args) => (this.ctx.parallel as any)(m, args), message.projection,
         );
         this.send(result);
     }

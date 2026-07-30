@@ -12,7 +12,7 @@ PUBLISH_TIMEOUT_SECONDS=300
 PUBLISH_RETRY_COUNT=3
 NPM_REGISTRY="${NPM_REGISTRY:-https://npm.leeson.top/}"
 YARN_APPROVED_GIT_REPOSITORIES="${YARN_APPROVED_GIT_REPOSITORIES:-https://github.com/Mango/emitter.git}"
-DEFAULT_PACKAGES=("common" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
+DEFAULT_PACKAGES=("common" "framework" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
 SELECTED_PACKAGES=()
 TS_PREPARE_DONE=0
 BUILT_TS_CONFIGS=()
@@ -38,7 +38,7 @@ print_usage() {
     echo "用法:"
     echo "  ./build-and-publish-dev.sh [--packages pkg1,pkg2]"
     echo ""
-    echo "可选包名: common, hydrooj, ui-default, hydrojudge, fps-importer, a11y, import-hoj"
+    echo "可选包名: common, framework, hydrooj, ui-default, hydrojudge, fps-importer, a11y, import-hoj"
     echo "示例:"
     echo "  ./build-and-publish-dev.sh --packages hydrooj,ui-default,fps-importer"
     echo ""
@@ -46,7 +46,7 @@ print_usage() {
 
 # 交互选择包（支持空格分隔多选）
 interactive_select_packages() {
-    local options=("common" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
+    local options=("common" "framework" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
     local idx
     local input
 
@@ -75,21 +75,24 @@ interactive_select_packages() {
                 picked+=("common")
                 ;;
             2)
-                picked+=("hydrooj")
+                picked+=("framework")
                 ;;
             3)
-                picked+=("ui-default")
+                picked+=("hydrooj")
                 ;;
             4)
-                picked+=("hydrojudge")
+                picked+=("ui-default")
                 ;;
             5)
-                picked+=("fps-importer")
+                picked+=("hydrojudge")
                 ;;
             6)
-                picked+=("a11y")
+                picked+=("fps-importer")
                 ;;
             7)
+                picked+=("a11y")
+                ;;
+            8)
                 picked+=("import-hoj")
                 ;;
             *)
@@ -411,6 +414,10 @@ pack_package() {
 
 # 获取工作区依赖的本地版本号
 get_workspace_version() {
+    if [ -n "${PUBLISHED_VERSIONS[$1]:-}" ]; then
+        echo "${PUBLISHED_VERSIONS[$1]}"
+        return
+    fi
     case "$1" in
         @hydrooj/common)
             get_current_version "$SCRIPT_DIR/packages/common"
@@ -591,6 +598,11 @@ main() {
         echo ""
     fi
 
+    if is_selected "framework"; then
+        build_package "@hydrooj/framework" "$SCRIPT_DIR/framework/framework"
+        echo ""
+    fi
+
     if is_selected "hydrooj"; then
         build_package "hydrooj" "$SCRIPT_DIR/packages/hydrooj"
     fi
@@ -617,6 +629,10 @@ main() {
     # 发布 common
     if is_selected "common"; then
         publish_package "@hydrooj/common" "$SCRIPT_DIR/packages/common" "common-dev.tgz"
+    fi
+
+    if is_selected "framework"; then
+        publish_package "@hydrooj/framework" "$SCRIPT_DIR/framework/framework" "framework-dev.tgz"
     fi
 
     # 发布 hydrooj
@@ -648,6 +664,9 @@ main() {
     echo -e "已发布的版本:"
     if is_selected "common"; then
         echo -e "  - @hydrooj/common@${PUBLISHED_VERSIONS["@hydrooj/common"]}"
+    fi
+    if is_selected "framework"; then
+        echo -e "  - @hydrooj/framework@${PUBLISHED_VERSIONS["@hydrooj/framework"]}"
     fi
     if is_selected "hydrooj"; then
         echo -e "  - hydrooj@${PUBLISHED_VERSIONS["hydrooj"]}"
