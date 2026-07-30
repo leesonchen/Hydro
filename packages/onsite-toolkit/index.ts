@@ -7,6 +7,7 @@ import {
     randomstring, Schema, SettingModel, STATUS, STATUS_SHORT_TEXTS, STATUS_TEXTS,
     SystemModel, TokenModel, Types, UserModel, Zip,
 } from 'hydrooj';
+import { hasResolverFreeze } from './resolver';
 
 interface IpLoginInfo {
     _id: string;
@@ -268,7 +269,7 @@ export function apply(ctx: Context, config: ReturnType<typeof Config>) {
             },
             checker() {
                 return ContestModel.isDone(this.tdoc)
-                    && !!this.tdoc.lockAt
+                    && hasResolverFreeze(this.tdoc.rule, this.tdoc.lockAt)
                     && (this.user.own(this.tdoc) || this.user.hasPerm(PERM.PERM_EDIT_CONTEST));
             },
             supportedRules: ['acm', 'oi', 'ioi'],
@@ -290,7 +291,7 @@ export function apply(ctx: Context, config: ReturnType<typeof Config>) {
             },
             checker() {
                 return ContestModel.isDone(this.tdoc)
-                    && !!this.tdoc.lockAt
+                    && hasResolverFreeze(this.tdoc.rule, this.tdoc.lockAt)
                     && (this.user.own(this.tdoc) || this.user.hasPerm(PERM.PERM_EDIT_CONTEST));
             },
             supportedRules: ['acm', 'oi', 'ioi'],
