@@ -694,8 +694,31 @@ describe('App', () => {
 
             const existing = supertest.agent(require('hydrooj').httpServer);
             await existing.post('/login').send({ uname: existingName, password: '123456' }).expect(302);
-            await existing.post(`/d/${domainId}/domain/group/join`).send({ code }).expect(302);
-            assert.equal((await DomainModel.collUser.findOne({ domainId, uid: existingUid }))?.role, 'default');
+            await TokenModel.coll.updateOne(
+                { _id: invitation._id },
+                { $set: { externalJoinRole: 'root' } },
+            );
+            const originalAddUserToGroupWithChanges = UserModel.addUserToGroupWithChanges;
+            let membershipMutationAttempted = false;
+            UserModel.addUserToGroupWithChanges = async (...args: any[]) => {
+                membershipMutationAttempted = true;
+                const membership = await originalAddUserToGroupWithChanges.call(UserModel, ...args);
+                await DomainModel.setUserInDomain(domainId, existingUid, { join: false, role: 'default' });
+                return membership;
+            };
+            try {
+                await existing.post(`/d/${domainId}/domain/group/join`).send({ code }).expect(403);
+            } finally {
+                UserModel.addUserToGroupWithChanges = originalAddUserToGroupWithChanges;
+                await TokenModel.coll.updateOne({ _id: invitation._id }, { $set: { externalJoinRole: role } });
+            }
+            assert(!membershipMutationAttempted);
+            assert(!(await UserModel.collGroup.findOne({ _id: classId }))?.students.includes(existingUid));
+            assert.deepStrictEqual(
+                await DomainModel.collUser.findOne({ domainId, uid: existingUid })
+                    .then((doc) => ({ join: doc?.join, role: doc?.role })),
+                { join: true, role: 'default' },
+            );
 
             const teacher = supertest.agent(require('hydrooj').httpServer);
             await teacher.post('/login').send({ uname: teacherName, password: '123456' }).expect(302);
@@ -722,17 +745,35 @@ describe('App', () => {
             );
 
             await DomainModel.addRole(domainId, role, PERM.PERM_DEFAULT);
+            const cachedDomain = await DomainModel.get(domainId);
+            const originalDomainUserUpdateMany = DomainModel.collUser.updateMany;
+            DomainModel.collUser.updateMany = async (...args: any[]) => {
+                if (args[0]?.domainId === domainId && args[0]?.role?.$in?.includes(role)) {
+                    throw new Error('Injected role migration failure');
+                }
+                return await originalDomainUserUpdateMany.call(DomainModel.collUser, ...args);
+            };
+            try {
+                await assert.rejects(DomainModel.deleteRoles(domainId, [role]), /Injected role migration failure/);
+            } finally {
+                DomainModel.collUser.updateMany = originalDomainUserUpdateMany;
+            }
+            const reloadedDomain = await DomainModel.get(domainId);
+            assert.notStrictEqual(reloadedDomain, cachedDomain);
+            assert(!Object.hasOwn(reloadedDomain?.roles || {}, role));
+
+            await DomainModel.addRole(domainId, role, PERM.PERM_DEFAULT);
             await DomainModel.setUserInDomain(domainId, inviteeUid, { join: false, role: 'default' });
-            const originalDomainFindOne = DomainModel.coll.findOne.bind(DomainModel.coll);
+            const originalDomainFindOne = DomainModel.coll.findOne;
             DomainModel.coll.findOne = async (...args: any[]) => {
                 if (args[0]?._id === domainId && args[1]?.projection?.roles) {
                     throw new Error('Injected role recheck failure');
                 }
-                return await originalDomainFindOne(...args);
+                return await originalDomainFindOne.call(DomainModel.coll, ...args);
             };
             try {
                 const joined = await DomainModel.joinUserInDomain(domainId, inviteeUid, role);
-                assert.deepStrictEqual({ join: joined?.join, role: joined?.role }, { join: true, role });
+                assert.deepStrictEqual({ join: joined?.join, role: joined?.role }, { join: true, role: 'default' });
             } finally {
                 DomainModel.coll.findOne = originalDomainFindOne;
             }

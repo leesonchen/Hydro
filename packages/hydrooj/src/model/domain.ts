@@ -243,9 +243,13 @@ class DomainModel {
         const current = await DomainModel.get(domainId);
         for (const role of roles) delete current.roles[role];
         await coll.updateOne({ _id: domainId }, { $set: current });
-        await collUser.updateMany({ domainId, role: { $in: roles } }, { $set: { role: 'default' } });
         deleteUserCache(domainId);
         bus.broadcast('domain/delete-cache', domainId.toLowerCase());
+        try {
+            await collUser.updateMany({ domainId, role: { $in: roles } }, { $set: { role: 'default' } });
+        } finally {
+            deleteUserCache(domainId);
+        }
     }
 
     static async getDomainUser(domainId: string, udoc: DomainUserArg) {
@@ -309,16 +313,20 @@ class DomainModel {
             { upsert: true, returnDocument: 'after' },
         );
         if (result?.role === role && !Object.hasOwn(BUILTIN_ROLES, role)) {
+            let roleExists = false;
             try {
                 const current = await coll.findOne({ _id: domainId }, { projection: { roles: 1 } });
-                if (!Object.hasOwn(current?.roles || {}, role)) {
+                roleExists = Object.hasOwn(current?.roles || {}, role);
+            } catch { /* Treat an unverifiable custom role as invalid. */ }
+            if (!roleExists) {
+                try {
                     result = await collUser.findOneAndUpdate(
                         { domainId, uid, join: true, role },
                         { $set: { role: 'default' } },
                         { returnDocument: 'after' },
                     ) || result;
-                }
-            } catch { /* The join is already durable and cannot be safely rolled back here. */ }
+                } catch { /* The join is already durable and cannot be safely rolled back here. */ }
+            }
         }
         deleteUserCache(udoc);
         return result;

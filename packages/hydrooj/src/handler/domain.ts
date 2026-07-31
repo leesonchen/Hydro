@@ -657,9 +657,12 @@ class DomainGroupJoinHandler extends Handler {
         const currentDomainUser = canJoinDomain
             ? await domain.collUser.findOne({ domainId: target, uid: this.user._id }, { projection: { join: 1 } })
             : null;
+        if (canJoinDomain && ['guest', 'root'].includes(externalJoinRole)) {
+            throw new ValidationError('externalJoinRole');
+        }
         if (canJoinDomain && !currentDomainUser?.join) {
             const roles = await domain.getRoles(target);
-            if (!roles.some((role) => role._id === externalJoinRole) || ['guest', 'root'].includes(externalJoinRole)) {
+            if (!roles.some((role) => role._id === externalJoinRole)) {
                 throw new ValidationError('externalJoinRole');
             }
         }
