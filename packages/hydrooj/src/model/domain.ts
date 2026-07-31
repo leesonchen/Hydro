@@ -289,7 +289,7 @@ class DomainModel {
         return await collUser.updateOne({ domainId, uid }, update, { upsert: true });
     }
 
-    static async joinUserInDomain(domainId: string, uid: number) {
+    static async joinUserInDomain(domainId: string, uid: number, role = 'default') {
         const udoc = await UserModel.getById(domainId, uid);
         const result = await collUser.findOneAndUpdate(
             { domainId, uid },
@@ -300,7 +300,7 @@ class DomainModel {
                         $cond: [
                             { $eq: ['$role', 'guest'] },
                             '$role',
-                            { $cond: [{ $eq: ['$join', true] }, '$role', 'default'] },
+                            { $cond: [{ $eq: ['$join', true] }, '$role', role] },
                         ],
                     },
                     requireInvitation: {

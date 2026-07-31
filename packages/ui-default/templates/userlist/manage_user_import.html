@@ -9,7 +9,8 @@
   <div class="section__body">
     <blockquote class="note">
       <p>每行一个用户，格式：邮箱, 用户名, 密码, 显示名, 扩展信息(JSON)</p>
-      <p>扩展信息示例：{"group":"class1,class2","role":"default","school":"XX学校","studentId":"20250001"}</p>
+      <p>扩展信息示例：{"group":"group1,group2","class":"class1,class2","role":"default","school":"XX学校","studentId":"20250001"}</p>
+      <p><code>group</code> 用于普通分组，<code>class</code> 用于将新用户作为学生加入班级。</p>
       <p>支持 Tab 或逗号分隔</p>
     </blockquote>
     {{ noscript_note.render() }}

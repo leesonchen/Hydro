@@ -139,32 +139,27 @@ const page = new NamedPage('domain_group', () => {
     const result = await prompt(i18n('Import Groups'), {
       groups: {
         type: 'textarea',
-        label: i18n('Format: one group per line, CSV: groupName,uid1,uid2,...'),
+        label: i18n('Format: one group per line, CSV: groupName,uidOrUsername1,uidOrUsername2,...'),
         rows: 10,
         required: true,
-        placeholder: 'group1,1001,1002,1003\ngroup2,1004,1005',
+        placeholder: 'group1,1001,alice,bob\ngroup2,1004,charlie',
       },
     });
     if (!result) return;
     const lines = String(result.groups || '').replace(/^\uFEFF/, '').split('\n');
-    const parsed = new Map<string, number[]>();
+    const parsed = new Map<string, { members: string[], line: number }>();
     const errors: string[] = [];
     lines.forEach((raw, idx) => {
       const line = raw.trim();
       if (!line) return;
       const [name, ...rest] = line.split(',').map((t) => t.trim());
       if (!name) return;
-      const uids: number[] = [];
+      const members: string[] = [];
       for (const t of rest) {
         if (!t) continue;
-        const uid = +t;
-        if (!Number.isInteger(uid)) {
-          errors.push(i18n('Line {0}: Invalid UID "{1}".', idx + 1, t));
-          return;
-        }
-        uids.push(uid);
+        members.push(t);
       }
-      parsed.set(name, Array.from(new Set(uids)));
+      parsed.set(name, { members: Array.from(new Set(members)), line: idx + 1 });
     });
     if (errors.length) {
       Notification.error(errors.join('\n'));
@@ -174,8 +169,39 @@ const page = new NamedPage('domain_group', () => {
       Notification.error(i18n('No groups to import.'));
       return;
     }
+    const resolved = new Map<string, number[]>();
+    const userCache = new Map<string, Promise<number | null>>();
+    const resolveUser = (member: string) => {
+      if (!userCache.has(member)) {
+        userCache.set(member, (async () => {
+          if (/^\d+$/.test(member)) {
+            const uid = Number(member);
+            return Number.isSafeInteger(uid) && uid > 0 ? uid : null;
+          }
+          const exact = await api('users', { auto: [member] }, ['_id']);
+          if (exact.length === 1) return exact[0]._id;
+          const matches = await api('users', { search: member, limit: 10 }, ['_id']);
+          return matches.length === 1 ? matches[0]._id : null;
+        })());
+      }
+      return userCache.get(member);
+    };
+    for (const [name, { members, line }] of parsed) {
+      const uids: number[] = [];
+      for (const member of members) {
+        const uid = await resolveUser(member);
+        if (uid === null) {
+          errors.push(i18n('Line {0}: User "{1}" was not found or is ambiguous.', line, member));
+        } else uids.push(uid);
+      }
+      resolved.set(name, Array.from(new Set(uids)));
+    }
+    if (errors.length) {
+      Notification.error(errors.join('\n'));
+      return;
+    }
     try {
-      for (const [name, uids] of parsed) {
+      for (const [name, uids] of resolved) {
         await update(name, uids);
       }
       Notification.success(i18n('Imported successfully.'));

@@ -14,6 +14,7 @@ async function bulkCreateUsers(
     domainId: string,
     users: any[],
     groupMap: Record<string, string[]>,
+    classMap: Record<string, string[]>,
 ) {
     const uidByEmail: Record<string, number> = {};
     const errors: string[] = [];
@@ -71,6 +72,25 @@ async function bulkCreateUsers(
         }
     }
 
+    const classes = await UserModel.listGroup(domainId);
+    for (const className in classMap) {
+        const classGroup = classes.find((group: any) => group.class && group.name === className
+            && !group.archive && group.name !== 'teachers');
+        if (!classGroup) {
+            errors.push(`Class ${className} is unavailable.`);
+            continue;
+        }
+        const uids = classMap[className].map((email) => uidByEmail[email]).filter((uid) => uid);
+        for (const uid of uids) {
+            try {
+                const added = await UserModel.addUserToGroup(domainId, classGroup._id, uid);
+                if (!added) errors.push(`Failed to add user ${uid} to class ${className}.`);
+            } catch (error: any) {
+                errors.push(error.message);
+            }
+        }
+    }
+
     return errors;
 }
 
@@ -100,9 +120,12 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
         const users: any[] = [];
         const messages: string[] = [];
         const groupMap: Record<string, string[]> = {};
-        const classGroupNames = new Set(
-            (await UserModel.listGroup(domainId)).filter((group: any) => group.class).map((group: any) => group.name),
+        const classMap: Record<string, string[]> = {};
+        const classGroups = (await UserModel.listGroup(domainId)).filter((group: any) => group.class);
+        const availableClassNames = new Set(
+            classGroups.filter((group: any) => !group.archive && group.name !== 'teachers').map((group: any) => group.name),
         );
+        let hasClassError = false;
 
         for (const idx in lines) {
             const line = lines[idx];
@@ -137,12 +160,28 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
                                     messages.push(`Line ${+idx + 1}: Invalid group ${g}.`);
                                     continue;
                                 }
-                                if (classGroupNames.has(g)) {
+                                if (classGroups.some((classGroup: any) => classGroup.name === g)) {
                                     messages.push(`Line ${+idx + 1}: Group ${g} conflicts with an existing class.`);
                                     continue;
                                 }
                                 groupMap[g] ||= [];
                                 groupMap[g].push(email);
+                            }
+                        }
+                        if (extraData.class !== undefined) {
+                            if (typeof extraData.class !== 'string') {
+                                messages.push(`Line ${+idx + 1}: Invalid class ${extraData.class}.`);
+                                hasClassError = true;
+                            } else {
+                                for (const className of extraData.class.split(',').map((name) => name.trim()).filter(Boolean)) {
+                                    if (!Types.Name[1](className) || !availableClassNames.has(className)) {
+                                        messages.push(`Line ${+idx + 1}: Class ${className} is unavailable.`);
+                                        hasClassError = true;
+                                        continue;
+                                    }
+                                    classMap[className] ||= [];
+                                    classMap[className].push(email);
+                                }
                             }
                         }
                         if (extraData.role && !/^[a-zA-Z0-9]+$/.test(extraData.role)) {
@@ -172,7 +211,9 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
         messages.push(`${users.length} users imported.`);
         if (users.length > 100) messages.push('Too many users, max 100 at a time');
 
-        if (!draft) {
+        if (!draft && hasClassError) {
+            messages.push('Please fix class errors before importing users.');
+        } else if (!draft) {
             if (hasStore) {
                 if (messages.length > 1) throw new BadRequestError('Please first fix all warnings');
                 const store = this.ctx.get('store') as any;
@@ -182,14 +223,14 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
                 await store.addToCart(this.user._id, {
                     price: users.length * 100,
                     amount: 1,
-                    args: [domainId, users, groupMap],
+                    args: [domainId, users, groupMap, classMap],
                     type: 'bulk_create_user',
                     name: `批量创建用户（${domainId}）`,
                 }, `/d/${this.domain._id}/users`);
                 this.response.redirect = '/store/checkout';
                 return;
             }
-            messages.push(...await bulkCreateUsers(this.ctx, domainId, users, groupMap));
+            messages.push(...await bulkCreateUsers(this.ctx, domainId, users, groupMap, classMap));
         }
 
         this.response.body.users = users;
@@ -206,7 +247,7 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
 export function registerStorePurchaseHandler(ctx: any) {
     ctx.on('store/purchase', async (buyer: any, type: string, args: any[]) => {
         if (type !== 'bulk_create_user') return;
-        const errors = await bulkCreateUsers(ctx, args[0], args[1], args[2]);
+        const errors = await bulkCreateUsers(ctx, args[0], args[1], args[2], args[3] || {});
         if (errors.length) {
             await MessageModel.send(1, buyer._id, `批量创建时遇到了以下错误：\n${errors.join('\n')}`);
         } else {

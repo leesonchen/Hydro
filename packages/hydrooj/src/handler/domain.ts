@@ -30,6 +30,11 @@ import { log2 } from '../utils';
 const GROUP_INVITATION_EXPIRATIONS = Object.fromEntries(
     Object.entries(domain.JOIN_EXPIRATION_RANGE).filter(([hours]) => +hours > 0),
 );
+const INVITATION_CODE_RE = /^[a-z0-9]{1,64}$/i;
+
+function normalizeInvitationCode(code: string) {
+    return code.toLowerCase();
+}
 
 function isClassInvitationBlocked(group: GDoc) {
     return !!group.class && (group.name === 'teachers' || !!group.archive);
@@ -411,13 +416,21 @@ class DomainGroupInvitationHandler extends Handler {
             : serverUrl;
         const urlPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
         this.response.body = {
+            canInviteExternalDomainUser: this.user.hasPerm(PERM.PERM_EDIT_DOMAIN),
             currentInvitation,
             domain: this.domain,
             expirations: GROUP_INVITATION_EXPIRATIONS,
             group: this.group,
             invitationUrl: currentInvitation
-                ? `${urlPrefix}d/${domainId}/domain/group/join?token=${encodeURIComponent(currentInvitation._id)}`
+                ? `${urlPrefix}d/${domainId}/domain/group/join?${this.group.class && this.group.invitationCode
+                    ? `code=${encodeURIComponent(this.group.invitationCode)}`
+                    : `token=${encodeURIComponent(currentInvitation._id)}`}`
                 : '',
+            rolesWithText: (await domain.getRoles(domainId))
+                .map((role) => role._id)
+                .filter((role) => role !== 'guest')
+                .sort()
+                .map((role) => [role, role]),
         };
         this.response.template = 'domain_group_invitation.html';
     }
@@ -426,7 +439,7 @@ class DomainGroupInvitationHandler extends Handler {
         const result = await user.collGroup.updateOne(
             getGroupInvitationMutationQuery(this, domainId, this.group),
             {
-                $set: { invitationTokenId: null },
+                $set: { invitationTokenId: null, invitationCode: null },
                 ...(this.group.class ? { $unset: { classEditLock: '' } } : {}),
             },
         );
@@ -440,28 +453,75 @@ class DomainGroupInvitationHandler extends Handler {
     }
 
     @param('expire', Types.Int)
-    async postCreate({ domainId }, expire: number) {
+    @param('invitationCode', Types.Content, true)
+    @param('externalJoinRole', Types.Role, true)
+    async postCreate({ domainId }, expire: number, invitationCode = '', externalJoinRole = '') {
         if (!GROUP_INVITATION_EXPIRATIONS[expire]) throw new ValidationError('expire');
-        const allowExternalDomainJoin = !this.group.class
-            || this.user.hasPerm(PERM.PERM_EDIT_DOMAIN);
+        const canInviteExternalDomainUser = this.user.hasPerm(PERM.PERM_EDIT_DOMAIN);
+        const allowExternalDomainJoin = !this.group.class || canInviteExternalDomainUser;
+        if (!canInviteExternalDomainUser && externalJoinRole) throw new PermissionError(PERM.PERM_EDIT_DOMAIN);
+        const assignedRole = externalJoinRole || 'default';
+        if (allowExternalDomainJoin) {
+            const roles = await domain.getRoles(domainId);
+            if (!roles.some((role) => role._id === assignedRole) || assignedRole === 'guest') {
+                throw new ValidationError('externalJoinRole');
+            }
+        }
+        if (!this.group.class && invitationCode) throw new ValidationError('invitationCode');
+        if (invitationCode && !INVITATION_CODE_RE.test(invitationCode)) throw new ValidationError('invitationCode');
+        const normalizedInvitationCode = invitationCode ? normalizeInvitationCode(invitationCode) : null;
+        if (normalizedInvitationCode) {
+            const conflictingGroup = await user.collGroup.findOne({
+                domainId,
+                _id: { $ne: this.group._id },
+                invitationCode: normalizedInvitationCode,
+            });
+            if (conflictingGroup) {
+                const conflictingInvitation = conflictingGroup.invitationTokenId
+                    ? await token.get(conflictingGroup.invitationTokenId, token.TYPE_GROUP_INVITATION)
+                    : null;
+                if (conflictingInvitation && conflictingInvitation.expireAt > new Date()
+                    && conflictingInvitation.groupId?.equals(conflictingGroup._id)) {
+                    throw new ValidationError('invitationCode');
+                }
+                await user.collGroup.updateOne(
+                    {
+                        _id: conflictingGroup._id,
+                        domainId,
+                        invitationCode: normalizedInvitationCode,
+                        invitationTokenId: conflictingGroup.invitationTokenId,
+                    },
+                    { $set: { invitationCode: null } },
+                );
+            }
+        }
         const [invitationTokenId] = await token.add(token.TYPE_GROUP_INVITATION, expire * 60 * 60, {
             domainId,
             groupId: this.group._id,
             allowExternalDomainJoin,
+            ...(allowExternalDomainJoin ? { externalJoinRole: assignedRole } : {}),
         });
-        const result = await user.collGroup.updateOne(
-            getGroupInvitationMutationQuery(this, domainId, this.group),
-            {
-                $set: { invitationTokenId },
-                ...(this.group.class ? { $unset: { classEditLock: '' } } : {}),
-            },
-        );
+        let result;
+        try {
+            result = await user.collGroup.updateOne(
+                getGroupInvitationMutationQuery(this, domainId, this.group),
+                {
+                    $set: { invitationTokenId, invitationCode: normalizedInvitationCode },
+                    ...(this.group.class ? { $unset: { classEditLock: '' } } : {}),
+                },
+            );
+        } catch (error: any) {
+            await token.del(invitationTokenId, token.TYPE_GROUP_INVITATION);
+            if (error?.code === 11000) throw new ValidationError('invitationCode');
+            throw error;
+        }
         if (!result.matchedCount) {
             await token.del(invitationTokenId, token.TYPE_GROUP_INVITATION);
             await throwGroupInvitationMutationError(this, domainId, this.group._id);
         }
         await oplog.log(this, 'domain.group.invitation.create', {
             allowExternalDomainJoin,
+            ...(allowExternalDomainJoin ? { externalJoinRole: assignedRole } : {}),
             expireHours: expire,
             groupId: this.group._id,
             groupName: this.group.name,
@@ -477,8 +537,18 @@ class DomainGroupJoinHandler extends Handler {
     targetDomain!: DomainDoc;
     noCheckPermView = true;
 
-    @param('token', Types.Content)
-    async prepare({ domainId }, tokenId: string) {
+    @param('token', Types.Content, true)
+    @param('code', Types.Content, true)
+    async prepare({ domainId }, tokenId = '', invitationCode = '') {
+        if (tokenId && invitationCode) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
+        if (invitationCode) {
+            const group = await user.collGroup.findOne({
+                domainId,
+                class: true,
+                invitationCode: normalizeInvitationCode(invitationCode),
+            });
+            tokenId = group?.invitationTokenId || '';
+        }
         this.invitation = await token.get(tokenId, token.TYPE_GROUP_INVITATION);
         if (!this.invitation || this.invitation.expireAt <= new Date()
             || this.invitation.domainId !== domainId) {
@@ -581,15 +651,22 @@ class DomainGroupJoinHandler extends Handler {
 
     async post() {
         const target = this.invitation.domainId;
+        const canJoinDomain = !this.group.class || this.invitation.allowExternalDomainJoin === true;
+        const externalJoinRole = this.invitation.externalJoinRole || 'default';
+        if (canJoinDomain) {
+            const roles = await domain.getRoles(target);
+            if (!roles.some((role) => role._id === externalJoinRole) || externalJoinRole === 'guest') {
+                throw new ValidationError('externalJoinRole');
+            }
+        }
         const membership = await user.addUserToGroupWithChanges(
             target, this.group._id, this.user._id, this.invitation._id,
         );
         if (!membership) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
-        const canJoinDomain = !this.group.class || this.invitation.allowExternalDomainJoin === true;
         let currentDomainUser;
         try {
             currentDomainUser = canJoinDomain
-                ? await domain.joinUserInDomain(target, this.user._id)
+                ? await domain.joinUserInDomain(target, this.user._id, externalJoinRole)
                 : await domain.collUser.findOne({ domainId: target, uid: this.user._id });
         } catch (error) {
             await this.rollbackNewGroupMembership(membership);

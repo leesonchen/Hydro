@@ -33,6 +33,23 @@
         name:'expire',
         value:168
       }) }}
+      {% if group.class %}
+      {{ form.form_text({
+        label:'Invitation Code',
+        name:'invitationCode',
+        value:group.invitationCode or '',
+        help_text:'Use 1 to 64 letters or numbers. The invitation link will use this code.'
+      }) }}
+      {% endif %}
+      {% if canInviteExternalDomainUser %}
+      {{ form.form_select({
+        options:rolesWithText,
+        label:'Role Assignment',
+        name:'externalJoinRole',
+        help_text:'The role to assign when a user outside this domain joins through this invitation.',
+        value:currentInvitation.externalJoinRole|default('default')
+      }) }}
+      {% endif %}
       <button class="rounded primary button" type="submit">
         {{ _('Regenerate Invitation Link') if currentInvitation else _('Create Invitation Link') }}
       </button>

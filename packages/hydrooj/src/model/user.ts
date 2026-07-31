@@ -656,6 +656,12 @@ export async function apply() {
             collGroup,
             { key: { domainId: 1, name: 1 }, name: 'name', unique: true },
             { key: { domainId: 1, uids: 1 }, name: 'uid' },
+            {
+                key: { domainId: 1, invitationCode: 1 },
+                name: 'invitationCode',
+                unique: true,
+                partialFilterExpression: { invitationCode: { $type: 'string' } },
+            },
         ),
     ]);
 }

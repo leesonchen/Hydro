@@ -626,6 +626,90 @@ describe('App', () => {
         }
     });
 
+    it('Assigns configured external invitation roles and resolves class invitation codes', async () => {
+        const DomainModel = global.Hydro.model.domain;
+        const TokenModel = global.Hydro.model.token;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const domainId = `invite-code-${suffix}`;
+        const classId = new ObjectId();
+        const duplicateClassId = new ObjectId();
+        const teacherClassId = new ObjectId();
+        const role = `inviterole${suffix}`;
+        const code = `Invite${suffix}`;
+        const inviteeName = `invitee${suffix}`;
+        const existingName = `existing${suffix}`;
+        const teacherName = `teacher${suffix}`;
+        const inviteeUid = await UserModel.create(`${inviteeName}@example.com`, inviteeName, '123456');
+        const existingUid = await UserModel.create(`${existingName}@example.com`, existingName, '123456');
+        const teacherUid = await UserModel.create(`${teacherName}@example.com`, teacherName, '123456');
+
+        await DomainModel.add(domainId, 2, `Invitation code ${suffix}`, '');
+        try {
+            await DomainModel.addRole(domainId, role, PERM.PERM_DEFAULT);
+            await Promise.all([
+                DomainModel.setUserInDomain(domainId, existingUid, { join: true, role: 'default' }),
+                DomainModel.setUserInDomain(domainId, teacherUid, { join: true, role: 'default' }),
+                UserModel.collGroup.insertMany([
+                    {
+                        _id: classId, domainId, name: `class-${suffix}`, uids: [2], students: [], teachers: [], class: true,
+                    },
+                    {
+                        _id: duplicateClassId, domainId, name: `duplicate-${suffix}`, uids: [2], students: [], teachers: [], class: true,
+                    },
+                    {
+                        _id: teacherClassId,
+                        domainId,
+                        name: `teacher-${suffix}`,
+                        uids: [teacherUid],
+                        students: [],
+                        teachers: [teacherUid],
+                        class: true,
+                    },
+                ] as any),
+            ]);
+            await agent.post(`/d/${domainId}/domain/group/${classId}/invitation`)
+                .send({ operation: 'create', expire: 3, invitationCode: code, externalJoinRole: role }).expect(302);
+            const classDoc = await UserModel.collGroup.findOne({ _id: classId });
+            assert.equal(classDoc?.invitationCode, code.toLowerCase());
+            const invitation = await TokenModel.get(classDoc?.invitationTokenId, TokenModel.TYPE_GROUP_INVITATION);
+            assert.equal(invitation?.externalJoinRole, role);
+
+            const invitee = supertest.agent(require('hydrooj').httpServer);
+            await invitee.post('/login').send({ uname: inviteeName, password: '123456' }).expect(302);
+            await invitee.get(`/d/${domainId}/domain/group/join?code=${code.toLowerCase()}`).expect(200);
+            await invitee.post(`/d/${domainId}/domain/group/join`).send({ code }).expect(302);
+            assert.deepStrictEqual(
+                await DomainModel.collUser.findOne({ domainId, uid: inviteeUid }).then((doc) => ({ join: doc?.join, role: doc?.role })),
+                { join: true, role },
+            );
+            assert((await UserModel.collGroup.findOne({ _id: classId }))?.students.includes(inviteeUid));
+
+            await agent.post(`/d/${domainId}/domain/group/${duplicateClassId}/invitation`)
+                .send({ operation: 'create', expire: 3, invitationCode: code, externalJoinRole: role }).expect(403);
+
+            const existing = supertest.agent(require('hydrooj').httpServer);
+            await existing.post('/login').send({ uname: existingName, password: '123456' }).expect(302);
+            await existing.post(`/d/${domainId}/domain/group/join`).send({ code }).expect(302);
+            assert.equal((await DomainModel.collUser.findOne({ domainId, uid: existingUid }))?.role, 'default');
+
+            const teacher = supertest.agent(require('hydrooj').httpServer);
+            await teacher.post('/login').send({ uname: teacherName, password: '123456' }).expect(302);
+            await teacher.get(`/d/${domainId}/domain/group/${teacherClassId}/invitation`)
+                .expect(200)
+                .expect((res) => assert(!res.text.includes('name="externalJoinRole"')));
+            await teacher.post(`/d/${domainId}/domain/group/${teacherClassId}/invitation`)
+                .send({ operation: 'create', expire: 3, externalJoinRole: role }).expect(403);
+        } finally {
+            await Promise.all([
+                UserModel.coll.deleteMany({ _id: { $in: [inviteeUid, existingUid, teacherUid] } }),
+                UserModel.collGroup.deleteMany({ domainId }),
+                TokenModel.coll.deleteMany({ domainId, tokenType: TokenModel.TYPE_GROUP_INVITATION }),
+                DomainModel.del(domainId),
+            ]);
+        }
+    });
+
     it('Join groups and classes with expiring invitation links', async () => {
         const UserModel = global.Hydro.model.user;
         const TokenModel = global.Hydro.model.token;
