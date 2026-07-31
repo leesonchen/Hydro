@@ -669,6 +669,8 @@ describe('App', () => {
                 ] as any),
             ]);
             await agent.post(`/d/${domainId}/domain/group/${classId}/invitation`)
+                .send({ operation: 'create', expire: 3, externalJoinRole: 'root' }).expect(403);
+            await agent.post(`/d/${domainId}/domain/group/${classId}/invitation`)
                 .send({ operation: 'create', expire: 3, invitationCode: code, externalJoinRole: role }).expect(302);
             const classDoc = await UserModel.collGroup.findOne({ _id: classId });
             assert.equal(classDoc?.invitationCode, code.toLowerCase());

@@ -428,7 +428,7 @@ class DomainGroupInvitationHandler extends Handler {
                 : '',
             rolesWithText: (await domain.getRoles(domainId))
                 .map((role) => role._id)
-                .filter((role) => role !== 'guest')
+                .filter((role) => !['guest', 'root'].includes(role))
                 .sort()
                 .map((role) => [role, role]),
         };
@@ -463,7 +463,7 @@ class DomainGroupInvitationHandler extends Handler {
         const assignedRole = externalJoinRole || 'default';
         if (allowExternalDomainJoin) {
             const roles = await domain.getRoles(domainId);
-            if (!roles.some((role) => role._id === assignedRole) || assignedRole === 'guest') {
+            if (!roles.some((role) => role._id === assignedRole) || ['guest', 'root'].includes(assignedRole)) {
                 throw new ValidationError('externalJoinRole');
             }
         }
@@ -655,7 +655,7 @@ class DomainGroupJoinHandler extends Handler {
         const externalJoinRole = this.invitation.externalJoinRole || 'default';
         if (canJoinDomain) {
             const roles = await domain.getRoles(target);
-            if (!roles.some((role) => role._id === externalJoinRole) || externalJoinRole === 'guest') {
+            if (!roles.some((role) => role._id === externalJoinRole) || ['guest', 'root'].includes(externalJoinRole)) {
                 throw new ValidationError('externalJoinRole');
             }
         }

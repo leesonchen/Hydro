@@ -174,14 +174,11 @@ const page = new NamedPage('domain_group', () => {
     const resolveUser = (member: string) => {
       if (!userCache.has(member)) {
         userCache.set(member, (async () => {
-          if (/^\d+$/.test(member)) {
-            const uid = Number(member);
-            return Number.isSafeInteger(uid) && uid > 0 ? uid : null;
-          }
-          const exact = await api('users', { auto: [member] }, ['_id']);
-          if (exact.length === 1) return exact[0]._id;
-          const matches = await api('users', { search: member, limit: 10 }, ['_id']);
-          return matches.length === 1 ? matches[0]._id : null;
+          const exact = await api('user', { uname: member }, ['_id']);
+          if (exact?._id) return exact._id;
+          if (!/^\d+$/.test(member)) return null;
+          const uid = Number(member);
+          return Number.isSafeInteger(uid) && uid > 0 ? uid : null;
         })());
       }
       return userCache.get(member);
