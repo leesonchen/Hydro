@@ -591,6 +591,7 @@ class DomainGroupJoinHandler extends Handler {
             domainInfo: {
                 name: this.targetDomain.name,
             },
+            externalJoinRole: this.invitation.externalJoinRole || 'default',
             group: this.group,
             token: this.invitation._id,
         };
@@ -653,7 +654,10 @@ class DomainGroupJoinHandler extends Handler {
         const target = this.invitation.domainId;
         const canJoinDomain = !this.group.class || this.invitation.allowExternalDomainJoin === true;
         const externalJoinRole = this.invitation.externalJoinRole || 'default';
-        if (canJoinDomain) {
+        const currentDomainUser = canJoinDomain
+            ? await domain.collUser.findOne({ domainId: target, uid: this.user._id }, { projection: { join: 1 } })
+            : null;
+        if (canJoinDomain && !currentDomainUser?.join) {
             const roles = await domain.getRoles(target);
             if (!roles.some((role) => role._id === externalJoinRole) || ['guest', 'root'].includes(externalJoinRole)) {
                 throw new ValidationError('externalJoinRole');
@@ -663,20 +667,20 @@ class DomainGroupJoinHandler extends Handler {
             target, this.group._id, this.user._id, this.invitation._id,
         );
         if (!membership) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
-        let currentDomainUser;
+        let joinedDomainUser;
         try {
-            currentDomainUser = canJoinDomain
+            joinedDomainUser = canJoinDomain
                 ? await domain.joinUserInDomain(target, this.user._id, externalJoinRole)
                 : await domain.collUser.findOne({ domainId: target, uid: this.user._id });
         } catch (error) {
             await this.rollbackNewGroupMembership(membership);
             throw error;
         }
-        if (currentDomainUser?.role === 'guest') {
+        if (joinedDomainUser?.role === 'guest') {
             await this.rollbackNewGroupMembership(membership);
             throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
         }
-        if (!canJoinDomain && !currentDomainUser?.join) {
+        if (!canJoinDomain && !joinedDomainUser?.join) {
             await this.rollbackNewGroupMembership(membership);
             throw new DomainJoinForbiddenError(
                 target,

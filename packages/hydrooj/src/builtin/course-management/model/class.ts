@@ -18,6 +18,7 @@ export interface ClassGDoc {
     intervalDays?: number;
     archive: boolean;
     class: true;
+    invitationCode?: string | null;
     invitationTokenId?: string | null;
     classEditLock?: {
         token: string;
@@ -152,7 +153,10 @@ export const ClassModel = {
             intervalDays,
             archive,
         };
-        if (revokeInvitation) $set.invitationTokenId = null;
+        if (revokeInvitation) {
+            $set.invitationCode = null;
+            $set.invitationTokenId = null;
+        }
         const updatingExisting = !!id && expectedName !== undefined;
         try {
             return await coll.updateOne(

@@ -242,10 +242,8 @@ class DomainModel {
     static async deleteRoles(domainId: string, roles: string[]) {
         const current = await DomainModel.get(domainId);
         for (const role of roles) delete current.roles[role];
-        await Promise.all([
-            coll.updateOne({ _id: domainId }, { $set: current }),
-            collUser.updateMany({ domainId, role: { $in: roles } }, { $set: { role: 'default' } }),
-        ]);
+        await coll.updateOne({ _id: domainId }, { $set: current });
+        await collUser.updateMany({ domainId, role: { $in: roles } }, { $set: { role: 'default' } });
         deleteUserCache(domainId);
         bus.broadcast('domain/delete-cache', domainId.toLowerCase());
     }
@@ -291,7 +289,7 @@ class DomainModel {
 
     static async joinUserInDomain(domainId: string, uid: number, role = 'default') {
         const udoc = await UserModel.getById(domainId, uid);
-        const result = await collUser.findOneAndUpdate(
+        let result = await collUser.findOneAndUpdate(
             { domainId, uid },
             [{
                 $set: {
@@ -310,6 +308,18 @@ class DomainModel {
             }],
             { upsert: true, returnDocument: 'after' },
         );
+        if (result?.role === role && !Object.hasOwn(BUILTIN_ROLES, role)) {
+            try {
+                const current = await coll.findOne({ _id: domainId }, { projection: { roles: 1 } });
+                if (!Object.hasOwn(current?.roles || {}, role)) {
+                    result = await collUser.findOneAndUpdate(
+                        { domainId, uid, join: true, role },
+                        { $set: { role: 'default' } },
+                        { returnDocument: 'after' },
+                    ) || result;
+                }
+            } catch { /* The join is already durable and cannot be safely rolled back here. */ }
+        }
         deleteUserCache(udoc);
         return result;
     }

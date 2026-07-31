@@ -132,7 +132,7 @@ Users can join the group {0} with this link.: Users can join the group {0} with 
 Users can join the class {0} with this link.: Users can join the class {0} with this link.
 By clicking the button, you will join group {0} in domain {1}.: By clicking the button, you will join group {0} in domain {1}.
 By clicking the button, you will join class {0} in domain {1}.: By clicking the button, you will join class {0} in domain {1}.
-If you have not joined the domain yet, you will also join it with the default role.: If you have not joined the domain yet, you will also join it with the default role.
+If you have not joined the domain yet, you will also join it with role {0}.: If you have not joined the domain yet, you will also join it with role {0}.
 You are already a member of this class or group. Continuing will repair your domain membership if needed.: You are already a member of this class or group. Continuing will repair your domain membership if needed.
 Successfully joined group.: Successfully joined group.
 Successfully joined class.: Successfully joined class.

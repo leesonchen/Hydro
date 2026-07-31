@@ -679,7 +679,9 @@ describe('App', () => {
 
             const invitee = supertest.agent(require('hydrooj').httpServer);
             await invitee.post('/login').send({ uname: inviteeName, password: '123456' }).expect(302);
-            await invitee.get(`/d/${domainId}/domain/group/join?code=${code.toLowerCase()}`).expect(200);
+            await invitee.get(`/d/${domainId}/domain/group/join?code=${code.toLowerCase()}`)
+                .expect(200)
+                .expect((res) => assert(res.text.includes(role)));
             await invitee.post(`/d/${domainId}/domain/group/join`).send({ code }).expect(302);
             assert.deepStrictEqual(
                 await DomainModel.collUser.findOne({ domainId, uid: inviteeUid }).then((doc) => ({ join: doc?.join, role: doc?.role })),
@@ -702,6 +704,38 @@ describe('App', () => {
                 .expect((res) => assert(!res.text.includes('name="externalJoinRole"')));
             await teacher.post(`/d/${domainId}/domain/group/${teacherClassId}/invitation`)
                 .send({ operation: 'create', expire: 3, externalJoinRole: role }).expect(403);
+
+            await DomainModel.deleteRoles(domainId, [role]);
+            await UserModel.collGroup.updateOne(
+                { _id: classId },
+                { $pull: { uids: existingUid, students: existingUid } },
+            );
+            await existing.post(`/d/${domainId}/domain/group/join`).send({ code }).expect(302);
+            assert((await UserModel.collGroup.findOne({ _id: classId }))?.students.includes(existingUid));
+            assert.equal((await DomainModel.collUser.findOne({ domainId, uid: existingUid }))?.role, 'default');
+
+            await DomainModel.setUserInDomain(domainId, inviteeUid, { join: false, role: 'default' });
+            await DomainModel.joinUserInDomain(domainId, inviteeUid, role);
+            assert.equal(
+                (await DomainModel.collUser.findOne({ domainId, uid: inviteeUid }))?.role,
+                'default',
+            );
+
+            await DomainModel.addRole(domainId, role, PERM.PERM_DEFAULT);
+            await DomainModel.setUserInDomain(domainId, inviteeUid, { join: false, role: 'default' });
+            const originalDomainFindOne = DomainModel.coll.findOne.bind(DomainModel.coll);
+            DomainModel.coll.findOne = async (...args: any[]) => {
+                if (args[0]?._id === domainId && args[1]?.projection?.roles) {
+                    throw new Error('Injected role recheck failure');
+                }
+                return await originalDomainFindOne(...args);
+            };
+            try {
+                const joined = await DomainModel.joinUserInDomain(domainId, inviteeUid, role);
+                assert.deepStrictEqual({ join: joined?.join, role: joined?.role }, { join: true, role });
+            } finally {
+                DomainModel.coll.findOne = originalDomainFindOne;
+            }
         } finally {
             await Promise.all([
                 UserModel.coll.deleteMany({ _id: { $in: [inviteeUid, existingUid, teacherUid] } }),
@@ -1102,10 +1136,15 @@ describe('App', () => {
             assert.equal(editedClass.invitationTokenId, invitations[1]._id);
             await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(200);
 
+            await UserModel.collGroup.updateOne(
+                { _id: classId },
+                { $set: { invitationCode: `archive${suffix}` } },
+            );
             await editClass(true);
             editedClass = await UserModel.collGroup.findOne({ _id: classId });
             assert(editedClass?.archive);
             assert.equal(editedClass.invitationTokenId, null);
+            assert.equal(editedClass.invitationCode, null);
             await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(403);
 
             await editClass(false);

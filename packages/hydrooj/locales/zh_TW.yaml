@@ -979,7 +979,7 @@ Users can join the group {0} with this link.: 使用者可透過此連結加入�
 Users can join the class {0} with this link.: 使用者可透過此連結加入班級 {0}。
 By clicking the button, you will join group {0} in domain {1}.: 點選按鈕後，你將加入域 {1} 中的分組 {0}。
 By clicking the button, you will join class {0} in domain {1}.: 點選按鈕後，你將加入域 {1} 中的班級 {0}。
-If you have not joined the domain yet, you will also join it with the default role.: 如果你尚未加入該域，系統也會以預設角色將你加入該域。
+If you have not joined the domain yet, you will also join it with role {0}.: 如果你尚未加入該域，系統也會以角色 {0} 將你加入該域。
 You are already a member of this class or group. Continuing will repair your domain membership if needed.: 你已在該班級或分組中；繼續操作可在需要時修復你的域成員狀態。
 Successfully joined group.: 已成功加入分組。
 Successfully joined class.: 已成功加入班級。
