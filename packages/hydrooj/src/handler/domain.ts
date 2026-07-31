@@ -540,13 +540,15 @@ class DomainGroupJoinHandler extends Handler {
     @param('token', Types.Content, true)
     @param('code', Types.Content, true)
     async prepare({ domainId }, tokenId = '', invitationCode = '') {
-        if (tokenId && invitationCode) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
         if (invitationCode) {
             const group = await user.collGroup.findOne({
                 domainId,
                 class: true,
                 invitationCode: normalizeInvitationCode(invitationCode),
             });
+            if (tokenId && group?.invitationTokenId !== tokenId) {
+                throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_GROUP_INVITATION]);
+            }
             tokenId = group?.invitationTokenId || '';
         }
         this.invitation = await token.get(tokenId, token.TYPE_GROUP_INVITATION);

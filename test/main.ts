@@ -682,7 +682,9 @@ describe('App', () => {
             await invitee.get(`/d/${domainId}/domain/group/join?code=${code.toLowerCase()}`)
                 .expect(200)
                 .expect((res) => assert(res.text.includes(role)));
-            await invitee.post(`/d/${domainId}/domain/group/join`).send({ code }).expect(302);
+            await invitee.post(`/d/${domainId}/domain/group/join?code=${code.toLowerCase()}`)
+                .send({ token: invitation._id })
+                .expect(302);
             assert.deepStrictEqual(
                 await DomainModel.collUser.findOne({ domainId, uid: inviteeUid }).then((doc) => ({ join: doc?.join, role: doc?.role })),
                 { join: true, role },
@@ -792,6 +794,7 @@ describe('App', () => {
         const TokenModel = global.Hydro.model.token;
         const DomainModel = global.Hydro.model.domain;
         const ContestModel = global.Hydro.model.contest;
+        const db = require('../packages/hydrooj/src/service/db').default;
         const { ClassModel } = require('../packages/hydrooj/src/builtin/course-management/model/class');
         const suffix = Date.now().toString(36);
         const groupId = new ObjectId();
@@ -1126,9 +1129,21 @@ describe('App', () => {
                     groupId: target._id,
                 });
                 await agent.get(`/d/system/domain/group/join?token=${tokenId}`).expect(403);
-                await agent.post('/d/system/domain/group/join')
-                    .send({ token: tokenId })
-                    .expect(403);
+                if (target._id.equals(archivedClassId)) {
+                    const conflictingCode = `conflicting-${suffix}`;
+                    await UserModel.collGroup.updateOne(
+                        { _id: target._id },
+                        { $set: { invitationCode: conflictingCode, invitationTokenId: tokenId } },
+                    );
+                    await agent.post(`/d/system/domain/group/join?code=${conflictingCode}`)
+                        .send({ token: alternateTokenId })
+                        .expect(403)
+                        .expect(/Group Invitation/);
+                } else {
+                    await agent.post('/d/system/domain/group/join')
+                        .send({ token: tokenId })
+                        .expect(403);
+                }
             }));
 
             const invitations = await Promise.all(targets.map(async (target) => {
@@ -1876,6 +1891,7 @@ describe('App', () => {
                 (await DomainModel.collUser.findOne({ domainId: 'system', uid: 2 }))?.join,
                 false,
             );
+            await db.collection('opcount').deleteMany({ op: 'global' });
             await Promise.all(invitations.map(async (invitation) => {
                 await agent.get(`/d/system/domain/group/join?token=${invitation._id}`).expect(200);
                 await agent.post('/d/system/domain/group/join')
@@ -1897,7 +1913,9 @@ describe('App', () => {
                 { _id: invitations[1]._id },
                 { $set: { expireAt: new Date(0) } },
             );
-            await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`).expect(403);
+            await agent.get(`/d/system/domain/group/join?token=${invitations[1]._id}`)
+                .expect(403)
+                .expect(/Group Invitation/);
         } finally {
             if (importedUser) UserModel._deleteUserCache(importedUser);
             await Promise.all([
