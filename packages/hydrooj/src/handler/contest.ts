@@ -67,6 +67,10 @@ export class ContestListHandler extends Handler {
         const tids = [];
         for (const tdoc of tdocs) tids.push(tdoc.docId);
         const tsdict = await contest.getListStatus(domainId, this.user._id, tids);
+        for (const tdoc of tdocs) {
+            const key = tdoc.docId.toHexString();
+            tsdict[key] &&= contest.getPublicStatus(tdoc, tsdict[key]);
+        }
         const groupsFilter = groups.filter((i) => !Number.isSafeInteger(+i));
         this.response.template = 'contest_main.html';
         this.response.body = {
@@ -99,8 +103,7 @@ export class ContestDetailBaseHandler extends Handler {
     }
 
     tsdocAsPublic() {
-        if (!this.tsdoc) return null;
-        return pick(this.tsdoc, ['attend', 'subscribe', 'startAt', ...(this.tdoc.duration || this.tsdoc.endAt ? ['endAt'] : [])]);
+        return contest.getPublicStatus(this.tdoc, this.tsdoc);
     }
 
     @param('tid', Types.ObjectId, true)

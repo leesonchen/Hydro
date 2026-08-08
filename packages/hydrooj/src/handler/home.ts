@@ -89,6 +89,10 @@ export class HomeHandler extends Handler {
         const tsdict = await contest.getListStatus(
             domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
         );
+        for (const tdoc of tdocs) {
+            const key = tdoc.docId.toHexString();
+            tsdict[key] &&= contest.getPublicStatus(tdoc, tsdict[key]);
+        }
         return [tdocs, tsdict];
     }
 

@@ -289,6 +289,28 @@ describe('App', () => {
             const participantAgent = supertest.agent(require('hydrooj').httpServer);
             await participantAgent.post('/login')
                 .send({ uname: participant.uname, password: '123456' }).expect(302);
+            const contestList = await participantAgent.get('/contest?rule=oi')
+                .set('Accept', 'application/json').expect(200);
+            const listedContest = contestList.body.tdocs.find((tdoc) => tdoc.docId === tid.toHexString());
+            assert(listedContest);
+            const listedStatus = contestList.body.tsdict[tid.toHexString()];
+            assert.equal(listedStatus.attend, 1);
+            assert(!('score' in listedStatus));
+            assert(!('detail' in listedStatus));
+            assert(!('journal' in listedStatus));
+
+            const homepage = await participantAgent.get('/')
+                .set('Accept', 'application/json').expect(200);
+            const contestSection = homepage.body.contents
+                .flatMap((column) => column.sections)
+                .find(([name]) => name === 'contest');
+            assert(contestSection);
+            const homeStatus = contestSection[1][1][tid.toHexString()];
+            assert.equal(homeStatus.attend, 1);
+            assert(!('score' in homeStatus));
+            assert(!('detail' in homeStatus));
+            assert(!('journal' in homeStatus));
+
             const problemListResponse = await participantAgent.get('/p')
                 .set('Accept', 'application/json').expect(200);
             assert(!('status' in problemListResponse.body.psdict[pids[2]]));

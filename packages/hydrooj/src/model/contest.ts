@@ -1,4 +1,4 @@
-import { sumBy } from 'lodash';
+import { pick, sumBy } from 'lodash';
 import { Filter, ObjectId } from 'mongodb';
 import {
     Counter, formatSeconds, getAlphabeticId, sleep, Time,
@@ -994,6 +994,11 @@ export async function getStatus(domainId: string, tid: ObjectId, uid: number) {
     return await document.getStatus(domainId, document.TYPE_CONTEST, tid, uid);
 }
 
+export function getPublicStatus(tdoc: Tdoc, tsdoc?: ContestStatusDoc) {
+    if (!tsdoc) return null;
+    return pick(tsdoc, ['attend', 'subscribe', 'startAt', ...(tdoc.duration || tsdoc.endAt ? ['endAt'] : [])]);
+}
+
 export async function updateStatus(
     domainId: string, tid: ObjectId, uid: number, rid: ObjectId, pid: number,
     {
@@ -1285,6 +1290,7 @@ global.Hydro.model.contest = {
     getRelated,
     updateStatus,
     getStatus,
+    getPublicStatus,
     count,
     countStatus,
     getMulti,
