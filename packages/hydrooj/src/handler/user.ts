@@ -412,7 +412,11 @@ class UserDetailHandler extends Handler {
         const acInfo: Record<string, number> = {};
         const canViewHidden = this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN) || this.user._id;
         if (this.user.hasPerm(PERM.PERM_VIEW_PROBLEM)) {
-            const psdocs = await problem.getMultiStatus(domainId, { uid, status: STATUS.STATUS_ACCEPTED }).toArray();
+            const rawPsdocs = await problem.getMultiStatus(domainId, { uid, rid: { $ne: null } }).toArray();
+            const psdocs = (await problem.resolveVisibleStatuses(
+                domainId, [uid], rawPsdocs.map((psdoc) => psdoc.docId),
+                (tdoc, targetUid) => ContestModel.canShowProblemStatus(this.user, targetUid, tdoc),
+            )).filter((psdoc) => psdoc.status === STATUS.STATUS_ACCEPTED);
             pdocs.push(...Object.values(
                 await problem.getList(
                     domainId, psdocs.map((i) => i.docId), canViewHidden,

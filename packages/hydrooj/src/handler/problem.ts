@@ -265,9 +265,10 @@ export class ProblemMainHandler extends Handler {
         if (sort.length) pdocs = pdocs.sort((a, b) => sort.indexOf(`${a.domainId}/${a.docId}`) - sort.indexOf(`${b.domainId}/${b.docId}`));
         if (text && pcount > pdocs.length) pcount = pdocs.length;
         if (this.user.hasPriv(PRIV.PRIV_USER_PROFILE)) {
-            Object.assign(psdict, await problem.getListStatus(
+            Object.assign(psdict, await problem.getVisibleListStatus(
                 domainId, this.user._id,
                 pdocs.map((i) => i.docId),
+                (tdoc, uid) => contest.canShowProblemStatus(this.user, uid, tdoc),
             ));
         }
         if (pjax) {
@@ -468,7 +469,10 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
         }
         await this.ctx.parallel('problem/get', this.pdoc, this);
         [this.psdoc, this.udoc] = await Promise.all([
-            problem.getStatus(domainId, this.pdoc.docId, this.user._id),
+            problem.getVisibleStatus(
+                domainId, this.pdoc.docId, this.user._id,
+                (tdoc, uid) => contest.canShowProblemStatus(this.user, uid, tdoc),
+            ),
             user.getById(domainId, this.pdoc.owner),
         ]);
         const [scnt, dcnt] = await Promise.all([
@@ -1118,13 +1122,28 @@ export class ProblemStatisticsHandler extends ProblemDetailHandler {
     @param('page', Types.PositiveInt, true)
     async get(domainId: string, sort = 'time', direction: 1 | -1 = 1, lang?: string, page = 1) {
         if (this.tdoc) throw new ContestNotEndedError();
-        const [rsdocs, pcount, rscount] = await this.paginate(
-            record.getMultiStat(domainId, {
+        const tdocs = await contest.getMulti(domainId, { pids: this.pdoc.docId }).toArray();
+        const visibleContestIds: ObjectId[] = [];
+        const selfVisibleContestIds: ObjectId[] = [];
+        for (const tdoc of tdocs) {
+            if (contest.canShowRecord.call(this, tdoc)) visibleContestIds.push(tdoc.docId);
+            else if (contest.canShowSelfRecord.call(this, tdoc)) selfVisibleContestIds.push(tdoc.docId);
+        }
+        const sourceFilter: any[] = [{ contest: { $exists: false } }];
+        if (visibleContestIds.length) sourceFilter.push({ contest: { $in: visibleContestIds } });
+        if (selfVisibleContestIds.length) {
+            sourceFilter.push({ uid: this.user._id, contest: { $in: selfVisibleContestIds } });
+        }
+        const [rsdocs, pcount, rscount] = await record.listStat(
+            domainId, {
                 pid: this.pdoc.docId,
                 ...lang ? { lang } : {},
-            }, record.STAT_QUERY[sort][Math.max(direction, 0)]),
+                $or: sourceFilter,
+            },
+            record.STAT_QUERY[sort][Math.max(direction, 0)],
             page,
-            'record',
+            this.ctx.setting.get('pagination.record') || 20,
+            system.get('record.statMode') === 'unique',
         );
         const [udict, udoc] = await Promise.all([
             user.getListForRender(domainId, rsdocs.map((i) => i.uid), this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO)),

@@ -314,15 +314,21 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
             this.tsdoc.startAt = new Date();
         }
         this.response.body.tsdoc = this.tsdocAsPublic();
-        this.response.body.psdict = this.tsdoc.detail || {};
-        const psdocs: any[] = Object.values(this.response.body.psdict);
+        const rawPsdict = this.tsdoc.detail || {};
         const canViewRecord = contest.canShowSelfRecord.call(this, this.tdoc);
         this.response.body.canViewRecord = canViewRecord;
+        this.response.body.psdict = canViewRecord
+            ? rawPsdict
+            : Object.fromEntries(Object.keys(rawPsdict).map((pid) => [pid, { submitted: true }]));
+        const psdocs: any[] = canViewRecord ? Object.values(rawPsdict) : [];
         const rids = psdocs.map((i) => i.rid);
         if (contest.isDone(this.tdoc) && canViewRecord) {
-            const correction = await problem.getListStatus(domainId, this.user._id, this.tdoc.pids);
+            const correction = await problem.getVisibleListStatus(
+                domainId, this.user._id, this.tdoc.pids,
+                (tdoc, uid) => contest.canShowProblemStatus(this.user, uid, tdoc),
+            );
             for (const pid in correction) {
-                if (this.tsdoc.detail?.[pid]?.rid === correction[pid].rid) delete correction[pid];
+                if (this.tsdoc.detail?.[pid]?.rid?.toHexString() === correction[pid].rid?.toHexString()) delete correction[pid];
             }
             rids.push(...Object.values(correction).map((i) => i.rid));
             this.response.body.correction = correction;
@@ -333,8 +339,8 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
                 record.getMulti(domainId, { contest: tid, uid: this.user._id })
                     .sort({ _id: -1 }).toArray(),
             ])
-            : [Object.fromEntries(psdocs.map((i) => [i.rid, { _id: i.rid }])), []];
-        if (!this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+            : [{}, []];
+        if (canViewRecord && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
             this.response.body.rdocs = this.response.body.rdocs.map((rdoc) => contest.applyProjection(this.tdoc, rdoc, this.user));
             for (const key in this.response.body.rdict) {
                 this.response.body.rdict[key] = contest.applyProjection(this.tdoc, this.response.body.rdict[key], this.user);

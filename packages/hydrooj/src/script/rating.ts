@@ -1,4 +1,3 @@
-/* eslint-disable no-cond-assign */
 /* eslint-disable no-await-in-loop */
 import { NumericDictionary, unionWith } from 'lodash';
 import { Filter, ObjectId } from 'mongodb';
@@ -35,19 +34,24 @@ export const RpTypes: Record<string, RpDef> = {
             const problems = await problem.getMulti('', { domainId: { $in: domainIds }, nAccept: { $gt: 0 } }).toArray();
             if (problems.length) await report({ message: `Found ${problems.length} problems in ${domainIds[0]}` });
             for (const pdoc of problems) {
-                const cursor = problem.getMultiStatus(
+                const rawStatuses = await problem.getMultiStatus(
                     pdoc.domainId,
                     {
                         docId: pdoc.docId,
                         rid: { $ne: null },
                         uid: { $ne: pdoc.owner },
-                        score: { $gt: 0 },
                     },
+                ).toArray();
+                const psdocs = await problem.resolveVisibleStatuses(
+                    pdoc.domainId,
+                    rawStatuses.map((psdoc) => psdoc.uid),
+                    [pdoc.docId],
+                    (tdoc, uid) => contest.canShowProblemStatus(null, uid, tdoc, false),
                 );
                 const difficulty = +pdoc.difficulty || difficultyAlgorithm(pdoc.nSubmit, pdoc.nAccept) || 5;
                 const p = difficulty / 100;
-                let psdoc;
-                while (psdoc = await cursor.next()) {
+                for (const psdoc of psdocs) {
+                    if (!psdoc.rid || psdoc.uid === pdoc.owner || !psdoc.score) continue;
                     udict[psdoc.uid] += min(psdoc.score, 100) * p;
                 }
             }

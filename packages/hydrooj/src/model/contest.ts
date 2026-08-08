@@ -428,13 +428,14 @@ const oi = buildContestRule({
         }
 
         if (isDone(tdoc)) {
-            const psdocs = await Promise.all(
-                tdoc.pids.map((pid) => problem.getMultiStatus(tdoc.domainId, { docId: pid, uid: { $in: uids } }).toArray()),
+            const psdocs = await problem.resolveVisibleStatuses(
+                tdoc.domainId, uids, tdoc.pids,
+                // The shared policy helper is declared after RULES is initialized.
+                // eslint-disable-next-line ts/no-use-before-define
+                (source, uid) => canShowProblemStatus(config.viewer || null, uid, source),
             );
-            for (const tpsdoc of psdocs) {
-                for (const psdoc of tpsdoc) {
-                    psdict[`${psdoc.uid}/${psdoc.domainId}/${psdoc.docId}`] = psdoc;
-                }
+            for (const psdoc of psdocs) {
+                psdict[`${psdoc.uid}/${psdoc.domainId}/${psdoc.docId}`] = psdoc;
             }
         }
         const columns = await this.scoreboardHeader(config, _, tdoc, pdict);
@@ -451,8 +452,10 @@ const oi = buildContestRule({
     async ranked(tdoc, cursor) {
         return await db.ranked(cursor, (a, b) => a.score === b.score);
     },
-    applyProjection(tdoc, rdoc) {
-        if (isDone(tdoc)) return rdoc;
+    applyProjection(tdoc, rdoc, udoc) {
+        // The shared policy helper is declared after RULES is initialized.
+        // eslint-disable-next-line ts/no-use-before-define
+        if (canShowProblemStatus(udoc, rdoc.uid, tdoc)) return rdoc;
         delete rdoc.status;
         rdoc.compilerTexts = [];
         rdoc.judgeTexts = [];
@@ -1103,6 +1106,13 @@ export function canShowSelfRecord(this: { user: User }, tdoc: Tdoc, allowPermOve
     return false;
 }
 
+export function canShowProblemStatus(user: User | null, targetUid: number, tdoc: Tdoc, allowPermOverride = true) {
+    if (!user) return RULES[tdoc.rule].showRecord(tdoc, new Date());
+    return targetUid === user._id
+        ? canShowSelfRecord.call({ user }, tdoc, allowPermOverride)
+        : canShowRecord.call({ user }, tdoc, allowPermOverride);
+}
+
 export function canShowScoreboard(this: { user: User }, tdoc: Tdoc, allowPermOverride = true) {
     if (RULES[tdoc.rule].showScoreboard(tdoc, new Date())) return true;
     if (allowPermOverride && canViewHiddenScoreboard.call(this, tdoc)) return true;
@@ -1117,7 +1127,7 @@ export async function getScoreboard(
     const tsdocsCursor = getMultiStatus(domainId, { docId: tid }).sort(RULES[tdoc.rule].statusSort);
     const pdict = await problem.getList(domainId, tdoc.pids, true, true, problem.PROJECTION_CONTEST_DETAIL);
     const [rows, udict] = await RULES[tdoc.rule].scoreboard(
-        config, this.translate.bind(this),
+        { ...config, viewer: this.user }, this.translate.bind(this),
         tdoc, pdict, tsdocsCursor,
     );
     await bus.parallel('contest/scoreboard', tdoc, rows, udict, pdict);
@@ -1259,6 +1269,7 @@ global.Hydro.model.contest = {
     updateBalloon,
     canShowRecord,
     canShowSelfRecord,
+    canShowProblemStatus,
     canShowScoreboard,
     canViewHiddenScoreboard,
     getScoreboard,

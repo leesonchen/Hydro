@@ -7,7 +7,7 @@ import {
 import { ProblemConfigFile, STATUS_TEXTS } from '@hydrooj/common';
 import { Context } from '../context';
 import { ProblemNotFoundError } from '../error';
-import { JudgeMeta, RecordDoc } from '../interface';
+import { JudgeMeta, RecordDoc, RecordStatDoc } from '../interface';
 import db from '../service/db';
 import { MaybeArray, NumberKeys } from '../typeutils';
 import { ArgMethod, buildProjection, Time } from '../utils';
@@ -192,6 +192,32 @@ export default class RecordModel {
         return RecordModel.collStat.find({ domainId, ...query }).sort(sortBy);
     }
 
+    static async listStat(
+        domainId: string, query: any, sortBy: any,
+        page: number, pageSize: number, unique: boolean,
+    ): Promise<[RecordStatDoc[], number, number]> {
+        const pipeline: any[] = [
+            { $match: { domainId, ...query } },
+            { $sort: sortBy },
+        ];
+        if (unique) {
+            pipeline.push(
+                { $group: { _id: '$uid', doc: { $first: '$$ROOT' } } },
+                { $replaceWith: '$doc' },
+                { $sort: sortBy },
+            );
+        }
+        pipeline.push({
+            $facet: {
+                docs: [{ $skip: (page - 1) * pageSize }, { $limit: pageSize }],
+                count: [{ $count: 'value' }],
+            },
+        });
+        const [result] = await RecordModel.collStat.aggregate(pipeline).toArray() as any[];
+        const count = result?.count?.[0]?.value || 0;
+        return [result?.docs || [], Math.floor((count + pageSize - 1) / pageSize), count];
+    }
+
     static async update(
         domainId: string, _id: MaybeArray<ObjectId>,
         $set?: MatchKeysAndValues<RecordDoc>,
@@ -305,6 +331,7 @@ export async function apply(ctx: Context) {
                     uid: rdoc.uid,
                     pid: rdoc.pid,
                     domainId: rdoc.domainId,
+                    ...rdoc.contest ? { contest: rdoc.contest } : { contest: { $exists: false } },
                 });
             }
             await RecordModel.collStat.updateOne({
@@ -318,6 +345,7 @@ export async function apply(ctx: Context) {
                     memory: rdoc.memory,
                     length: rdoc.code?.length || 0,
                     lang: rdoc.lang,
+                    ...rdoc.contest ? { contest: rdoc.contest } : {},
                 },
             }, { upsert: true });
         }

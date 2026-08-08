@@ -7,6 +7,7 @@ import {
 } from '../error';
 import { Tdoc, TrainingDoc } from '../interface';
 import { PERM, PRIV, STATUS } from '../model/builtin';
+import * as contest from '../model/contest';
 import * as oplog from '../model/oplog';
 import problem from '../model/problem';
 import storage from '../model/storage';
@@ -119,8 +120,14 @@ class TrainingDetailHandler extends Handler {
         const missing = pids.filter((pid) => !pdict[pid]?.docId);
         const exist = pids.filter((pid) => pdict[pid]?.docId);
         const [psdict, selfPsdict] = await Promise.all([
-            problem.getListStatus(domainId, uid, exist),
-            shouldCompare ? problem.getListStatus(domainId, this.user._id, exist) : {},
+            problem.getVisibleListStatus(
+                domainId, uid, exist,
+                (contestDoc, targetUid) => contest.canShowProblemStatus(this.user, targetUid, contestDoc),
+            ),
+            shouldCompare ? problem.getVisibleListStatus(
+                domainId, this.user._id, exist,
+                (contestDoc, targetUid) => contest.canShowProblemStatus(this.user, targetUid, contestDoc),
+            ) : {},
         ]);
         const donePids = new Set<number>();
         const progPids = new Set<number>();

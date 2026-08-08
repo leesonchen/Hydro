@@ -240,6 +240,7 @@ export interface RecordStatDoc {
     memory: number;
     length: number;
     lang: string;
+    contest?: ObjectId;
 }
 
 export interface ScoreboardNode {
@@ -502,6 +503,7 @@ export interface ScoreboardConfig {
     isExport: boolean;
     showDisplayName: boolean;
     lockAt?: Date;
+    viewer?: User;
 }
 
 export type Feature = 'scoreboard' | 'download';

@@ -136,7 +136,10 @@ export class HomeHandler extends Handler {
         const pdocs = await ProblemModel.getMulti(domainId, { hidden: false })
             .sort({ _id: -1 }).limit(limit).toArray();
         const psdict = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-            ? await ProblemModel.getListStatus(domainId, this.user._id, pdocs.map((pdoc) => pdoc.docId))
+            ? await ProblemModel.getVisibleListStatus(
+                domainId, this.user._id, pdocs.map((pdoc) => pdoc.docId),
+                (tdoc, uid) => contest.canShowProblemStatus(this.user, uid, tdoc),
+            )
             : {};
         return [pdocs, psdict];
     }

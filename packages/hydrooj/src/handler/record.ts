@@ -184,7 +184,10 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
         // eslint-disable-next-line prefer-const
         let [pdoc, self, udoc] = await Promise.all([
             problem.get(rdoc.domainId, rdoc.pid, problem.PROJECTION_LIST.concat('config')),
-            problem.getStatus(domainId, rdoc.pid, this.user._id),
+            problem.getVisibleStatus(
+                domainId, rdoc.pid, this.user._id,
+                (tdoc, uid) => contest.canShowProblemStatus(this.user, uid, tdoc),
+            ),
             user.getById(domainId, rdoc.uid),
         ]);
 
@@ -433,7 +436,10 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
         }
         const [pdoc, self] = await Promise.all([
             problem.get(rdoc.domainId, rdoc.pid),
-            problem.getStatus(domainId, rdoc.pid, this.user._id),
+            problem.getVisibleStatus(
+                domainId, rdoc.pid, this.user._id,
+                (tdoc, uid) => contest.canShowProblemStatus(this.user, uid, tdoc),
+            ),
         ]);
 
         this.canViewCode = rdoc.uid === this.user._id;

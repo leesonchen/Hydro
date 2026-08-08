@@ -6,7 +6,7 @@ import {
     after, before, describe, it,
 } from 'node:test';
 import * as supertest from 'supertest';
-import { PERM } from '@hydrooj/common';
+import { PERM, STATUS } from '@hydrooj/common';
 import { getApiArgs } from '@hydrooj/framework';
 
 const Root = {
@@ -121,6 +121,272 @@ describe('App', () => {
 
     it('API registered user', async () => {
         await agent.get('/api/user?args={"id":2}&projection=uname').expect({ uname: 'root' });
+    });
+
+    it('Does not expose hidden OI results through global problem status views', async () => {
+        const ContestModel = global.Hydro.model.contest;
+        const DomainModel = global.Hydro.model.domain;
+        const ProblemModel = global.Hydro.model.problem;
+        const RecordModel = global.Hydro.model.record;
+        const SystemModel = global.Hydro.model.system;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const groupId = new ObjectId();
+        const groupName = `hidden-result-${suffix}`;
+        const managerRole = `result-manager-${suffix}`;
+        const privilegedRole = `result-privileged-${suffix}`;
+        const createdUsers: number[] = [];
+        const pids: number[] = [];
+        const oldStatMode = SystemModel.get('record.statMode');
+        let tid: ObjectId | undefined;
+
+        const createUser = async (prefix: string, role = 'default') => {
+            const uname = `${prefix}${suffix}`;
+            const uid = await UserModel.create(`${uname}@example.com`, uname, '123456');
+            createdUsers.push(uid);
+            await DomainModel.setUserInDomain('system', uid, { join: true, role });
+            return { uid, uname };
+        };
+
+        try {
+            await Promise.all([
+                DomainModel.addRole(
+                    'system', managerRole,
+                    PERM.PERM_DEFAULT | PERM.PERM_CREATE_CONTEST,
+                ),
+                DomainModel.addRole(
+                    'system', privilegedRole,
+                    PERM.PERM_DEFAULT | PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD,
+                ),
+            ]);
+            const participant = await createUser('resultuser');
+            const outsider = await createUser('resultoutside');
+            const manager = await createUser('resultmanager', managerRole);
+            const privileged = await createUser('resultpriv', privilegedRole);
+            await UserModel.collGroup.insertOne({
+                _id: groupId,
+                domainId: 'system',
+                name: groupName,
+                uids: [participant.uid, manager.uid],
+            } as any);
+
+            for (let i = 0; i < 3; i++) {
+                // eslint-disable-next-line no-await-in-loop
+                pids.push(await ProblemModel.add(
+                    'system', '', `Hidden result ${suffix} ${i}`, '', 2,
+                ));
+            }
+            const now = Date.now();
+            tid = await ContestModel.add(
+                'system', `Hidden OI ${suffix}`, '', 2, 'oi',
+                new Date(now - 3600000), new Date(now + 3600000), pids, false,
+                { assign: [groupName] },
+            );
+
+            const ordinaryWa = new ObjectId();
+            const ordinaryAc = new ObjectId();
+            const ordinaryNewerWa = new ObjectId();
+            const hiddenRids = [new ObjectId(), new ObjectId(), new ObjectId()];
+            await RecordModel.coll.insertMany([
+                {
+                    _id: ordinaryWa, domainId: 'system', pid: pids[0], uid: participant.uid,
+                    status: STATUS.STATUS_WRONG_ANSWER, score: 0, judgeAt: new Date(now - 1000),
+                },
+                {
+                    _id: ordinaryAc, domainId: 'system', pid: pids[1], uid: participant.uid,
+                    status: STATUS.STATUS_ACCEPTED, score: 100,
+                },
+                {
+                    _id: ordinaryNewerWa, domainId: 'system', pid: pids[0], uid: participant.uid,
+                    status: STATUS.STATUS_TIME_LIMIT_EXCEEDED, score: 0, judgeAt: new Date(now - 2000),
+                },
+                ...hiddenRids.map((rid, index) => ({
+                    _id: rid, domainId: 'system', pid: pids[index], uid: participant.uid,
+                    contest: tid, status: STATUS.STATUS_ACCEPTED, score: 73,
+                })),
+            ] as any[]);
+            await Promise.all([
+                ProblemModel.updateStatus(
+                    'system', pids[0], participant.uid, ordinaryWa,
+                    STATUS.STATUS_WRONG_ANSWER, 0,
+                ),
+                ProblemModel.updateStatus(
+                    'system', pids[1], participant.uid, ordinaryAc,
+                    STATUS.STATUS_ACCEPTED, 100,
+                ),
+                ContestModel.attend('system', tid, participant.uid),
+            ]);
+            for (let index = 0; index < pids.length; index++) {
+                // eslint-disable-next-line no-await-in-loop
+                await ProblemModel.updateStatus(
+                    'system', pids[index], participant.uid, hiddenRids[index],
+                    STATUS.STATUS_ACCEPTED, 73,
+                );
+                // eslint-disable-next-line no-await-in-loop
+                await ContestModel.updateStatus(
+                    'system', tid, participant.uid, hiddenRids[index], pids[index],
+                    { status: STATUS.STATUS_ACCEPTED, score: 73 },
+                );
+            }
+            await ProblemModel.setStar('system', pids[2], participant.uid, true);
+            await RecordModel.coll.updateOne(
+                { _id: hiddenRids[1] },
+                { $set: { status: STATUS.STATUS_WRONG_ANSWER, score: 0 } },
+            );
+            await ProblemModel.updateStatus(
+                'system', pids[1], participant.uid, hiddenRids[1],
+                STATUS.STATUS_WRONG_ANSWER, 0,
+            );
+            await ContestModel.updateStatus(
+                'system', tid, participant.uid, hiddenRids[1], pids[1],
+                { status: STATUS.STATUS_WRONG_ANSWER, score: 0 },
+            );
+
+            const [participantDoc, outsiderDoc, privilegedDoc, ownerDoc] = await Promise.all([
+                UserModel.getById('system', participant.uid),
+                UserModel.getById('system', outsider.uid),
+                UserModel.getById('system', privileged.uid),
+                UserModel.getById('system', 2),
+            ]);
+            const visibleFor = (viewer) => (
+                contestDoc, targetUid,
+            ) => ContestModel.canShowProblemStatus(viewer, targetUid, contestDoc);
+            const participantStatuses = await ProblemModel.resolveVisibleStatuses(
+                'system', [participant.uid], pids, visibleFor(participantDoc),
+            );
+            const participantStatus = Object.fromEntries(
+                participantStatuses.map((psdoc) => [psdoc.docId, psdoc]),
+            );
+            assert.equal(participantStatus[pids[0]].rid.toHexString(), ordinaryWa.toHexString());
+            assert.equal(participantStatus[pids[0]].status, STATUS.STATUS_WRONG_ANSWER);
+            assert.equal(participantStatus[pids[1]].rid.toHexString(), ordinaryAc.toHexString());
+            assert.equal(participantStatus[pids[1]].status, STATUS.STATUS_ACCEPTED);
+            assert.equal(participantStatus[pids[2]].star, true);
+            assert(!('rid' in participantStatus[pids[2]]));
+            assert(!('status' in participantStatus[pids[2]]));
+            assert(!('score' in participantStatus[pids[2]]));
+
+            const activeTdoc = await ContestModel.get('system', tid);
+            assert.equal(ContestModel.canShowProblemStatus(participantDoc, participant.uid, activeTdoc), false);
+            assert.equal(ContestModel.canShowProblemStatus(outsiderDoc, participant.uid, activeTdoc), false);
+            assert.equal(ContestModel.canShowProblemStatus(ownerDoc, participant.uid, activeTdoc), true);
+            assert.equal(ContestModel.canShowProblemStatus(privilegedDoc, participant.uid, activeTdoc), true);
+            const projectedRecord = ContestModel.applyProjection(activeTdoc, {
+                _id: hiddenRids[2], domainId: 'system', pid: pids[2], uid: participant.uid,
+                status: STATUS.STATUS_ACCEPTED, score: 73, subtasks: { 1: { score: 73 } },
+            }, participantDoc);
+            assert(!('status' in projectedRecord));
+            assert(!('score' in projectedRecord));
+            assert(!('subtasks' in projectedRecord));
+
+            const participantAgent = supertest.agent(require('hydrooj').httpServer);
+            await participantAgent.post('/login')
+                .send({ uname: participant.uname, password: '123456' }).expect(302);
+            const problemListResponse = await participantAgent.get('/p')
+                .set('Accept', 'application/json').expect(200);
+            assert(!('status' in problemListResponse.body.psdict[pids[2]]));
+            const problemResponse = await participantAgent.get(`/p/${pids[2]}`)
+                .set('Accept', 'application/json').expect(200);
+            assert.equal(problemResponse.body.psdoc.star, true);
+            assert(!('status' in problemResponse.body.psdoc));
+            assert(!('rdoc' in problemResponse.body));
+
+            const contestProblems = await participantAgent.get(`/contest/${tid}/problems`)
+                .set('Accept', 'application/json').expect(200);
+            for (const pid of pids) {
+                assert.deepStrictEqual(contestProblems.body.psdict[pid], { submitted: true });
+            }
+            assert.deepStrictEqual(contestProblems.body.rdict, {});
+            assert.deepStrictEqual(contestProblems.body.rdocs, []);
+
+            const profile = await participantAgent.get(`/user/${participant.uid}`)
+                .set('Accept', 'application/json').expect(200);
+            assert(profile.body.pdocs.some((pdoc) => pdoc.docId === pids[1]));
+            assert(!profile.body.pdocs.some((pdoc) => pdoc.docId === pids[2]));
+            const activity = profile.body.tdocs.find((tdoc) => tdoc.docId === tid.toHexString());
+            assert(activity);
+            assert(!('activityStats' in activity));
+
+            await RecordModel.coll.updateOne(
+                { _id: hiddenRids[1] },
+                { $set: { status: STATUS.STATUS_ACCEPTED, score: 73 } },
+            );
+            await ProblemModel.updateStatus(
+                'system', pids[1], participant.uid, hiddenRids[1],
+                STATUS.STATUS_ACCEPTED, 73,
+            );
+            await ContestModel.updateStatus(
+                'system', tid, participant.uid, hiddenRids[1], pids[1],
+                { status: STATUS.STATUS_ACCEPTED, score: 73 },
+            );
+
+            const managerAgent = supertest.agent(require('hydrooj').httpServer);
+            await managerAgent.post('/login')
+                .send({ uname: manager.uname, password: '123456' }).expect(302);
+            const statistics = await managerAgent.get(`/contest-statistics?group=${groupName}`)
+                .set('Accept', 'application/json').expect(200);
+            const contestRow = statistics.body.table.rows.find((row) => row.label === `Hidden OI ${suffix}`);
+            assert(contestRow);
+            assert(contestRow.cells.every((cell) => cell === ''));
+            const statisticsCsv = await managerAgent
+                .get(`/contest-statistics?group=${groupName}&download=true`).expect(200);
+            assert(!statisticsCsv.body.toString('utf8').includes('73'));
+
+            await RecordModel.collStat.insertMany([
+                {
+                    _id: ordinaryAc, domainId: 'system', pid: pids[1], uid: participant.uid,
+                    time: 100, memory: 1024, length: 10, lang: 'cc',
+                },
+                {
+                    _id: hiddenRids[1], domainId: 'system', pid: pids[1], uid: participant.uid,
+                    contest: tid, time: 10, memory: 512, length: 20, lang: 'cc',
+                },
+            ]);
+            await SystemModel.set('record.statMode', 'all', false);
+            let problemStats = await participantAgent.get(`/p/${pids[1]}/stat`)
+                .set('Accept', 'application/json').expect(200);
+            assert.deepStrictEqual(problemStats.body.rsdocs.map((rsdoc) => rsdoc._id), [ordinaryAc.toHexString()]);
+
+            await ContestModel.edit('system', tid, {
+                endAt: new Date(now - 1000),
+                keepScoreboardHidden: true,
+            });
+            const endedHiddenTdoc = await ContestModel.get('system', tid);
+            assert.equal(ContestModel.canShowProblemStatus(participantDoc, participant.uid, endedHiddenTdoc), false);
+            const endedContestProblems = await participantAgent.get(`/contest/${tid}/problems`)
+                .set('Accept', 'application/json').expect(200);
+            assert.deepStrictEqual(endedContestProblems.body.psdict[pids[2]], { submitted: true });
+
+            await ContestModel.edit('system', tid, { keepScoreboardHidden: false });
+            const visibleStatus = await ProblemModel.getVisibleStatus(
+                'system', pids[2], participant.uid, visibleFor(participantDoc),
+            );
+            assert.equal(visibleStatus.rid.toHexString(), hiddenRids[2].toHexString());
+            assert.equal(visibleStatus.score, 73);
+            const visibleProblem = await participantAgent.get(`/p/${pids[2]}`)
+                .set('Accept', 'application/json').expect(200);
+            assert.equal(visibleProblem.body.psdoc.score, 73);
+
+            problemStats = await participantAgent.get(`/p/${pids[1]}/stat`)
+                .set('Accept', 'application/json').expect(200);
+            assert.equal(problemStats.body.rsdocs.length, 2);
+            await SystemModel.set('record.statMode', 'unique', false);
+            problemStats = await participantAgent.get(`/p/${pids[1]}/stat?sort=time&direction=1`)
+                .set('Accept', 'application/json').expect(200);
+            assert.deepStrictEqual(problemStats.body.rsdocs.map((rsdoc) => rsdoc._id), [hiddenRids[1].toHexString()]);
+        } finally {
+            await SystemModel.set('record.statMode', oldStatMode, false);
+            const cachedUsers = await Promise.all(createdUsers.map((uid) => UserModel.getById('system', uid)));
+            for (const udoc of cachedUsers) if (udoc) UserModel._deleteUserCache(udoc);
+            await Promise.all([
+                ...(tid ? [ContestModel.del('system', tid)] : []),
+                ...pids.map((pid) => ProblemModel.del('system', pid)),
+                UserModel.collGroup.deleteOne({ _id: groupId }),
+                UserModel.coll.deleteMany({ _id: { $in: createdUsers } }),
+                DomainModel.collUser.deleteMany({ domainId: 'system', uid: { $in: createdUsers } }),
+            ]);
+            await DomainModel.deleteRoles('system', [managerRole, privilegedRole]);
+        }
     });
 
     it('Require explicit invitations after leaving and scope class invitations', async () => {

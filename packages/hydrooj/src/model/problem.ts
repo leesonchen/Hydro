@@ -27,6 +27,7 @@ import { buildProjection } from '../utils';
 import { PERM, STATUS } from './builtin';
 import * as document from './document';
 import DomainModel from './domain';
+import { ContestRecordVisibility, resolveVisibleProblemStatuses } from './problemStatus';
 import RecordModel from './record';
 import SolutionModel from './solution';
 import storage from './storage';
@@ -430,6 +431,33 @@ export class ProblemModel {
             domainId, { uid, docId: { $in: Array.from(new Set(pids)) } },
         ).toArray();
         return keyBy(psdocs, 'docId');
+    }
+
+    static async getVisibleStatus(
+        domainId: string, docId: number, uid: number,
+        canShowContestRecord: ContestRecordVisibility,
+    ) {
+        const [psdoc] = await resolveVisibleProblemStatuses(
+            domainId, [uid], [docId], canShowContestRecord,
+        );
+        return psdoc || null;
+    }
+
+    static async getVisibleListStatus(
+        domainId: string, uid: number, pids: number[],
+        canShowContestRecord: ContestRecordVisibility,
+    ) {
+        const psdocs = await resolveVisibleProblemStatuses(
+            domainId, [uid], pids, canShowContestRecord,
+        );
+        return keyBy(psdocs, 'docId');
+    }
+
+    static resolveVisibleStatuses(
+        domainId: string, uids: number[], pids: number[],
+        canShowContestRecord: ContestRecordVisibility,
+    ) {
+        return resolveVisibleProblemStatuses(domainId, uids, pids, canShowContestRecord);
     }
 
     static async updateStatus(

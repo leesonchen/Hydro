@@ -147,7 +147,7 @@ const buildCell = (tdoc: any, tsdoc: any): StatCell => {
  * 批量拉取指定比赛/作业与用户的状态，构建二维矩阵。通过一次性
  * 查询避免在 MongoDB 上触发 N+1 请求。
  */
-const buildRows = async (domainId: string, tdocs: any[], userIds: number[]) => {
+const buildRows = async (domainId: string, tdocs: any[], userIds: number[], viewer: Handler) => {
     if (!tdocs.length) return [] as StatRow[];
     const tsdict: Record<string, Record<number, any>> = {};
     if (userIds.length) {
@@ -164,7 +164,11 @@ const buildRows = async (domainId: string, tdocs: any[], userIds: number[]) => {
     }
     return tdocs.map((tdoc) => {
         const tid = typeof tdoc.docId === 'string' ? tdoc.docId : tdoc.docId.toHexString();
-        const cells = userIds.map((uid) => buildCell(tdoc, tsdict[tid]?.[uid]));
+        const cells = userIds.map((uid) => {
+            const canShow = ContestModel[uid === viewer.user._id ? 'canShowSelfRecord' : 'canShowRecord']
+                .call(viewer, tdoc);
+            return canShow ? buildCell(tdoc, tsdict[tid]?.[uid]) : { display: '' };
+        });
         return { tdoc, cells };
     });
 };
@@ -291,7 +295,7 @@ class ContestStatsHandler extends Handler {
         const exportDocs = download
             ? await ContestModel.getMulti(domainId, filter).sort(sort).toArray()
             : tdocs;
-        const rows = await buildRows(domainId, exportDocs, userIds);
+        const rows = await buildRows(domainId, exportDocs, userIds, this);
         const hasExplicitLayout = layout === 'user' || layout === 'item';
         let resolvedLayout: 'user' | 'item';
         if (hasExplicitLayout) {
@@ -402,7 +406,7 @@ class HomeworkStatsHandler extends Handler {
         const exportDocs = download
             ? await ContestModel.getMulti(domainId, filter).sort(sort).toArray()
             : tdocs;
-        const rows = await buildRows(domainId, exportDocs, userIds);
+        const rows = await buildRows(domainId, exportDocs, userIds, this);
         const hasExplicitLayout = layout === 'user' || layout === 'item';
         let resolvedLayout: 'user' | 'item';
         if (hasExplicitLayout) {
@@ -509,7 +513,7 @@ class CourseStatsHandler extends Handler {
         const exportDocs = download
             ? await ContestModel.getMulti(domainId, filter).sort(sort).toArray()
             : tdocs;
-        const rows = await buildRows(domainId, exportDocs, userIds);
+        const rows = await buildRows(domainId, exportDocs, userIds, this);
         const hasExplicitLayout = layout === 'user' || layout === 'item';
         let resolvedLayout: 'user' | 'item';
         if (hasExplicitLayout) {
@@ -574,9 +578,7 @@ export async function apply(ctx: Context) {
         if (!docIds.length) return;
         const [tsdocs, fullTdocs] = await Promise.all([
             ContestModel.getMultiStatus(domainId, { docId: { $in: docIds }, uid }).toArray(),
-            ContestModel.getMulti(domainId, { docId: { $in: docIds } })
-                .project({ docId: 1, title: 1, rule: 1, pids: 1 })
-                .toArray(),
+            ContestModel.getMulti(domainId, { docId: { $in: docIds } }).toArray(),
         ]);
         const statusMap = new Map<string, any>();
         for (const tsdoc of tsdocs) {
@@ -591,7 +593,10 @@ export async function apply(ctx: Context) {
         for (const tdoc of body.tdocs) {
             const key = typeof tdoc.docId === 'string' ? tdoc.docId : tdoc.docId.toHexString();
             const fullTdoc = tdocMap.get(key) || tdoc;
-            tdoc.activityStats = buildActivityStats(fullTdoc, statusMap.get(key));
+            const canShow = ContestModel[isSelf ? 'canShowSelfRecord' : 'canShowRecord']
+                .call(handler, fullTdoc);
+            if (canShow) tdoc.activityStats = buildActivityStats(fullTdoc, statusMap.get(key));
+            else delete tdoc.activityStats;
         }
     });
 }
