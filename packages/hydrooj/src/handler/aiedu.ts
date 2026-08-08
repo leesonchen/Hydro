@@ -81,7 +81,7 @@ class AiEduInternalSubmitHandler extends Handler {
 
         const { pdoc, sourcePdoc } = await getEffectiveProblem(AI_EDU_DOMAIN_ID, pid);
         const submitLang = validateLanguage(sourcePdoc, lang);
-        const tdoc = await ensureContestIncludesProblem(
+        await ensureContestIncludesProblem(
             AI_EDU_DOMAIN_ID,
             tid,
             await contest.get(AI_EDU_DOMAIN_ID, tid),
@@ -93,14 +93,11 @@ class AiEduInternalSubmitHandler extends Handler {
             files: {},
             type: 'judge',
         });
-        await Promise.all([
-            problem.inc(AI_EDU_DOMAIN_ID, pdoc.docId, 'nSubmit', 1),
-            contest.updateStatus(AI_EDU_DOMAIN_ID, tid, uid, rid, pdoc.docId, {
-                status: STATUS.STATUS_WAITING,
-                score: 0,
-                lang: submitLang,
-            }),
-        ]);
+        await contest.updateStatus(AI_EDU_DOMAIN_ID, tid, uid, rid, pdoc.docId, {
+            status: STATUS.STATUS_WAITING,
+            score: 0,
+            lang: submitLang,
+        });
         this.response.body = { rid: rid.toHexString() };
     }
 }

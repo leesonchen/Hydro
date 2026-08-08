@@ -664,11 +664,13 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
             pretest ? { input, type: 'pretest' } : { contest: tid, files, type: 'judge' },
         );
         if (!pretest) {
-            await Promise.all([
-                problem.inc(domainId, this.pdoc.docId, 'nSubmit', 1),
-                domain.incUserInDomain(domainId, this.user._id, 'nSubmit'),
-                tid && contest.updateStatus(domainId, tid, this.user._id, rid, this.pdoc.docId),
-            ]);
+            if (tid) await contest.updateStatus(domainId, tid, this.user._id, rid, this.pdoc.docId);
+            else {
+                await Promise.all([
+                    problem.inc(domainId, this.pdoc.docId, 'nSubmit', 1),
+                    domain.incUserInDomain(domainId, this.user._id, 'nSubmit'),
+                ]);
+            }
         }
         if (tid && !pretest && !contest.canShowSelfRecord.call(this, this.tdoc)) {
             this.response.body = { tid };

@@ -173,7 +173,7 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             let canView = this.user.own(this.tdoc);
             canView ||= contest.canShowRecord.call(this, this.tdoc);
             canView ||= contest.canShowSelfRecord.call(this, this.tdoc, true) && rdoc.uid === this.user._id;
-            if (!canView && rdoc.uid !== this.user._id) throw new PermissionError(rid);
+            if (!canView) throw new PermissionError(rid);
             canViewDetail = canView;
             this.args.tid = this.tdoc.docId;
             if (!this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
@@ -314,6 +314,11 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
             if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
             if (pretest || contest.canShowScoreboard.call(this, this.tdoc, true)) this.tid = tid.toHexString();
             else throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
+            if (!pretest
+                && !contest.canShowRecord.call(this, this.tdoc, true)
+                && !contest.canShowSelfRecord.call(this, this.tdoc, true)) {
+                throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
+            }
             if (!this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
                 this.applyProjection = true;
             }

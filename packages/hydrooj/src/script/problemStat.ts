@@ -1,7 +1,6 @@
 import Schema from 'schemastery';
 import { STATUS } from '../model/builtin';
 import * as document from '../model/document';
-import RecordModel from '../model/record';
 import db from '../service/db';
 
 const sumStatus = (status) => ({ $sum: { $cond: [{ $eq: ['$status', status] }, 1, 0] } });
@@ -32,7 +31,7 @@ export async function udoc(report) {
     const pipeline = [
         {
             $match: {
-                contest: { $nin: [RecordModel.RECORD_PRETEST, RecordModel.RECORD_GENERATE] },
+                contest: { $exists: false },
                 status: { $ne: STATUS.STATUS_CANCELED },
                 uid: { $gte: 0 },
             },
@@ -83,7 +82,7 @@ export async function pdoc(report) {
     const pipeline = [
         {
             $match: {
-                contest: { $nin: [RecordModel.RECORD_PRETEST, RecordModel.RECORD_GENERATE] },
+                contest: { $exists: false },
                 status: { $ne: STATUS.STATUS_CANCELED },
             },
         },

@@ -86,14 +86,8 @@ export class ContestDetailBaseHandler extends Handler {
             contest.get(domainId, tid),
             contest.getStatus(domainId, tid, this.user._id),
         ]);
-        if (this.tdoc.assign?.length
-            && !this.user.own(this.tdoc)
-            && (this.tdoc.rule !== 'course' || !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK))
-            && !this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)) {
-            const groups = await user.listGroup(domainId, this.user._id);
-            if (!new Set(this.tdoc.assign).intersection(new Set(groups.map((i) => i.name))).size) {
-                throw new NotAssignedError('contest', tid);
-            }
+        if (!contest.canAccessAssignedContest(this.user, this.tdoc)) {
+            throw new NotAssignedError('contest', tid);
         }
         if (this.tdoc.duration && this.tsdoc?.startAt) {
             this.tsdoc.endAt = moment.min([

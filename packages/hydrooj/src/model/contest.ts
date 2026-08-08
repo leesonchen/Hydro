@@ -1094,20 +1094,49 @@ export function canViewHiddenScoreboard(this: { user: User }, tdoc: Tdoc) {
     return this.user.hasPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
 }
 
+export function canAccessAssignedContest(user: User, tdoc: Tdoc) {
+    if (!tdoc.assign?.length) return true;
+    if (user.own(tdoc)
+        || (tdoc.rule === 'course' && user.hasPerm(PERM.PERM_EDIT_HOMEWORK))
+        || user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)) return true;
+    const uid = user._id.toString();
+    return tdoc.assign.some((group) => group === uid || user.group?.includes(group));
+}
+
+function canAccessContestResults(user: User, tdoc: Tdoc, allowPermOverride = true) {
+    if (!canAccessAssignedContest(user, tdoc)
+        && (!allowPermOverride || !canViewHiddenScoreboard.call({ user }, tdoc))) return false;
+    if (!RULES[tdoc.rule].hidden) return true;
+    if (user.own(tdoc)
+        || user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)
+        || user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
+        || user.hasPerm(PERM.PERM_VIEW_HOMEWORK_HIDDEN_SCOREBOARD)
+        || user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+        || user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) return true;
+    return !!tdoc.assign?.length && canAccessAssignedContest(user, tdoc);
+}
+
 export function canShowRecord(this: { user: User }, tdoc: Tdoc, allowPermOverride = true) {
+    if (!canAccessContestResults(this.user, tdoc, allowPermOverride)) return false;
     if (RULES[tdoc.rule].showRecord(tdoc, new Date())) return true;
     if (allowPermOverride && canViewHiddenScoreboard.call(this, tdoc)) return true;
     return false;
 }
 
 export function canShowSelfRecord(this: { user: User }, tdoc: Tdoc, allowPermOverride = true) {
+    if (!canAccessContestResults(this.user, tdoc, allowPermOverride)) return false;
     if (RULES[tdoc.rule].showSelfRecord(tdoc, new Date())) return true;
     if (allowPermOverride && canViewHiddenScoreboard.call(this, tdoc)) return true;
     return false;
 }
 
 export function canShowProblemStatus(user: User | null, targetUid: number, tdoc: Tdoc, allowPermOverride = true) {
-    if (!user) return RULES[tdoc.rule].showRecord(tdoc, new Date());
+    if (!user) {
+        return !tdoc.assign?.length
+            && !RULES[tdoc.rule].hidden
+            && RULES[tdoc.rule].showRecord(tdoc, new Date());
+    }
+    if (!canAccessContestResults(user, tdoc, allowPermOverride)) return false;
     return targetUid === user._id
         ? canShowSelfRecord.call({ user }, tdoc, allowPermOverride)
         : canShowRecord.call({ user }, tdoc, allowPermOverride);
@@ -1269,6 +1298,7 @@ global.Hydro.model.contest = {
     updateBalloon,
     canShowRecord,
     canShowSelfRecord,
+    canAccessAssignedContest,
     canShowProblemStatus,
     canShowScoreboard,
     canViewHiddenScoreboard,

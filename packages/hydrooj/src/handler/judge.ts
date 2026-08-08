@@ -128,10 +128,10 @@ export class JudgeResultCallbackContext {
             STATUS.STATUS_ETC, STATUS.STATUS_HACK_SUCCESSFUL, STATUS.STATUS_HACK_UNSUCCESSFUL,
             STATUS.STATUS_FORMAT_ERROR, STATUS.STATUS_SYSTEM_ERROR, STATUS.STATUS_CANCELED,
         ].includes(rdoc.status);
-        const pdoc = (accept && updated)
+        const pdoc = (!rdoc.contest && accept && updated)
             ? await problem.inc(rdoc.domainId, rdoc.pid, 'nAccept', 1)
             : await problem.get(rdoc.domainId, rdoc.pid, undefined, true);
-        if (pdoc && isNormalSubmission) {
+        if (!rdoc.contest && pdoc && isNormalSubmission) {
             await Promise.all([
                 problem.inc(pdoc.domainId, pdoc.docId, `stats.${builtin.STATUS_SHORT_TEXTS[rdoc.status]}`, 1),
                 problem.inc(pdoc.domainId, pdoc.docId, `stats.s${Math.floor(rdoc.score)}`, 1),

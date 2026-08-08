@@ -511,6 +511,7 @@ export const coreScripts: MigrationScript[] = [
                     memory: doc.memory,
                     length: doc.code?.length || 0,
                     lang: doc.lang,
+                    ...doc.contest ? { contest: doc.contest } : {},
                 },
             });
             if (bulk.batches.length > 500) {

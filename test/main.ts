@@ -279,6 +279,13 @@ describe('App', () => {
             assert(!('score' in projectedRecord));
             assert(!('subtasks' in projectedRecord));
 
+            const { JudgeResultCallbackContext } = require('../packages/hydrooj/src/handler/judge');
+            const hiddenPdocBeforeJudge = await ProblemModel.get('system', pids[2]);
+            await JudgeResultCallbackContext.postJudge(await RecordModel.get('system', hiddenRids[2]));
+            const hiddenPdocAfterJudge = await ProblemModel.get('system', pids[2]);
+            assert.equal(hiddenPdocAfterJudge.nAccept, hiddenPdocBeforeJudge.nAccept);
+            assert.equal(hiddenPdocAfterJudge.stats?.s73, hiddenPdocBeforeJudge.stats?.s73);
+
             const participantAgent = supertest.agent(require('hydrooj').httpServer);
             await participantAgent.post('/login')
                 .send({ uname: participant.uname, password: '123456' }).expect(302);
@@ -356,6 +363,8 @@ describe('App', () => {
             const endedContestProblems = await participantAgent.get(`/contest/${tid}/problems`)
                 .set('Accept', 'application/json').expect(200);
             assert.deepStrictEqual(endedContestProblems.body.psdict[pids[2]], { submitted: true });
+            await participantAgent.get(`/record/${hiddenRids[2]}`)
+                .set('Accept', 'application/json').expect(403);
 
             await ContestModel.edit('system', tid, { keepScoreboardHidden: false });
             const visibleStatus = await ProblemModel.getVisibleStatus(
