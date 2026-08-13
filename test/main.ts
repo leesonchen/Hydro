@@ -327,6 +327,11 @@ describe('App', () => {
             }
             assert.deepStrictEqual(contestProblems.body.rdict, {});
             assert.deepStrictEqual(contestProblems.body.rdocs, []);
+            const contestProblemPage = await participantAgent.get(`/contest/${tid}/problems`)
+                .set('Accept-Language', 'en').accept('html').expect(200);
+            assert.equal(contestProblemPage.type, 'text/html');
+            assert.match(contestProblemPage.text, /<td class="col--status record-status--border">Submitted<\/td>/);
+            assert.doesNotMatch(contestProblemPage.text, /No Submissions/);
 
             const profile = await participantAgent.get(`/user/${participant.uid}`)
                 .set('Accept', 'application/json').expect(200);

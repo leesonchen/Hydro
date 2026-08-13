@@ -55,6 +55,11 @@
                 {% if not hasCorrection %}
                   <td class="col--submit-at">{{ datetimeSpan(rdoc._id)|safe }}</td>
                 {% endif %}
+              {% elif psdict[pid] and psdict[pid].submitted %}
+                <td class="col--status record-status--border">{{ _('Submitted') }}</td>
+                {% if not hasCorrection %}
+                  <td class="col--submit-at">-</td>
+                {% endif %}
               {% else %}
                 <td class="col--status record-status--border">{{ _('No Submissions') }}</td>
                 {% if not hasCorrection %}
