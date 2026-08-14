@@ -1,7 +1,7 @@
 import assert from 'assert';
 import { writeFileSync } from 'fs';
 import autocannon from 'autocannon';
-import { ObjectId } from 'mongodb';
+import { Binary, ObjectId } from 'mongodb';
 import {
     after, before, describe, it,
 } from 'node:test';
@@ -848,7 +848,7 @@ describe('App', () => {
         }
     });
 
-    it('Resetting a user password clears all authenticators', async () => {
+    it('Resetting a user password clears all authenticators and rejects stale updates', async () => {
         const DomainModel = global.Hydro.model.domain;
         const UserModel = global.Hydro.model.user;
         const suffix = Date.now().toString(36);
@@ -857,10 +857,11 @@ describe('App', () => {
         const batchUid2 = await UserModel.create(`reset-batch-2-${suffix}@example.com`, `resetbatch2${suffix}`, 'old-password');
         const targetUids = [editUid, batchUid, batchUid2];
         const originalRootPriv = (await UserModel.getById('system', 2)).priv;
+        const credentialID = Binary.createFromBase64('dGVzdC1jcmVkZW50aWFs');
         await UserModel.setSuperAdmin(2);
         for (const uid of targetUids) {
             await UserModel.setById(uid, {
-                authenticators: [{ credentialID: 'test-credential' }],
+                authenticators: [{ credentialID }],
                 tfa: 'test-secret',
             });
         }
@@ -872,6 +873,12 @@ describe('App', () => {
         const resetBatch = () => managerAgent
             .post('/manage/users/batch_operation')
             .send({ operation: 'reset_password', uids: [batchUid, batchUid2], password: '654321' });
+        const resetUpdates: any[] = [];
+        const originalFindOneAndUpdate = (UserModel.coll as any).findOneAndUpdate;
+        (UserModel.coll as any).findOneAndUpdate = async (...args: any[]) => {
+            if (targetUids.includes(args[0]?._id)) resetUpdates.push(args[1]);
+            return originalFindOneAndUpdate.apply(UserModel.coll, args);
+        };
 
         try {
             await managerAgent.post('/login')
@@ -882,6 +889,13 @@ describe('App', () => {
             await resetSingle().expect(302);
 
             await resetBatch().expect(200).expect({ ok: 1 });
+            assert.equal(resetUpdates.length, targetUids.length);
+            for (const update of resetUpdates) {
+                assert.deepStrictEqual(update.$set.authenticators, []);
+                assert.equal(update.$set.tfa, false);
+                assert.equal(update.$set.requirePasswordChange, true);
+            }
+            assert.equal(await UserModel.updateAuthenticatorCounter(editUid, credentialID, 1), null);
 
             for (const [uid, password] of [[editUid, '123456'], [batchUid, '654321'], [batchUid2, '654321']]) {
                 const udoc = await UserModel.coll.findOne({ _id: uid });
@@ -893,6 +907,7 @@ describe('App', () => {
                 UserModel._deleteUserCache(user);
             }
         } finally {
+            (UserModel.coll as any).findOneAndUpdate = originalFindOneAndUpdate;
             await UserModel.setPriv(2, originalRootPriv);
             for (const uid of targetUids) {
                 const udoc = await UserModel.getById('system', uid);

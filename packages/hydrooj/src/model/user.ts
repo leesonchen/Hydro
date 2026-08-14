@@ -1,6 +1,6 @@
 import { escapeRegExp, omit, pick, uniq } from 'lodash';
 import { LRUCache } from 'lru-cache';
-import { Collection, Filter, ObjectId } from 'mongodb';
+import { Binary, Collection, Filter, ObjectId } from 'mongodb';
 import {
     LoginError, UserAlreadyExistError, UserNotFoundError, ValidationError,
 } from '../error';
@@ -331,6 +331,38 @@ class UserModel {
                 $set: { salt, hash: await pwhash(password, salt), hashType: 'hydro' },
                 $unset: { requirePasswordChange: '' },
             },
+            { returnDocument: 'after' },
+        );
+        deleteUserCache(res);
+        return res;
+    }
+
+    @ArgMethod
+    static async resetPassword(uid: number, password: string, requirePasswordChange = false): Promise<Udoc> {
+        const salt = randomstring();
+        const update: any = {
+            $set: {
+                salt,
+                hash: await pwhash(password, salt),
+                hashType: 'hydro',
+                authenticators: [],
+                tfa: false,
+            },
+            $unset: { requirePasswordChange: '' },
+        };
+        if (requirePasswordChange) {
+            update.$set.requirePasswordChange = true;
+            delete update.$unset.requirePasswordChange;
+        }
+        const res = await coll.findOneAndUpdate({ _id: uid }, update, { returnDocument: 'after' });
+        deleteUserCache(res);
+        return res;
+    }
+
+    static async updateAuthenticatorCounter(uid: number, credentialID: Binary, counter: number): Promise<Udoc> {
+        const res = await coll.findOneAndUpdate(
+            { _id: uid, 'authenticators.credentialID': credentialID },
+            { $set: { 'authenticators.$.counter': counter } },
             { returnDocument: 'after' },
         );
         deleteUserCache(res);

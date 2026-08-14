@@ -213,7 +213,10 @@ class UserWebauthnHandler extends Handler {
         }).catch(() => null);
         if (!verification?.verified) throw new ValidationError('authenticator');
         authenticator.counter = verification.authenticationInfo.newCounter;
-        await user.setById(udoc._id, { authenticators: udoc._authenticators });
+        const updatedUser = await user.updateAuthenticatorCounter(
+            udoc._id, authenticator.credentialID, authenticator.counter,
+        );
+        if (!updatedUser) throw new ValidationError('authenticator');
         if (tdoc.uid === 'login') {
             await successfulAuth.call(this, await user.getById(domainId, udoc._id));
             await token.del(challenge, token.TYPE_WEBAUTHN);
@@ -391,8 +394,7 @@ class UserLostPassWithCodeHandler extends Handler {
         const tdoc = await token.get(code, token.TYPE_LOSTPASS);
         if (!tdoc) throw new InvalidTokenError(token.TYPE_TEXTS[token.TYPE_LOSTPASS], code);
         if (password !== verifyPassword) throw new VerifyPasswordError();
-        await user.setById(tdoc.uid, { authenticators: [], tfa: false });
-        await user.setPassword(tdoc.uid, password);
+        await user.resetPassword(tdoc.uid, password);
         await token.del(code, token.TYPE_LOSTPASS);
         this.response.redirect = this.url('homepage');
     }
