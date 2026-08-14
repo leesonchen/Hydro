@@ -848,6 +848,63 @@ describe('App', () => {
         }
     });
 
+    it('Resetting a user password clears all authenticators', async () => {
+        const DomainModel = global.Hydro.model.domain;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const editUid = await UserModel.create(`reset-edit-${suffix}@example.com`, `resetedit${suffix}`, 'old-password');
+        const batchUid = await UserModel.create(`reset-batch-${suffix}@example.com`, `resetbatch${suffix}`, 'old-password');
+        const batchUid2 = await UserModel.create(`reset-batch-2-${suffix}@example.com`, `resetbatch2${suffix}`, 'old-password');
+        const targetUids = [editUid, batchUid, batchUid2];
+        const originalRootPriv = (await UserModel.getById('system', 2)).priv;
+        await UserModel.setSuperAdmin(2);
+        for (const uid of targetUids) {
+            await UserModel.setById(uid, {
+                authenticators: [{ credentialID: 'test-credential' }],
+                tfa: 'test-secret',
+            });
+        }
+
+        const managerAgent = supertest.agent(require('hydrooj').httpServer);
+        const resetSingle = () => managerAgent
+            .post(`/manage/user/${editUid}/edit`)
+            .send({ operation: 'reset_password' });
+        const resetBatch = () => managerAgent
+            .post('/manage/users/batch_operation')
+            .send({ operation: 'reset_password', uids: [batchUid, batchUid2], password: '654321' });
+
+        try {
+            await managerAgent.post('/login')
+                .send({ uname: Root.username, password: Root.password }).expect(302);
+
+            await resetSingle().expect(302).expect('location', '/user/sudo');
+            await managerAgent.post('/user/sudo').send({ password: Root.password }).expect(200);
+            await resetSingle().expect(302);
+
+            await resetBatch().expect(200).expect({ ok: 1 });
+
+            for (const [uid, password] of [[editUid, '123456'], [batchUid, '654321'], [batchUid2, '654321']]) {
+                const udoc = await UserModel.coll.findOne({ _id: uid });
+                assert.deepStrictEqual(udoc.authenticators, []);
+                assert.equal(udoc.tfa, false);
+                assert.equal(udoc.requirePasswordChange, true);
+                const user = await UserModel.getById('system', uid);
+                await user.checkPassword(password);
+                UserModel._deleteUserCache(user);
+            }
+        } finally {
+            await UserModel.setPriv(2, originalRootPriv);
+            for (const uid of targetUids) {
+                const udoc = await UserModel.getById('system', uid);
+                if (udoc) UserModel._deleteUserCache(udoc);
+            }
+            await Promise.all([
+                UserModel.coll.deleteMany({ _id: { $in: targetUids } }),
+                DomainModel.collUser.deleteMany({ domainId: 'system', uid: { $in: targetUids } }),
+            ]);
+        }
+    });
+
     it('Rate limit password verification for privileged users', async () => {
         const DomainModel = global.Hydro.model.domain;
         const TokenModel = global.Hydro.model.token;
