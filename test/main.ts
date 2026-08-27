@@ -1000,6 +1000,23 @@ describe('App', () => {
         }
     });
 
+    it('Auto-claims a course template for its owner', async () => {
+        const ContestModel = global.Hydro.model.contest;
+        const suffix = Date.now().toString(36);
+        const tid = await ContestModel.add(
+            'system', `Template owner access ${suffix}`, '', 2, 'course',
+            new Date(Date.now() - 3600000), new Date(Date.now() + 3600000), [], false,
+            { assign: ['teachers'], dag: [] },
+        );
+        try {
+            assert.equal(await ContestModel.getStatus('system', tid, 2), null);
+            await agent.get(`/d/system/course/${tid}`).expect(200);
+            assert.equal((await ContestModel.getStatus('system', tid, 2))?.attend, 1);
+        } finally {
+            await ContestModel.del('system', tid);
+        }
+    });
+
     it('Assigns configured external invitation roles and resolves class invitation codes', async () => {
         const DomainModel = global.Hydro.model.domain;
         const TokenModel = global.Hydro.model.token;

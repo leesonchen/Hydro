@@ -949,7 +949,7 @@ export class CourseDetailHandler extends Handler {
             || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK);
         const canViewAllProblems = isTeacherEditor || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
 
-        if (!isTemplate && isCourseTeacher && !tsdoc?.attend) {
+        if (isCourseTeacher && !tsdoc?.attend) {
             await ContestModel.attend(domainId, tid, this.user._id);
             tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
         }
