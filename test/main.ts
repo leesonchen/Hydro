@@ -1017,6 +1017,45 @@ describe('App', () => {
         }
     });
 
+    it('Handles concurrent course template owner auto-claims', async () => {
+        const ContestModel = global.Hydro.model.contest;
+        const DocumentModel = global.Hydro.model.document;
+        const suffix = Date.now().toString(36);
+        const tid = await ContestModel.add(
+            'system', `Concurrent template owner access ${suffix}`, '', 2, 'course',
+            new Date(Date.now() - 3600000), new Date(Date.now() + 3600000), [], false,
+            { assign: ['teachers'], dag: [] },
+        );
+        const originalFindOneAndUpdate = DocumentModel.collStatus.findOneAndUpdate;
+        let attendCalls = 0;
+        let releaseAttend: () => void;
+        const attendReady = new Promise<void>((resolve) => {
+            releaseAttend = resolve;
+        });
+        DocumentModel.collStatus.findOneAndUpdate = async (...args) => {
+            const [filter, update] = args;
+            if (filter.domainId === 'system' && filter.docId.equals(tid)
+                && filter.uid === 2 && update.$inc?.attend === 1) {
+                attendCalls++;
+                if (attendCalls === 2) releaseAttend();
+                await attendReady;
+            }
+            return await originalFindOneAndUpdate.apply(DocumentModel.collStatus, args);
+        };
+        try {
+            const responses = await Promise.allSettled([
+                agent.get(`/d/system/course/${tid}`),
+                agent.get(`/d/system/course/${tid}`),
+            ]);
+            assert.equal(attendCalls, 2);
+            assert(responses.every((result) => result.status === 'fulfilled' && result.value.status === 200));
+            assert.equal((await ContestModel.getStatus('system', tid, 2))?.attend, 1);
+        } finally {
+            DocumentModel.collStatus.findOneAndUpdate = originalFindOneAndUpdate;
+            await ContestModel.del('system', tid);
+        }
+    });
+
     it('Assigns configured external invitation roles and resolves class invitation codes', async () => {
         const DomainModel = global.Hydro.model.domain;
         const TokenModel = global.Hydro.model.token;

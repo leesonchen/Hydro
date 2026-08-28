@@ -1,7 +1,7 @@
 import assert from 'assert';
 import { getReferenceCodeSolutions, isReferenceCodeSolution, REFERENCE_CODE_TITLE } from '../../../lib/referenceCode';
 import {
-    _, BadRequestError, ContestModel, ContestNotFoundError, ContestScoreboardHiddenError,
+    _, BadRequestError, ContestAlreadyAttendedError, ContestModel, ContestNotFoundError, ContestScoreboardHiddenError,
     DocumentModel, ForbiddenError, Handler, moment, NotAssignedError, ObjectId, OplogModel,
     param, PERM, post, ProblemModel, ProblemNotFoundError, SolutionModel, sortFiles, STATUS, StorageModel, SystemModel,
     Types, UserModel, ValidationError,
@@ -950,7 +950,13 @@ export class CourseDetailHandler extends Handler {
         const canViewAllProblems = isTeacherEditor || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
 
         if (isCourseTeacher && !tsdoc?.attend) {
-            await ContestModel.attend(domainId, tid, this.user._id);
+            try {
+                await ContestModel.attend(domainId, tid, this.user._id);
+            } catch (error) {
+                if (!(error instanceof ContestAlreadyAttendedError)) throw error;
+                const currentStatus = await ContestModel.getStatus(domainId, tid, this.user._id);
+                if (!currentStatus?.attend) throw error;
+            }
             tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
         }
 
