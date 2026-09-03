@@ -139,17 +139,29 @@ async function ensureCourseTitleAvailable(
     }
 }
 
+async function resolveCanonicalDomainId(domainId: string) {
+    const requestedDomainId = String(domainId || '').trim();
+    if (!requestedDomainId) return requestedDomainId;
+    const ddoc = await DomainModel.get(requestedDomainId);
+    return ddoc?._id || requestedDomainId;
+}
+
 async function assertCourseCopyAllowed(sourceDomainId: string, targetDomainId: string, translate: (value: string) => string = (value) => value) {
     const ddoc = await DomainModel.get(sourceDomainId);
     if (!ddoc) {
         throw new BadRequestError(fillMessage(translate('Source domain {0} does not exist.'), sourceDomainId));
     }
-    if (sourceDomainId === targetDomainId) {
+    const canonicalSourceDomainId = ddoc._id;
+    const canonicalTargetDomainId = await resolveCanonicalDomainId(targetDomainId);
+    if (canonicalSourceDomainId.toLowerCase() === canonicalTargetDomainId.toLowerCase()) {
         return ddoc;
     }
-    const t = `,${ddoc.share || ''},`;
-    if (t !== ',*,' && !t.includes(`,${targetDomainId},`)) {
-        throw new BadRequestError(fillMessage(translate('You are not allowed to copy this course from {0} to {1}.'), sourceDomainId, targetDomainId));
+    const sharedDomains = String(ddoc.share || '')
+        .split(',')
+        .map((id) => id.trim().toLowerCase())
+        .filter(Boolean);
+    if (!sharedDomains.includes('*') && !sharedDomains.includes(canonicalTargetDomainId.toLowerCase())) {
+        throw new BadRequestError(fillMessage(translate('You are not allowed to copy this course from {0} to {1}.'), canonicalSourceDomainId, canonicalTargetDomainId));
     }
     return ddoc;
 }
@@ -159,12 +171,17 @@ async function assertProblemCopyAllowed(sourceDomainId: string, targetDomainId: 
     if (!ddoc) {
         throw new BadRequestError(fillMessage(translate('Source domain {0} does not exist.'), sourceDomainId));
     }
-    if (sourceDomainId === targetDomainId) {
+    const canonicalSourceDomainId = ddoc._id;
+    const canonicalTargetDomainId = await resolveCanonicalDomainId(targetDomainId);
+    if (canonicalSourceDomainId.toLowerCase() === canonicalTargetDomainId.toLowerCase()) {
         return ddoc;
     }
-    const t = `,${ddoc.share || ''},`;
-    if (t !== ',*,' && !t.includes(`,${targetDomainId},`)) {
-        throw new BadRequestError(fillMessage(translate('Problem {0} in {1} is not allowed to be copied to {2}.'), originPid, sourceDomainId, targetDomainId));
+    const sharedDomains = String(ddoc.share || '')
+        .split(',')
+        .map((id) => id.trim().toLowerCase())
+        .filter(Boolean);
+    if (!sharedDomains.includes('*') && !sharedDomains.includes(canonicalTargetDomainId.toLowerCase())) {
+        throw new BadRequestError(fillMessage(translate('Problem {0} in {1} is not allowed to be copied to {2}.'), originPid, canonicalSourceDomainId, canonicalTargetDomainId));
     }
     return ddoc;
 }
@@ -644,12 +661,18 @@ export class ClassEditHandler extends Handler {
     @param('id', Types.ObjectId)
     @param('sourceDomain', Types.String)
     async postGetTemplates(domainId: string, id: ObjectId, sourceDomain: string) {
+        domainId = await resolveCanonicalDomainId(domainId);
         const gdoc = await ClassModel.getGroupById(domainId, id);
         if (!gdoc) throw new NotFoundError(domainId, id);
-        const sourceDomainId = (sourceDomain || '').trim().toLowerCase();
-        if (!sourceDomainId) throw new ValidationError('sourceDomain');
+        const requestedSourceDomainId = (sourceDomain || '').trim();
+        if (!requestedSourceDomainId) throw new ValidationError('sourceDomain');
 
-        await assertCourseCopyAllowed(sourceDomainId, domainId, (this as any).translate?.bind(this));
+        const sourceDomainDoc = await assertCourseCopyAllowed(
+            requestedSourceDomainId,
+            domainId,
+            (this as any).translate?.bind(this),
+        );
+        const sourceDomainId = sourceDomainDoc._id;
 
         const [templates, tdocs] = await Promise.all([
             ContestModel.getMulti(sourceDomainId, {
@@ -678,6 +701,10 @@ export class ClassEditHandler extends Handler {
     @param('id', Types.ObjectId)
     @param('template', Types.CommaSeperatedArray)
     async postCopy(domainId: string, id: ObjectId, templateIds: string[]) {
+        // Route/domain IDs are resolved case-insensitively, while document
+        // records store the original domain ID and query it case-sensitively.
+        // Use the domain document's canonical ID for every target-side query.
+        domainId = await resolveCanonicalDomainId(domainId);
         let gdoc = await ClassModel.getGroupById(domainId, id);
         if (!gdoc) throw new NotFoundError(domainId, id);
         const user = (this as any).user;
@@ -711,11 +738,16 @@ export class ClassEditHandler extends Handler {
 
             for (const templateValue of templateIds) {
                 const [sourceDomainIdRaw, templateIdRaw] = String(templateValue || '').split(':');
-                const sourceDomainId = (sourceDomainIdRaw || '').trim().toLowerCase();
+                const requestedSourceDomainId = (sourceDomainIdRaw || '').trim();
                 const templateId = (templateIdRaw || '').trim();
-                if (!sourceDomainId || !templateId) continue;
+                if (!requestedSourceDomainId || !templateId) continue;
 
-                await assertCourseCopyAllowed(sourceDomainId, domainId, (this as any).translate?.bind(this));
+                const sourceDomainDoc = await assertCourseCopyAllowed(
+                    requestedSourceDomainId,
+                    domainId,
+                    (this as any).translate?.bind(this),
+                );
+                const sourceDomainId = sourceDomainDoc._id;
 
                 const template = await ContestModel.get(sourceDomainId, new ObjectId(templateId)) as CourseTdoc;
                 if (!template) continue;

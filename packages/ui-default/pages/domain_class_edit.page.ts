@@ -177,9 +177,12 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
     const getSelectedSourceDomain = () => {
       const selected = sourceDomainSelect.value?.() as any;
       if (selected && typeof selected === 'object') {
-        return String(selected._id || '').trim().toLowerCase();
+        // Domain IDs are case-insensitive when resolving a domain, but are
+        // case-sensitive in document.domainId. Keep the canonical ID returned
+        // by the domain selector for all API requests.
+        return String(selected._id || '').trim();
       }
-      return String(selected || $sourceDomain.val() || '').trim().toLowerCase();
+      return String(selected || $sourceDomain.val() || '').trim();
     };
 
     const applyTemplates = (templates: Array<{ _id: string; name: string; title?: string; sourceDomainId?: string }>) => {
@@ -196,7 +199,9 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
     };
 
     const loadTemplates = async (sourceDomain: string) => {
-      const normalized = String(sourceDomain || '').trim().toLowerCase();
+      // Do not lowercase the ID here. The backend uses it to query documents,
+      // whose domainId field is case-sensitive.
+      const normalized = String(sourceDomain || '').trim();
       if (!normalized) {
         applyTemplates([]);
         loadedSourceDomain = '';
