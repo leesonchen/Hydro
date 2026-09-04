@@ -284,6 +284,11 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       templateLoadingDomain = '';
       templateLoadingPromise = null;
       templateLoadGeneration += 1;
+      if (currentDomainId) {
+        loadTemplates(currentDomainId).catch((e: any) => {
+          console.error('[course-copy] initial template reload failed:', e);
+        });
+      }
       return this;
     };
 
