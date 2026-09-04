@@ -95,9 +95,12 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
   const [currentItem, setCurrentItem] = useState(null); // index of current item (in item list)
   const [rerender, setRerender] = useState(false);
   const [draggableId] = useState(() => uniqueId());
+  const [listMaxHeight, setListMaxHeight] = useState<number | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const isComposingRef = useRef(false);
+  const compositionEndValueRef = useRef<string | null>(null);
 
   let [queryCache, valueCache] = [useRef({}).current, useRef({}).current];
   if (props.cacheKey) {
@@ -124,6 +127,38 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
     }
   };
 
+  const queryListRef = useRef(queryList);
+  queryListRef.current = queryList;
+  const handleInputChange = useRef(debounce((query = '') => queryListRef.current(query), 300)).current;
+
+  useEffect(() => () => handleInputChange.cancel(), [handleInputChange]);
+
+  useEffect(() => {
+    if (!focused || !itemList.length) {
+      setListMaxHeight(null);
+      return undefined;
+    }
+    const updateListMaxHeight = () => {
+      if (!inputRef.current) return;
+      const availableHeight = Math.floor(window.innerHeight - inputRef.current.getBoundingClientRect().bottom - 2);
+      setListMaxHeight(Math.max(0, availableHeight));
+    };
+    updateListMaxHeight();
+    window.addEventListener('resize', updateListMaxHeight);
+    window.addEventListener('scroll', updateListMaxHeight, true);
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateListMaxHeight);
+    const wrapper = inputRef.current.parentElement;
+    const container = inputRef.current.closest('.autocomplete-container');
+    for (const element of [inputRef.current, wrapper, container]) {
+      if (resizeObserver && element) resizeObserver.observe(element);
+    }
+    return () => {
+      window.removeEventListener('resize', updateListMaxHeight);
+      window.removeEventListener('scroll', updateListMaxHeight, true);
+      resizeObserver?.disconnect();
+    };
+  }, [focused, itemList]);
+
   useEffect(() => {
     setSelectedKeys(props.selectedKeys || []);
   }, [JSON.stringify(props.selectedKeys)]);
@@ -145,8 +180,6 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
       console.error('Failed to fetch items', e);
     });
   }, [selectedKeys, multi]);
-
-  const handleInputChange = debounce((e?) => queryList(e ? e.target.value : ''), 300);
 
   const toggleItem = (item: T, key = itemKey(item), preserve = false) => {
     const shouldKeepOpen = multi && allowEmptyQuery && inputRef.current.value === '';
@@ -175,6 +208,7 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
 
   const handleInputKeyDown = (e) => {
     const { key, target } = e;
+    if (isComposingRef.current || e.nativeEvent?.isComposing) return;
     if (key === 'Escape') {
       setItemList([]);
       setCurrentItem(null);
@@ -284,8 +318,30 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
             autoComplete="off"
             hidden={disabled}
             onChange={(e) => {
+              const value = e.target.value;
+              const nativeEvent = e.nativeEvent as InputEvent;
+              if (isComposingRef.current || nativeEvent.isComposing) return;
+              if (compositionEndValueRef.current === value) {
+                compositionEndValueRef.current = null;
+                return;
+              }
               dispatchChange();
-              handleInputChange(e);
+              handleInputChange(value);
+            }}
+            onCompositionStart={() => {
+              isComposingRef.current = true;
+              compositionEndValueRef.current = null;
+              handleInputChange.cancel();
+            }}
+            onCompositionEnd={() => {
+              isComposingRef.current = false;
+              const value = inputRef.current?.value || '';
+              compositionEndValueRef.current = value;
+              dispatchChange();
+              handleInputChange(value);
+              setTimeout(() => {
+                if (compositionEndValueRef.current === value) compositionEndValueRef.current = null;
+              }, 0);
             }}
             onFocus={() => {
               if (allowEmptyQuery) handleInputChange();
@@ -321,7 +377,12 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
         />
       )}
       {focused && itemList.length > 0 && (
-        <ul ref={listRef} className="autocomplete-list" style={listStyle} onMouseDown={(e) => e.preventDefault()}>
+        <ul
+          ref={listRef}
+          className="autocomplete-list"
+          style={{ ...listStyle, ...(listMaxHeight === null ? {} : { maxHeight: `${listMaxHeight}px` }) }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
           {itemList.map((item, idx) => {
             const inner = renderItem(item);
             if (!inner) return null;

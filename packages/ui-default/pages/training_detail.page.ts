@@ -1,6 +1,6 @@
 import $ from 'jquery';
-import _ from 'lodash';
 import { NamedPage } from 'vj/misc/Page';
+import { bindImeInput } from 'vj/utils';
 import pjax from 'vj/utils/pjax';
 import { slideDown, slideUp } from 'vj/utils/slide';
 
@@ -71,9 +71,18 @@ async function handleHashChange() {
 }
 
 const page = new NamedPage('training_detail', () => {
-  $('.search__input').on('input', _.debounce(searchUser, 500));
-  $('select[name=group]').on('change', searchUser);
-  $('#searchForm').on('submit', selectUser);
+  const userSearchInput = bindImeInput($('.search__input'), searchUser, 500);
+  $('select[name=group]').on('change', () => {
+    userSearchInput.cancel();
+    searchUser();
+  });
+  $('#searchForm').on('submit', (ev) => {
+    if (userSearchInput.isComposing()) {
+      ev.preventDefault();
+      return;
+    }
+    selectUser(ev);
+  });
   $(document).on('click', '[name="training__section__expand"]', (ev) => handleSection(ev, 'expand'));
   $(document).on('click', '[name="training__section__collapse"]', (ev) => handleSection(ev, 'collapse'));
   $(document).on('click', '.enroll_user_menu_item > a', (ev) => handleChooseUser(ev));

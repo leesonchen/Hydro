@@ -106,6 +106,7 @@ export function emulateAnchorClick(ev: KeyboardEvent, targetUrl: string, alwaysO
 
 export * from './base';
 export { default as base64 } from './base64';
+export { default as bindImeInput, type ImeInputBinding } from './imeInput';
 export { default as loadReactRedux } from './loadReactRedux';
 export * as mediaQuery from './mediaQuery';
 export { default as pjax } from './pjax';

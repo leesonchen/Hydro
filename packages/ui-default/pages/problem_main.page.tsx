@@ -12,7 +12,7 @@ import Notification from 'vj/components/notification';
 import { downloadProblemSet } from 'vj/components/zipDownloader';
 import { NamedPage } from 'vj/misc/Page';
 import {
-  addSpeculationRules, delay, i18n, pjax, request,
+  addSpeculationRules, bindImeInput, delay, i18n, pjax, request,
 } from 'vj/utils';
 
 const keywords = ['category', 'difficulty', 'namespace'];
@@ -449,13 +449,25 @@ const page = new NamedPage(['problem_main'], () => {
     updateSelection();
     loadQuery();
   }
+  const searchInput = bindImeInput($('#searchForm').find('input'), inputChanged, 500);
   $('#search').on('click', (ev) => {
     ev.preventDefault();
+    if (searchInput.isComposing()) return;
+    searchInput.cancel();
     inputChanged();
   });
-  $('#searchForm').on('submit', inputChanged);
-  $('#searchForm').find('input').on('input', _.debounce(inputChanged, 500));
-  $('#searchForm').find('select[name="sort"]').on('change', inputChanged);
+  $('#searchForm').on('submit', (ev) => {
+    if (searchInput.isComposing()) {
+      ev.preventDefault();
+      return;
+    }
+    searchInput.cancel();
+    inputChanged();
+  });
+  $('#searchForm').find('select[name="sort"]').on('change', () => {
+    searchInput.cancel();
+    inputChanged();
+  });
   $('.dialog-button').on('click', (ev) => {
     categoryDialog.clear().open();
     ev.preventDefault();

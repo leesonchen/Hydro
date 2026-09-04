@@ -1,10 +1,9 @@
-import { debounce } from 'lodash';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { STATUS_CODES } from 'vj/constant/record';
 import { AutoloadPage } from 'vj/misc/Page';
 import {
-  api, i18n, request,
+  api, bindImeInput, i18n, request,
 } from 'vj/utils';
 
 export default new AutoloadPage('omnibar', () => {
@@ -101,7 +100,7 @@ export default new AutoloadPage('omnibar', () => {
     ]);
     setSearching?.(false);
   }
-  $input.on('input', debounce((ev) => search(ev.target.value), 1000));
+  bindImeInput($input, () => search($input.val() as string), 1000);
 
   let open = false;
   const show = () => {
