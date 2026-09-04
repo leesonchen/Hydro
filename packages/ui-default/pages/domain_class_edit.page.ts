@@ -140,9 +140,10 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       itemText: (domain: any) => domain.name,
       itemKey: (domain: any) => domain._id,
     });
+    const templateData: Array<{ _id: string; name: string; title?: string; sourceDomainId?: string }> = [];
     let templateSelect = CustomSelectAutoComplete.getOrConstruct<CustomSelectAutoComplete<true>>(dialogContent.find('[name="template"]'), {
       multi: true,
-      data: [],
+      data: templateData,
       allowEmptyQuery: true,
       clearDefaultValue: false,
     });
@@ -188,14 +189,10 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
 
     const applyTemplates = (templates: Array<{ _id: string; name: string; title?: string; sourceDomainId?: string }>) => {
       currentTemplates = templates;
-      templateSelect?.detach?.();
-      templateSelect = CustomSelectAutoComplete.getOrConstruct<CustomSelectAutoComplete<true>>($templateInput, {
-        multi: true,
-        data: templates,
-        allowEmptyQuery: true,
-        clearDefaultValue: false,
-      });
+      templateData.length = 0;
+      templateData.push(...templates);
       templateSelect?.clear?.();
+      templateSelect?.close?.();
       $templateInput.val('');
     };
 
