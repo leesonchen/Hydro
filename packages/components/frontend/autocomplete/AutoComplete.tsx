@@ -140,7 +140,9 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
     }
     const updateListMaxHeight = () => {
       if (!inputRef.current) return;
-      const availableHeight = Math.floor(window.innerHeight - inputRef.current.getBoundingClientRect().bottom - 2);
+      const listTop = listRef.current?.getBoundingClientRect().top
+        ?? inputRef.current.getBoundingClientRect().bottom;
+      const availableHeight = Math.floor(window.innerHeight - listTop);
       setListMaxHeight(Math.max(0, availableHeight));
     };
     updateListMaxHeight();
