@@ -152,6 +152,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
     let lastTemplateLoadErrorDomain = '';
     let templateLoadingDomain = '';
     let templateLoadingPromise: Promise<void> | null = null;
+    let templateLoadGeneration = 0;
 
     const normalizeErrorMessage = (error: any) => {
       console.log('[course-copy] normalizeErrorMessage input:', error);
@@ -203,6 +204,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       // whose domainId field is case-sensitive.
       const normalized = String(sourceDomain || '').trim();
       if (!normalized) {
+        templateLoadGeneration += 1;
         applyTemplates([]);
         loadedSourceDomain = '';
         lastTemplateLoadError = '';
@@ -215,17 +217,20 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
         await templateLoadingPromise;
         return;
       }
+      const generation = ++templateLoadGeneration;
       templateLoadingDomain = normalized;
-      templateLoadingPromise = (async () => {
+      const requestPromise = (async () => {
         const res = await request.post('', {
           operation: 'get_templates',
           sourceDomain: normalized,
         });
+        if (generation !== templateLoadGeneration) return;
         applyTemplates(Array.isArray(res.templates) ? res.templates : []);
         loadedSourceDomain = normalized;
         lastTemplateLoadError = '';
         lastTemplateLoadErrorDomain = '';
       })().catch((e: any) => {
+        if (generation !== templateLoadGeneration) return;
         console.error('[course-copy] loadTemplates failed:', e);
         applyTemplates([]);
         loadedSourceDomain = '';
@@ -233,13 +238,14 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
         lastTemplateLoadErrorDomain = normalized;
         throw e;
       }).finally(() => {
-        if (templateLoadingDomain === normalized) {
+        if (generation === templateLoadGeneration && templateLoadingDomain === normalized) {
           templateLoadingDomain = '';
           templateLoadingPromise = null;
         }
       });
+      templateLoadingPromise = requestPromise;
       try {
-        await templateLoadingPromise;
+        await requestPromise;
       } catch (e: any) {
         throw e;
       }
@@ -277,6 +283,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       lastTemplateLoadErrorDomain = '';
       templateLoadingDomain = '';
       templateLoadingPromise = null;
+      templateLoadGeneration += 1;
       return this;
     };
 

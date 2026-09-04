@@ -227,7 +227,10 @@ const AutoComplete = forwardRef(function Impl<T>(props: AutoCompleteProps<T>, re
       setSelectedKeys(items.map((i) => itemKey(i)));
       if (!multi && inputRef.current) inputRef.current.value = items.map((i) => itemKey(i)).join(',');
     },
-    setSelectedKeys,
+    setSelectedKeys: (keys) => {
+      setSelectedKeys(keys);
+      if (!multi && inputRef.current) inputRef.current.value = keys.join(',');
+    },
     getQuery: () => inputRef.current?.value,
     setQuery: (query) => {
       if (inputRef.current) inputRef.current.value = query;
