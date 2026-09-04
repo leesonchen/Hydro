@@ -151,7 +151,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
     let lastTemplateLoadError = '';
     let lastTemplateLoadErrorDomain = '';
     let templateLoadingDomain = '';
-    let templateLoadingPromise: Promise<void> | null = null;
+    let templateLoadingPromise: Promise<boolean> | null = null;
     let templateLoadGeneration = 0;
 
     const normalizeErrorMessage = (error: any) => {
@@ -211,26 +211,30 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
         lastTemplateLoadErrorDomain = '';
         templateLoadingDomain = '';
         templateLoadingPromise = null;
-        return;
+        return false;
       }
       if (templateLoadingPromise && templateLoadingDomain === normalized) {
-        await templateLoadingPromise;
-        return;
+        return await templateLoadingPromise;
       }
       const generation = ++templateLoadGeneration;
       templateLoadingDomain = normalized;
-      const requestPromise = (async () => {
+      applyTemplates([]);
+      loadedSourceDomain = '';
+      lastTemplateLoadError = '';
+      lastTemplateLoadErrorDomain = '';
+      const requestPromise = (async (): Promise<boolean> => {
         const res = await request.post('', {
           operation: 'get_templates',
           sourceDomain: normalized,
         });
-        if (generation !== templateLoadGeneration) return;
+        if (generation !== templateLoadGeneration) return false;
         applyTemplates(Array.isArray(res.templates) ? res.templates : []);
         loadedSourceDomain = normalized;
         lastTemplateLoadError = '';
         lastTemplateLoadErrorDomain = '';
+        return true;
       })().catch((e: any) => {
-        if (generation !== templateLoadGeneration) return;
+        if (generation !== templateLoadGeneration) return false;
         console.error('[course-copy] loadTemplates failed:', e);
         applyTemplates([]);
         loadedSourceDomain = '';
@@ -244,11 +248,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
         }
       });
       templateLoadingPromise = requestPromise;
-      try {
-        await requestPromise;
-      } catch (e: any) {
-        throw e;
-      }
+      return await requestPromise;
     };
 
     const addCourseDialog = new ActionDialog({
@@ -294,13 +294,28 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
         $sourceDomain.focus();
         return false;
       }
-      if (loadedSourceDomain === sourceDomain && currentTemplates.length) return true;
+      const hasCurrentTemplateSelection = () => {
+        const selectedIds = String($templateInput.val() || '')
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean);
+        return selectedIds.length > 0
+          && selectedIds.every((id) => currentTemplates.some((template) => template._id === id));
+      };
+      if (loadedSourceDomain === sourceDomain && currentTemplates.length) return hasCurrentTemplateSelection();
       if (lastTemplateLoadError && lastTemplateLoadErrorDomain === sourceDomain && !templateLoadingPromise) {
         Notification.error(lastTemplateLoadError);
         return false;
       }
       try {
-        await loadTemplates(sourceDomain);
+        const loaded = await loadTemplates(sourceDomain);
+        if (!loaded
+          || sourceDomain !== getSelectedSourceDomain()
+          || loadedSourceDomain !== sourceDomain
+          || !hasCurrentTemplateSelection()) {
+          Notification.error(i18n('Template selection is stale. Please select a template again.'));
+          return false;
+        }
       } catch (e: any) {
         console.error('[course-copy] ensureTemplatesLoaded failed:', e);
         Notification.error(normalizeErrorMessage(e));
@@ -315,7 +330,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
 
     sourceDomainSelect?.onChange?.(async () => {
       const sourceDomain = getSelectedSourceDomain();
-      if (!sourceDomain || sourceDomain === loadedSourceDomain) return;
+      if (sourceDomain === loadedSourceDomain && currentTemplates.length) return;
       try {
         await loadTemplates(sourceDomain);
       } catch (e: any) {
