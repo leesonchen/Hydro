@@ -176,15 +176,22 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       return normalized;
     };
 
+    const resolveSourceDomainId = (value: any) => {
+      const candidate = String(value || '').trim().toLowerCase();
+      return availableSourceDomains.find((domain: any) => domain._id.toLowerCase() === candidate)?._id || '';
+    };
+
     const getSelectedSourceDomain = () => {
+      const inputValue = String($sourceDomain.val() || '').trim();
+      if (inputValue) return resolveSourceDomainId(inputValue);
       const selected = sourceDomainSelect.value?.() as any;
       if (selected && typeof selected === 'object') {
         // Domain IDs are case-insensitive when resolving a domain, but are
         // case-sensitive in document.domainId. Keep the canonical ID returned
         // by the domain selector for all API requests.
-        return String(selected._id || '').trim();
+        return resolveSourceDomainId(selected._id);
       }
-      return String(selected || $sourceDomain.val() || '').trim();
+      return resolveSourceDomainId(selected);
     };
 
     const applyTemplates = (templates: Array<{ _id: string; name: string; title?: string; sourceDomainId?: string }>) => {
@@ -330,8 +337,9 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       return true;
     };
 
-    sourceDomainSelect?.onChange?.(async () => {
-      const sourceDomain = getSelectedSourceDomain();
+    sourceDomainSelect?.onChange?.(async (value: string) => {
+      const sourceDomain = resolveSourceDomainId(value);
+      if (!sourceDomain || sourceDomain !== getSelectedSourceDomain()) return;
       if (sourceDomain === loadedSourceDomain && currentTemplates.length) return;
       try {
         await loadTemplates(sourceDomain);
