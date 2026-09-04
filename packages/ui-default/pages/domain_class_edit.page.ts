@@ -141,7 +141,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       itemKey: (domain: any) => domain._id,
     });
     const templateData: Array<{ _id: string; name: string; title?: string; sourceDomainId?: string }> = [];
-    let templateSelect = CustomSelectAutoComplete.getOrConstruct<CustomSelectAutoComplete<true>>(dialogContent.find('[name="template"]'), {
+    const templateSelect = CustomSelectAutoComplete.getOrConstruct<CustomSelectAutoComplete<true>>(dialogContent.find('[name="template"]'), {
       multi: true,
       data: templateData,
       allowEmptyQuery: true,
@@ -178,6 +178,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
 
     const resolveSourceDomainId = (value: any) => {
       const candidate = String(value || '').trim().toLowerCase();
+      if (currentDomainId && currentDomainId.toLowerCase() === candidate) return currentDomainId;
       return availableSourceDomains.find((domain: any) => domain._id.toLowerCase() === candidate)?._id || '';
     };
 
