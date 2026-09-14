@@ -481,18 +481,29 @@ function getCourseLectureContent(lecture: CourseTdoc['lecture'], nodeId: number)
 
 function copyLectureForTemplate(source: CourseTdoc | undefined, dag: DagNode[]) {
     const lecture: Record<number, string> = {};
-    if (!source?.lecture) return { dag, lecture };
+    const lectureMeta: Record<number, { editor: number, updateAt: Date }> = {};
+    if (!source) return { dag, lecture, lectureMeta };
     const nextDag = dag.map((node) => {
         const content = getCourseLectureContent(source.lecture, node._id);
-        if (!content) return node;
-        lecture[node._id] = content;
-        if (node.lecture) return node;
+        const sourceMeta = source.lectureMeta?.[node._id]
+            || source.lectureMeta?.[String(node._id) as any];
+        if (!content && !sourceMeta) return node;
+        if (content) {
+            lecture[node._id] = content;
+            lectureMeta[node._id] = sourceMeta || {
+                editor: source.owner,
+                updateAt: source._id.getTimestamp(),
+            };
+        } else {
+            lectureMeta[node._id] = sourceMeta;
+        }
+        if (!content || node.lecture) return node;
         return {
             ...node,
             lecture: node.title || `Lecture ${node._id}`,
         };
     });
-    return { dag: nextDag, lecture };
+    return { dag: nextDag, lecture, lectureMeta };
 }
 
 function getTemplateCategoryKey(course: any) {
@@ -1277,6 +1288,7 @@ export class CourseEditHandler extends Handler {
             const copiedLecture = copyLectureForTemplate(sourceCourseForTemplate, dag);
             const finalDag = copiedLecture.dag;
             const finalLecture = copiedLecture.lecture;
+            const finalLectureMeta = copiedLecture.lectureMeta;
 
             if (tid && !saveAsTemplate) {
                 const updated = await ContestModel.editIfAssigned(domainId, tid, lockedSourceAssign, {
@@ -1295,6 +1307,7 @@ export class CourseEditHandler extends Handler {
                     dag: finalDag,
                     assign: finalAssign,
                     ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
+                    ...(Object.keys(finalLectureMeta).length ? { lectureMeta: finalLectureMeta } : {}),
                 });
                 if (!updated) {
                     throw new BadRequestError('Course assignment changed. Please refresh and try again.');
@@ -1322,6 +1335,7 @@ export class CourseEditHandler extends Handler {
                     lessonBeginAt: lessonBeginAt.toDate(),
                     lessonEndAt: lessonEndAt.toDate(),
                     ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
+                    ...(Object.keys(finalLectureMeta).length ? { lectureMeta: finalLectureMeta } : {}),
                     ...(sourceCourseForTemplate?.files?.length ? { files: sourceCourseForTemplate.files } : {}),
                 });
             }
@@ -1652,11 +1666,17 @@ export class CourseLectureHandler extends Handler {
             if (!canViewCourseLecture(this, tdoc, node, tsdoc)) throw new ForbiddenError('讲义尚未开放。');
         }
 
-        const lectureContent = (tdoc.lecture?.[id] || '')
+        const lectureContent = (tdoc.lecture?.[id] || tdoc.lecture?.[String(id)] || '')
             .replace(/\(file:\/\//g, '(../file/')
             .replace(/="file:\/\//g, '="../file/');
 
-        const uids = Array.from(new Set([tdoc.owner, (tdoc as any).editor].filter(Boolean)));
+        const storedLectureMeta = tdoc.lectureMeta?.[id]
+            || tdoc.lectureMeta?.[String(id) as any];
+        const lectureMeta = storedLectureMeta || {
+            editor: tdoc.owner,
+            updateAt: tdoc._id.getTimestamp(),
+        };
+        const uids = Array.from(new Set([tdoc.owner, (tdoc as any).editor, lectureMeta.editor].filter(Boolean)));
         const udict = uids.length ? await UserModel.getListForRender(domainId, uids, ['displayName']) : {};
         const body = {
             tdoc,
@@ -1664,6 +1684,7 @@ export class CourseLectureHandler extends Handler {
             id,
             node,
             lecture: lectureContent,
+            lectureMeta,
             edit,
             preventCopy: this.ctx.setting?.get?.('course.preventCopy'),
             files: sortFiles(tdoc.files || []),
@@ -1706,10 +1727,10 @@ export class CourseLectureHandler extends Handler {
             }
         }
 
-        const lectureData = tdoc.lecture || {};
-        lectureData[id] = lecture;
-
-        await ContestModel.edit(domainId, tid, { lecture: lectureData });
+        await ContestModel.edit(domainId, tid, {
+            [`lecture.${id}`]: lecture,
+            [`lectureMeta.${id}`]: { editor: user._id, updateAt: new Date() },
+        } as Partial<CourseTdoc>);
         this.response.redirect = this.url('course_lecture', { tid, id });
     }
 

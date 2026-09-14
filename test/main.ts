@@ -123,6 +123,219 @@ describe('App', () => {
         await agent.get('/api/user?args={"id":2}&projection=uname').expect({ uname: 'root' });
     });
 
+    it('Tracks problem edits and falls back to creation metadata', async () => {
+        const ProblemModel = global.Hydro.model.problem;
+        const suffix = Date.now().toString(36);
+        const pids: number[] = [];
+
+        try {
+            const pid = await ProblemModel.add('system', `metadata-${suffix}`, `Metadata ${suffix}`, 'old', 2);
+            pids.push(pid);
+            const editStartedAt = Date.now();
+            await agent.post(`/p/${pid}/edit`)
+                .send({
+                    title: `Updated metadata ${suffix}`,
+                    content: 'new',
+                    pid: `metadata-${suffix}`,
+                    hidden: false,
+                    tag: '',
+                    difficulty: 1,
+                })
+                .expect(302);
+
+            const updated = await ProblemModel.get('system', pid);
+            assert.equal(updated.editor, 2);
+            assert(updated.updateAt.getTime() >= editStartedAt);
+            const detail = await agent.get(`/p/${pid}`)
+                .set('Accept', 'application/json')
+                .expect(200);
+            assert.equal(detail.body.pdoc.editor, 2);
+            assert.equal(new Date(detail.body.pdoc.updateAt).getTime(), updated.updateAt.getTime());
+            const api = await agent.get(`/api/problem?args=${encodeURIComponent(JSON.stringify({
+                id: pid, domainId: 'system',
+            }))}`).expect(200);
+            assert.equal(api.body.editor, 2);
+            assert.equal(new Date(api.body.updateAt).getTime(), updated.updateAt.getTime());
+
+            const legacyPid = await ProblemModel.add('system', `legacy-${suffix}`, `Legacy ${suffix}`, '', 2);
+            pids.push(legacyPid);
+            const legacy = await ProblemModel.get('system', legacyPid);
+            const legacyDetail = await agent.get(`/p/${legacyPid}`)
+                .set('Accept', 'application/json')
+                .expect(200);
+            assert(!('editor' in legacyDetail.body.pdoc));
+            assert(!('updateAt' in legacyDetail.body.pdoc));
+            assert.equal(legacyDetail.body.editor_udoc._id, 2);
+            assert.equal(
+                new Date(legacyDetail.body.lastUpdateAt).getTime(),
+                legacy._id.getTimestamp().getTime(),
+            );
+        } finally {
+            await Promise.all(pids.map((id) => ProblemModel.del('system', id)));
+        }
+    });
+
+    it('Tracks lecture metadata per chapter and copies it with course templates', async () => {
+        const ContestModel = global.Hydro.model.contest;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const classId = new ObjectId();
+        const className = `metadata-class-${suffix}`;
+        const courseIds: ObjectId[] = [];
+        let templateId: ObjectId | undefined;
+        let savedTemplateId: ObjectId | undefined;
+        const teachersGroupBefore = await UserModel.collGroup.findOne({ domainId: 'system', name: 'teachers' });
+
+        try {
+            const courseUpdateAt = new Date('2020-01-02T03:04:05Z');
+            const courseId = await ContestModel.add(
+                'system', `Lecture metadata ${suffix}`, '', 2, 'course',
+                new Date('2026-09-15T00:00:00Z'), new Date('2026-09-16T00:00:00Z'), [], false,
+                {
+                    dag: [
+                        { _id: 1, title: 'First', lecture: 'First', pids: [] },
+                        { _id: 2, title: 'Second', lecture: 'Second', pids: [] },
+                    ],
+                    lecture: { 1: 'old first', 2: 'old second' },
+                    editor: 3,
+                    updateAt: courseUpdateAt,
+                },
+            );
+            courseIds.push(courseId);
+            const originalCourse = await ContestModel.get('system', courseId);
+
+            const fallback = await agent.get(`/d/system/course/${courseId}/lecture/2`)
+                .set('Accept', 'application/json')
+                .expect(200);
+            assert.equal(fallback.body.lectureMeta.editor, 2);
+            assert.equal(
+                new Date(fallback.body.lectureMeta.updateAt).getTime(),
+                originalCourse._id.getTimestamp().getTime(),
+            );
+
+            const beforeLectureEdit = Date.now();
+            await agent.post(`/d/system/course/${courseId}/lecture/1`)
+                .send({ operation: 'update', lecture: 'new first' })
+                .expect(302);
+            const editedCourse = await ContestModel.get('system', courseId);
+            assert.equal(editedCourse.lecture[1], 'new first');
+            assert.equal(editedCourse.lecture[2], 'old second');
+            assert.equal(editedCourse.lectureMeta[1].editor, 2);
+            assert(editedCourse.lectureMeta[1].updateAt.getTime() >= beforeLectureEdit);
+            assert(!editedCourse.lectureMeta[2]);
+            assert.equal(editedCourse.editor, 3);
+            assert.equal(editedCourse.updateAt.getTime(), courseUpdateAt.getTime());
+
+            const lecturePage = await agent.get(`/d/system/course/${courseId}/lecture/1`)
+                .set('Accept', 'application/json')
+                .expect(200);
+            assert.equal(lecturePage.body.lectureMeta.editor, 2);
+
+            const savedTemplateTitle = `Saved lecture template ${suffix}`;
+            await agent.post(`/d/system/course/${courseId}/edit`)
+                .send({
+                    title: savedTemplateTitle,
+                    content: 'saved template content',
+                    dag: JSON.stringify([
+                        { _id: 1, title: 'First', lecture: 'First', pids: [] },
+                        { _id: 2, title: 'Second', lecture: 'Second', pids: [] },
+                    ]),
+                    beginAt: '2026-9-15 0:00',
+                    endAt: '2026-9-16 23:59',
+                    lessonDurationHours: 3,
+                    lessonBeginAt: '2026-9-15 0:00',
+                    lessonEndAt: '2026-9-15 3:00',
+                    isTemplate: true,
+                    templateCategory: '',
+                    assign: '',
+                    extraStudents: '',
+                    publicScoreboard: true,
+                    enablePenalty: true,
+                })
+                .expect(302);
+            const savedTemplate = await ContestModel.getMulti('system', {
+                rule: 'course',
+                title: savedTemplateTitle,
+                assign: { $in: ['teachers'] },
+            }).next();
+            assert(savedTemplate);
+            savedTemplateId = savedTemplate._id;
+            assert.equal(savedTemplate.lectureMeta[1].editor, editedCourse.lectureMeta[1].editor);
+            assert.equal(
+                savedTemplate.lectureMeta[1].updateAt.getTime(),
+                editedCourse.lectureMeta[1].updateAt.getTime(),
+            );
+
+            await Promise.all([1, 2].map((id) => agent.post(`/d/system/course/${courseId}/lecture/${id}`)
+                .send({ operation: 'update', lecture: `concurrent ${id}` })
+                .expect(302)));
+            const concurrentlyEditedCourse = await ContestModel.get('system', courseId);
+            assert.equal(concurrentlyEditedCourse.lecture[1], 'concurrent 1');
+            assert.equal(concurrentlyEditedCourse.lecture[2], 'concurrent 2');
+            assert.equal(concurrentlyEditedCourse.lectureMeta[1].editor, 2);
+            assert.equal(concurrentlyEditedCourse.lectureMeta[2].editor, 2);
+            assert.equal(concurrentlyEditedCourse.editor, 3);
+            assert.equal(concurrentlyEditedCourse.updateAt.getTime(), courseUpdateAt.getTime());
+
+            await UserModel.collGroup.insertOne({
+                _id: classId,
+                domainId: 'system',
+                name: className,
+                uids: [2],
+                teachers: [2],
+                students: [],
+                beginAt: new Date('2026-09-15T00:00:00Z'),
+                endAt: new Date('2026-09-20T00:00:00Z'),
+                archive: false,
+                class: true,
+                intervalDays: 1,
+            });
+            const templateUpdateAt = new Date('2021-02-03T04:05:06Z');
+            templateId = await ContestModel.add(
+                'system', `Lecture template ${suffix}`, '', 2, 'course',
+                new Date('2026-09-15T00:00:00Z'), new Date('2026-09-16T00:00:00Z'), [], false,
+                {
+                    assign: ['teachers'],
+                    dag: [
+                        { _id: 1, title: 'Template first', lecture: 'Template first', pids: [] },
+                        { _id: 2, title: 'Template second', lecture: 'Template second', pids: [] },
+                    ],
+                    lecture: { 1: 'template first', 2: 'template second' },
+                    lectureMeta: { 1: { editor: 3, updateAt: templateUpdateAt } },
+                },
+            );
+            const template = await ContestModel.get('system', templateId);
+            const copied = await agent.post(`/d/system/domain/class/${classId}/edit`)
+                .send({ operation: 'copy', template: `system:${templateId}` })
+                .set('Accept', 'application/json')
+                .expect(200);
+            assert.equal(copied.body.tdocs.length, 1);
+            const copiedCourse = await ContestModel.getMulti('system', {
+                rule: 'course',
+                title: `Lecture template ${suffix}`,
+                assign: { $in: [className] },
+            }).next();
+            assert(copiedCourse);
+            assert.equal(copiedCourse.lecture[1], 'template first');
+            assert.equal(copiedCourse.lectureMeta[1].editor, 3);
+            assert.equal(copiedCourse.lectureMeta[1].updateAt.getTime(), templateUpdateAt.getTime());
+            assert.equal(copiedCourse.lectureMeta[2].editor, template.owner);
+            assert.equal(
+                copiedCourse.lectureMeta[2].updateAt.getTime(),
+                template._id.getTimestamp().getTime(),
+            );
+            courseIds.push(copiedCourse._id);
+        } finally {
+            await Promise.all(courseIds.map((id) => ContestModel.del('system', id)));
+            if (templateId) await ContestModel.del('system', templateId);
+            if (savedTemplateId) await ContestModel.del('system', savedTemplateId);
+            if (!teachersGroupBefore) {
+                await UserModel.collGroup.deleteOne({ domainId: 'system', name: 'teachers' });
+            }
+            await UserModel.collGroup.deleteOne({ _id: classId });
+        }
+    });
+
     it('Does not expose hidden OI results through global problem status views', async () => {
         const ContestModel = global.Hydro.model.contest;
         const DomainModel = global.Hydro.model.domain;

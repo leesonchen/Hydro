@@ -278,19 +278,34 @@ function getLectureTitle(sourceNode: any, targetNode: any, targetNodeId: number)
 
 function copyCourseLecture(template: CourseTdoc, sourceDag: any[], targetDag: any[]) {
     const lecture = template.lecture || {};
+    const lectureMeta = template.lectureMeta || {};
     const nextLecture: Record<number, string> = {};
+    const nextLectureMeta: Record<number, { editor: number, updateAt: Date }> = {};
     const nextDag = targetDag.map((node, index) => {
         const sourceNode = sourceDag[index] || node;
-        const content = getLectureContent(lecture, sourceNode._id) || getLectureContent(lecture, node._id);
+        const sourceContent = getLectureContent(lecture, sourceNode._id);
+        const targetContent = getLectureContent(lecture, node._id);
+        const content = sourceContent || targetContent;
+        const sourceMeta = lectureMeta[sourceNode._id] || lectureMeta[String(sourceNode._id)];
+        const targetMeta = lectureMeta[node._id] || lectureMeta[String(node._id)];
+        if (!content && !sourceMeta && !targetMeta) return node;
+        if (content) {
+            nextLecture[node._id] = content;
+            nextLectureMeta[node._id] = (sourceContent ? sourceMeta : targetMeta) || {
+                editor: template.owner,
+                updateAt: template._id.getTimestamp(),
+            };
+        } else {
+            nextLectureMeta[node._id] = sourceMeta || targetMeta;
+        }
         if (!content) return node;
-        nextLecture[node._id] = content;
         if (node.lecture) return node;
         return {
             ...node,
             lecture: getLectureTitle(sourceNode, node, node._id),
         };
     });
-    return { dag: nextDag, lecture: nextLecture };
+    return { dag: nextDag, lecture: nextLecture, lectureMeta: nextLectureMeta };
 }
 
 // 班级列表页面
@@ -770,6 +785,7 @@ export class ClassEditHandler extends Handler {
                 const copiedLecture = copyCourseLecture(template, parsedDag, newDag);
                 const finalDag = copiedLecture.dag;
                 const newLecture = copiedLecture.lecture;
+                const newLectureMeta = copiedLecture.lectureMeta;
                 const allPids = Array.from(new Set(finalDag.flatMap((node) => node.pids)));
 
                 const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
@@ -793,6 +809,7 @@ export class ClassEditHandler extends Handler {
                         assign: [gdoc.name],
                         maintainer: gdoc.teachers,
                         lecture: newLecture,
+                        lectureMeta: newLectureMeta,
                         files: template.files,
                         ...lessonWindow,
                     },
@@ -800,7 +817,9 @@ export class ClassEditHandler extends Handler {
 
                 // ContestModel.add may be extended by hooks; explicitly persist copied lectures after creation
                 // so cross-domain course copies do not lose lecture bodies.
-                if (Object.keys(newLecture).length) await ContestModel.edit(domainId, newTid, { lecture: newLecture });
+                if (Object.keys(newLecture).length || Object.keys(newLectureMeta).length) {
+                    await ContestModel.edit(domainId, newTid, { lecture: newLecture, lectureMeta: newLectureMeta });
+                }
 
                 // 复制文件
                 if (template.files?.length) {

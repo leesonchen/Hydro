@@ -194,6 +194,8 @@ declare module './model/problem' {
             domainId: string;
             pid: number;
         };
+        editor?: number;
+        updateAt?: Date;
 
         /** string (errormsg) */
         config: string | ProblemConfig;
@@ -305,6 +307,10 @@ export interface Tdoc extends Document {
 
     // For course
     lecture?: Record<number, string>;
+    lectureMeta?: Record<number, {
+        editor: number;
+        updateAt: Date;
+    }>;
     editor?: number;
     updateAt?: Date;
     extraStudents?: number[];

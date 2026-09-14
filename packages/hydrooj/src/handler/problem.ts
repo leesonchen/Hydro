@@ -468,6 +468,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             this.pdoc.config.langs = ['objective', 'submit_answer'].includes(this.pdoc.config.type) ? ['_'] : intersection(baseLangs, ...t);
         }
         await this.ctx.parallel('problem/get', this.pdoc, this);
+        const editorId = this.pdoc.editor ?? this.pdoc.owner;
         [this.psdoc, this.udoc] = await Promise.all([
             problem.getVisibleStatus(
                 domainId, this.pdoc.docId, this.user._id,
@@ -475,6 +476,9 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             ),
             user.getById(domainId, this.pdoc.owner),
         ]);
+        const editorUdoc = editorId === this.pdoc.owner
+            ? this.udoc
+            : await user.getById(domainId, editorId);
         const [scnt, dcnt] = await Promise.all([
             solution.count(domainId, { parentId: this.pdoc.docId, title: { $ne: REFERENCE_CODE_TITLE } }),
             discussion.count(domainId, { parentId: this.pdoc.docId }),
@@ -482,6 +486,8 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
         this.response.body = {
             pdoc: this.pdoc,
             udoc: this.udoc,
+            editor_udoc: editorUdoc,
+            lastUpdateAt: this.pdoc.updateAt ?? this.pdoc._id.getTimestamp(),
             psdoc: tid ? null : this.psdoc,
             title: this.pdoc.title,
             solutionCount: scnt,
@@ -770,6 +776,8 @@ export class ProblemEditHandler extends ProblemManageHandler {
         if (newPid !== this.pdoc.pid && await problem.get(domainId, newPid)) throw new ProblemAlreadyExistError(newPid);
         const $update: Partial<ProblemDoc> = {
             title, content, pid: newPid, hidden, tag: tag ?? [], difficulty, html: false,
+            editor: this.user._id,
+            updateAt: new Date(),
         };
         const pdoc = await problem.edit(domainId, this.pdoc.docId, $update);
         this.response.redirect = this.url('problem_detail', { pid: newPid || pdoc.docId });

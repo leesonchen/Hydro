@@ -101,7 +101,7 @@ export class ProblemModel {
     static PROJECTION_PUBLIC: Field[] = [
         ...ProblemModel.PROJECTION_LIST,
         'content', 'html', 'data', 'config', 'additional_file',
-        'reference', 'maintainer',
+        'reference', 'maintainer', 'editor', 'updateAt',
     ];
 
     static default = {
