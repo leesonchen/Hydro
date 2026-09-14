@@ -74,6 +74,8 @@ interface ProblemCreateOptions {
     difficulty?: number;
     hidden?: boolean;
     reference?: { domainId: string, pid: number };
+    editor?: number;
+    updateAt?: Date;
 }
 
 const PROJECTION_BASE: Field[] = [
@@ -180,6 +182,8 @@ export class ProblemModel {
         if (pid) args.pid = pid;
         if (meta.difficulty) args.difficulty = meta.difficulty;
         if (meta.reference) args.reference = meta.reference;
+        if (meta.editor !== undefined) args.editor = meta.editor;
+        if (meta.updateAt) args.updateAt = meta.updateAt;
         await bus.parallel('problem/before-add', domainId, content, owner, docId, args);
         const result = await document.add(domainId, content, owner, document.TYPE_PROBLEM, docId, null, null, args);
         args.content = content;
@@ -258,6 +262,8 @@ export class ProblemModel {
         if (!pid && original.pid && !await ProblemModel.get(target, original.pid)) pid = original.pid;
         const $set = { hidden: hidden || original.hidden, reference: { domainId, pid: _id } } as any;
         if (typeof original.difficulty === 'number') $set.difficulty = original.difficulty;
+        if (original.editor !== undefined) $set.editor = original.editor;
+        if (original.updateAt) $set.updateAt = original.updateAt;
         return await ProblemModel.add(
             target, pid, original.title, original.content,
             original.owner, original.tag, $set,

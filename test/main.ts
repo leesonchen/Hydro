@@ -157,6 +157,22 @@ describe('App', () => {
             assert.equal(api.body.editor, 2);
             assert.equal(new Date(api.body.updateAt).getTime(), updated.updateAt.getTime());
 
+            await ProblemModel.edit('system', pid, { hidden: true });
+            const internalUpdated = await ProblemModel.get('system', pid);
+            assert.equal(internalUpdated.editor, updated.editor);
+            assert.equal(internalUpdated.updateAt.getTime(), updated.updateAt.getTime());
+
+            const copiedPid = await ProblemModel.copy('system', pid, 'system');
+            pids.push(copiedPid);
+            const copied = await ProblemModel.get('system', copiedPid);
+            assert.equal(copied.editor, updated.editor);
+            assert.equal(copied.updateAt.getTime(), updated.updateAt.getTime());
+            const copiedDetail = await agent.get(`/p/${copiedPid}`)
+                .set('Accept', 'application/json')
+                .expect(200);
+            assert.equal(copiedDetail.body.editor_udoc._id, updated.editor);
+            assert.equal(new Date(copiedDetail.body.lastUpdateAt).getTime(), updated.updateAt.getTime());
+
             const legacyPid = await ProblemModel.add('system', `legacy-${suffix}`, `Legacy ${suffix}`, '', 2);
             pids.push(legacyPid);
             const legacy = await ProblemModel.get('system', legacyPid);
@@ -169,6 +185,19 @@ describe('App', () => {
             assert.equal(
                 new Date(legacyDetail.body.lastUpdateAt).getTime(),
                 legacy._id.getTimestamp().getTime(),
+            );
+            const legacyCopyPid = await ProblemModel.copy('system', legacyPid, 'system');
+            pids.push(legacyCopyPid);
+            const legacyCopy = await ProblemModel.get('system', legacyCopyPid);
+            assert(!('editor' in legacyCopy));
+            assert(!('updateAt' in legacyCopy));
+            const legacyCopyDetail = await agent.get(`/p/${legacyCopyPid}`)
+                .set('Accept', 'application/json')
+                .expect(200);
+            assert.equal(legacyCopyDetail.body.editor_udoc._id, 2);
+            assert.equal(
+                new Date(legacyCopyDetail.body.lastUpdateAt).getTime(),
+                legacyCopy._id.getTimestamp().getTime(),
             );
         } finally {
             await Promise.all(pids.map((id) => ProblemModel.del('system', id)));
