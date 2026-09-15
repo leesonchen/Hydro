@@ -1,0 +1,38 @@
+.hydro-maintenance-banner
+  position: fixed
+  top: 0
+  left: 0
+  z-index: 10000
+  display: flex
+  width: 100%
+  min-height: 36px
+  align-items: center
+  justify-content: center
+  gap: 0.75rem
+  padding: 0.5rem 1rem
+  box-sizing: border-box
+  color: #5c3b00
+  background: #fff0c2
+  border-bottom: 1px solid #e5b94f
+  font-size: 0.9rem
+  line-height: 1.4
+
+  &__message
+    font-weight: 600
+
+  &__countdown
+    white-space: nowrap
+
+  &--active
+    color: #7a1f1f
+    background: #ffe0e0
+    border-bottom-color: #d47a7a
+
+@media (max-width: 600px)
+  .hydro-maintenance-banner
+    display: block
+    padding: 0.5rem 0.75rem
+    text-align: center
+
+  .hydro-maintenance-banner__countdown
+    display: block

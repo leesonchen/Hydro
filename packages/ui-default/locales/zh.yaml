@@ -1167,3 +1167,11 @@ View All Submissions: 查看全部提交
 Reference Code: 参考代码
 Create Reference Code: 创建参考代码
 You must change your password before continuing.: 首次登录后必须修改密码才能继续。
+The system will enter maintenance soon. Please save your work.: 系统即将进入维护，请提前保存未提交的内容。
+The system is entering maintenance. Please save your work.: 系统正在进入维护，请保存未提交的内容。
+Maintenance starts in {0}.: 系统将在 {0} 后进入维护。
+Maintenance starts soon.: 系统即将进入维护。
+Redirecting to the maintenance page.: 正在跳转到维护页面。
+'{0} seconds': '{0} 秒'
+'{0} minutes': '{0} 分钟'
+'{0} hours': '{0} 小时'

@@ -1,7 +1,10 @@
 {
     "name": "hydrooj",
     "version": "5.0.4",
-    "bin": "bin/hydrooj.js",
+    "bin": {
+        "hydrooj": "bin/hydrooj.js",
+        "hydro-maintenance": "bin/hydro-maintenance.js"
+    },
     "main": "src/plugin-api",
     "module": "src/plugin-api",
     "repository": "https://github.com/hydro-dev/Hydro.git",

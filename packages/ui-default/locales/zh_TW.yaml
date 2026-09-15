@@ -1162,3 +1162,11 @@ View All Submissions: 查看全部提交
 Reference Code: 參考程式碼
 Create Reference Code: 建立參考程式碼
 You must change your password before continuing.: 首次登入後必須修改密碼才能繼續。
+The system will enter maintenance soon. Please save your work.: 系統即將進入維護，請提前儲存未提交的內容。
+The system is entering maintenance. Please save your work.: 系統正在進入維護，請儲存未提交的內容。
+Maintenance starts in {0}.: 系統將在 {0} 後進入維護。
+Maintenance starts soon.: 系統即將進入維護。
+Redirecting to the maintenance page.: 正在跳轉到維護頁面。
+'{0} seconds': '{0} 秒'
+'{0} minutes': '{0} 分鐘'
+'{0} hours': '{0} 小時'

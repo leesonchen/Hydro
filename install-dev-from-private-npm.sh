@@ -14,11 +14,16 @@ SERVICE_VERIFY_DELAY_SECONDS="${SERVICE_VERIFY_DELAY_SECONDS:-15}"
 LOGIN_VERIFY_TIMEOUT_SECONDS="${LOGIN_VERIFY_TIMEOUT_SECONDS:-180}"
 LOGIN_VERIFY_INTERVAL_SECONDS="${LOGIN_VERIFY_INTERVAL_SECONDS:-10}"
 NPM_VIEW_TIMEOUT_SECONDS="${NPM_VIEW_TIMEOUT_SECONDS:-180}"
-LOCK_FILE="${LOCK_FILE:-/tmp/hydro-dev-install.lock}"
 RELEASES_DIR="$HYDRO_HOME/dev-releases"
 BACKUPS_DIR="$HYDRO_HOME/dev-backups"
 ACTIVE_RELEASE_FILE="$RELEASES_DIR/active"
 HYDRO_BIN_LINK="/usr/local/bin/hydrooj"
+HYDRO_MAINTENANCE_BIN_LINK="/usr/local/bin/hydro-maintenance"
+OPERATION_LOCK_DIR="${HYDRO_OPERATION_LOCK_DIR:-${HYDRO_MAINTENANCE_LOCK:-$HYDRO_HOME/maintenance.lock}}"
+MAINTENANCE_DIR="${HYDRO_MAINTENANCE_DIR:-$HYDRO_HOME/maintenance}"
+MAINTENANCE_STATE_FILE="$MAINTENANCE_DIR/maintenance.json"
+MAINTENANCE_ACTIVE_FILE="$MAINTENANCE_DIR/active"
+MAINTENANCE_ACTIVE=0
 PACKAGE_KEYS=("framework" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
 SELECTED_PACKAGE_KEYS=()
 declare -A CURRENT_PACKAGE_VERSIONS=()
@@ -33,6 +38,48 @@ for path_entry in "$HOME/.nix-profile/bin" /nix/var/nix/profiles/default/bin /us
     fi
 done
 export PATH
+
+acquire_operation_lock() {
+    mkdir -p "$(dirname "$OPERATION_LOCK_DIR")"
+    local attempt lock_pid=""
+    for attempt in 1 2; do
+        if mkdir "$OPERATION_LOCK_DIR" 2>/dev/null; then
+            if ! (umask 077; printf '%s\n' "$$" > "$OPERATION_LOCK_DIR/owner"); then
+                rmdir "$OPERATION_LOCK_DIR" 2>/dev/null || true
+                echo -e "${RED}错误: 无法初始化操作锁: ${OPERATION_LOCK_DIR}${NC}"
+                return 1
+            fi
+            trap release_operation_lock EXIT
+            return 0
+        fi
+
+        lock_pid=""
+        if [ -f "$OPERATION_LOCK_DIR/owner" ]; then
+            lock_pid=$(tr -d '[:space:]' < "$OPERATION_LOCK_DIR/owner" || true)
+        fi
+        if [[ "$lock_pid" =~ ^[0-9]+$ ]]; then
+            if kill -0 "$lock_pid" 2>/dev/null; then
+                echo -e "${RED}错误: 已有维护或升级操作正在执行 (PID ${lock_pid})${NC}"
+                return 1
+            fi
+            rm -f "$OPERATION_LOCK_DIR/owner"
+            if rmdir "$OPERATION_LOCK_DIR" 2>/dev/null; then
+                continue
+            fi
+        fi
+        echo -e "${RED}错误: 操作锁已存在但无法确认持有者，请检查并清理: ${OPERATION_LOCK_DIR}${NC}"
+        return 1
+    done
+    echo -e "${RED}错误: 无法取得操作锁: ${OPERATION_LOCK_DIR}${NC}"
+    return 1
+}
+
+release_operation_lock() {
+    if [ -d "$OPERATION_LOCK_DIR" ]; then
+        rm -f "$OPERATION_LOCK_DIR/owner"
+        rmdir "$OPERATION_LOCK_DIR" 2>/dev/null || true
+    fi
+}
 
 log_title() {
     echo -e "${YELLOW}$1${NC}"
@@ -70,10 +117,52 @@ usage() {
 环境变量:
   NPM_REGISTRY   npm 仓库地址，默认 ${NPM_REGISTRY}
   HYDRO_HOME     Hydro 数据目录，默认 ${HYDRO_HOME}
+  HYDRO_MAINTENANCE_DIR 维护状态目录，默认 ${MAINTENANCE_DIR}
   LOGIN_VERIFY_TIMEOUT_SECONDS   登录页最多等待秒数，默认 ${LOGIN_VERIFY_TIMEOUT_SECONDS}
   LOGIN_VERIFY_INTERVAL_SECONDS  登录页重试间隔秒数，默认 ${LOGIN_VERIFY_INTERVAL_SECONDS}
   NPM_VIEW_TIMEOUT_SECONDS       npm view 查询超时秒数，默认 ${NPM_VIEW_TIMEOUT_SECONDS}
+  HYDRO_OPERATION_LOCK_DIR       与 hydro-maintenance 共用的操作锁目录，默认 ${OPERATION_LOCK_DIR}
 USAGE
+}
+
+maintenance_state() {
+    if [ ! -f "$MAINTENANCE_STATE_FILE" ]; then
+        echo "inactive"
+        return 0
+    fi
+    node -e '
+const fs = require("fs");
+try {
+  const state = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).state;
+  if (!["inactive", "scheduled", "active"].includes(state)) process.exit(2);
+  process.stdout.write(state);
+} catch {
+  process.exit(1);
+}
+' "$MAINTENANCE_STATE_FILE"
+}
+
+check_maintenance_state() {
+    local state
+    state=$(maintenance_state) || {
+        echo -e "${RED}错误: 无法安全读取维护状态，请先检查 ${MAINTENANCE_STATE_FILE}${NC}"
+        return 1
+    }
+
+    if [ "$state" = "scheduled" ]; then
+        echo -e "${RED}错误: 系统已安排维护，暂不执行安装/升级；请先执行 hydro-maintenance off 取消预告${NC}"
+        return 1
+    fi
+
+    if [ "$state" = "active" ] || [ -f "$MAINTENANCE_ACTIVE_FILE" ]; then
+        MAINTENANCE_ACTIVE=1
+        if [ "$state" != "active" ]; then
+            log_warn "发现维护 active 标记但状态文件不是 active，升级将继续保持服务停止"
+        fi
+        log_warn "当前处于维护模式：安装后不会重启 Hydro、判定服务在线或检查登录页"
+    else
+        MAINTENANCE_ACTIVE=0
+    fi
 }
 
 check_tools() {
@@ -551,6 +640,11 @@ verify_release() {
         log_error "未找到可执行文件: ${hydro_bin}"
         return 1
     fi
+    local maintenance_bin="$release_dir/node_modules/.bin/hydro-maintenance"
+    if [ ! -x "$maintenance_bin" ]; then
+        log_error "未找到维护命令: ${maintenance_bin}"
+        return 1
+    fi
 
     local key package_name package_version
     for key in "${PACKAGE_KEYS[@]}"; do
@@ -626,13 +720,28 @@ switch_hydrooj_link() {
     local release_dir="$1"
     log_title "7. 切换 hydrooj 可执行文件..."
     local hydro_bin="$release_dir/node_modules/.bin/hydrooj"
+    local maintenance_bin="$release_dir/node_modules/.bin/hydro-maintenance"
+
+    if [ ! -x "$hydro_bin" ]; then
+        log_error "${hydro_bin} 不可执行"
+        return 1
+    fi
+    if [ ! -x "$maintenance_bin" ] && { [ "$MAINTENANCE_ACTIVE" -ne 1 ] || [ ! -x "$HYDRO_MAINTENANCE_BIN_LINK" ]; }; then
+        log_error "未找到维护命令: ${maintenance_bin}"
+        return 1
+    fi
 
     mkdir -p "$(dirname "$HYDRO_BIN_LINK")"
     ln -sfn "$hydro_bin" "$HYDRO_BIN_LINK"
     echo "$release_dir" > "$ACTIVE_RELEASE_FILE"
 
-    if [ ! -x "$HYDRO_BIN_LINK" ]; then
-        log_error "${HYDRO_BIN_LINK} 不可执行"
+    if [ -x "$maintenance_bin" ]; then
+        ln -sfn "$maintenance_bin" "$HYDRO_MAINTENANCE_BIN_LINK"
+        log_ok "${HYDRO_MAINTENANCE_BIN_LINK} -> ${maintenance_bin}"
+    elif [ "$MAINTENANCE_ACTIVE" -eq 1 ] && [ -x "$HYDRO_MAINTENANCE_BIN_LINK" ]; then
+        log_warn "新 release 未提供 hydro-maintenance，维护中保留现有命令链接"
+    else
+        log_error "未找到维护命令: ${maintenance_bin}"
         return 1
     fi
 
@@ -655,6 +764,10 @@ process.stdin.on("end", () => {
 }
 
 restart_services() {
+    if [ "$MAINTENANCE_ACTIVE" -eq 1 ]; then
+        log_warn "当前处于维护模式，跳过服务重启；请完成升级后执行 hydro-maintenance off"
+        return 0
+    fi
     if ! command -v pm2 >/dev/null 2>&1; then
         return 0
     fi
@@ -676,6 +789,10 @@ restart_services() {
 }
 
 verify_services() {
+    if [ "$MAINTENANCE_ACTIVE" -eq 1 ]; then
+        log_warn "当前处于维护模式，跳过服务在线验证"
+        return 0
+    fi
     if ! command -v pm2 >/dev/null 2>&1; then
         return 0
     fi
@@ -702,6 +819,10 @@ process.stdin.on("end", () => {
 }
 
 verify_login_page() {
+    if [ "$MAINTENANCE_ACTIVE" -eq 1 ]; then
+        log_warn "当前处于维护模式，跳过登录页验证"
+        return 0
+    fi
     log_title "10. 验证登录页响应..."
 
     local body version deadline
@@ -864,10 +985,14 @@ run_selected_install() {
     echo -e "${GREEN}=== 安装/更新完成 ===${NC}"
     echo "当前 release: ${release_dir}"
     echo "回退命令: $SCRIPT_DIR/$(basename "$0") rollback $(basename "$backup_dir")"
+    if [ "$MAINTENANCE_ACTIVE" -eq 1 ]; then
+        echo -e "${YELLOW}当前仍处于维护模式，请确认升级无误后执行: hydro-maintenance off${NC}"
+    fi
 }
 
 install_flow() {
     local mode="${1:-install}"
+    check_maintenance_state
     check_tools
     check_node_version
     setup_registry
@@ -887,6 +1012,7 @@ check_updates_flow() {
 }
 
 upgrade_interactive_flow() {
+    check_maintenance_state
     check_tools
     check_node_version
     setup_registry
@@ -897,6 +1023,7 @@ upgrade_interactive_flow() {
 }
 
 rollback_flow() {
+    check_maintenance_state
     check_tools
     check_node_version
     rollback_release "${1:-}"
@@ -914,35 +1041,35 @@ main() {
         install|update)
             parse_update_args "$@"
             (
-                flock -n 9 || { echo -e "${RED}错误: 已有安装/回退流程正在运行${NC}"; exit 1; }
+                acquire_operation_lock
                 echo -e "${GREEN}=== Hydro 开发版本安装/更新脚本 ===${NC}"
                 echo ""
                 install_flow "$mode"
-            ) 9>"$LOCK_FILE"
+            )
             ;;
         check-updates)
             (
-                flock -n 9 || { echo -e "${RED}错误: 已有安装/回退流程正在运行${NC}"; exit 1; }
+                acquire_operation_lock
                 echo -e "${GREEN}=== Hydro dev 版本检查脚本 ===${NC}"
                 echo ""
                 check_updates_flow
-            ) 9>"$LOCK_FILE"
+            )
             ;;
         upgrade-interactive)
             (
-                flock -n 9 || { echo -e "${RED}错误: 已有安装/回退流程正在运行${NC}"; exit 1; }
+                acquire_operation_lock
                 echo -e "${GREEN}=== Hydro dev 交互升级脚本 ===${NC}"
                 echo ""
                 upgrade_interactive_flow
-            ) 9>"$LOCK_FILE"
+            )
             ;;
         rollback)
             (
-                flock -n 9 || { echo -e "${RED}错误: 已有安装/回退流程正在运行${NC}"; exit 1; }
+                acquire_operation_lock
                 echo -e "${GREEN}=== Hydro 开发版本回退脚本 ===${NC}"
                 echo ""
                 rollback_flow "${1:-}"
-            ) 9>"$LOCK_FILE"
+            )
             ;;
         list-backups)
             list_backups

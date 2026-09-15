@@ -57,6 +57,7 @@ const locales = {
         'install.createDatabaseUser': '正在创建数据库用户...',
         'install.compiler': '正在安装编译器...',
         'install.hydro': '正在安装 Hydro...',
+        'install.maintenance': '正在配置维护模式...',
         'install.done': 'Hydro 安装成功！',
         'install.alldone': '安装已全部完成。',
         'install.editJudgeConfigAndStart': '请编辑 ~/.hydro/judge.yaml 后使用 pm2 start hydrojudge && pm2 save 启动。',
@@ -101,6 +102,7 @@ It is strongly recommended to use other systems. If you really need it, please u
         'install.createDatabaseUser': 'Creating database user...',
         'install.compiler': 'Installing compiler...',
         'install.hydro': 'Installing Hydro...',
+        'install.maintenance': 'Configuring maintenance mode...',
         'install.done': 'Hydro installation completed!',
         'install.alldone': 'Hydro installation completed.',
         'install.editJudgeConfigAndStart': 'Please edit config at ~/.hydro/judge.yaml than start hydrojudge with:\npm2 start hydrojudge && pm2 save.',
@@ -223,6 +225,27 @@ const Caddyfile = `\
   }
   # Handle static files directly, for better performance.
   root * /root/.hydro/static
+  # hydro-maintenance begin
+  @hydro_maintenance_json path /maintenance.json
+  handle @hydro_maintenance_json {
+    root * /root/.hydro/maintenance
+    header Cache-Control "no-store"
+    file_server
+  }
+  @hydro_maintenance_page path /maintain.html
+  handle @hydro_maintenance_page {
+    root * /root/.hydro/maintenance
+    header Cache-Control "no-store"
+    file_server
+  }
+  @hydro_maintenance_active file {
+    root /root/.hydro/maintenance
+    try_files /active
+  }
+  handle @hydro_maintenance_active {
+    redir * /maintain.html 302
+  }
+  # hydro-maintenance end
   @static {
     file {
       try_files {path}
@@ -587,6 +610,13 @@ ${nixConfBase}`);
             ],
             'pm2 startup',
             'pm2 save',
+        ],
+    },
+    {
+        init: 'install.maintenance',
+        skip: () => installAsJudge || noCaddy,
+        operations: [
+            'hydro-maintenance setup',
         ],
     },
     {
