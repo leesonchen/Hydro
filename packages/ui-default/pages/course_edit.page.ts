@@ -282,7 +282,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
               + '<div class="row"><div class="columns">'
                 + '<label>讲义标题（可选）<input class="textbox dag-lecture" placeholder="（无）" /></label>'
               + '</div></div>'
-              + '<div class="row"><div class="columns">'
+              + '<div class="row dag-lecture-rule-pids-row"><div class="columns">'
                 + '<label>讲义解锁题目（可选，点击选择）<input class="textbox dag-lecture-rule-pids" placeholder="搜索题目 (ID/标题)" /></label>'
               + '</div></div>'
               + '<div class="row dag-lecture-rule-row"><div class="columns">'
@@ -328,6 +328,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         const $completeValue = $section.find('.dag-complete-value');
         const $lecture = $section.find('.dag-lecture');
         const $lectureRulePids = $section.find('.dag-lecture-rule-pids');
+        const $lectureRulePidsRow = $section.find('.dag-lecture-rule-pids-row');
         const $lectureRuleRow = $section.find('.dag-lecture-rule-row');
         const $lectureRuleType = $section.find('.dag-lecture-rule-type');
         const $lectureRuleValue = $section.find('.dag-lecture-rule-value');
@@ -363,6 +364,12 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         $lecture.on('change', commitLecture);
 
         const updateLectureRuleVisibility = () => {
+          const hasLecture = String($lecture.val() || '').trim().length > 0;
+          $lectureRulePidsRow.toggle(hasLecture);
+          if (!hasLecture) {
+            $lectureRuleRow.hide();
+            return;
+          }
           const hasPids = !!node.lectureRule?.pids?.length;
           if (!hasPids) {
             $lectureRuleRow.hide();
@@ -377,6 +384,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
             $lectureRuleValue.show();
           }
         };
+        $lecture.on('input', updateLectureRuleVisibility);
 
         const setLectureRulePids = (val: any) => {
           const ids = (Array.isArray(val) ? val : String(val || '').split(','))
