@@ -40,7 +40,7 @@
           </td>
           {% endif %}
           <td class="col--name" data-preview="{{ filetype }}">
-            {% if filetype != 'testdata' or handler.user.own(pdoc) or handler.user.hasPriv(PRIV.PRIV_READ_PROBLEM_DATA) or handler.user.hasPerm(perm.PERM_READ_PROBLEM_DATA) %}
+            {% if (not reference and filetype != 'testdata') or handler.canReadProblemFiles %}
               <a href="{{ url('problem_file_download', {pid: pdoc.docId, filename: file.name, query:{type:filetype} }) }}">{{ file.name }}</a>
             {% else %}
               <p>{{ file.name }}</p>

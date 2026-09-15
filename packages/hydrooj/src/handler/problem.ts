@@ -75,6 +75,38 @@ type ExtendedProblemSearchOptions = ProblemSearchOptions & {
 
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
 
+interface ProblemFileSource {
+    domainId: string;
+    pdoc: ProblemDoc;
+    user: User | null;
+    canRead: boolean;
+}
+
+async function getProblemFileSource(pdoc: ProblemDoc, udoc: User): Promise<ProblemFileSource | null> {
+    if (!pdoc.reference) {
+        return {
+            domainId: pdoc.domainId,
+            pdoc,
+            user: udoc,
+            canRead: udoc.own(pdoc) || udoc.hasPriv(PRIV.PRIV_READ_PROBLEM_DATA)
+                || udoc.hasPerm(PERM.PERM_READ_PROBLEM_DATA),
+        };
+    }
+    const { domainId, pid } = pdoc.reference;
+    const sourcePdoc = await problem.get(domainId, pid);
+    if (!sourcePdoc) return null;
+    const sourceUser = await user.getById(domainId, udoc._id, udoc.scope);
+    const canView = !!sourceUser && problem.canViewBy(sourcePdoc, sourceUser);
+    return {
+        domainId,
+        pdoc: sourcePdoc,
+        user: sourceUser,
+        canRead: canView && !!sourceUser && (sourceUser.own(sourcePdoc)
+            || sourceUser.hasPriv(PRIV.PRIV_READ_PROBLEM_DATA)
+            || sourceUser.hasPerm(PERM.PERM_READ_PROBLEM_DATA)),
+    };
+}
+
 function buildQuery(udoc: User) {
     const q: Filter<ProblemDoc> = {};
     if (!udoc.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN)) {
@@ -408,6 +440,10 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
     pdoc: ProblemDoc;
     udoc: User;
     psdoc: ProblemStatusDoc;
+    problemFilePdoc: ProblemDoc;
+    problemFileDomainId: string;
+    problemFileUser: User | null;
+    canReadProblemFiles = false;
 
     @route('pid', Types.ProblemId, true)
     @query('tid', Types.ObjectId, true)
@@ -440,13 +476,24 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
         } else if (!problem.canViewBy(this.pdoc, this.user)) {
             throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
         }
+        this.problemFilePdoc = this.pdoc;
+        this.problemFileDomainId = this.pdoc.domainId;
+        this.problemFileUser = this.user;
+        this.canReadProblemFiles = this.user.own(this.pdoc)
+            || this.user.hasPriv(PRIV.PRIV_READ_PROBLEM_DATA)
+            || this.user.hasPerm(PERM.PERM_READ_PROBLEM_DATA);
         let ddoc = this.domain;
         if (this.pdoc.reference) {
             ddoc = await domain.get(this.pdoc.reference.domainId);
-            const pdoc = await problem.get(this.pdoc.reference.domainId, this.pdoc.reference.pid);
-            if (!ddoc || !pdoc) throw new ProblemNotFoundError(this.pdoc.reference.domainId, this.pdoc.reference.pid);
-            this.pdoc.config = pdoc.config;
-            this.pdoc.additional_file = pdoc.additional_file;
+            const source = await getProblemFileSource(this.pdoc, this.user);
+            if (!ddoc || !source) throw new ProblemNotFoundError(this.pdoc.reference.domainId, this.pdoc.reference.pid);
+            this.problemFilePdoc = source.pdoc;
+            this.problemFileDomainId = source.domainId;
+            this.problemFileUser = source.user;
+            this.canReadProblemFiles = source.canRead;
+            this.pdoc.config = source.pdoc.config;
+            this.pdoc.data = source.canRead ? source.pdoc.data : [];
+            this.pdoc.additional_file = source.canRead ? source.pdoc.additional_file : [];
         }
         if (typeof this.pdoc.config !== 'string') {
             let baseLangs;
@@ -811,7 +858,9 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
         this.response.body.testdata = sortFiles(this.pdoc.data || []);
         this.response.body.additional_file = sortFiles(this.pdoc.additional_file || []);
         this.response.body.reference = this.pdoc.reference;
-        this.response.pjax = d.map((i) => ['partials/problem_files.html', { filetype: i, sidebar, can_edit: true }]);
+        const canEdit = !this.pdoc.reference
+            && (this.user.own(this.pdoc, PERM.PERM_EDIT_PROBLEM_SELF) || this.user.hasPerm(PERM.PERM_EDIT_PROBLEM));
+        this.response.pjax = d.map((i) => ['partials/problem_files.html', { filetype: i, sidebar, can_edit: canEdit }]);
         if (!sidebar) this.response.pjax.push(['partials/problem-sidebar-information.html', {}]);
         this.response.template = 'problem_files.html';
     }
@@ -825,26 +874,32 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
     @post('files', Types.Set)
     @post('type', Types.Range(['testdata', 'additional_file']), true)
     async postGetLinks(domainId: string, files: Set<string>, type = 'testdata') {
-        if (type === 'testdata' && !this.user.own(this.pdoc)) {
-            if (this.pdoc.reference) throw new ProblemIsReferencedError('download testdata.');
+        if (this.pdoc.reference) {
+            if (files.size && !this.canReadProblemFiles) throw new PermissionError(PERM.PERM_READ_PROBLEM_DATA);
+            if (type === 'testdata' && files.size && !this.problemFileUser?.own(this.problemFilePdoc)
+                && this.tdoc && !contest.isDone(this.tdoc)) {
+                throw new ContestNotEndedError(this.tdoc.domainId, this.tdoc.docId);
+            }
+        } else if (type === 'testdata' && !this.user.own(this.pdoc)) {
             if (!this.user.hasPriv(PRIV.PRIV_READ_PROBLEM_DATA)) this.checkPerm(PERM.PERM_READ_PROBLEM_DATA);
             if (this.tdoc && !contest.isDone(this.tdoc)) throw new ContestNotEndedError(this.tdoc.domainId, this.tdoc.docId);
         }
-        if (this.pdoc.reference) this.pdoc = await problem.get(this.pdoc.reference.domainId, this.pdoc.reference.pid);
         const links = {};
+        const filePdoc = this.problemFilePdoc;
+        const fileDomainId = this.problemFileDomainId;
         const size = Math.sum(
-            this.pdoc[type === 'testdata' ? 'data' : 'additional_file']
+            filePdoc[type === 'testdata' ? 'data' : 'additional_file']
                 ?.filter((i) => files.has(i.name))
                 ?.map((i) => i.size),
         ) || 0;
         await oplog.log(this, 'download.problem.bulk', {
-            target: Array.from(files).map((file) => `problem/${this.pdoc.domainId}/${this.pdoc.docId}/${type}/${file}`),
+            target: Array.from(files).map((file) => `problem/${fileDomainId}/${filePdoc.docId}/${type}/${file}`),
             size,
         });
         for (const file of files) {
             // eslint-disable-next-line no-await-in-loop
             links[file] = await storage.signDownloadLink(
-                `problem/${this.pdoc.domainId}/${this.pdoc.docId}/${type}/${file}`,
+                `problem/${fileDomainId}/${filePdoc.docId}/${type}/${file}`,
                 file, false, 'user',
             );
         }
@@ -951,16 +1006,16 @@ export class ProblemFileDownloadHandler extends ProblemDetailHandler {
     @query('tid', Types.ObjectId, true)
     async get({ }, type = 'additional_file', filename: string, noDisposition = false, tid: ObjectId) {
         if (!tid) this.checkPerm(PERM.PERM_VIEW_PROBLEM);
-        if (this.pdoc.reference) {
-            if (type === 'testdata') throw new ProblemIsReferencedError('download testdata');
-            this.pdoc = await problem.get(this.pdoc.reference.domainId, this.pdoc.reference.pid);
-            if (!this.pdoc) throw new ProblemNotFoundError();
+        if (this.pdoc.reference && !this.canReadProblemFiles) {
+            throw new PermissionError(PERM.PERM_READ_PROBLEM_DATA);
         }
-        if (type === 'testdata' && !this.user.own(this.pdoc)) {
+        if (type === 'testdata' && !this.canReadProblemFiles) {
             if (!this.user.hasPriv(PRIV.PRIV_READ_PROBLEM_DATA)) this.checkPerm(PERM.PERM_READ_PROBLEM_DATA);
+        }
+        if (type === 'testdata' && !this.problemFileUser?.own(this.problemFilePdoc)) {
             if (this.tdoc && !contest.isDone(this.tdoc)) throw new ContestNotEndedError(this.tdoc.domainId, this.tdoc.docId);
         }
-        const target = `problem/${this.pdoc.domainId}/${this.pdoc.docId}/${type}/${filename}`;
+        const target = `problem/${this.problemFileDomainId}/${this.problemFilePdoc.docId}/${type}/${filename}`;
         const file = await storage.getMeta(target);
         await oplog.log(this, 'download.problem.single', {
             target,
@@ -1216,6 +1271,16 @@ export const ProblemApi = {
             const pdoc = await problem.get(args.domainId, args.id);
             if (!pdoc) return null;
             if (pdoc.hidden) ctx.checkPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN);
+            if (pdoc.reference) {
+                const source = await getProblemFileSource(pdoc, ctx.user);
+                if (source?.canRead) {
+                    pdoc.data = source.pdoc.data;
+                    pdoc.additional_file = source.pdoc.additional_file;
+                } else {
+                    pdoc.data = [];
+                    pdoc.additional_file = [];
+                }
+            }
             return pdoc;
         },
     ),

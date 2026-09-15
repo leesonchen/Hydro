@@ -204,6 +204,135 @@ describe('App', () => {
         }
     });
 
+    it('Exports files from referenced problems using source-domain permissions', async () => {
+        const DomainModel = global.Hydro.model.domain;
+        const ProblemModel = global.Hydro.model.problem;
+        const StorageModel = global.Hydro.model.storage;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const sourceDomain = `ref-files-source-${suffix}`;
+        const targetDomain = `ref-files-target-${suffix}`;
+        const sourceReaderRole = `ref-files-reader-${suffix}`;
+        const targetRole = `ref-files-target-user-${suffix}`;
+        const testdataName = `data-${suffix}.in`;
+        const additionalName = `attachment-${suffix}.txt`;
+        const createdUsers: number[] = [];
+        let sourcePid: number;
+        let targetPid: number;
+
+        const createUser = async (prefix: string) => {
+            const uname = `${prefix}${suffix}`;
+            const uid = await UserModel.create(`${uname}@example.com`, uname, '123456');
+            createdUsers.push(uid);
+            return { uid, uname };
+        };
+
+        try {
+            const owner = await createUser('reffileowner');
+            const reader = await createUser('reffilereader');
+            const limited = await createUser('reffilelimited');
+            await Promise.all([
+                DomainModel.add(sourceDomain, owner.uid, `Referenced files source ${suffix}`, ''),
+                DomainModel.add(targetDomain, owner.uid, `Referenced files target ${suffix}`, ''),
+            ]);
+            await Promise.all([
+                DomainModel.addRole(
+                    sourceDomain,
+                    sourceReaderRole,
+                    PERM.PERM_DEFAULT | PERM.PERM_READ_PROBLEM_DATA,
+                ),
+                DomainModel.addRole(targetDomain, targetRole, PERM.PERM_DEFAULT),
+                DomainModel.setUserRole(sourceDomain, reader.uid, sourceReaderRole, true),
+                DomainModel.setUserRole(sourceDomain, limited.uid, 'default', true),
+                DomainModel.setUserRole(targetDomain, reader.uid, targetRole, true),
+                DomainModel.setUserRole(targetDomain, limited.uid, targetRole, true),
+            ]);
+
+            sourcePid = await ProblemModel.add(
+                sourceDomain, `source-${suffix}`, `Referenced files ${suffix}`, '', owner.uid,
+            );
+            await Promise.all([
+                ProblemModel.addTestdata(sourceDomain, sourcePid, testdataName, Buffer.from('1 2\n'), owner.uid),
+                ProblemModel.addAdditionalFile(sourceDomain, sourcePid, additionalName, Buffer.from('attachment\n'), owner.uid),
+            ]);
+            const [sourceTestdataFile, sourceAdditionalFile] = await Promise.all([
+                StorageModel.coll.findOne({ path: `problem/${sourceDomain}/${sourcePid}/testdata/${testdataName}` }),
+                StorageModel.coll.findOne({ path: `problem/${sourceDomain}/${sourcePid}/additional_file/${additionalName}` }),
+            ]);
+            assert(sourceTestdataFile);
+            assert(sourceAdditionalFile);
+            targetPid = await ProblemModel.copy(sourceDomain, sourcePid, targetDomain);
+
+            const readerAgent = supertest.agent(require('hydrooj').httpServer);
+            await readerAgent.post('/login').send({ uname: reader.uname, password: '123456' }).expect(302);
+            const api = await readerAgent.get(`/d/${targetDomain}/api/problem?args=${encodeURIComponent(JSON.stringify({
+                id: targetPid,
+                domainId: 'ignored-by-route',
+            }))}`).expect(200);
+            assert.deepStrictEqual(api.body.data.map((file) => file.name), [testdataName]);
+            assert.deepStrictEqual(api.body.additional_file.map((file) => file.name), [additionalName]);
+
+            const detail = await readerAgent.get(`/d/${targetDomain}/p/${targetPid}`)
+                .set('Accept', 'application/json').expect(200);
+            assert.deepStrictEqual(detail.body.pdoc.data.map((file) => file.name), [testdataName]);
+            assert.deepStrictEqual(detail.body.pdoc.additional_file.map((file) => file.name), [additionalName]);
+
+            const bulk = async (type: string, filename: string) => readerAgent.post(
+                `/d/${targetDomain}/p/${targetPid}/files`,
+            ).set('Accept', 'application/json').send({ operation: 'get_links', files: [filename], type }).expect(200);
+            const testdataLinks = await bulk('testdata', testdataName);
+            const additionalLinks = await bulk('additional_file', additionalName);
+            const getStorageTarget = (link: string) => new URL(`http://localhost${link}`).searchParams.get('target');
+            assert.equal(getStorageTarget(testdataLinks.body.links[testdataName]), sourceTestdataFile._id);
+            assert.equal(getStorageTarget(additionalLinks.body.links[additionalName]), sourceAdditionalFile._id);
+
+            const singleTestdata = await readerAgent.get(
+                `/d/${targetDomain}/p/${targetPid}/file/${testdataName}?type=testdata`,
+            ).expect(302);
+            const singleAdditional = await readerAgent.get(
+                `/d/${targetDomain}/p/${targetPid}/file/${additionalName}?type=additional_file`,
+            ).expect(302);
+            assert.equal(getStorageTarget(singleTestdata.headers.location), sourceTestdataFile._id);
+            assert.equal(getStorageTarget(singleAdditional.headers.location), sourceAdditionalFile._id);
+
+            const limitedAgent = supertest.agent(require('hydrooj').httpServer);
+            await limitedAgent.post('/login').send({ uname: limited.uname, password: '123456' }).expect(302);
+            const limitedApi = await limitedAgent.get(`/d/${targetDomain}/api/problem?args=${encodeURIComponent(JSON.stringify({
+                id: targetPid,
+                domainId: targetDomain,
+            }))}`).expect(200);
+            assert.deepStrictEqual(limitedApi.body.data, []);
+            assert.deepStrictEqual(limitedApi.body.additional_file, []);
+            await limitedAgent.post(`/d/${targetDomain}/p/${targetPid}/files`)
+                .send({ operation: 'get_links', files: [testdataName], type: 'testdata' }).expect(403);
+            await limitedAgent.post(`/d/${targetDomain}/p/${targetPid}/files`)
+                .send({ operation: 'get_links', files: [additionalName], type: 'additional_file' }).expect(403);
+            await limitedAgent.get(`/d/${targetDomain}/p/${targetPid}/file/${testdataName}?type=testdata`).expect(403);
+            await limitedAgent.get(`/d/${targetDomain}/p/${targetPid}/file/${additionalName}?type=additional_file`).expect(403);
+
+            await ProblemModel.edit(sourceDomain, sourcePid, { hidden: true });
+            const hiddenSourceApi = await readerAgent.get(`/d/${targetDomain}/api/problem?args=${encodeURIComponent(JSON.stringify({
+                id: targetPid,
+                domainId: targetDomain,
+            }))}`).expect(200);
+            assert.deepStrictEqual(hiddenSourceApi.body.data, []);
+            assert.deepStrictEqual(hiddenSourceApi.body.additional_file, []);
+            await readerAgent.post(`/d/${targetDomain}/p/${targetPid}/files`)
+                .send({ operation: 'get_links', files: [testdataName], type: 'testdata' }).expect(403);
+            await readerAgent.get(`/d/${targetDomain}/p/${targetPid}/file/${additionalName}?type=additional_file`).expect(403);
+        } finally {
+            if (targetPid) await ProblemModel.del(targetDomain, targetPid);
+            if (sourcePid) await ProblemModel.del(sourceDomain, sourcePid);
+            await Promise.all([
+                DomainModel.del(targetDomain),
+                DomainModel.del(sourceDomain),
+            ]);
+            const cachedUsers = await Promise.all(createdUsers.map((uid) => UserModel.getById('system', uid)));
+            for (const udoc of cachedUsers) if (udoc) UserModel._deleteUserCache(udoc);
+            await UserModel.coll.deleteMany({ _id: { $in: createdUsers } });
+        }
+    });
+
     it('Tracks lecture metadata per chapter and copies it with course templates', async () => {
         const ContestModel = global.Hydro.model.contest;
         const UserModel = global.Hydro.model.user;
