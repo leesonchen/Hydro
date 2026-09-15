@@ -1,4 +1,8 @@
-# AI Translation Plugin for HydroOJ
+# Archived: AI Translation Plugin for HydroOJ
+
+> [!WARNING]
+> This module is retired, no longer used, and no longer maintained. It is kept
+> only for historical reference and must not be enabled in production.
 
 AI-powered problem description translation with image OCR support.
 
@@ -10,15 +14,14 @@ AI-powered problem description translation with image OCR support.
 - **Manual Trigger**: Translation button on problem detail page
 - **Cache Support**: Avoids redundant translations within configured cache time
 
-## Installation
+## Historical Installation (Do Not Use)
 
-1. Copy this package to `Hydro/packages/ai-translation/`
-2. Install dependencies: `yarn install`
-3. Configure the plugin in HydroOJ system settings
+Historically, this package was copied to `Hydro/packages/ai-translation/`, its
+dependencies were installed, and the plugin was configured in HydroOJ.
 
-## Configuration
+## Historical Configuration
 
-Add to your HydroOJ configuration:
+The retired module used the following HydroOJ configuration:
 
 ```yaml
 ai_translation:
@@ -31,7 +34,7 @@ ai_translation:
   cacheHours: 24
 ```
 
-## Usage
+## Historical Usage
 
 ### Manual Translation
 
@@ -48,7 +51,7 @@ ai_translation:
 - `GET /api/translation/status` - Check translation status
   - Params: `pid` (problem ID)
 
-## How It Works
+## How It Worked
 
 1. **Content Parsing**: Extracts problem content from the `content` field (JSON format with language keys)
 2. **Image Processing**: Identifies images in the description and sends them to the AI model for OCR
@@ -74,12 +77,12 @@ Any OpenAI-compatible API endpoint with vision support:
 - Gemini (via OpenAI-compatible proxy)
 - Local models with vision capabilities (via vLLM, etc.)
 
-## Development
+## Historical Development Notes
 
 ### File Structure
 
 ```
-packages/ai-translation/
+archive/ai-translation/
 ├── index.ts              # Plugin entry point
 ├── handler/translation.ts # API handlers
 ├── service/translation.ts # AI translation service
@@ -87,12 +90,6 @@ packages/ai-translation/
 ├── locales/              # I18n files
 └── package.json
 ```
-
-### Adding New Features
-
-1. **New AI Provider**: Extend `TranslationService` in `service/translation.ts`
-2. **UI Changes**: Modify `templates/translation_panel.html`
-3. **API Changes**: Add routes in `index.ts` and handlers in `handler/translation.ts`
 
 ## License
 

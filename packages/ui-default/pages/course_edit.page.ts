@@ -208,7 +208,9 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         normalized.requireNids = Array.from(new Set((normalized.requireNids || [])
           .map((n: any) => +n)
           .filter((n: any) => Number.isFinite(n) && n > 0)));
-        if (normalized.lectureRule?.pids?.length) {
+        if (!String(normalized.lecture || '').trim()) {
+          delete normalized.lectureRule;
+        } else if (normalized.lectureRule?.pids?.length) {
           normalized.lectureRule = {
             pids: Array.from(new Set((normalized.lectureRule.pids || [])
               .map((p: any) => +p)
@@ -357,6 +359,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
             node.lecture = nextLecture;
           } else {
             delete node.lecture;
+            delete node.lectureRule;
           }
           commit({ source: 'lecture' });
         };

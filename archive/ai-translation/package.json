@@ -1,6 +1,7 @@
 {
   "name": "@hydrooj/ai-translation",
   "version": "0.1.0",
+  "private": true,
   "description": "AI-powered problem description translation with image OCR support",
   "main": "index.ts",
   "repository": "https://github.com/hydro-dev/Hydro.git",

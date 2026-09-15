@@ -326,8 +326,9 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
                 pids.push(pdoc.docId);
             }
 
+            const lecture = typeof node.lecture === 'string' ? node.lecture.trim() : node.lecture;
             let lectureRule: DagNode['lectureRule'];
-            if (node.lectureRule) {
+            if (lecture && node.lectureRule) {
                 assert(typeof node.lectureRule === 'object', 'lectureRule must be an object');
                 assert(node.lectureRule.pids instanceof Array, 'lectureRule pids must be an array');
                 assert(node.lectureRule.pids.length, 'lectureRule pids must not be empty');
@@ -348,7 +349,7 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
             result.push({
                 _id: +node._id,
                 title: node.title,
-                lecture: node.lecture || false,
+                lecture: lecture || false,
                 pids: Array.from(new Set(pids)),
                 ...(node.requireNids ? { requireNids: Array.from(new Set(node.requireNids)) } : {}),
                 completeCondition: node.completeCondition || { type: 'all' },

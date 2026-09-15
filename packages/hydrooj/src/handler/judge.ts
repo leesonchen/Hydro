@@ -253,6 +253,7 @@ export async function processJudgeFileCallback(rid: ObjectId, filename: string, 
         throw new FileLimitExceededError('size');
     }
     await problem.addTestdata(pdoc.domainId, pdoc.docId, sanitize(filename), fs.createReadStream(filePath), udoc._id);
+    await problem.setEditMetadata(pdoc.domainId, pdoc.docId, udoc._id);
 }
 
 export class JudgeFileUpdateHandler extends Handler {

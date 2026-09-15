@@ -1,5 +1,9 @@
 import assert from 'assert';
-import { writeFileSync } from 'fs';
+import {
+    mkdtempSync, rmSync, writeFileSync,
+} from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import autocannon from 'autocannon';
 import { Binary, ObjectId } from 'mongodb';
 import {
@@ -368,6 +372,91 @@ describe('App', () => {
             const cachedUsers = await Promise.all(createdUsers.map((uid) => UserModel.getById('system', uid)));
             for (const udoc of cachedUsers) if (udoc) UserModel._deleteUserCache(udoc);
             await UserModel.coll.deleteMany({ _id: { $in: createdUsers } });
+        }
+    });
+
+    it('Tracks generated testdata edits and preserves metadata on failure', async () => {
+        const ProblemModel = global.Hydro.model.problem;
+        const RecordModel = global.Hydro.model.record;
+        const suffix = Date.now().toString(36);
+        const pid = await ProblemModel.add('system', `generated-metadata-${suffix}`, `Generated metadata ${suffix}`, '', 2);
+        const rid = await RecordModel.add(
+            'system', pid, 2, '_', 'generated', false, { type: 'generate' },
+        );
+        const tempDir = mkdtempSync(join(tmpdir(), 'hydro-generated-testdata-'));
+        const filePath = join(tempDir, 'generated.in');
+        writeFileSync(filePath, 'generated testdata\n');
+        const { processJudgeFileCallback } = require('../packages/hydrooj/src/handler/judge');
+
+        try {
+            const editStartedAt = Date.now();
+            await processJudgeFileCallback(rid, 'generated.in', filePath);
+            let pdoc = await ProblemModel.get('system', pid);
+            assert.equal(pdoc.editor, 2);
+            assert(pdoc.updateAt.getTime() >= editStartedAt);
+            assert(pdoc.data.some((file) => file.name === 'generated.in'));
+
+            const oldUpdateAt = new Date('2000-01-02T03:04:05Z');
+            await ProblemModel.edit('system', pid, { editor: 3, updateAt: oldUpdateAt });
+            pdoc = await ProblemModel.get('system', pid);
+            const dataBeforeFailure = pdoc.data;
+            await assert.rejects(() => processJudgeFileCallback(rid, '', filePath));
+            const unchanged = await ProblemModel.get('system', pid);
+            assert.deepEqual(unchanged.data, dataBeforeFailure);
+            assert.equal(unchanged.editor, 3);
+            assert.equal(unchanged.updateAt.getTime(), oldUpdateAt.getTime());
+        } finally {
+            await Promise.all([
+                ProblemModel.del('system', pid),
+                RecordModel.coll.deleteOne({ _id: rid }),
+            ]);
+            rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    it('Does not persist lecture rules without a lecture', async () => {
+        const ContestModel = global.Hydro.model.contest;
+        const ProblemModel = global.Hydro.model.problem;
+        const suffix = Date.now().toString(36);
+        const pid = await ProblemModel.add('system', `course-lecture-rule-${suffix}`, `Course lecture rule ${suffix}`, '', 2);
+        const courseId = await ContestModel.add(
+            'system', `Course lecture rule ${suffix}`, '', 2, 'course',
+            new Date('2026-09-16T00:00:00Z'), new Date('2026-09-17T00:00:00Z'), [pid], false,
+            { assign: [], dag: [{ _id: 1, title: 'Initial', pids: [pid] }] },
+        );
+
+        try {
+            await agent.post(`/d/system/course/${courseId}/edit`)
+                .send({
+                    title: `Course lecture rule ${suffix}`,
+                    content: 'content',
+                    dag: JSON.stringify([{
+                        _id: 1,
+                        title: 'No lecture',
+                        lecture: '   ',
+                        pids: [pid],
+                        lectureRule: { pids: [pid], condition: { type: 'all' } },
+                    }]),
+                    beginAt: '2026-9-16 0:00',
+                    endAt: '2026-9-17 23:59',
+                    lessonDurationHours: 3,
+                    lessonBeginAt: '2026-9-16 0:00',
+                    lessonEndAt: '2026-9-16 3:00',
+                    assign: '',
+                    extraStudents: '',
+                    publicScoreboard: true,
+                    enablePenalty: true,
+                })
+                .expect(302);
+            const saved = await ContestModel.get('system', courseId);
+            assert(saved);
+            assert.equal(saved.dag[0].lecture, false);
+            assert(!saved.dag[0].lectureRule);
+        } finally {
+            await Promise.all([
+                ContestModel.del('system', courseId),
+                ProblemModel.del('system', pid),
+            ]);
         }
     });
 
