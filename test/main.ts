@@ -162,16 +162,54 @@ describe('App', () => {
             assert.equal(internalUpdated.editor, updated.editor);
             assert.equal(internalUpdated.updateAt.getTime(), updated.updateAt.getTime());
 
+            const oldFileMetadata = new Date('2000-01-02T03:04:05Z');
+            await ProblemModel.edit('system', pid, { editor: 3, updateAt: oldFileMetadata });
+            const additionalName = `metadata-${suffix}.txt`;
+            const renamedAdditionalName = `renamed-${suffix}.txt`;
+            await agent.post(`/p/${pid}/files`)
+                .field('operation', 'upload_file')
+                .field('type', 'additional_file')
+                .set('Origin', 'http://127.0.0.1:8888')
+                .attach('file', Buffer.from('attachment\n'), additionalName)
+                .expect(302);
+            let fileUpdated = await ProblemModel.get('system', pid);
+            assert.equal(fileUpdated.editor, 2);
+            assert(fileUpdated.updateAt.getTime() > oldFileMetadata.getTime());
+
+            await agent.post(`/p/${pid}/files`)
+                .send({ operation: 'rename_files', files: [additionalName], newNames: [renamedAdditionalName], type: 'additional_file' })
+                .expect(302);
+            fileUpdated = await ProblemModel.get('system', pid);
+            assert.equal(fileUpdated.editor, 2);
+            assert(fileUpdated.updateAt.getTime() > oldFileMetadata.getTime());
+
+            await agent.post(`/p/${pid}/files`)
+                .send({ operation: 'delete_files', files: [renamedAdditionalName], type: 'additional_file' })
+                .expect(302);
+            fileUpdated = await ProblemModel.get('system', pid);
+            assert.equal(fileUpdated.editor, 2);
+            assert(fileUpdated.updateAt.getTime() > oldFileMetadata.getTime());
+
+            await agent.post(`/p/${pid}/files`)
+                .field('operation', 'upload_file')
+                .field('type', 'testdata')
+                .set('Origin', 'http://127.0.0.1:8888')
+                .attach('file', Buffer.from('time: 1s\nmemory: 1m\n'), 'config.yaml')
+                .expect(302);
+            fileUpdated = await ProblemModel.get('system', pid);
+            assert.equal(fileUpdated.editor, 2);
+            assert(fileUpdated.updateAt.getTime() > oldFileMetadata.getTime());
+
             const copiedPid = await ProblemModel.copy('system', pid, 'system');
             pids.push(copiedPid);
             const copied = await ProblemModel.get('system', copiedPid);
-            assert.equal(copied.editor, updated.editor);
-            assert.equal(copied.updateAt.getTime(), updated.updateAt.getTime());
+            assert.equal(copied.editor, fileUpdated.editor);
+            assert.equal(copied.updateAt.getTime(), fileUpdated.updateAt.getTime());
             const copiedDetail = await agent.get(`/p/${copiedPid}`)
                 .set('Accept', 'application/json')
                 .expect(200);
-            assert.equal(copiedDetail.body.editor_udoc._id, updated.editor);
-            assert.equal(new Date(copiedDetail.body.lastUpdateAt).getTime(), updated.updateAt.getTime());
+            assert.equal(copiedDetail.body.editor_udoc._id, fileUpdated.editor);
+            assert.equal(new Date(copiedDetail.body.lastUpdateAt).getTime(), fileUpdated.updateAt.getTime());
 
             const legacyPid = await ProblemModel.add('system', `legacy-${suffix}`, `Legacy ${suffix}`, '', 2);
             pids.push(legacyPid);

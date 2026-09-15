@@ -67,7 +67,7 @@ export class ProblemTranslationHandler extends Handler {
             );
 
             // 保存翻译结果
-            await this.saveTranslation(domainId, pdoc.docId, translatedContent);
+            await this.saveTranslation(domainId, pdoc.docId, translatedContent, this.user._id);
 
             this.response.body = {
                 status: 'completed',
@@ -111,7 +111,7 @@ export class ProblemTranslationHandler extends Handler {
         return content.zh || content.en || pdoc.content || '';
     }
 
-    private async saveTranslation(domainId: string, docId: number, aiContent: string): Promise<void> {
+    private async saveTranslation(domainId: string, docId: number, aiContent: string, editor: number): Promise<void> {
         const pdoc = await problem.get(domainId, docId);
         if (!pdoc) throw new ProblemNotFoundError(domainId, docId);
 
@@ -123,6 +123,10 @@ export class ProblemTranslationHandler extends Handler {
         }
 
         content.ai = aiContent;
-        await problem.edit(domainId, docId, { content: JSON.stringify(content) });
+        await problem.edit(domainId, docId, {
+            content: JSON.stringify(content),
+            editor,
+            updateAt: new Date(),
+        });
     }
 }

@@ -962,6 +962,8 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
             const method = entry.type === 'testdata' ? 'addTestdata' : 'addAdditionalFile';
             // eslint-disable-next-line no-await-in-loop
             await problem[method](domainId, this.pdoc.docId, entry.name, entry.data(), this.user._id);
+            // eslint-disable-next-line no-await-in-loop
+            await problem.setEditMetadata(domainId, this.pdoc.docId, this.user._id);
         }
         this.back();
     }
@@ -975,6 +977,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
             const newName = newNames[index];
             if (type === 'testdata') await problem.renameTestdata(domainId, this.pdoc.docId, file, newName, this.user._id);
             else await problem.renameAdditionalFile(domainId, this.pdoc.docId, file, newName, this.user._id);
+            if (file !== newName) await problem.setEditMetadata(domainId, this.pdoc.docId, this.user._id);
         }));
         this.back();
     }
@@ -984,6 +987,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
     async postDeleteFiles(domainId: string, files: string[], type = 'testdata') {
         if (type === 'testdata') await problem.delTestdata(domainId, this.pdoc.docId, files, this.user._id);
         else await problem.delAdditionalFile(domainId, this.pdoc.docId, files, this.user._id);
+        if (files.length) await problem.setEditMetadata(domainId, this.pdoc.docId, this.user._id);
         this.back();
     }
 

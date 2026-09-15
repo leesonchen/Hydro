@@ -254,6 +254,10 @@ export class ProblemModel {
         return result;
     }
 
+    static setEditMetadata(domainId: string, _id: number, editor: number, updateAt = new Date()) {
+        return document.set(domainId, document.TYPE_PROBLEM, _id, { editor, updateAt });
+    }
+
     static async copy(domainId: string, _id: number, target: string, pid?: string, hidden?: boolean) {
         const original = await ProblemModel.get(domainId, _id);
         if (!original) throw new ProblemNotFoundError(domainId, _id);
