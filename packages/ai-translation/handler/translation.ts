@@ -1,4 +1,4 @@
-import { Handler, ProblemModel as problem, ProblemNotFoundError, param, route, Types } from 'hydrooj';
+import { Handler, ProblemModel as problem, ProblemNotFoundError, param, Types } from 'hydrooj';
 import { TranslationService } from '../service/translation';
 
 export class ProblemTranslationHandler extends Handler {
@@ -8,7 +8,7 @@ export class ProblemTranslationHandler extends Handler {
         this.translationService = this.ctx.get('translation');
     }
 
-    @route('pid', Types.ProblemId)
+    @param('pid', Types.ProblemId)
     async get(domainId: string, pid: string | number) {
         const pdoc = await problem.get(domainId, pid);
         if (!pdoc) throw new ProblemNotFoundError(domainId, pid);
@@ -21,18 +21,35 @@ export class ProblemTranslationHandler extends Handler {
             content = { zh: pdoc.content };
         }
 
-        this.response.template = 'translation_panel.html';
-        this.response.body = {
-            pdoc,
-            hasAiTranslation: !!content.ai,
-            aiContent: content.ai || '',
-            sourceContent: content.zh || content.en || pdoc.content,
-        };
+        if (this.request.path.endsWith('/api/translation/status')) {
+            this.response.body = {
+                hasTranslation: !!content.ai,
+                content: content.ai || null,
+            };
+        } else {
+            this.response.template = 'translation_panel.html';
+            this.response.body = {
+                pdoc,
+                hasAiTranslation: !!content.ai,
+                aiContent: content.ai || '',
+                sourceContent: content.zh || content.en || pdoc.content,
+            };
+        }
+    }
+
+    @param('pid', Types.ProblemId)
+    @param('force', Types.Boolean, true)
+    async post(domainId: string, pid: string | number, force = false) {
+        return this.translateProblem(domainId, pid, force);
     }
 
     @param('pid', Types.ProblemId)
     @param('force', Types.Boolean, true)
     async postTranslate(domainId: string, pid: string | number, force = false) {
+        return this.translateProblem(domainId, pid, force);
+    }
+
+    private async translateProblem(domainId: string, pid: string | number, force = false) {
         const pdoc = await problem.get(domainId, pid);
         if (!pdoc) throw new ProblemNotFoundError(domainId, pid);
 
@@ -80,24 +97,6 @@ export class ProblemTranslationHandler extends Handler {
                 error: err.message,
             };
         }
-    }
-
-    @param('pid', Types.ProblemId)
-    async getStatus(domainId: string, pid: string | number) {
-        const pdoc = await problem.get(domainId, pid);
-        if (!pdoc) throw new ProblemNotFoundError(domainId, pid);
-
-        let content: Record<string, string> = {};
-        try {
-            content = JSON.parse(pdoc.content);
-        } catch {
-            content = { zh: pdoc.content };
-        }
-
-        this.response.body = {
-            hasTranslation: !!content.ai,
-            content: content.ai || null,
-        };
     }
 
     private extractSourceContent(pdoc: any): string {
