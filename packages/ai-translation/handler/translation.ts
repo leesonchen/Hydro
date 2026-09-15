@@ -5,7 +5,7 @@ export class ProblemTranslationHandler extends Handler {
     translationService: TranslationService;
 
     async prepare() {
-        this.translationService = this.ctx.translation;
+        this.translationService = this.ctx.get('translation');
     }
 
     @route('pid', Types.ProblemId)
