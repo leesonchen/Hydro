@@ -1,6 +1,6 @@
 import Schema from 'schemastery';
 import {
-    Context, Handler, PERM, param, post, route, Types,
+    Context,
 } from 'hydrooj';
 import { ProblemTranslationHandler } from './handler/translation';
 import { TranslationService } from './service/translation';
@@ -52,12 +52,6 @@ export async function apply(ctx: Context, config: any) {
         no_api_key_configured: 'API key not configured',
         translation_error: 'Translation error: {0}',
     });
-
-    // 注册权限
-    ctx.addPermission(
-        PERM.PERM_VIEW_PROBLEM,
-        PERM.PERM_EDIT_PROBLEM,
-    );
 
     // 注册路由
     ctx.Route('problem_translate', '/p/:pid/translate', ProblemTranslationHandler);
