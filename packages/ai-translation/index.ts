@@ -21,8 +21,7 @@ export async function apply(ctx: Context, config: any) {
     if (!config.enabled) return;
 
     // 注册翻译服务
-    const translationService = new TranslationService(config);
-    ctx.provideService('translation', translationService);
+    ctx.plugin(TranslationService, config);
 
     // i18n 翻译
     ctx.i18n.load('zh', {

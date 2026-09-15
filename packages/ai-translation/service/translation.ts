@@ -1,6 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import { Logger } from 'hydrooj';
+import { Context, Logger, Service } from 'hydrooj';
+
+declare module 'cordis' {
+    interface Context {
+        translation: TranslationService;
+    }
+}
 
 const logger = new Logger('ai-translation');
 
@@ -17,10 +23,11 @@ interface AdditionalFile {
     size?: number;
 }
 
-export class TranslationService {
+export class TranslationService extends Service {
     private config: TranslationConfig;
 
-    constructor(config: TranslationConfig) {
+    constructor(ctx: Context, config: TranslationConfig) {
+        super(ctx, 'translation');
         this.config = config;
     }
 
