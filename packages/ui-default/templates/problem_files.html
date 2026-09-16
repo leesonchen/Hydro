@@ -132,6 +132,7 @@
     </div>
     <div class="dialog__action" style="padding: 12px 20px; border-top: 1px solid #e5e5e5; display: flex; justify-content: flex-end; gap: 10px;">
       <button type="button" class="primary rounded button" id="btn-sync-from-dialog"><span class="icon icon-refresh"></span> {{ _('Sync Problem Changes') }}</button>
+      <button type="button" class="danger rounded button" id="btn-force-sync-from-dialog" style="display: none;"><span class="icon icon-alert-triangle"></span> {{ _('Force Sync') }}</button>
       <button type="button" class="rounded button dialog__close-btn">{{ _('Close') }}</button>
     </div>
   </div>
@@ -145,7 +146,8 @@
     </div>
     <div class="dialog__body" style="padding: 20px; overflow-y: auto; flex: 1;" id="sync-result-body">
     </div>
-    <div class="dialog__action" style="padding: 12px 20px; border-top: 1px solid #e5e5e5; display: flex; justify-content: flex-end;">
+    <div class="dialog__action" style="padding: 12px 20px; border-top: 1px solid #e5e5e5; display: flex; justify-content: flex-end; gap: 10px;" id="sync-result-action">
+      <button type="button" class="danger rounded button" id="btn-force-sync-result" style="display: none;"><span class="icon icon-alert-triangle"></span> {{ _('Force Sync') }}</button>
       <button type="button" class="primary rounded button sync-dialog__close-btn">{{ _('Ok') }}</button>
     </div>
   </div>
@@ -157,7 +159,12 @@
   window.__problemCopiedListenersAttached = true;
 
   var tplConfirmSync = "{{ _('Are you sure you want to sync changes to unedited copied problems?')|escape }}";
+  var tplConfirmForceSync = "{{ _('Are you sure you want to force sync? This will overwrite modifications made in target domains and cannot be undone.')|escape }}";
+  var tplForceSyncNotice = "{{ _('Target problems may have local modifications. If you have permission, you can force sync to overwrite them.')|escape }}";
+  var tplForceSync = "{{ _('Force Sync')|escape }}";
+  var tplForceSyncConflicted = "{{ _('Force Sync Conflicted Problems')|escape }}";
   var tplUnauthNote = "{{ _('There are {0} copies in domains you do not have permission to view.')|escape }}";
+  var tplUnauthEditNote = "{{ _('There are {0} copies in domains you do not have permission to edit.')|escape }}";
   var tplSyncedSuccess = "{{ _('Successfully synced {0} problems.')|escape }}";
   var tplConflictsHeader = "{{ _('The following {0} problems have local modifications and were not synced:')|escape }}";
   var tplNotModified = "{{ _('Not Modified')|escape }}";
@@ -194,6 +201,8 @@
     var content = document.getElementById('copied-problems-content');
     var list = document.getElementById('copied-problems-list');
     var unauth = document.getElementById('copied-problems-unauthorized');
+    var forceBtn = document.getElementById('btn-force-sync-from-dialog');
+    if (forceBtn) forceBtn.style.display = 'none';
     if (!dialog) return;
 
     dialog.style.display = 'flex';
@@ -210,11 +219,13 @@
     .then(function(data) {
       loading.style.display = 'none';
       content.style.display = 'block';
+      var hasModifiedAny = false;
       if (!data || !data.copies || data.copies.length === 0) {
         list.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888; padding: 20px;">' + tplNoCopies + '</td></tr>';
       } else {
         var html = '';
         data.copies.forEach(function(item) {
+          if (item.hasModified) hasModifiedAny = true;
           var domainUrl = '/d/' + encodeURIComponent(item.domainId) + '/';
           var problemUrl = '/d/' + encodeURIComponent(item.domainId) + '/p/' + encodeURIComponent(item.pid || item.docId);
           var domainDisplay = '<a href="' + domainUrl + '" target="_blank" style="font-weight: 500;">' + escapeHtml(item.domainTitle || item.domainId) + '</a>' +
@@ -236,6 +247,10 @@
             '</tr>';
         });
         list.innerHTML = html;
+      }
+
+      if (forceBtn) {
+        forceBtn.style.display = hasModifiedAny ? 'inline-block' : 'none';
       }
 
       if (data && data.unauthorizedCount > 0) {
@@ -260,12 +275,17 @@
   function showSyncResult(data) {
     var dialog = document.getElementById('sync-result-dialog');
     var body = document.getElementById('sync-result-body');
+    var forceResultBtn = document.getElementById('btn-force-sync-result');
     if (!dialog || !body) return;
 
     var html = '';
     var syncedCount = (data && data.synced) ? data.synced.length : 0;
     var conflictCount = (data && data.conflicts) ? data.conflicts.length : 0;
     var upToDateCount = (data && data.upToDate) ? data.upToDate.length : 0;
+
+    if (forceResultBtn) {
+      forceResultBtn.style.display = (conflictCount > 0) ? 'inline-block' : 'none';
+    }
 
     if (syncedCount > 0) {
       html += '<div style="margin-bottom: 16px; padding: 12px 16px; background: #f6ffed; border: 1px solid #b7eb8f; border-radius: 4px;">' +
@@ -284,7 +304,7 @@
       html += '<div style="margin-bottom: 16px; padding: 12px 16px; background: #fff2e8; border: 1px solid #ffbb96; border-radius: 4px;">' +
         '<div style="font-weight: 600; color: #d4380d; font-size: 1.05rem; margin-bottom: 8px;">' +
         '<span class="icon icon-alert-triangle" style="margin-right: 6px;"></span>' + escapeHtml(tplConflictsHeader.replace('{0}', conflictCount)) + '</div>' +
-        '<ul style="margin: 0; padding-left: 20px; color: #333;">';
+        '<ul style="margin: 0 0 12px 0; padding-left: 20px; color: #333;">';
       data.conflicts.forEach(function(c) {
         var problemUrl = '/d/' + encodeURIComponent(c.domainId) + '/p/' + encodeURIComponent(c.pid || c.docId);
         var label = '[' + (c.domainTitle || c.domainId) + '] ' + (c.pid || c.docId) + ' ' + (c.title || '');
@@ -292,7 +312,12 @@
         html += '<li style="margin: 4px 0;"><a href="' + problemUrl + '" target="_blank">' + escapeHtml(label) + '</a>' +
           '<span style="color: #d4380d; margin-left: 6px; font-size: 0.9em;">(' + escapeHtml(reason) + ')</span></li>';
       });
-      html += '</ul></div>';
+      html += '</ul>' +
+        '<div style="border-top: 1px dashed #ffbb96; padding-top: 10px; display: flex; align-items: center; justify-content: space-between; font-size: 0.9em; color: #d4380d;">' +
+        '<span><span class="icon icon-info"></span> ' + escapeHtml(tplForceSyncNotice) + '</span>' +
+        '<button type="button" class="small danger rounded button" id="btn-force-sync-box"><span class="icon icon-alert-triangle"></span> ' + escapeHtml(tplForceSyncConflicted) + '</button>' +
+        '</div>' +
+        '</div>';
     }
 
     if (upToDateCount > 0 && syncedCount === 0 && conflictCount === 0) {
@@ -304,8 +329,9 @@
     }
 
     if (data && data.unauthorizedCount > 0) {
+      var unauthMsg = data.force ? tplUnauthEditNote : tplUnauthNote;
       html += '<div style="margin-top: 12px; padding: 8px 12px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 4px; color: #d48806; font-size: 0.9em;">' +
-        '<span class="icon icon-info" style="margin-right: 4px;"></span>' + escapeHtml(tplUnauthNote.replace('{0}', data.unauthorizedCount)) + '</div>';
+        '<span class="icon icon-info" style="margin-right: 4px;"></span>' + escapeHtml(unauthMsg.replace('{0}', data.unauthorizedCount)) + '</div>';
     }
 
     if (syncedCount === 0 && conflictCount === 0 && upToDateCount === 0 && (!data || !data.unauthorizedCount)) {
@@ -321,16 +347,17 @@
     if (dialog) dialog.style.display = 'none';
   }
 
-  function triggerSync() {
-    if (!confirm(tplConfirmSync)) return;
+  function triggerSync(force) {
+    var confirmMsg = force ? tplConfirmForceSync : tplConfirmSync;
+    if (!confirm(confirmMsg)) return;
 
-    var syncBtns = document.querySelectorAll('[name="sync_copied_problems"], #btn-sync-from-dialog');
+    var syncBtns = document.querySelectorAll('[name="sync_copied_problems"], #btn-sync-from-dialog, #btn-force-sync-from-dialog, #btn-force-sync-result, #btn-force-sync-box');
     syncBtns.forEach(function(btn) { btn.disabled = true; });
 
     fetch(window.location.pathname, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ operation: 'sync_copied_problems' })
+      body: JSON.stringify({ operation: 'sync_copied_problems', force: !!force })
     })
     .then(function(res) { return res.json(); })
     .then(function(data) {
@@ -353,10 +380,13 @@
       openCopiedDialog();
     } else if (target.name === 'sync_copied_problems') {
       e.preventDefault();
-      triggerSync();
+      triggerSync(false);
     } else if (target.id === 'btn-sync-from-dialog') {
       e.preventDefault();
-      triggerSync();
+      triggerSync(false);
+    } else if (target.id === 'btn-force-sync-from-dialog' || target.id === 'btn-force-sync-result' || target.id === 'btn-force-sync-box') {
+      e.preventDefault();
+      triggerSync(true);
     } else if (target.classList.contains('dialog__close-btn')) {
       e.preventDefault();
       closeCopiedDialog();

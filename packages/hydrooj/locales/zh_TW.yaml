@@ -1004,4 +1004,10 @@ All copies have been modified locally and cannot be synced.: 所有複製題目�
 'The following {0} problems have local modifications and were not synced:': '以下 {0} 個題目因在目標域中被修改過，未能同步：'
 No copied problems found.: 未找到已複製的題目。
 'There are {0} copies in domains you do not have permission to view.': 另有 {0} 個副本位於您無權查看的域中。
+'There are {0} copies in domains you do not have permission to edit.': 另有 {0} 個副本因在目標域中無編輯權限而未能同步。
 Sync Result: 同步結果
+Force Sync: 強制同步
+Force Sync Conflicted Problems: 強制同步衝突題目
+'Are you sure you want to force sync? This will overwrite modifications made in target domains and cannot be undone.': '【高危操作確認】\n檢測到目標域題目可能已有單獨修改或更新。\n強制同步將直接使用當前源頭題目的題面（標題、內容、標籤、難度）覆蓋目標域題目的所有改動，且無法撤銷！\n\n是否確認強制同步？'
+'Target problems may have local modifications. If you have permission, you can force sync to overwrite them.': 提示：目標域題目可能已有單獨修改。在擁有編輯權限的前提下，您可以選擇強制同步以覆蓋目標域的修改。
+

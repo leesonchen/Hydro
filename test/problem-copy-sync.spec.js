@@ -450,10 +450,44 @@ test('ProblemFilesHandler exposes copiedCount, lists copies with permission filt
 
     // Test 5: View-all still cannot bypass target-problem permissions
     handler.user = viewAllUser;
+    handler.args = {};
     handler.response = { body: {} };
     await handler.postSyncCopiedProblems();
-    // private_school remains unauthorized even for a system admin
+    // private_school remains unauthorized even for a view-all user
     const adminSyncedPrivate = editedRecords.find((r) => r.domainId === 'private_school');
     assert.equal(adminSyncedPrivate, undefined);
     assert.equal(handler.response.body.unauthorizedCount, 1);
+
+    // Test 6: Force sync allows overwriting locally modified copies for authorized domains
+    handler.user = userEditor;
+    handler.args = { force: true };
+    handler.response = { body: {} };
+    await handler.postSyncCopiedProblems();
+    // school_a and school_b should be synced (even though school_b was modified), private_school is unauthorized
+    assert.equal(handler.response.body.synced.length, 2);
+    assert.equal(handler.response.body.conflicts.length, 0);
+    assert.equal(handler.response.body.unauthorizedCount, 1);
+    assert.equal(handler.response.body.force, true);
+    const forceSyncedSchoolB = editedRecords.find((r) => r.domainId === 'school_b');
+    assert.ok(forceSyncedSchoolB);
+    assert.equal(forceSyncedSchoolB.update.title, sourceProblem.title);
+    assert.equal(forceSyncedSchoolB.update.content, sourceProblem.content);
+
+    // Test 7: System admin with PRIV_EDIT_SYSTEM can force sync even without domain membership
+    const systemAdminUser = {
+        _id: 1,
+        own: () => true,
+        hasPerm: () => true,
+        hasPriv: (priv) => priv === PRIV.PRIV_EDIT_SYSTEM,
+    };
+    handler.user = systemAdminUser;
+    handler.args = { force: true };
+    handler.response = { body: {} };
+    await handler.postSyncCopiedProblems();
+    assert.equal(handler.response.body.synced.length, 3);
+    assert.equal(handler.response.body.conflicts.length, 0);
+    assert.equal(handler.response.body.unauthorizedCount, 0);
+    const forceSyncedPrivate = editedRecords.find((r) => r.domainId === 'private_school');
+    assert.ok(forceSyncedPrivate);
 });
+

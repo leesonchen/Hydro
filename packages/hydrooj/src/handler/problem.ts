@@ -1063,6 +1063,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
         const upToDate = [];
         let unauthorizedCount = 0;
         const now = new Date();
+        const force = !!this.args.force;
 
         for (const copy of copies) {
             // Synchronization uses the same target-domain permissions as a normal edit.
@@ -1071,8 +1072,10 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
             const canViewDomain = this.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)
                 || !!targetUser?.hasPerm(PERM.PERM_VIEW);
             const canView = canViewDomain && !!targetUser && problem.canViewBy(copy, targetUser);
-            const canEdit = canView && (targetUser.own(copy, PERM.PERM_EDIT_PROBLEM_SELF)
-                || targetUser.hasPerm(PERM.PERM_EDIT_PROBLEM));
+            const canEdit = (this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) || canView)
+                && (this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)
+                    || (targetUser && (targetUser.own(copy, PERM.PERM_EDIT_PROBLEM_SELF)
+                        || targetUser.hasPerm(PERM.PERM_EDIT_PROBLEM))));
             if (!canEdit) {
                 unauthorizedCount++;
                 continue;
@@ -1090,7 +1093,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
             };
 
             const isModified = problem.isModifiedLocally(copy, this.pdoc);
-            if (isModified) {
+            if (isModified && !force) {
                 conflicts.push({
                     ...item,
                     reason: '已在目标域被单独编辑修改',
@@ -1111,7 +1114,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
                 : (typeof this.pdoc._id?.getTimestamp === 'function' ? this.pdoc._id.getTimestamp().getTime() : 0);
             const copyLastSyncAt = copy.reference?.lastSyncAt ? new Date(copy.reference.lastSyncAt).getTime() : 0;
 
-            if (isSame && copyLastSyncAt && (!sourceUpdateAt || copyLastSyncAt >= sourceUpdateAt)) {
+            if (isSame && copyLastSyncAt && (!sourceUpdateAt || copyLastSyncAt >= sourceUpdateAt) && !force) {
                 upToDate.push(item);
                 continue;
             }
@@ -1135,21 +1138,23 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
             try {
                 const condition: Filter<ProblemDoc> = {
                     _id: copy._id,
-                    title: copy.title,
-                    content: copy.content,
                     'reference.domainId': domainId,
                     'reference.pid': this.pdoc.docId,
                 };
-                const matchSnapshot = (key: keyof ProblemDoc) => {
-                    (condition as any)[key] = copy[key] !== undefined ? copy[key] : { $exists: false };
-                };
-                for (const key of [
-                    'tag', 'difficulty', 'html', 'hidden', 'owner', 'maintainer', 'editor', 'updateAt',
-                ] as const) matchSnapshot(key);
-                for (const key of ['sourceUpdateAt', 'lastSyncAt'] as const) {
-                    condition[`reference.${key}`] = copy.reference?.[key] !== undefined
-                        ? copy.reference[key]
-                        : { $exists: false };
+                if (!force) {
+                    condition.title = copy.title;
+                    condition.content = copy.content;
+                    const matchSnapshot = (key: keyof ProblemDoc) => {
+                        (condition as any)[key] = copy[key] !== undefined ? copy[key] : { $exists: false };
+                    };
+                    for (const key of [
+                        'tag', 'difficulty', 'html', 'hidden', 'owner', 'maintainer', 'editor', 'updateAt',
+                    ] as const) matchSnapshot(key);
+                    for (const key of ['sourceUpdateAt', 'lastSyncAt'] as const) {
+                        condition[`reference.${key}`] = copy.reference?.[key] !== undefined
+                            ? copy.reference[key]
+                            : { $exists: false };
+                    }
                 }
                 // eslint-disable-next-line no-await-in-loop
                 const result = await problem.editIfCondition(copy.domainId, copy.docId, condition, $update);
@@ -1166,6 +1171,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
         await oplog.log(this, 'problem.sync_copies', {
             domainId,
             pid: this.pdoc.docId,
+            force,
             syncedCount: synced.length,
             conflictCount: conflicts.length,
             unauthorizedCount,
@@ -1177,6 +1183,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
             conflicts,
             upToDate,
             unauthorizedCount,
+            force,
         };
     }
 }
