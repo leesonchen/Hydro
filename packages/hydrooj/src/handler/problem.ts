@@ -1064,8 +1064,32 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
         let unauthorizedCount = 0;
         const now = new Date();
         const force = !!this.args.force;
+        const rawTargets = this.args.targets;
+        const targets: any[] = Array.isArray(rawTargets) ? rawTargets : null;
 
         for (const copy of copies) {
+            if (targets) {
+                const isTargeted = targets.some((t) => {
+                    if (!t) return false;
+                    if (typeof t === 'string') {
+                        return t === `${copy.domainId}/${copy.docId}`
+                            || t === `${copy.domainId}/${copy.pid}`
+                            || t === `${copy.domainId}#${copy.docId}`
+                            || t === `${copy.domainId}#${copy.pid}`;
+                    }
+                    if (typeof t === 'object') {
+                        const targetDomain = t.domainId;
+                        const targetDocId = t.docId !== undefined ? String(t.docId) : undefined;
+                        const targetPid = t.pid !== undefined ? String(t.pid) : undefined;
+                        return targetDomain === copy.domainId && (
+                            (targetDocId !== undefined && targetDocId === String(copy.docId))
+                            || (targetPid !== undefined && targetPid === String(copy.pid))
+                        );
+                    }
+                    return false;
+                });
+                if (!isTargeted) continue;
+            }
             // Synchronization uses the same target-domain permissions as a normal edit.
             // eslint-disable-next-line no-await-in-loop
             const targetUser = await user.getById(copy.domainId, this.user._id, this.user.scope);

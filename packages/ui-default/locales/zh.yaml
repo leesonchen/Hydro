@@ -1197,3 +1197,19 @@ All copies have been modified locally and cannot be synced.: 所有复制题目�
 No copied problems found.: 未找到已复制的题目。
 'There are {0} copies in domains you do not have permission to view.': 另有 {0} 个副本位于您无权查看的域中。
 Sync Result: 同步结果
+Force Sync: 强制同步
+Force Sync Conflicted Problems: 强制同步冲突题目
+'Are you sure you want to force sync? This will overwrite modifications made in target domains and cannot be undone.': "【高危操作确认】\n检测到目标域题目可能已有单独修改或更新。\n强制同步将使用当前源头题目的题面（标题、内容、标签、难度）直接覆盖目标域题目的所有改动，且无法撤销！\n\n是否确认强制同步？"
+'Target problems may have local modifications. If you have permission, you can force sync to overwrite them.': 提示：目标域题目可能已有单独修改。在拥有编辑权限的前提下，您可以选择强制同步以覆盖目标域的修改。
+Force Sync Confirmation: 高危操作确认
+Select All: 全选
+Select Modified: 仅选已修改
+Clear Selection: 清空选择
+Selected: 已选择
+'Please select at least one problem to force sync.': 请至少选择一个题目进行强制同步。
+Confirm Force Sync: 确认强制同步
+High Risk Warning: 高危操作警告
+'Force sync will overwrite all local modifications (title, content, tags, difficulty) in the target domains with the source problem, and cannot be undone!': 强制同步将使用当前源头题目的题面（标题、内容、标签、难度）直接覆盖目标域题目的所有改动，且无法撤销！
+'You have selected {0} problems to force sync:': '本次将对以下 {0} 个题目执行强制同步：'
+'Are you sure you want to proceed with force sync?': 是否确认继续执行强制同步？
+

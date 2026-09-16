@@ -104,7 +104,7 @@
 </div>
 {% if copiedCount > 0 %}
 <div id="copied-problems-dialog" class="dialog withBg" style="display: none; z-index: 1000; opacity: 1;">
-  <div class="dialog__content" style="max-width: 800px; width: 90%; max-height: 85vh; display: flex; flex-direction: column;">
+  <div class="dialog__content" style="max-width: 820px; width: 90%; max-height: 85vh; display: flex; flex-direction: column;">
     <div class="dialog__header" style="padding: 16px 20px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center;">
       <h3 style="margin: 0; font-size: 1.15rem; font-weight: 600;">{{ _('Copied Problems') }}</h3>
       <button type="button" class="dialog__close-btn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #888; line-height: 1;">&times;</button>
@@ -114,13 +114,29 @@
         <span class="icon icon-refresh spin"></span> {{ _('Loading...') }}
       </div>
       <div id="copied-problems-content" style="display: none;">
+        <div id="copied-problems-warn-tip" style="display: none; margin-bottom: 12px; padding: 8px 12px; background: #fff2e8; border: 1px solid #ffbb96; border-radius: 4px; color: #d4380d; font-size: 0.9em; align-items: center; gap: 6px;">
+          <span class="icon icon-alert-triangle"></span> <span id="copied-problems-warn-tip-text"></span>
+        </div>
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button type="button" class="small rounded button" id="btn-select-all-copies">{{ _('Select All') }}</button>
+            <button type="button" class="small rounded button" id="btn-select-modified-copies">{{ _('Select Modified') }}</button>
+            <button type="button" class="small rounded button" id="btn-clear-selection-copies">{{ _('Clear Selection') }}</button>
+          </div>
+          <div style="font-size: 0.9em; color: #666;">
+            {{ _('Selected') }}: <strong id="copied-selected-count" style="color: #2980b9;">0</strong> / <span id="copied-total-count">0</span>
+          </div>
+        </div>
         <table class="data-table" style="width: 100%;">
           <thead>
             <tr>
+              <th style="width: 40px; text-align: center;">
+                <input type="checkbox" id="check-all-copies" style="cursor: pointer; vertical-align: middle;" title="{{ _('Select All') }}">
+              </th>
               <th style="width: 25%;">{{ _('Target Domain') }}</th>
-              <th style="width: 30%;">{{ _('Problem') }}</th>
+              <th style="width: 28%;">{{ _('Problem') }}</th>
               <th style="width: 25%;">{{ _('Status') }}</th>
-              <th style="width: 20%;">{{ _('Update Time') }}</th>
+              <th style="width: 18%;">{{ _('Update Time') }}</th>
             </tr>
           </thead>
           <tbody id="copied-problems-list">
@@ -132,8 +148,44 @@
     </div>
     <div class="dialog__action" style="padding: 12px 20px; border-top: 1px solid #e5e5e5; display: flex; justify-content: flex-end; gap: 10px;">
       <button type="button" class="primary rounded button" id="btn-sync-from-dialog"><span class="icon icon-refresh"></span> {{ _('Sync Problem Changes') }}</button>
-      <button type="button" class="danger rounded button" id="btn-force-sync-from-dialog" style="display: none;"><span class="icon icon-alert-triangle"></span> {{ _('Force Sync') }}</button>
+      <button type="button" class="danger rounded button" id="btn-force-sync-from-dialog" style="display: none;"><span class="icon icon-alert-triangle"></span> <span id="btn-force-sync-from-dialog-text">{{ _('Force Sync') }}</span></button>
       <button type="button" class="rounded button dialog__close-btn">{{ _('Close') }}</button>
+    </div>
+  </div>
+</div>
+
+<div id="force-sync-confirm-dialog" class="dialog withBg" style="display: none; z-index: 1020; opacity: 1;">
+  <div class="dialog__content" style="max-width: 620px; width: 90%; max-height: 85vh; display: flex; flex-direction: column;">
+    <div class="dialog__header" style="padding: 16px 20px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="margin: 0; font-size: 1.15rem; font-weight: 600; color: #cf1322; display: flex; align-items: center; gap: 6px;">
+        <span class="icon icon-alert-triangle"></span> {{ _('Force Sync Confirmation') }}
+      </h3>
+      <button type="button" class="force-confirm__close-btn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #888; line-height: 1;">&times;</button>
+    </div>
+    <div class="dialog__body" style="padding: 20px; overflow-y: auto; flex: 1;">
+      <div style="padding: 12px 16px; background: #fff1f0; border: 1px solid #ffa39e; border-radius: 4px; margin-bottom: 16px;">
+        <div style="font-weight: 600; color: #cf1322; font-size: 1rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+          <span class="icon icon-alert-circle"></span> {{ _('High Risk Warning') }}
+        </div>
+        <div style="color: #434343; font-size: 0.95rem; line-height: 1.6;">
+          {{ _('Force sync will overwrite all local modifications (title, content, tags, difficulty) in the target domains with the source problem, and cannot be undone!') }}
+        </div>
+      </div>
+      <div style="margin-bottom: 8px; font-weight: 500; color: #333;">
+        <span class="icon icon-info" style="color: #2980b9; margin-right: 4px;"></span>
+        {{ _('You have selected {0} problems to force sync:').replace('{0}', '<strong id="force-sync-count-badge" style="color: #cf1322; font-size: 1.05em;">0</strong>')|safe }}
+      </div>
+      <div id="force-sync-selected-list" style="max-height: 170px; overflow-y: auto; border: 1px solid #e8e8e8; border-radius: 4px; padding: 8px 12px; background: #fafafa; font-size: 0.9em; color: #333;">
+      </div>
+      <div style="margin-top: 14px; font-weight: 600; color: #cf1322;">
+        {{ _('Are you sure you want to proceed with force sync?') }}
+      </div>
+    </div>
+    <div class="dialog__action" style="padding: 12px 20px; border-top: 1px solid #e5e5e5; display: flex; justify-content: flex-end; gap: 10px;">
+      <button type="button" class="danger rounded button" id="btn-do-force-sync">
+        <span class="icon icon-alert-triangle"></span> {{ _('Confirm Force Sync') }}
+      </button>
+      <button type="button" class="rounded button force-confirm__close-btn">{{ _('Cancel') }}</button>
     </div>
   </div>
 </div>
@@ -147,7 +199,7 @@
     <div class="dialog__body" style="padding: 20px; overflow-y: auto; flex: 1;" id="sync-result-body">
     </div>
     <div class="dialog__action" style="padding: 12px 20px; border-top: 1px solid #e5e5e5; display: flex; justify-content: flex-end; gap: 10px;" id="sync-result-action">
-      <button type="button" class="danger rounded button" id="btn-force-sync-result" style="display: none;"><span class="icon icon-alert-triangle"></span> {{ _('Force Sync') }}</button>
+      <button type="button" class="danger rounded button" id="btn-force-sync-result" style="display: none;"><span class="icon icon-alert-triangle"></span> {{ _('Force Sync Conflicted Problems') }}</button>
       <button type="button" class="primary rounded button sync-dialog__close-btn">{{ _('Ok') }}</button>
     </div>
   </div>
@@ -159,10 +211,10 @@
   window.__problemCopiedListenersAttached = true;
 
   var tplConfirmSync = "{{ _('Are you sure you want to sync changes to unedited copied problems?')|escape }}";
-  var tplConfirmForceSync = "{{ _('Are you sure you want to force sync? This will overwrite modifications made in target domains and cannot be undone.')|escape }}";
   var tplForceSyncNotice = "{{ _('Target problems may have local modifications. If you have permission, you can force sync to overwrite them.')|escape }}";
   var tplForceSync = "{{ _('Force Sync')|escape }}";
   var tplForceSyncConflicted = "{{ _('Force Sync Conflicted Problems')|escape }}";
+  var tplSelectAtLeastOne = "{{ _('Please select at least one problem to force sync.')|escape }}";
   var tplUnauthNote = "{{ _('There are {0} copies in domains you do not have permission to view.')|escape }}";
   var tplUnauthEditNote = "{{ _('There are {0} copies in domains you do not have permission to edit.')|escape }}";
   var tplSyncedSuccess = "{{ _('Successfully synced {0} problems.')|escape }}";
@@ -173,6 +225,8 @@
   var tplCannotSync = "{{ _('Cannot Sync')|escape }}";
   var tplUpToDate = "{{ _('Problem is up to date.')|escape }}";
   var tplNoCopies = "{{ _('No copied problems found.')|escape }}";
+
+  var pendingForceTargets = null;
 
   function escapeHtml(str) {
     if (str == null) return '';
@@ -195,13 +249,62 @@
     }
   }
 
-  function openCopiedDialog() {
+  function updateSelectionCount() {
+    var checkboxes = document.querySelectorAll('.copy-item-checkbox');
+    var totalCount = checkboxes.length;
+    var checkedCount = 0;
+    checkboxes.forEach(function(cb) {
+      if (cb.checked) checkedCount++;
+    });
+
+    var selectedCountEl = document.getElementById('copied-selected-count');
+    if (selectedCountEl) selectedCountEl.textContent = checkedCount;
+
+    var totalCountEl = document.getElementById('copied-total-count');
+    if (totalCountEl) totalCountEl.textContent = totalCount;
+
+    var checkAll = document.getElementById('check-all-copies');
+    if (checkAll) {
+      checkAll.checked = (checkedCount === totalCount && totalCount > 0);
+      checkAll.indeterminate = (checkedCount > 0 && checkedCount < totalCount);
+    }
+
+    var forceBtnText = document.getElementById('btn-force-sync-from-dialog-text');
+    if (forceBtnText) {
+      forceBtnText.textContent = checkedCount > 0 ? (tplForceSync + ' (' + checkedCount + ')') : tplForceSync;
+    }
+
+    if (checkedCount > 0) {
+      var warnTip = document.getElementById('copied-problems-warn-tip');
+      if (warnTip) warnTip.style.display = 'none';
+    }
+  }
+
+  function getSelectedCopies() {
+    var checkboxes = document.querySelectorAll('.copy-item-checkbox:checked');
+    var selected = [];
+    checkboxes.forEach(function(cb) {
+      selected.push({
+        domainId: cb.getAttribute('data-domain-id'),
+        domainTitle: cb.getAttribute('data-domain-title'),
+        docId: cb.getAttribute('data-doc-id'),
+        pid: cb.getAttribute('data-pid'),
+        title: cb.getAttribute('data-title'),
+        hasModified: cb.getAttribute('data-modified') === 'true',
+      });
+    });
+    return selected;
+  }
+
+  function openCopiedDialog(preselectMode) {
     var dialog = document.getElementById('copied-problems-dialog');
     var loading = document.getElementById('copied-problems-loading');
     var content = document.getElementById('copied-problems-content');
     var list = document.getElementById('copied-problems-list');
     var unauth = document.getElementById('copied-problems-unauthorized');
     var forceBtn = document.getElementById('btn-force-sync-from-dialog');
+    var warnTip = document.getElementById('copied-problems-warn-tip');
+    if (warnTip) warnTip.style.display = 'none';
     if (forceBtn) forceBtn.style.display = 'none';
     if (!dialog) return;
 
@@ -221,7 +324,7 @@
       content.style.display = 'block';
       var hasModifiedAny = false;
       if (!data || !data.copies || data.copies.length === 0) {
-        list.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888; padding: 20px;">' + tplNoCopies + '</td></tr>';
+        list.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #888; padding: 20px;">' + tplNoCopies + '</td></tr>';
       } else {
         var html = '';
         data.copies.forEach(function(item) {
@@ -239,7 +342,22 @@
             statusBadge = '<span style="display: inline-flex; align-items: center; gap: 4px; color: #28a745; font-weight: 500;"><span class="icon icon-check"></span> ' + tplNotModified + ' <span style="font-size: 0.85em; color: #888;">(' + tplCanSync + ')</span></span>';
           }
 
-          html += '<tr>' +
+          var shouldCheck = false;
+          if (preselectMode === 'modified' && item.hasModified) shouldCheck = true;
+          else if (preselectMode === 'all') shouldCheck = true;
+
+          html += '<tr class="copied-problem-row" style="cursor: pointer;">' +
+            '<td style="text-align: center;" class="no-row-toggle">' +
+              '<input type="checkbox" class="copy-item-checkbox" ' +
+                'data-domain-id="' + escapeHtml(item.domainId) + '" ' +
+                'data-domain-title="' + escapeHtml(item.domainTitle || item.domainId) + '" ' +
+                'data-doc-id="' + escapeHtml(item.docId) + '" ' +
+                'data-pid="' + escapeHtml(item.pid || item.docId) + '" ' +
+                'data-title="' + escapeHtml(item.title || '') + '" ' +
+                'data-modified="' + (item.hasModified ? 'true' : 'false') + '" ' +
+                (shouldCheck ? 'checked ' : '') +
+                'style="cursor: pointer; vertical-align: middle;">' +
+            '</td>' +
             '<td>' + domainDisplay + '</td>' +
             '<td>' + problemDisplay + '</td>' +
             '<td>' + statusBadge + '</td>' +
@@ -259,17 +377,55 @@
       } else {
         unauth.style.display = 'none';
       }
+
+      updateSelectionCount();
     })
     .catch(function(err) {
       loading.style.display = 'none';
       content.style.display = 'block';
-      list.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #d9534f; padding: 20px;">' + escapeHtml(err.message || 'Error loading copies') + '</td></tr>';
+      list.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #d9534f; padding: 20px;">' + escapeHtml(err.message || 'Error loading copies') + '</td></tr>';
     });
   }
 
   function closeCopiedDialog() {
     var dialog = document.getElementById('copied-problems-dialog');
     if (dialog) dialog.style.display = 'none';
+  }
+
+  function openForceConfirmDialog(selectedList) {
+    var dialog = document.getElementById('force-sync-confirm-dialog');
+    var listContainer = document.getElementById('force-sync-selected-list');
+    var countBadge = document.getElementById('force-sync-count-badge');
+    if (!dialog || !listContainer) return;
+
+    pendingForceTargets = selectedList.map(function(item) {
+      return { domainId: item.domainId, docId: item.docId };
+    });
+
+    if (countBadge) countBadge.textContent = selectedList.length;
+
+    var html = '';
+    selectedList.forEach(function(item) {
+      var domainLabel = escapeHtml(item.domainTitle ? (item.domainTitle + ' (' + item.domainId + ')') : item.domainId);
+      var problemLabel = escapeHtml((item.pid || item.docId) + ' ' + (item.title || ''));
+      var statusBadge = item.hasModified
+        ? '<span style="color: #d9534f; font-size: 0.85em; margin-left: 8px;">[' + escapeHtml(tplModifiedLocally) + ']</span>'
+        : '<span style="color: #28a745; font-size: 0.85em; margin-left: 8px;">[' + escapeHtml(tplNotModified) + ']</span>';
+      html += '<div style="padding: 5px 0; border-bottom: 1px dashed #eee; display: flex; justify-content: space-between; align-items: center; gap: 8px;">' +
+        '<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' +
+        '<strong>' + domainLabel + '</strong> ' + problemLabel +
+        '</span>' +
+        statusBadge +
+        '</div>';
+    });
+    listContainer.innerHTML = html;
+    dialog.style.display = 'flex';
+  }
+
+  function closeForceConfirmDialog() {
+    var dialog = document.getElementById('force-sync-confirm-dialog');
+    if (dialog) dialog.style.display = 'none';
+    pendingForceTargets = null;
   }
 
   function showSyncResult(data) {
@@ -347,21 +503,28 @@
     if (dialog) dialog.style.display = 'none';
   }
 
-  function triggerSync(force) {
-    var confirmMsg = force ? tplConfirmForceSync : tplConfirmSync;
-    if (!confirm(confirmMsg)) return;
+  function triggerSync(force, targets) {
+    if (!force) {
+      if (!confirm(tplConfirmSync)) return;
+    }
 
-    var syncBtns = document.querySelectorAll('[name="sync_copied_problems"], #btn-sync-from-dialog, #btn-force-sync-from-dialog, #btn-force-sync-result, #btn-force-sync-box');
+    var syncBtns = document.querySelectorAll('[name="sync_copied_problems"], #btn-sync-from-dialog, #btn-force-sync-from-dialog, #btn-force-sync-result, #btn-force-sync-box, #btn-do-force-sync');
     syncBtns.forEach(function(btn) { btn.disabled = true; });
+
+    var payload = { operation: 'sync_copied_problems', force: !!force };
+    if (targets && targets.length > 0) {
+      payload.targets = targets;
+    }
 
     fetch(window.location.pathname, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ operation: 'sync_copied_problems', force: !!force })
+      body: JSON.stringify(payload)
     })
     .then(function(res) { return res.json(); })
     .then(function(data) {
       syncBtns.forEach(function(btn) { btn.disabled = false; });
+      closeForceConfirmDialog();
       closeCopiedDialog();
       showSyncResult(data);
     })
@@ -371,8 +534,19 @@
     });
   }
 
+  document.addEventListener('change', function(e) {
+    if (e.target.id === 'check-all-copies') {
+      var isChecked = e.target.checked;
+      var checkboxes = document.querySelectorAll('.copy-item-checkbox');
+      checkboxes.forEach(function(cb) { cb.checked = isChecked; });
+      updateSelectionCount();
+    } else if (e.target.classList.contains('copy-item-checkbox')) {
+      updateSelectionCount();
+    }
+  });
+
   document.addEventListener('click', function(e) {
-    var target = e.target.closest('button, a');
+    var target = e.target.closest('button, a, tr');
     if (!target) return;
 
     if (target.name === 'view_copied_problems') {
@@ -381,41 +555,111 @@
     } else if (target.name === 'sync_copied_problems') {
       e.preventDefault();
       triggerSync(false);
+    } else if (target.id === 'btn-select-all-copies') {
+      e.preventDefault();
+      var checkboxes = document.querySelectorAll('.copy-item-checkbox');
+      checkboxes.forEach(function(cb) { cb.checked = true; });
+      updateSelectionCount();
+    } else if (target.id === 'btn-select-modified-copies') {
+      e.preventDefault();
+      var checkboxes = document.querySelectorAll('.copy-item-checkbox');
+      checkboxes.forEach(function(cb) {
+        cb.checked = (cb.getAttribute('data-modified') === 'true');
+      });
+      updateSelectionCount();
+    } else if (target.id === 'btn-clear-selection-copies') {
+      e.preventDefault();
+      var checkboxes = document.querySelectorAll('.copy-item-checkbox');
+      checkboxes.forEach(function(cb) { cb.checked = false; });
+      updateSelectionCount();
     } else if (target.id === 'btn-sync-from-dialog') {
       e.preventDefault();
-      triggerSync(false);
-    } else if (target.id === 'btn-force-sync-from-dialog' || target.id === 'btn-force-sync-result' || target.id === 'btn-force-sync-box') {
+      var selected = getSelectedCopies();
+      var targets = (selected.length > 0) ? selected.map(function(s) { return { domainId: s.domainId, docId: s.docId }; }) : null;
+      triggerSync(false, targets);
+    } else if (target.id === 'btn-force-sync-from-dialog') {
       e.preventDefault();
-      triggerSync(true);
+      var selected = getSelectedCopies();
+      if (selected.length === 0) {
+        var warnTip = document.getElementById('copied-problems-warn-tip');
+        var warnText = document.getElementById('copied-problems-warn-tip-text');
+        if (warnTip && warnText) {
+          warnText.textContent = tplSelectAtLeastOne;
+          warnTip.style.display = 'flex';
+        } else {
+          alert(tplSelectAtLeastOne);
+        }
+        return;
+      }
+      openForceConfirmDialog(selected);
+    } else if (target.id === 'btn-do-force-sync') {
+      e.preventDefault();
+      if (!pendingForceTargets || pendingForceTargets.length === 0) return;
+      triggerSync(true, pendingForceTargets);
+    } else if (target.id === 'btn-force-sync-result' || target.id === 'btn-force-sync-box') {
+      e.preventDefault();
+      closeSyncResultDialog();
+      openCopiedDialog('modified');
+    } else if (target.classList.contains('force-confirm__close-btn')) {
+      e.preventDefault();
+      closeForceConfirmDialog();
     } else if (target.classList.contains('dialog__close-btn')) {
       e.preventDefault();
       closeCopiedDialog();
     } else if (target.classList.contains('sync-dialog__close-btn')) {
       e.preventDefault();
       closeSyncResultDialog();
+    } else if (target.classList.contains('copied-problem-row')) {
+      if (e.target.closest('a') || e.target.closest('input[type="checkbox"]') || e.target.closest('button')) return;
+      var cb = target.querySelector('.copy-item-checkbox');
+      if (cb) {
+        cb.checked = !cb.checked;
+        updateSelectionCount();
+      }
     }
   });
 
   // Close on backdrop click
   document.addEventListener('click', function(e) {
+    var forceDlg = document.getElementById('force-sync-confirm-dialog');
+    if (forceDlg && e.target === forceDlg) {
+      closeForceConfirmDialog();
+      return;
+    }
     var copiedDlg = document.getElementById('copied-problems-dialog');
     if (copiedDlg && e.target === copiedDlg) {
       closeCopiedDialog();
+      return;
     }
     var syncDlg = document.getElementById('sync-result-dialog');
     if (syncDlg && e.target === syncDlg) {
       closeSyncResultDialog();
+      return;
     }
   });
 
   // Close on ESC
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-      closeCopiedDialog();
-      closeSyncResultDialog();
+      var forceDlg = document.getElementById('force-sync-confirm-dialog');
+      if (forceDlg && forceDlg.style.display !== 'none') {
+        closeForceConfirmDialog();
+        return;
+      }
+      var syncDlg = document.getElementById('sync-result-dialog');
+      if (syncDlg && syncDlg.style.display !== 'none') {
+        closeSyncResultDialog();
+        return;
+      }
+      var copiedDlg = document.getElementById('copied-problems-dialog');
+      if (copiedDlg && copiedDlg.style.display !== 'none') {
+        closeCopiedDialog();
+        return;
+      }
     }
   });
 })();
 </script>
 {% endif %}
+
 {% endblock %}

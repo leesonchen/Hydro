@@ -489,5 +489,22 @@ test('ProblemFilesHandler exposes copiedCount, lists copies with permission filt
     assert.equal(handler.response.body.unauthorizedCount, 0);
     const forceSyncedPrivate = editedRecords.find((r) => r.domainId === 'private_school');
     assert.ok(forceSyncedPrivate);
+
+    // Test 8: Selective force sync only syncs specified targets
+    editedRecords.length = 0;
+    handler.user = userEditor;
+    // Only select school_b (which was locally modified)
+    handler.args = {
+        force: true,
+        targets: [{ domainId: 'school_b', docId: 202 }],
+    };
+    handler.response = { body: {} };
+    await handler.postSyncCopiedProblems();
+    assert.equal(handler.response.body.synced.length, 1);
+    assert.equal(handler.response.body.synced[0].domainId, 'school_b');
+    assert.equal(handler.response.body.conflicts.length, 0);
+    assert.equal(handler.response.body.unauthorizedCount, 0);
+    assert.equal(editedRecords.length, 1);
+    assert.equal(editedRecords[0].domainId, 'school_b');
 });
 

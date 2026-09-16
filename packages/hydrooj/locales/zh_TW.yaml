@@ -1008,6 +1008,18 @@ No copied problems found.: 未找到已複製的題目。
 Sync Result: 同步結果
 Force Sync: 強制同步
 Force Sync Conflicted Problems: 強制同步衝突題目
-'Are you sure you want to force sync? This will overwrite modifications made in target domains and cannot be undone.': '【高危操作確認】\n檢測到目標域題目可能已有單獨修改或更新。\n強制同步將直接使用當前源頭題目的題面（標題、內容、標籤、難度）覆蓋目標域題目的所有改動，且無法撤銷！\n\n是否確認強制同步？'
+'Are you sure you want to force sync? This will overwrite modifications made in target domains and cannot be undone.': "【高危操作確認】\n檢測到目標域題目可能已有單獨修改或更新。\n強制同步將直接使用當前源頭題目的題面（標題、內容、標籤、難度）覆蓋目標域題目的所有改動，且無法撤銷！\n\n是否確認強制同步？"
 'Target problems may have local modifications. If you have permission, you can force sync to overwrite them.': 提示：目標域題目可能已有單獨修改。在擁有編輯權限的前提下，您可以選擇強制同步以覆蓋目標域的修改。
+Force Sync Confirmation: 高危操作確認
+Select All: 全選
+Select Modified: 僅選已修改
+Clear Selection: 清空選擇
+Selected: 已選擇
+'Please select at least one problem to force sync.': 請至少選擇一個題目進行強制同步。
+Confirm Force Sync: 確認強制同步
+High Risk Warning: 高危操作警告
+'Force sync will overwrite all local modifications (title, content, tags, difficulty) in the target domains with the source problem, and cannot be undone!': 強制同步將直接使用當前源頭題目的題面（標題、內容、標籤、難度）覆蓋目標域題目的所有改動，且無法撤銷！
+'You have selected {0} problems to force sync:': '本次將對以下 {0} 個題目執行強制同步：'
+'Are you sure you want to proceed with force sync?': 是否確認繼續執行強制同步？
+
 
