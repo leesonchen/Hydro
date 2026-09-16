@@ -24,11 +24,23 @@ cd "$SCRIPT_DIR"
 # Docker/Nix 环境中非 login shell 可能没有加载 npm/yarn 所在目录。
 for path_entry in "$HOME/.nix-profile/bin" /nix/var/nix/profiles/default/bin /usr/local/bin; do
     if [ -d "$path_entry" ] && [[ ":$PATH:" != *":$path_entry:"* ]]; then
-        PATH="$path_entry:$PATH"
+        PATH="$PATH:$path_entry"
     fi
 done
 export PATH
 export YARN_APPROVED_GIT_REPOSITORIES
+export SENTRY_DISABLE_TELEMETRY=1
+export NODE_OPTIONS="${NODE_OPTIONS:-} --dns-result-order=ipv4first"
+
+if [ -z "${https_proxy:-}" ] && [ -z "${HTTPS_PROXY:-}" ]; then
+    for proxy_candidate in "http://172.24.48.1:7890" "http://127.0.0.1:7890"; do
+        if curl -s -m 1 "$proxy_candidate" >/dev/null 2>&1; then
+            export https_proxy="$proxy_candidate"
+            export http_proxy="$proxy_candidate"
+            break
+        fi
+    done
+fi
 
 echo -e "${GREEN}=== Hydro 开发版本打包发布脚本 ===${NC}"
 echo ""
@@ -255,18 +267,38 @@ check_tools() {
 check_publish_registry() {
     echo -e "${YELLOW}3. 检查发布仓库和登录状态...${NC}"
 
-    if ! npm ping --registry "$NPM_REGISTRY" >/dev/null 2>&1; then
+    local ping_ok=0
+    if command -v timeout >/dev/null 2>&1; then
+        if timeout 15 npm ping --registry "$NPM_REGISTRY" >/dev/null 2>&1; then
+            ping_ok=1
+        elif curl -s -f -m 5 "${NPM_REGISTRY%/}/-/ping" >/dev/null 2>&1; then
+            ping_ok=1
+        fi
+    else
+        if npm ping --registry "$NPM_REGISTRY" >/dev/null 2>&1 || curl -s -f -m 5 "${NPM_REGISTRY%/}/-/ping" >/dev/null 2>&1; then
+            ping_ok=1
+        fi
+    fi
+
+    if [ "$ping_ok" -eq 0 ]; then
         echo -e "${RED}错误: 无法连接到 npm 仓库: $NPM_REGISTRY${NC}"
         exit 1
     fi
 
-    if ! npm whoami --registry "$NPM_REGISTRY" >/dev/null 2>&1; then
+    local whoami_output=""
+    if command -v timeout >/dev/null 2>&1; then
+        whoami_output=$(timeout 15 npm whoami --registry "$NPM_REGISTRY" 2>/dev/null || true)
+    else
+        whoami_output=$(npm whoami --registry "$NPM_REGISTRY" 2>/dev/null || true)
+    fi
+
+    if [ -z "$whoami_output" ]; then
         echo -e "${RED}错误: 当前未登录私有 npm 仓库: $NPM_REGISTRY${NC}"
         echo -e "${YELLOW}请先执行: npm login --registry $NPM_REGISTRY${NC}"
         exit 1
     fi
 
-    echo -e "${GREEN}✓ npm 仓库可访问，且已登录发布账号${NC}"
+    echo -e "${GREEN}✓ npm 仓库可访问，且已登录发布账号 (${whoami_output})${NC}"
     echo ""
 }
 
@@ -322,7 +354,11 @@ next_dev_version() {
     fi
 
     local remote_version=""
-    remote_version=$(npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true)
+    if command -v timeout >/dev/null 2>&1; then
+        remote_version=$(timeout 15 npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true)
+    else
+        remote_version=$(npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true)
+    fi
     if [[ "$remote_version" =~ ^(.+)-dev\.([0-9]+)$ ]] && [ "${BASH_REMATCH[1]}" = "$base" ]; then
         local remote_num="${BASH_REMATCH[2]}"
         local next_num=$((current_num > remote_num ? current_num + 1 : remote_num + 1))

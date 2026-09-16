@@ -307,6 +307,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         ],
       }),
       sentryWebpackPlugin({
+        telemetry: false,
         authToken: process.env.SENTRY_AUTH_TOKEN,
         org: 'hydro-dev',
         project: 'hydro-web',

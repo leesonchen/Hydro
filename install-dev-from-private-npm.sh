@@ -35,7 +35,7 @@ cd /tmp
 
 for path_entry in "$HOME/.nix-profile/bin" /nix/var/nix/profiles/default/bin /usr/local/bin; do
     if [ -d "$path_entry" ] && [[ ":$PATH:" != *":$path_entry:"* ]]; then
-        PATH="$path_entry:$PATH"
+        PATH="$PATH:$path_entry"
     fi
 done
 export PATH
@@ -354,14 +354,33 @@ current_package_version() {
 remote_package_version() {
     local package_name="$1"
     local registry_url="${NPM_REGISTRY%/}"
-    local package_path="$package_name"
     local version=""
     local fetch_timeout_ms=$((NPM_VIEW_TIMEOUT_SECONDS * 1000))
+
+    # 1. 优先尝试轻量的 dist-tags 接口 (Verdaccio / npm registry 原生支持，仅几十字节)
+    version=$(curl -fsSL --max-time 15 "${registry_url}/-/package/${package_name}/dist-tags" 2>/dev/null | node -e '
+let body = "";
+process.stdin.on("data", c => body += c);
+process.stdin.on("end", () => {
+  try {
+    const data = JSON.parse(body || "{}");
+    process.stdout.write(data.dev || "");
+  } catch {}
+});
+' 2>/dev/null || true)
+
+    if [ -n "$version" ]; then
+        echo "$version"
+        return 0
+    fi
+
+    # 2. 回退到查询完整 package 元数据
+    local package_path="$package_name"
     if [[ "$package_path" == @*/* ]]; then
         package_path="${package_path/\//%2f}"
     fi
 
-    version=$(curl -fsSL --max-time "$NPM_VIEW_TIMEOUT_SECONDS" "${registry_url}/${package_path}" 2>/dev/null | node -e '
+    version=$(curl -fsSL --max-time 30 "${registry_url}/${package_path}" 2>/dev/null | node -e '
 const chunks = [];
 process.stdin.on("data", (chunk) => chunks.push(chunk));
 process.stdin.on("end", () => {
@@ -379,9 +398,9 @@ process.stdin.on("end", () => {
     fi
 
     if command -v timeout >/dev/null 2>&1; then
-        timeout "$NPM_VIEW_TIMEOUT_SECONDS" npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" --fetch-retries=1 --fetch-timeout="$fetch_timeout_ms" 2>/dev/null | tr -d '[:space:]' || true
+        timeout 30 npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" --fetch-retries=1 --fetch-timeout=30000 2>/dev/null | tr -d '[:space:]' || true
     else
-        npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" --fetch-retries=1 --fetch-timeout="$fetch_timeout_ms" 2>/dev/null | tr -d '[:space:]' || true
+        npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" --fetch-retries=1 --fetch-timeout=30000 2>/dev/null | tr -d '[:space:]' || true
     fi
 }
 
