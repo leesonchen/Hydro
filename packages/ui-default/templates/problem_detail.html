@@ -118,9 +118,7 @@
             <a class="problem__tag-item interactive" href="{{ url('record_main', query={pid:pdoc.docId}) }}">{{ _('Tried') }}: {{ pdoc.nSubmit }}</a>
             <a class="problem__tag-item interactive" href="{{ url('record_main', query={pid:pdoc.docId, status:1}) }}">{{ _('Accepted') }}: {{ pdoc.nAccept if ((not tdoc) or showAccept) else '?' }}</a>
             <span class="problem__tag-item">{{ _('Difficulty') }}: {{ pdoc['difficulty'] or lib.difficulty(pdoc.nSubmit, pdoc.nAccept) or _('(None)') }}</span>
-            <span class="problem__tag-item interactive">{{ _('Uploaded By') }}: {{ user.render_inline(udoc, badge=false) }}</span>
-            <span class="problem__tag-item interactive">{{ _('Last Edited By') }}: {{ user.render_inline(editor_udoc, badge=false) }}</span>
-            <span class="problem__tag-item">{{ _('Last Updated') }}: {{ datetimeSpan(lastUpdateAt, false, 'YYYY-M-D H:mm')|safe }}</span>
+            <span class="problem__tag-item interactive">{{ _('Last updated: {0} at {1}').format(user.render_inline(editor_udoc, badge=false), datetimeSpan(lastUpdateAt, false, 'YYYY-MM-DD HH:mm'))|safe }}</span>
           {% endif %}
           {% if pdoc.tag.length %}
             <span name="show_tags" class="problem__tag-item interactive nojs--hide icon icon-tag">{{ _('Tags') + '>' }}</span>

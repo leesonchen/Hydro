@@ -9,7 +9,7 @@
     <div class="section">
       <div class="section__header">
         <h1 class="section__title">{{ _('Lecture') }}#{{ node['_id'] }}: {{ node['lecture'] }}</h1>
-        <div class="supplementary">{{ _('Last Edited By') }}: {{ user.render_inline(udict[lectureMeta.editor], badge=false) }} · {{ _('Last Updated') }}: {{ datetimeSpan(lectureMeta.updateAt, false, 'YYYY-M-D H:mm')|safe }}</div>
+        <div class="supplementary">{{ _('Last updated: {0} at {1}').format(user.render_inline(udict[lectureMeta.editor], badge=false), datetimeSpan(lectureMeta.updateAt, false, 'YYYY-MM-DD HH:mm'))|safe }}</div>
         {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF) %}
         <div class="section__tools">
           <a class="primary rounded button" href="?edit=true">编辑讲义</a>

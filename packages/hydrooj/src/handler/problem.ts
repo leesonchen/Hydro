@@ -861,6 +861,11 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
         this.response.body.reference = this.pdoc.reference;
         const canEdit = !this.pdoc.reference
             && (this.user.own(this.pdoc, PERM.PERM_EDIT_PROBLEM_SELF) || this.user.hasPerm(PERM.PERM_EDIT_PROBLEM));
+        if (!this.pdoc.reference && canEdit) {
+            this.response.body.copiedCount = await problem.countCopies(this.pdoc.domainId, this.pdoc.docId);
+        } else {
+            this.response.body.copiedCount = 0;
+        }
         this.response.pjax = d.map((i) => ['partials/problem_files.html', { filetype: i, sidebar, can_edit: canEdit }]);
         if (!sidebar) this.response.pjax.push(['partials/problem-sidebar-information.html', {}]);
         this.response.template = 'problem_files.html';
@@ -868,6 +873,11 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
 
     async post() {
         if (this.args.operation === 'get_links') return;
+        if (this.args.operation === 'get_copied_problems' || this.args.operation === 'sync_copied_problems') {
+            if (this.pdoc.reference) throw new ProblemIsReferencedError('get/sync copied problems');
+            if (!this.user.own(this.pdoc, PERM.PERM_EDIT_PROBLEM_SELF)) this.checkPerm(PERM.PERM_EDIT_PROBLEM);
+            return;
+        }
         if (this.pdoc.reference) throw new ProblemIsReferencedError('edit files');
         if (!this.user.own(this.pdoc, PERM.PERM_EDIT_PROBLEM_SELF)) this.checkPerm(PERM.PERM_EDIT_PROBLEM);
     }
@@ -1001,6 +1011,158 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
             type: 'generate',
         });
         this.response.redirect = this.url('record_detail', { rid });
+    }
+
+    async postGetCopiedProblems() {
+        const domainId = this.pdoc.domainId;
+        const copies = await problem.getCopies(domainId, this.pdoc.docId);
+        const isSystemAdmin = this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)
+            || this.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)
+            || this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN);
+
+        const list = [];
+        let unauthorizedCount = 0;
+
+        for (const copy of copies) {
+            let canView = isSystemAdmin;
+            if (!canView) {
+                // eslint-disable-next-line no-await-in-loop
+                const targetUser = await user.getById(copy.domainId, this.user._id, this.user.scope);
+                canView = !!targetUser && problem.canViewBy(copy, targetUser);
+            }
+            if (!canView) {
+                unauthorizedCount++;
+                continue;
+            }
+
+            // eslint-disable-next-line no-await-in-loop
+            const targetDomain = await domain.get(copy.domainId);
+            const hasLocalModifications = problem.isModifiedLocally(copy, this.pdoc);
+
+            list.push({
+                domainId: copy.domainId,
+                domainTitle: targetDomain ? (targetDomain.name || targetDomain._id) : copy.domainId,
+                docId: copy.docId,
+                pid: copy.pid || `P${copy.docId}`,
+                title: copy.title,
+                hasModified: hasLocalModifications,
+                updateAt: copy.updateAt || null,
+                lastSyncAt: copy.reference?.lastSyncAt || null,
+            });
+        }
+
+        this.response.body = {
+            total: copies.length,
+            copies: list,
+            unauthorizedCount,
+        };
+    }
+
+    async postSyncCopiedProblems() {
+        const domainId = this.pdoc.domainId;
+        const copies = await problem.getCopies(domainId, this.pdoc.docId);
+        const isSystemAdmin = this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)
+            || this.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)
+            || this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN);
+        const synced = [];
+        const conflicts = [];
+        const upToDate = [];
+        let unauthorizedCount = 0;
+        const now = new Date();
+
+        for (const copy of copies) {
+            let canView = isSystemAdmin;
+            if (!canView) {
+                // eslint-disable-next-line no-await-in-loop
+                const targetUser = await user.getById(copy.domainId, this.user._id, this.user.scope);
+                canView = !!targetUser && problem.canViewBy(copy, targetUser);
+            }
+            if (!canView) {
+                unauthorizedCount++;
+                continue;
+            }
+
+            // eslint-disable-next-line no-await-in-loop
+            const targetDomain = await domain.get(copy.domainId);
+            const domainTitle = targetDomain ? (targetDomain.name || targetDomain._id) : copy.domainId;
+            const item = {
+                domainId: copy.domainId,
+                domainTitle,
+                docId: copy.docId,
+                pid: copy.pid || `P${copy.docId}`,
+                title: copy.title,
+            };
+
+            const isModified = problem.isModifiedLocally(copy, this.pdoc);
+            if (isModified) {
+                conflicts.push({
+                    ...item,
+                    reason: '已在目标域被单独编辑修改',
+                    updateAt: copy.updateAt,
+                });
+                continue;
+            }
+
+            const copyTags = (copy.tag || []).slice().sort();
+            const sourceTags = (this.pdoc.tag || []).slice().sort();
+            const isSame = (copy.title || '') === (this.pdoc.title || '')
+                && (copy.content || '') === (this.pdoc.content || '')
+                && (copy.difficulty || 0) === (this.pdoc.difficulty || 0)
+                && JSON.stringify(copyTags) === JSON.stringify(sourceTags);
+
+            const sourceUpdateAt = this.pdoc.updateAt
+                ? new Date(this.pdoc.updateAt).getTime()
+                : (typeof this.pdoc._id?.getTimestamp === 'function' ? this.pdoc._id.getTimestamp().getTime() : 0);
+            const copyLastSyncAt = copy.reference?.lastSyncAt ? new Date(copy.reference.lastSyncAt).getTime() : 0;
+
+            if (isSame && copyLastSyncAt && (!sourceUpdateAt || copyLastSyncAt >= sourceUpdateAt)) {
+                upToDate.push(item);
+                continue;
+            }
+
+            const $update: Partial<ProblemDoc> = {
+                title: this.pdoc.title,
+                content: this.pdoc.content,
+                tag: this.pdoc.tag || [],
+                difficulty: this.pdoc.difficulty || 0,
+                reference: {
+                    ...copy.reference,
+                    domainId,
+                    pid: this.pdoc.docId,
+                    sourceUpdateAt: this.pdoc.updateAt || now,
+                    lastSyncAt: now,
+                },
+                editor: this.user._id,
+                updateAt: now,
+            };
+
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                await problem.edit(copy.domainId, copy.docId, $update);
+                synced.push(item);
+            } catch (err) {
+                conflicts.push({
+                    ...item,
+                    reason: `同步失败: ${err.message || '未知错误'}`,
+                });
+            }
+        }
+
+        await oplog.log(this, 'problem.sync_copies', {
+            domainId,
+            pid: this.pdoc.docId,
+            syncedCount: synced.length,
+            conflictCount: conflicts.length,
+            unauthorizedCount,
+        });
+
+        this.response.body = {
+            total: copies.length,
+            synced,
+            conflicts,
+            upToDate,
+            unauthorizedCount,
+        };
     }
 }
 

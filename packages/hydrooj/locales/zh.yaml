@@ -451,6 +451,9 @@ last active at: 最后活动于
 last login at: 最后登录于
 Last Submit At: 最后递交于
 Last Update At: 最后活动时间
+'Last updated: {0} at {1}': '上次更新：{0} 于 {1}'
+Last Updated: 上次更新
+Last Edited By: 最后编辑人
 LaTeX Expressions: LaTeX 表达式
 Learn More: 了解更多
 Leave blank to use numeric pid.: 留空来使用数字题号。
@@ -984,3 +987,22 @@ If you have not joined the domain yet, you will also join it with role {0}.: 如
 You are already a member of this class or group. Continuing will repair your domain membership if needed.: 你已在该班级或分组中；继续操作可在需要时修复你的域成员状态。
 Successfully joined group.: 已成功加入分组。
 Successfully joined class.: 已成功加入班级。
+View Copied Problems: 查看已复制题目
+Sync Problem Changes: 同步题面修改
+Copied Problems: 已复制题目
+'This problem is referenced by other domains ({0} copies).': 此题目已被复制/引用至其他域（共 {0} 个副本）。
+Target Domain: 目标域
+Last Sync Time: 最近同步时间
+Not Modified: 未修改
+Modified Locally: 已单独修改
+Can Sync: 可同步
+Cannot Sync: 无法同步
+Sync Now: 立即同步
+Are you sure you want to sync changes to unedited copied problems?: 确定要将当前源头题目的改动同步到所有未修改过的复制题目中吗？
+'Sync completed: {0} problems synced, {1} conflicts skipped.': '同步完成：已成功同步 {0} 个题目，跳过 {1} 个有修改冲突的题目。'
+All copies have been modified locally and cannot be synced.: 所有复制题目均在目标域中有过单独修改，无法自动同步。
+'Successfully synced {0} problems.': 成功同步 {0} 个题目。
+'The following {0} problems have local modifications and were not synced:': '以下 {0} 个题目因在目标域中被修改过，未能同步：'
+No copied problems found.: 未找到已复制的题目。
+'There are {0} copies in domains you do not have permission to view.': 另有 {0} 个副本位于您无权查看的域中。
+Sync Result: 同步结果

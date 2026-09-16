@@ -73,7 +73,7 @@ interface ProblemImportOptions {
 interface ProblemCreateOptions {
     difficulty?: number;
     hidden?: boolean;
-    reference?: { domainId: string, pid: number };
+    reference?: { domainId: string, pid: number, sourceUpdateAt?: Date, lastSyncAt?: Date };
     editor?: number;
     updateAt?: Date;
 }
@@ -264,7 +264,16 @@ export class ProblemModel {
         if (original.reference) throw new ValidationError('reference');
         if (pid && (/^[0-9]+$/.test(pid) || await ProblemModel.get(target, pid))) pid = '';
         if (!pid && original.pid && !await ProblemModel.get(target, original.pid)) pid = original.pid;
-        const $set = { hidden: hidden || original.hidden, reference: { domainId, pid: _id } } as any;
+        const now = new Date();
+        const $set = {
+            hidden: hidden || original.hidden,
+            reference: {
+                domainId,
+                pid: _id,
+                sourceUpdateAt: original.updateAt || now,
+                lastSyncAt: now,
+            },
+        } as any;
         if (typeof original.difficulty === 'number') $set.difficulty = original.difficulty;
         if (original.editor !== undefined) $set.editor = original.editor;
         if (original.updateAt) $set.updateAt = original.updateAt;
@@ -500,6 +509,51 @@ export class ProblemModel {
         if (udoc.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN)) return true;
         if (pdoc.hidden) return false;
         return true;
+    }
+
+    static countCopies(domainId: string, _id: number): Promise<number> {
+        return document.coll.countDocuments({
+            docType: document.TYPE_PROBLEM,
+            domainId: { $ne: domainId },
+            'reference.domainId': domainId,
+            'reference.pid': _id,
+        });
+    }
+
+    static getCopies(domainId: string, _id: number): Promise<ProblemDoc[]> {
+        return document.coll.find({
+            docType: document.TYPE_PROBLEM,
+            domainId: { $ne: domainId },
+            'reference.domainId': domainId,
+            'reference.pid': _id,
+        }).toArray() as any;
+    }
+
+    static isModifiedLocally(copiedDoc: ProblemDoc, sourceDoc?: ProblemDoc): boolean {
+        if (!copiedDoc.reference) return false;
+        let modified = false;
+        const copiedUpdateAt = copiedDoc.updateAt ? new Date(copiedDoc.updateAt).getTime() : 0;
+        if (copiedDoc.reference.lastSyncAt) {
+            const lastSync = new Date(copiedDoc.reference.lastSyncAt).getTime();
+            modified = copiedUpdateAt > lastSync + 1000;
+        } else if (copiedDoc.updateAt && copiedDoc._id) {
+            const createTime = typeof copiedDoc._id.getTimestamp === 'function'
+                ? copiedDoc._id.getTimestamp().getTime()
+                : 0;
+            if (createTime) {
+                modified = copiedUpdateAt > createTime + 1000;
+            }
+        }
+        if (modified && sourceDoc) {
+            const copyTags = (copiedDoc.tag || []).slice().sort();
+            const sourceTags = (sourceDoc.tag || []).slice().sort();
+            const isSame = (copiedDoc.title || '') === (sourceDoc.title || '')
+                && (copiedDoc.content || '') === (sourceDoc.content || '')
+                && (copiedDoc.difficulty || 0) === (sourceDoc.difficulty || 0)
+                && JSON.stringify(copyTags) === JSON.stringify(sourceTags);
+            if (isSame) return false;
+        }
+        return modified;
     }
 
     static async import(domainId: string, filepath: string, options: ProblemImportOptions = {}) {

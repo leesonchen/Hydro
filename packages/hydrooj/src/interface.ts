@@ -193,6 +193,8 @@ declare module './model/problem' {
         reference?: {
             domainId: string;
             pid: number;
+            sourceUpdateAt?: Date;
+            lastSyncAt?: Date;
         };
         editor?: number;
         updateAt?: Date;

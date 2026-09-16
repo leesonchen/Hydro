@@ -17,6 +17,18 @@
         </div>
       </div>
       {{ noscript_note.render() }}
+      {% if copiedCount > 0 %}
+        <div style="margin: 0 0 12px 0; padding: 10px 14px; background: #eef6fc; border-left: 4px solid #2980b9; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; font-size: 0.95rem;">
+          <div>
+            <span class="icon icon-info" style="color: #2980b9; margin-right: 4px;"></span>
+            <span>{{ _('This problem is referenced by other domains ({0} copies).').format(copiedCount) }}</span>
+          </div>
+          <div>
+            <button type="button" class="small rounded button" name="view_copied_problems" style="margin-right: 6px;"><span class="icon icon-share"></span> {{ _('View Copied Problems') }}</button>
+            <button type="button" class="small primary rounded button" name="sync_copied_problems"><span class="icon icon-refresh"></span> {{ _('Sync Problem Changes') }}</button>
+          </div>
+        </div>
+      {% endif %}
       {% set filetype = "testdata" %}
       {% set can_edit = (handler.user.own(pdoc, perm.PERM_EDIT_PROBLEM_SELF) or handler.user.hasPerm(perm.PERM_EDIT_PROBLEM)) and not reference %}
       {% include "partials/problem_files.html" %}
@@ -90,4 +102,290 @@
     {% include "partials/problem_sidebar.html" %}
   </div>
 </div>
+{% if copiedCount > 0 %}
+<div id="copied-problems-dialog" class="dialog withBg" style="display: none; z-index: 1000; opacity: 1;">
+  <div class="dialog__content" style="max-width: 800px; width: 90%; max-height: 85vh; display: flex; flex-direction: column;">
+    <div class="dialog__header" style="padding: 16px 20px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="margin: 0; font-size: 1.15rem; font-weight: 600;">{{ _('Copied Problems') }}</h3>
+      <button type="button" class="dialog__close-btn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #888; line-height: 1;">&times;</button>
+    </div>
+    <div class="dialog__body" style="padding: 20px; overflow-y: auto; flex: 1;">
+      <div id="copied-problems-loading" style="text-align: center; padding: 30px; color: #888;">
+        <span class="icon icon-refresh spin"></span> {{ _('Loading...') }}
+      </div>
+      <div id="copied-problems-content" style="display: none;">
+        <table class="data-table" style="width: 100%;">
+          <thead>
+            <tr>
+              <th style="width: 25%;">{{ _('Target Domain') }}</th>
+              <th style="width: 30%;">{{ _('Problem') }}</th>
+              <th style="width: 25%;">{{ _('Status') }}</th>
+              <th style="width: 20%;">{{ _('Update Time') }}</th>
+            </tr>
+          </thead>
+          <tbody id="copied-problems-list">
+          </tbody>
+        </table>
+        <div id="copied-problems-unauthorized" style="display: none; margin-top: 14px; padding: 8px 12px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 4px; color: #d48806; font-size: 0.9em;">
+        </div>
+      </div>
+    </div>
+    <div class="dialog__action" style="padding: 12px 20px; border-top: 1px solid #e5e5e5; display: flex; justify-content: flex-end; gap: 10px;">
+      <button type="button" class="primary rounded button" id="btn-sync-from-dialog"><span class="icon icon-refresh"></span> {{ _('Sync Problem Changes') }}</button>
+      <button type="button" class="rounded button dialog__close-btn">{{ _('Close') }}</button>
+    </div>
+  </div>
+</div>
+
+<div id="sync-result-dialog" class="dialog withBg" style="display: none; z-index: 1010; opacity: 1;">
+  <div class="dialog__content" style="max-width: 650px; width: 90%; max-height: 85vh; display: flex; flex-direction: column;">
+    <div class="dialog__header" style="padding: 16px 20px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="margin: 0; font-size: 1.15rem; font-weight: 600;">{{ _('Sync Result') }}</h3>
+      <button type="button" class="sync-dialog__close-btn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #888; line-height: 1;">&times;</button>
+    </div>
+    <div class="dialog__body" style="padding: 20px; overflow-y: auto; flex: 1;" id="sync-result-body">
+    </div>
+    <div class="dialog__action" style="padding: 12px 20px; border-top: 1px solid #e5e5e5; display: flex; justify-content: flex-end;">
+      <button type="button" class="primary rounded button sync-dialog__close-btn">{{ _('Ok') }}</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  if (window.__problemCopiedListenersAttached) return;
+  window.__problemCopiedListenersAttached = true;
+
+  var tplConfirmSync = "{{ _('Are you sure you want to sync changes to unedited copied problems?')|escape }}";
+  var tplUnauthNote = "{{ _('There are {0} copies in domains you do not have permission to view.')|escape }}";
+  var tplSyncedSuccess = "{{ _('Successfully synced {0} problems.')|escape }}";
+  var tplConflictsHeader = "{{ _('The following {0} problems have local modifications and were not synced:')|escape }}";
+  var tplNotModified = "{{ _('Not Modified')|escape }}";
+  var tplCanSync = "{{ _('Can Sync')|escape }}";
+  var tplModifiedLocally = "{{ _('Modified Locally')|escape }}";
+  var tplCannotSync = "{{ _('Cannot Sync')|escape }}";
+  var tplUpToDate = "{{ _('Problem is up to date.')|escape }}";
+  var tplNoCopies = "{{ _('No copied problems found.')|escape }}";
+
+  function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function formatDate(d) {
+    if (!d) return '-';
+    try {
+      var dt = new Date(d);
+      var pad = function(n) { return n < 10 ? '0' + n : n; };
+      return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+    } catch (e) {
+      return escapeHtml(String(d));
+    }
+  }
+
+  function openCopiedDialog() {
+    var dialog = document.getElementById('copied-problems-dialog');
+    var loading = document.getElementById('copied-problems-loading');
+    var content = document.getElementById('copied-problems-content');
+    var list = document.getElementById('copied-problems-list');
+    var unauth = document.getElementById('copied-problems-unauthorized');
+    if (!dialog) return;
+
+    dialog.style.display = 'flex';
+    loading.style.display = 'block';
+    content.style.display = 'none';
+    list.innerHTML = '';
+
+    fetch(window.location.pathname, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ operation: 'get_copied_problems' })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      loading.style.display = 'none';
+      content.style.display = 'block';
+      if (!data || !data.copies || data.copies.length === 0) {
+        list.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #888; padding: 20px;">' + tplNoCopies + '</td></tr>';
+      } else {
+        var html = '';
+        data.copies.forEach(function(item) {
+          var domainUrl = '/d/' + encodeURIComponent(item.domainId) + '/';
+          var problemUrl = '/d/' + encodeURIComponent(item.domainId) + '/p/' + encodeURIComponent(item.pid || item.docId);
+          var domainDisplay = '<a href="' + domainUrl + '" target="_blank" style="font-weight: 500;">' + escapeHtml(item.domainTitle || item.domainId) + '</a>' +
+            '<span style="color: #888; font-size: 0.85em; margin-left: 4px;">(' + escapeHtml(item.domainId) + ')</span>';
+          var problemDisplay = '<a href="' + problemUrl + '" target="_blank">' + escapeHtml((item.pid || ('P' + item.docId)) + ' ' + (item.title || '')) + '</a>';
+          
+          var statusBadge = '';
+          if (item.hasModified) {
+            statusBadge = '<span style="display: inline-flex; align-items: center; gap: 4px; color: #d9534f; font-weight: 500;"><span class="icon icon-alert-circle"></span> ' + tplModifiedLocally + ' <span style="font-size: 0.85em; color: #888;">(' + tplCannotSync + ')</span></span>';
+          } else {
+            statusBadge = '<span style="display: inline-flex; align-items: center; gap: 4px; color: #28a745; font-weight: 500;"><span class="icon icon-check"></span> ' + tplNotModified + ' <span style="font-size: 0.85em; color: #888;">(' + tplCanSync + ')</span></span>';
+          }
+
+          html += '<tr>' +
+            '<td>' + domainDisplay + '</td>' +
+            '<td>' + problemDisplay + '</td>' +
+            '<td>' + statusBadge + '</td>' +
+            '<td style="color: #666; font-size: 0.9em;">' + formatDate(item.updateAt || item.lastSyncAt) + '</td>' +
+            '</tr>';
+        });
+        list.innerHTML = html;
+      }
+
+      if (data && data.unauthorizedCount > 0) {
+        unauth.style.display = 'block';
+        unauth.innerHTML = '<span class="icon icon-info" style="margin-right: 4px;"></span>' + escapeHtml(tplUnauthNote.replace('{0}', data.unauthorizedCount));
+      } else {
+        unauth.style.display = 'none';
+      }
+    })
+    .catch(function(err) {
+      loading.style.display = 'none';
+      content.style.display = 'block';
+      list.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #d9534f; padding: 20px;">' + escapeHtml(err.message || 'Error loading copies') + '</td></tr>';
+    });
+  }
+
+  function closeCopiedDialog() {
+    var dialog = document.getElementById('copied-problems-dialog');
+    if (dialog) dialog.style.display = 'none';
+  }
+
+  function showSyncResult(data) {
+    var dialog = document.getElementById('sync-result-dialog');
+    var body = document.getElementById('sync-result-body');
+    if (!dialog || !body) return;
+
+    var html = '';
+    var syncedCount = (data && data.synced) ? data.synced.length : 0;
+    var conflictCount = (data && data.conflicts) ? data.conflicts.length : 0;
+    var upToDateCount = (data && data.upToDate) ? data.upToDate.length : 0;
+
+    if (syncedCount > 0) {
+      html += '<div style="margin-bottom: 16px; padding: 12px 16px; background: #f6ffed; border: 1px solid #b7eb8f; border-radius: 4px;">' +
+        '<div style="font-weight: 600; color: #52c41a; font-size: 1.05rem; margin-bottom: 8px;">' +
+        '<span class="icon icon-check" style="margin-right: 6px;"></span>' + escapeHtml(tplSyncedSuccess.replace('{0}', syncedCount)) + '</div>' +
+        '<ul style="margin: 0; padding-left: 20px; color: #333;">';
+      data.synced.forEach(function(s) {
+        var problemUrl = '/d/' + encodeURIComponent(s.domainId) + '/p/' + encodeURIComponent(s.pid || s.docId);
+        var label = '[' + (s.domainTitle || s.domainId) + '] ' + (s.pid || ('P' + s.docId)) + ' ' + (s.title || '');
+        html += '<li style="margin: 4px 0;"><a href="' + problemUrl + '" target="_blank">' + escapeHtml(label) + '</a></li>';
+      });
+      html += '</ul></div>';
+    }
+
+    if (conflictCount > 0) {
+      html += '<div style="margin-bottom: 16px; padding: 12px 16px; background: #fff2e8; border: 1px solid #ffbb96; border-radius: 4px;">' +
+        '<div style="font-weight: 600; color: #d4380d; font-size: 1.05rem; margin-bottom: 8px;">' +
+        '<span class="icon icon-alert-triangle" style="margin-right: 6px;"></span>' + escapeHtml(tplConflictsHeader.replace('{0}', conflictCount)) + '</div>' +
+        '<ul style="margin: 0; padding-left: 20px; color: #333;">';
+      data.conflicts.forEach(function(c) {
+        var problemUrl = '/d/' + encodeURIComponent(c.domainId) + '/p/' + encodeURIComponent(c.pid || c.docId);
+        var label = '[' + (c.domainTitle || c.domainId) + '] ' + (c.pid || ('P' + c.docId)) + ' ' + (c.title || '');
+        var reason = c.reason || tplModifiedLocally;
+        html += '<li style="margin: 4px 0;"><a href="' + problemUrl + '" target="_blank">' + escapeHtml(label) + '</a>' +
+          '<span style="color: #d4380d; margin-left: 6px; font-size: 0.9em;">(' + escapeHtml(reason) + ')</span></li>';
+      });
+      html += '</ul></div>';
+    }
+
+    if (upToDateCount > 0 && syncedCount === 0 && conflictCount === 0) {
+      html += '<div style="padding: 14px 16px; background: #f0f5ff; border: 1px solid #adc6ff; border-radius: 4px; color: #1d39c4; font-size: 1rem;">' +
+        '<span class="icon icon-info" style="margin-right: 6px;"></span>' + tplUpToDate + ' (' + upToDateCount + ')</div>';
+    } else if (upToDateCount > 0) {
+      html += '<div style="margin-bottom: 12px; color: #888; font-size: 0.9em;">' +
+        tplUpToDate + ' (' + upToDateCount + ')</div>';
+    }
+
+    if (data && data.unauthorizedCount > 0) {
+      html += '<div style="margin-top: 12px; padding: 8px 12px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 4px; color: #d48806; font-size: 0.9em;">' +
+        '<span class="icon icon-info" style="margin-right: 4px;"></span>' + escapeHtml(tplUnauthNote.replace('{0}', data.unauthorizedCount)) + '</div>';
+    }
+
+    if (syncedCount === 0 && conflictCount === 0 && upToDateCount === 0 && (!data || !data.unauthorizedCount)) {
+      html += '<div style="text-align: center; color: #888; padding: 20px;">' + tplNoCopies + '</div>';
+    }
+
+    body.innerHTML = html;
+    dialog.style.display = 'flex';
+  }
+
+  function closeSyncResultDialog() {
+    var dialog = document.getElementById('sync-result-dialog');
+    if (dialog) dialog.style.display = 'none';
+  }
+
+  function triggerSync() {
+    if (!confirm(tplConfirmSync)) return;
+
+    var syncBtns = document.querySelectorAll('[name="sync_copied_problems"], #btn-sync-from-dialog');
+    syncBtns.forEach(function(btn) { btn.disabled = true; });
+
+    fetch(window.location.pathname, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ operation: 'sync_copied_problems' })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      syncBtns.forEach(function(btn) { btn.disabled = false; });
+      closeCopiedDialog();
+      showSyncResult(data);
+    })
+    .catch(function(err) {
+      syncBtns.forEach(function(btn) { btn.disabled = false; });
+      alert('Sync failed: ' + (err.message || String(err)));
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    var target = e.target.closest('button, a');
+    if (!target) return;
+
+    if (target.name === 'view_copied_problems') {
+      e.preventDefault();
+      openCopiedDialog();
+    } else if (target.name === 'sync_copied_problems') {
+      e.preventDefault();
+      triggerSync();
+    } else if (target.id === 'btn-sync-from-dialog') {
+      e.preventDefault();
+      triggerSync();
+    } else if (target.classList.contains('dialog__close-btn')) {
+      e.preventDefault();
+      closeCopiedDialog();
+    } else if (target.classList.contains('sync-dialog__close-btn')) {
+      e.preventDefault();
+      closeSyncResultDialog();
+    }
+  });
+
+  // Close on backdrop click
+  document.addEventListener('click', function(e) {
+    var copiedDlg = document.getElementById('copied-problems-dialog');
+    if (copiedDlg && e.target === copiedDlg) {
+      closeCopiedDialog();
+    }
+    var syncDlg = document.getElementById('sync-result-dialog');
+    if (syncDlg && e.target === syncDlg) {
+      closeSyncResultDialog();
+    }
+  });
+
+  // Close on ESC
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeCopiedDialog();
+      closeSyncResultDialog();
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}
