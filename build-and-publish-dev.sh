@@ -491,6 +491,26 @@ fix_workspace_deps() {
     fi
 }
 
+# 校验包内语言文件 YAML（重复键会使 hydrooj 插件加载失败，所有页面退化为 JSON）。
+# 使用 js-yaml 默认 schema，与 hydrooj locale 加载行为保持一致。
+validate_package_locales() {
+    local package_path="$1"
+    [ -d "$package_path/locales" ] || return 0
+    local failed=0 locale_file
+    while IFS= read -r -d '' locale_file; do
+        if ! node -e "
+const YAML = require(process.argv[2] + '/node_modules/js-yaml');
+const fs = require('fs');
+try { YAML.load(fs.readFileSync(process.argv[1], 'utf8')); }
+catch (e) { console.error(e.message); process.exit(1); }
+" "$locale_file" "$SCRIPT_DIR"; then
+            echo -e "${RED}错误: 语言文件 YAML 校验失败: ${locale_file}${NC}"
+            failed=1
+        fi
+    done < <(find "$package_path/locales" -maxdepth 1 -name '*.yaml' -print0)
+    return $failed
+}
+
 # 打包并发布单个包
 publish_package() {
     local package_name="$1"
@@ -512,6 +532,14 @@ publish_package() {
 
     # 修复 workspace 依赖
     fix_workspace_deps "$package_path"
+
+    # 校验语言文件，带病文件一律中止该包发布
+    if ! validate_package_locales "$package_path"; then
+        echo -e "${RED}错误: ${package_name} 语言文件存在 YAML 错误，已中止发布${NC}"
+        mv -f "$package_json_backup" "$package_json"
+        cd "$SCRIPT_DIR"
+        return 1
+    fi
 
     # 获取当前版本并递增
     local current_version=$(get_current_version "$package_path")
