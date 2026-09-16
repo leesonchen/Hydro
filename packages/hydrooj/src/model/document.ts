@@ -117,6 +117,27 @@ export async function set<K extends keyof DocType>(
     );
 }
 
+export async function setIfCondition<K extends keyof DocType>(
+    domainId: string,
+    docType: K,
+    docId: DocType[K]['docId'],
+    condition: Filter<DocType[K]>,
+    $set?: Partial<DocType[K]>,
+    $unset?: OnlyFieldsOfType<DocType[K], any, true | '' | 1>,
+    $push?: PushOperator<DocType[K]>,
+): Promise<DocType[K] | null> {
+    await bus.parallel('document/set', domainId, docType, docId, $set, $unset);
+    const update: UpdateFilter<DocType[K]> = {};
+    if ($set && Object.keys($set).length) update.$set = $set;
+    if ($unset && Object.keys($unset).length) update.$unset = $unset;
+    if ($push && Object.keys($push).length) update.$push = $push;
+    return await coll.findOneAndUpdate(
+        { ...condition, domainId, docType, docId },
+        update,
+        { returnDocument: 'after', upsert: false },
+    );
+}
+
 export function deleteOne<K extends keyof DocType>(
     domainId: string, docType: K, docId: DocType[K]['docId'],
 ) {
@@ -482,6 +503,7 @@ global.Hydro.model.document = {
     revPushStatus,
     revSetStatus,
     set,
+    setIfCondition,
     setIfNotStatus,
     setStatusIfCondition,
     setStatus,

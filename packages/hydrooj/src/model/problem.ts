@@ -254,6 +254,22 @@ export class ProblemModel {
         return result;
     }
 
+    static async editIfCondition(
+        domainId: string, _id: number, condition: Filter<ProblemDoc>, $set: Partial<ProblemDoc>,
+    ): Promise<ProblemDoc | null> {
+        const delpid = $set.pid === '';
+        const ddoc = await DomainModel.get(domainId);
+        const $unset = delpid ? { pid: '' } : {};
+        if (delpid) {
+            delete $set.pid;
+            $set.sort = sortable(`P${_id}`, ddoc.namespaces);
+        } else if ($set.pid) $set.sort = sortable($set.pid, ddoc.namespaces);
+        await bus.parallel('problem/before-edit', $set, $unset);
+        const result = await document.setIfCondition(domainId, document.TYPE_PROBLEM, _id, condition, $set, $unset);
+        if (result) await bus.emit('problem/edit', result);
+        return result;
+    }
+
     static setEditMetadata(domainId: string, _id: number, editor: number, updateAt = new Date()) {
         return document.set(domainId, document.TYPE_PROBLEM, _id, { editor, updateAt });
     }
@@ -535,7 +551,7 @@ export class ProblemModel {
         const copiedUpdateAt = copiedDoc.updateAt ? new Date(copiedDoc.updateAt).getTime() : 0;
         if (copiedDoc.reference.lastSyncAt) {
             const lastSync = new Date(copiedDoc.reference.lastSyncAt).getTime();
-            modified = copiedUpdateAt > lastSync + 1000;
+            modified = copiedUpdateAt > lastSync;
         } else if (copiedDoc.updateAt && copiedDoc._id) {
             const createTime = typeof copiedDoc._id.getTimestamp === 'function'
                 ? copiedDoc._id.getTimestamp().getTime()

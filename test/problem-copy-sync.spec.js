@@ -40,7 +40,11 @@ test('ProblemModel.isModifiedLocally detects modifications and avoids false conf
         mongodb: require('mongodb'),
         lodash: require('lodash'),
     };
-    vm.runInNewContext(compiledModel, { global: { Hydro: { model: {} } }, exports, require: (name) => mocks[name] || {} }, { filename: modelFilename });
+    vm.runInNewContext(
+        compiledModel,
+        { global: { Hydro: { model: {} } }, exports, require: (name) => mocks[name] || {} },
+        { filename: modelFilename },
+    );
     const { ProblemModel } = exports;
 
     const source = {
@@ -84,6 +88,14 @@ test('ProblemModel.isModifiedLocally detects modifications and avoids false conf
     };
     assert.equal(ProblemModel.isModifiedLocally(copy2, source), true);
 
+    // A real edit 500ms after the last sync is a local modification.
+    const copySubsecond = {
+        ...copy1,
+        title: 'Edited within one second',
+        updateAt: new Date('2026-09-01T00:00:00.500Z'),
+    };
+    assert.equal(ProblemModel.isModifiedLocally(copySubsecond, source), true);
+
     // 3. Legacy copy without lastSyncAt (never edited locally: updateAt is older than creation time)
     const copy3 = {
         _id: createObjectId(Math.floor(new Date('2026-09-03T00:00:00Z').getTime() / 1000)),
@@ -99,6 +111,14 @@ test('ProblemModel.isModifiedLocally detects modifications and avoids false conf
         },
     };
     assert.equal(ProblemModel.isModifiedLocally(copy3, source), false);
+
+    // Legacy copies use an ObjectId timestamp with one-second precision, so the
+    // compatibility tolerance remains limited to this branch.
+    const legacySubsecond = {
+        ...copy3,
+        updateAt: new Date('2026-09-03T00:00:00.500Z'),
+    };
+    assert.equal(ProblemModel.isModifiedLocally(legacySubsecond, source), false);
 
     // 4. Legacy copy without lastSyncAt (edited locally: updateAt is after creation time)
     const copy4 = {
@@ -216,20 +236,35 @@ test('ProblemFilesHandler exposes copiedCount, lists copies with permission filt
     ];
 
     const editedRecords = [];
+    let targetPermissionMode = 'editor';
+    let conditionalUpdateMode = 'ok';
 
     const problemModelMock = {
         get: async () => sourceProblem,
         countCopies: async () => copies.length,
         getCopies: async () => copies,
-        isModifiedLocally: (copy, source) => {
+        isModifiedLocally: (copy, _source) => {
             if (copy.domainId === 'school_b') return true;
             return false;
         },
         canViewBy: (pdoc, udoc) => udoc.hasPerm(PERM.PERM_VIEW_PROBLEM),
-        edit: async (domainId, docId, update) => {
+        editIfCondition: async (domainId, docId, condition, update) => {
+            const copy = copies.find((c) => c.domainId === domainId && c.docId === docId);
+            if (conditionalUpdateMode === 'concurrent-content' && copy) copy.content = 'Concurrent imported content';
+            if (conditionalUpdateMode === 'concurrent-hidden' && copy) copy.hidden = true;
+            if (conditionalUpdateMode === 'deleted') return null;
+            const readPath = (value, key) => key.split('.').reduce((current, part) => current?.[part], value);
+            const matches = (actual, expected) => {
+                if (expected && typeof expected === 'object' && '$exists' in expected) {
+                    return (actual !== undefined) === expected.$exists;
+                }
+                if (actual instanceof Date && expected instanceof Date) return actual.getTime() === expected.getTime();
+                if (Array.isArray(actual) || Array.isArray(expected)) return JSON.stringify(actual) === JSON.stringify(expected);
+                return actual === expected;
+            };
+            if (!copy || !Object.entries(condition).every(([key, expected]) => matches(readPath(copy, key), expected))) return null;
             editedRecords.push({ domainId, docId, update });
-            const copy = copies.find(c => c.domainId === domainId && c.docId === docId);
-            if (copy) Object.assign(copy, update);
+            Object.assign(copy, update);
             return copy;
         },
     };
@@ -240,10 +275,17 @@ test('ProblemFilesHandler exposes copiedCount, lists copies with permission filt
 
     const userModelMock = {
         getById: async (domainId, uid) => {
-            if (domainId === 'private_school') {
+            if (domainId === 'private_school' || targetPermissionMode === 'denied') {
                 return { _id: uid, hasPerm: () => false };
             }
-            return { _id: uid, hasPerm: (p) => p === PERM.PERM_VIEW_PROBLEM };
+            if (targetPermissionMode === 'view-only') {
+                return { _id: uid, own: () => false, hasPerm: (p) => p === PERM.PERM_VIEW || p === PERM.PERM_VIEW_PROBLEM };
+            }
+            return {
+                _id: uid,
+                own: () => false,
+                hasPerm: (p) => p === PERM.PERM_VIEW || p === PERM.PERM_VIEW_PROBLEM || p === PERM.PERM_EDIT_PROBLEM,
+            };
         },
     };
 
@@ -281,7 +323,7 @@ test('ProblemFilesHandler exposes copiedCount, lists copies with permission filt
     const userEditor = {
         _id: 1,
         own: () => true,
-        hasPerm: (p) => true,
+        hasPerm: (_p) => true,
         hasPriv: () => false,
     };
 
@@ -303,18 +345,44 @@ test('ProblemFilesHandler exposes copiedCount, lists copies with permission filt
     assert.equal(handler.response.body.copies[0].hasModified, false); // school_a
     assert.equal(handler.response.body.copies[1].hasModified, true); // school_b
 
-    // Test 3: System admin can see all copies including private_school
-    const userAdmin = {
+    // View-only target users can list copies but cannot synchronize them.
+    targetPermissionMode = 'view-only';
+    handler.response = { body: {} };
+    await handler.postSyncCopiedProblems();
+    assert.equal(handler.response.body.synced.length, 0);
+    assert.equal(handler.response.body.unauthorizedCount, 3);
+    targetPermissionMode = 'editor';
+
+    // Without domain access, copies are neither listed nor synchronized.
+    targetPermissionMode = 'denied';
+    handler.response = { body: {} };
+    await handler.postGetCopiedProblems();
+    assert.equal(handler.response.body.copies.length, 0);
+    handler.response = { body: {} };
+    await handler.postSyncCopiedProblems();
+    assert.equal(handler.response.body.synced.length, 0);
+    assert.equal(handler.response.body.unauthorizedCount, 3);
+    targetPermissionMode = 'editor';
+
+    // PRIV_VIEW_ALL_DOMAIN bypasses only domain entry. It does not grant target
+    // problem visibility or edit permission.
+    const viewAllUser = {
         _id: 999,
         own: () => true,
         hasPerm: () => true,
-        hasPriv: (priv) => priv === PRIV.PRIV_EDIT_SYSTEM,
+        hasPriv: (priv) => priv === PRIV.PRIV_VIEW_ALL_DOMAIN,
     };
-    handler.user = userAdmin;
+    handler.user = viewAllUser;
+    targetPermissionMode = 'view-only';
     handler.response = { body: {} };
     await handler.postGetCopiedProblems();
-    assert.equal(handler.response.body.copies.length, 3);
-    assert.equal(handler.response.body.unauthorizedCount, 0);
+    assert.equal(handler.response.body.copies.length, 2);
+    assert.equal(handler.response.body.unauthorizedCount, 1);
+    handler.response = { body: {} };
+    await handler.postSyncCopiedProblems();
+    assert.equal(handler.response.body.synced.length, 0);
+    assert.equal(handler.response.body.unauthorizedCount, 3);
+    targetPermissionMode = 'editor';
 
     // Test 4: postSyncCopiedProblems only syncs copies in authorized domains and skips unauthorized domains
     handler.user = userEditor;
@@ -329,11 +397,11 @@ test('ProblemFilesHandler exposes copiedCount, lists copies with permission filt
     assert.equal(handler.response.body.unauthorizedCount, 1); // private_school was not leaked or modified
 
     // Verify private_school was NOT updated by userEditor
-    const syncedPrivateSchool = editedRecords.find(r => r.domainId === 'private_school');
+    const syncedPrivateSchool = editedRecords.find((r) => r.domainId === 'private_school');
     assert.equal(syncedPrivateSchool, undefined);
 
     // Verify school_a was updated with sourceProblem content
-    const syncedSchoolA = editedRecords.find(r => r.domainId === 'school_a');
+    const syncedSchoolA = editedRecords.find((r) => r.domainId === 'school_a');
     assert.ok(syncedSchoolA);
     assert.equal(syncedSchoolA.update.title, sourceProblem.title);
     assert.equal(syncedSchoolA.update.content, sourceProblem.content);
@@ -341,12 +409,40 @@ test('ProblemFilesHandler exposes copiedCount, lists copies with permission filt
     assert.equal(syncedSchoolA.update.difficulty, sourceProblem.difficulty);
     assert.ok(syncedSchoolA.update.reference.lastSyncAt);
 
-    // Test 5: System admin CAN sync all domains including private_school
-    handler.user = userAdmin;
+    // Timestamp-free concurrent content changes are rejected by snapshot predicates.
+    conditionalUpdateMode = 'concurrent-content';
+    sourceProblem.updateAt = new Date('2026-10-11T12:00:00Z');
+    const editCountBeforeConflict = editedRecords.length;
     handler.response = { body: {} };
     await handler.postSyncCopiedProblems();
-    // private_school should now be synced by admin
-    const adminSyncedPrivate = editedRecords.find(r => r.domainId === 'private_school');
-    assert.ok(adminSyncedPrivate);
-    assert.equal(handler.response.body.unauthorizedCount, 0);
+    assert.equal(handler.response.body.synced.length, 0);
+    assert.equal(handler.response.body.conflicts.length, 2);
+    assert.equal(editedRecords.length, editCountBeforeConflict);
+    copies[0].content = sourceProblem.content;
+
+    // A concurrent hide is also rejected even though hide does not update updateAt.
+    conditionalUpdateMode = 'concurrent-hidden';
+    handler.response = { body: {} };
+    await handler.postSyncCopiedProblems();
+    assert.equal(handler.response.body.synced.length, 0);
+    assert.equal(handler.response.body.conflicts.length, 2);
+    assert.equal(editedRecords.length, editCountBeforeConflict);
+    delete copies[0].hidden;
+
+    // A deleted target produces a conflict and cannot be recreated by the non-upserting update.
+    conditionalUpdateMode = 'deleted';
+    handler.response = { body: {} };
+    await handler.postSyncCopiedProblems();
+    assert.equal(handler.response.body.synced.length, 0);
+    assert.equal(editedRecords.length, editCountBeforeConflict);
+    conditionalUpdateMode = 'ok';
+
+    // Test 5: View-all still cannot bypass target-problem permissions
+    handler.user = viewAllUser;
+    handler.response = { body: {} };
+    await handler.postSyncCopiedProblems();
+    // private_school remains unauthorized even for a system admin
+    const adminSyncedPrivate = editedRecords.find((r) => r.domainId === 'private_school');
+    assert.equal(adminSyncedPrivate, undefined);
+    assert.equal(handler.response.body.unauthorizedCount, 1);
 });

@@ -1016,20 +1016,17 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
     async postGetCopiedProblems() {
         const domainId = this.pdoc.domainId;
         const copies = await problem.getCopies(domainId, this.pdoc.docId);
-        const isSystemAdmin = this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)
-            || this.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)
-            || this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN);
-
         const list = [];
         let unauthorizedCount = 0;
 
         for (const copy of copies) {
-            let canView = isSystemAdmin;
-            if (!canView) {
-                // eslint-disable-next-line no-await-in-loop
-                const targetUser = await user.getById(copy.domainId, this.user._id, this.user.scope);
-                canView = !!targetUser && problem.canViewBy(copy, targetUser);
-            }
+            // A copied problem is visible only when the user could enter its domain
+            // and view the problem through the normal target-domain permissions.
+            // eslint-disable-next-line no-await-in-loop
+            const targetUser = await user.getById(copy.domainId, this.user._id, this.user.scope);
+            const canViewDomain = this.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)
+                || !!targetUser?.hasPerm(PERM.PERM_VIEW);
+            const canView = canViewDomain && !!targetUser && problem.canViewBy(copy, targetUser);
             if (!canView) {
                 unauthorizedCount++;
                 continue;
@@ -1061,9 +1058,6 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
     async postSyncCopiedProblems() {
         const domainId = this.pdoc.domainId;
         const copies = await problem.getCopies(domainId, this.pdoc.docId);
-        const isSystemAdmin = this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)
-            || this.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)
-            || this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN);
         const synced = [];
         const conflicts = [];
         const upToDate = [];
@@ -1071,13 +1065,15 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
         const now = new Date();
 
         for (const copy of copies) {
-            let canView = isSystemAdmin;
-            if (!canView) {
-                // eslint-disable-next-line no-await-in-loop
-                const targetUser = await user.getById(copy.domainId, this.user._id, this.user.scope);
-                canView = !!targetUser && problem.canViewBy(copy, targetUser);
-            }
-            if (!canView) {
+            // Synchronization uses the same target-domain permissions as a normal edit.
+            // eslint-disable-next-line no-await-in-loop
+            const targetUser = await user.getById(copy.domainId, this.user._id, this.user.scope);
+            const canViewDomain = this.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)
+                || !!targetUser?.hasPerm(PERM.PERM_VIEW);
+            const canView = canViewDomain && !!targetUser && problem.canViewBy(copy, targetUser);
+            const canEdit = canView && (targetUser.own(copy, PERM.PERM_EDIT_PROBLEM_SELF)
+                || targetUser.hasPerm(PERM.PERM_EDIT_PROBLEM));
+            if (!canEdit) {
                 unauthorizedCount++;
                 continue;
             }
@@ -1137,8 +1133,27 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
             };
 
             try {
+                const condition: Filter<ProblemDoc> = {
+                    _id: copy._id,
+                    title: copy.title,
+                    content: copy.content,
+                    'reference.domainId': domainId,
+                    'reference.pid': this.pdoc.docId,
+                };
+                const matchSnapshot = (key: keyof ProblemDoc) => {
+                    (condition as any)[key] = copy[key] !== undefined ? copy[key] : { $exists: false };
+                };
+                for (const key of [
+                    'tag', 'difficulty', 'html', 'hidden', 'owner', 'maintainer', 'editor', 'updateAt',
+                ] as const) matchSnapshot(key);
+                for (const key of ['sourceUpdateAt', 'lastSyncAt'] as const) {
+                    condition[`reference.${key}`] = copy.reference?.[key] !== undefined
+                        ? copy.reference[key]
+                        : { $exists: false };
+                }
                 // eslint-disable-next-line no-await-in-loop
-                await problem.edit(copy.domainId, copy.docId, $update);
+                const result = await problem.editIfCondition(copy.domainId, copy.docId, condition, $update);
+                if (!result) throw new Error('目标题目已被修改或删除');
                 synced.push(item);
             } catch (err) {
                 conflicts.push({
