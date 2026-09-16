@@ -493,7 +493,8 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             this.canReadProblemFiles = source.canRead;
             this.pdoc.config = source.pdoc.config;
             this.pdoc.data = source.canRead ? source.pdoc.data : [];
-            this.pdoc.additional_file = source.canRead ? source.pdoc.additional_file : [];
+            // Public attachments inherit access from the target problem/contest.
+            this.pdoc.additional_file = source.pdoc.additional_file;
         }
         if (typeof this.pdoc.config !== 'string') {
             let baseLangs;
@@ -875,7 +876,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
     @post('type', Types.Range(['testdata', 'additional_file']), true)
     async postGetLinks(domainId: string, files: Set<string>, type = 'testdata') {
         if (this.pdoc.reference) {
-            if (files.size && !this.canReadProblemFiles) throw new PermissionError(PERM.PERM_READ_PROBLEM_DATA);
+            if (type === 'testdata' && files.size && !this.canReadProblemFiles) throw new PermissionError(PERM.PERM_READ_PROBLEM_DATA);
             if (type === 'testdata' && files.size && !this.problemFileUser?.own(this.problemFilePdoc)
                 && this.tdoc && !contest.isDone(this.tdoc)) {
                 throw new ContestNotEndedError(this.tdoc.domainId, this.tdoc.docId);
@@ -1010,7 +1011,7 @@ export class ProblemFileDownloadHandler extends ProblemDetailHandler {
     @query('tid', Types.ObjectId, true)
     async get({ }, type = 'additional_file', filename: string, noDisposition = false, tid: ObjectId) {
         if (!tid) this.checkPerm(PERM.PERM_VIEW_PROBLEM);
-        if (this.pdoc.reference && !this.canReadProblemFiles) {
+        if (type === 'testdata' && this.pdoc.reference && !this.canReadProblemFiles) {
             throw new PermissionError(PERM.PERM_READ_PROBLEM_DATA);
         }
         if (type === 'testdata' && !this.canReadProblemFiles) {
@@ -1277,13 +1278,8 @@ export const ProblemApi = {
             if (pdoc.hidden) ctx.checkPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN);
             if (pdoc.reference) {
                 const source = await getProblemFileSource(pdoc, ctx.user);
-                if (source?.canRead) {
-                    pdoc.data = source.pdoc.data;
-                    pdoc.additional_file = source.pdoc.additional_file;
-                } else {
-                    pdoc.data = [];
-                    pdoc.additional_file = [];
-                }
+                pdoc.data = source?.canRead ? source.pdoc.data : [];
+                pdoc.additional_file = source?.pdoc.additional_file || [];
             }
             return pdoc;
         },

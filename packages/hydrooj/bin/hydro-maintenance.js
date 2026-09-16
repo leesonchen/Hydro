@@ -26,6 +26,9 @@ const caddyMarkerBegin = '  # hydro-maintenance begin';
 const caddyMarkerEnd = '  # hydro-maintenance end';
 const serviceOrder = ['mongodb', 'hydro-sandbox', 'hydrojudge', 'hydrooj'];
 const serviceTimeout = 120000;
+const maxNodeTimeout = 2 ** 31 - 1;
+const schedulerName = 'hydro-maintenance-scheduler';
+const schedulerPollInterval = 60000;
 
 let lockHandle;
 let lockOwned = false;
@@ -91,41 +94,33 @@ function isOnline(app) {
     return app?.pm2_env?.status === 'online';
 }
 
-async function acquireLock() {
-    await fsp.mkdir(path.dirname(lockDir), { recursive: true });
-    for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-            await fsp.mkdir(lockDir, 0o700);
-            lockHandle = await fsp.open(lockOwnerFile, 'wx', 0o600);
-            await lockHandle.writeFile(`${process.pid}\n`);
-            lockOwned = true;
-            return;
-        } catch (e) {
-            if (e.code !== 'EEXIST' || attempt) {
-                if (e.code === 'EEXIST') throw new Error('已有另一个维护或升级操作正在执行');
-                throw e;
-            }
-            try {
-                const pid = Number.parseInt(await fsp.readFile(lockOwnerFile, 'utf8'), 10);
-                if (!Number.isInteger(pid) || pid <= 0) throw new Error('维护锁没有有效的进程号，请手工检查并清理锁目录');
-                process.kill(pid, 0);
-                throw new Error('已有另一个维护或升级操作正在执行');
-            } catch (error) {
-                if (error.message.includes('已有另一个') || error.message.includes('没有有效的进程号')) throw error;
-                if (!['ESRCH', 'ENOENT'].includes(error.code)) throw error;
-                await fsp.unlink(lockOwnerFile).catch(() => undefined);
-                await fsp.rmdir(lockDir).catch(() => undefined);
-            }
-        }
-    }
-}
-
 async function releaseLock() {
     if (!lockOwned) return;
     lockOwned = false;
     await lockHandle?.close().catch(() => undefined);
     await fsp.unlink(lockOwnerFile).catch(() => undefined);
     await fsp.rmdir(lockDir).catch(() => undefined);
+}
+
+async function acquireLock() {
+    await fsp.mkdir(path.dirname(lockDir), { recursive: true });
+    try {
+        await fsp.mkdir(lockDir, 0o700);
+    } catch (e) {
+        if (e.code !== 'EEXIST') throw e;
+        // Never reclaim an existing directory automatically: its owner may
+        // still be publishing the PID, or another contender may be inspecting it.
+        throw new Error(`已有维护或升级操作锁；确认没有操作运行后再手工清理: ${lockDir}`);
+    }
+    try {
+        lockHandle = await fsp.open(lockOwnerFile, 'wx', 0o600);
+        lockOwned = true;
+        await lockHandle.writeFile(`${process.pid}\n`);
+    } catch (e) {
+        if (lockOwned) await releaseLock();
+        else await fsp.rmdir(lockDir).catch(() => undefined);
+        throw e;
+    }
 }
 
 async function ensureMaintenanceDir() {
@@ -188,11 +183,13 @@ async function writeRuntime(runtime) {
 }
 
 function parseDuration(raw) {
-    const match = /^(\d+)(s|m|h)$/.exec(String(raw || ''));
-    if (!match || Number(match[1]) <= 0) throw new Error('--in 必须是正数秒/分钟/小时，例如 30s、10m 或 2h');
-    const factor = { s: 1000, m: 60000, h: 3600000 }[match[2]];
+    const match = /^(\d+)([smhd])$/.exec(String(raw || ''));
+    if (!match || Number(match[1]) <= 0) throw new Error('--in 必须是正数秒/分钟/小时/天，例如 30s、10m 或 2h');
+    const factor = { s: 1000, m: 60000, h: 3600000, d: 86400000 }[match[2]];
     const duration = Number(match[1]) * factor;
-    if (!Number.isSafeInteger(duration) || duration > 30 * 24 * 3600000) throw new Error('--in 最大支持 30 天');
+    if (!Number.isSafeInteger(duration) || duration > maxNodeTimeout) {
+        throw new Error('--in 超过 Node.js 定时器允许的最大延迟（约 24 天 20 小时）');
+    }
     return duration;
 }
 
@@ -292,6 +289,69 @@ async function installPage() {
     await fsp.chmod(target, 0o644);
 }
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function schedulerScript() {
+    const script = process.env.HYDRO_MAINTENANCE_SCRIPT || process.argv[1];
+    if (!script) throw new Error('无法确定维护调度脚本路径');
+    return path.resolve(script);
+}
+
+async function ensureScheduler() {
+    const apps = readPm2();
+    const existing = getPm2App(schedulerName, apps);
+    if (existing) run(pm2Path(), ['delete', schedulerName], { stdio: 'inherit' });
+    run(pm2Path(), [
+        'start', schedulerScript(),
+        '--name', schedulerName,
+        '--no-autorestart',
+        '--', 'reconcile',
+    ], { stdio: 'inherit' });
+    run(pm2Path(), ['save'], { stdio: 'inherit' });
+}
+
+// Service startup only launches a bounded repair command. The long-lived
+// reconciler remains a single PM2 app, including after container restarts.
+function restoreSchedulerOnStartup() {
+    try {
+        const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+        if (state.state !== 'scheduled') return;
+        const restorer = childProcess.spawn(process.execPath, [__filename, 'restore-scheduler'], {
+            detached: true,
+            stdio: ['ignore', 'ignore', 'inherit'],
+            timeout: 30000,
+        });
+        restorer.on('error', (error) => console.error(`维护调度恢复失败: ${error.message}`));
+        restorer.unref();
+    } catch (e) {
+        if (e.code !== 'ENOENT') console.error(`维护调度恢复失败: ${e.message}`);
+    }
+}
+
+async function restoreScheduler() {
+    if ((await readState()).state !== 'scheduled') return;
+    await acquireLock();
+    try {
+        if ((await readState()).state === 'scheduled' && !isOnline(getPm2App(schedulerName))) {
+            await ensureScheduler();
+        }
+    } finally {
+        await releaseLock();
+    }
+}
+
+async function stopScheduler() {
+    try {
+        run(pm2Path(), ['delete', schedulerName], { stdio: 'ignore', allowFailure: true });
+        run(pm2Path(), ['save'], { stdio: 'ignore', allowFailure: true });
+    } catch (e) {
+        // The scheduled state is authoritative. A scheduler that remains
+        // briefly after cancellation will observe the inactive state and exit.
+    }
+}
+
 async function setup() {
     await ensureMaintenanceDir();
     await installPage();
@@ -324,6 +384,8 @@ async function setup() {
         }
         throw new Error(`Caddy 现有维护配置校验或 reload 失败: ${e.message}`);
     }
+    const state = await readState();
+    if (state.state === 'scheduled') await ensureScheduler();
     console.log(backup
         ? `Caddy 维护路由已安装，备份: ${backup}`
         : 'Caddy 维护路由已存在，已完成 validate 和 reload。');
@@ -350,8 +412,9 @@ function snapshotServices() {
 async function waitFor(check, description, timeout = serviceTimeout) {
     const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
-        if (await check()) return;
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (await check(Math.max(0, deadline - Date.now()))) return;
+        const remaining = deadline - Date.now();
+        if (remaining > 0) await sleep(Math.min(1000, remaining));
     }
     throw new Error(`等待${description}超时`);
 }
@@ -361,12 +424,19 @@ async function waitPm2Online(name) {
 }
 
 async function waitHydroReady() {
-    await waitFor(async () => {
+    await waitFor(async (remaining) => {
+        const controller = new AbortController();
+        const timeout = setTimeout(
+            () => controller.abort(),
+            Math.min(5000, Math.max(1, remaining)),
+        );
         try {
-            const response = await fetch(healthUrl);
+            const response = await fetch(healthUrl, { signal: controller.signal });
             return response.ok;
         } catch (e) {
             return false;
+        } finally {
+            clearTimeout(timeout);
         }
     }, 'Hydro 健康检查');
 }
@@ -380,7 +450,7 @@ async function activate(id, message) {
     await atomicWrite(activeFile, `${id}\n`, 0o600);
 
     const failures = [];
-    for (const name of services) {
+    for (const name of [...services].reverse()) {
         try {
             run(pm2Path(), ['stop', name], { stdio: 'inherit' });
         } catch (e) {
@@ -396,6 +466,35 @@ async function activate(id, message) {
     console.log('维护模式已开启，Caddy 保持运行。');
 }
 
+async function reconcileScheduled() {
+    while (true) {
+        const state = await readState();
+        if (state.state !== 'scheduled') return;
+        const startAt = Number(state.startAt);
+        if (!Number.isFinite(startAt)) throw new Error('维护预告缺少有效的开始时间');
+        const remaining = startAt - Date.now();
+        if (remaining > 0) {
+            await sleep(Math.min(remaining, schedulerPollInterval));
+            continue;
+        }
+
+        let acquired = false;
+        try {
+            await acquireLock();
+            acquired = true;
+            const current = await readState();
+            if (current.state !== 'scheduled' || current.id !== state.id) return;
+            await activate(current.id, current.message || '');
+            return;
+        } catch (e) {
+            console.error(`维护自动切换失败，将重试: ${e.message}`);
+            await sleep(5000);
+        } finally {
+            if (acquired) await releaseLock();
+        }
+    }
+}
+
 async function schedule(options) {
     const state = await readState();
     if (state.state !== 'inactive' || fs.existsSync(activeFile)) throw new Error('维护模式已经处于 scheduled 或 active 状态');
@@ -403,35 +502,13 @@ async function schedule(options) {
     const id = `${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}`;
     const startAt = Date.now() + options.delay;
     await writeState({ state: 'scheduled', id, startAt, message: options.message });
+    try {
+        await ensureScheduler();
+    } catch (e) {
+        await writeState(defaultState());
+        throw new Error(`无法安装持久化维护调度器，已取消维护预告: ${e.message}`);
+    }
     console.log(`维护预告已发布，将于 ${new Date(startAt).toLocaleString()} 自动进入维护。`);
-    let cancelled = false;
-    const cancel = async () => {
-        if (cancelled) return;
-        cancelled = true;
-        let acquired = false;
-        try {
-            await acquireLock();
-            acquired = true;
-            const current = await readState();
-            if (current.id === id && current.state === 'scheduled') await writeState(defaultState());
-            console.log('\n已取消维护预告。');
-            process.exitCode = 130;
-        } catch (e) {
-            console.error(`\n取消维护预告失败: ${e.message}`);
-            process.exitCode = 1;
-        } finally {
-            if (acquired) await releaseLock();
-        }
-    };
-    process.once('SIGINT', cancel);
-    process.once('SIGTERM', cancel);
-    await releaseLock();
-    await new Promise((resolve) => setTimeout(resolve, options.delay));
-    if (cancelled) return;
-    await acquireLock();
-    const current = await readState();
-    if (current.id !== id || current.state !== 'scheduled') return;
-    await activate(id, options.message);
 }
 
 async function turnOn(options) {
@@ -447,11 +524,13 @@ async function turnOn(options) {
 async function turnOff() {
     const state = await readState();
     if (state.state === 'inactive' && !fs.existsSync(activeFile)) {
+        await stopScheduler();
         console.log('当前未处于维护模式。');
         return;
     }
     if (state.state === 'scheduled' && !fs.existsSync(activeFile)) {
         await writeState(defaultState());
+        await stopScheduler();
         console.log('已取消维护预告，服务未被停止。');
         return;
     }
@@ -475,6 +554,7 @@ async function turnOff() {
     await writeState(defaultState());
     await fsp.unlink(activeFile).catch(() => undefined);
     await fsp.unlink(runtimeFile).catch(() => undefined);
+    await stopScheduler();
     run(pm2Path(), ['save'], { stdio: 'inherit' });
     console.log('维护模式已关闭，服务已恢复。');
 }
@@ -503,7 +583,7 @@ function printHelp() {
   hydro-maintenance off
   hydro-maintenance status
 
---in 支持 s/m/h，例如 30s、10m、2h；不指定时立即进入维护。
+--in 支持 s/m/h/d，例如 30s、10m、2h；最长不超过 Node.js 定时器限制；不指定时立即进入维护。
 维护状态目录可通过 HYDRO_MAINTENANCE_DIR 覆盖，恢复检查地址可通过 HYDRO_MAINTENANCE_HEALTH_URL 覆盖。`);
 }
 
@@ -511,6 +591,8 @@ async function main() {
     const parsed = parseArgs(process.argv.slice(2));
     if (parsed.options.help) return printHelp();
     if (parsed.command === 'status') return status();
+    if (parsed.command === 'reconcile') return reconcileScheduled();
+    if (parsed.command === 'restore-scheduler') return restoreScheduler();
     if (!['setup', 'on', 'off'].includes(parsed.command)) throw new Error(`未知命令 ${parsed.command}`);
     await acquireLock();
     try {
@@ -522,4 +604,6 @@ async function main() {
     }
 }
 
-main().catch((error) => fail(error.message));
+module.exports = { restoreSchedulerOnStartup };
+
+if (require.main === module) main().catch((error) => fail(error.message));

@@ -3,6 +3,24 @@
 export { }; // make it a module so that declare self works
 declare const self: ServiceWorkerGlobalScope;
 
+interface ServiceWorkerConfig {
+  /** enabled hosts */
+  hosts: string[];
+  /** service domains */
+  domains: string[];
+  /** assets domains */
+  assets: string[];
+  preload?: string;
+}
+let config: ServiceWorkerConfig = null;
+
+function initConfig(cfg) {
+  config = cfg;
+  config.hosts ||= [];
+  config.domains = Array.from(new Set([location.host, ...(config.domains || [])]));
+  console.log('Config:', config);
+}
+
 const map = new Map();
 
 function createStream(port) {
@@ -91,10 +109,17 @@ self.addEventListener('notificationclick', (event) => {
   }));
 });
 
-const PRECACHE = 'ui-resources-cache';
+// Keep each UI release in its own cache namespace.  The previous fixed name
+// allowed resources from an older release to survive an upgrade indefinitely.
+const PRECACHE = `precache-${process.env.VERSION}`;
 const DO_NOT_PRECACHE = ['.worker.js', 'fonts'];
 
+function isMaintenancePath(path: string) {
+  return ['/maintenance.json', '/maintain.html'].includes(new URL(path, location.origin).pathname);
+}
+
 function shouldCachePath(path: string) {
+  if (isMaintenancePath(path)) return false;
   if (!path.split('?')[0].split('/').pop()) return false;
   if (!path.split('?')[0].split('/').pop().includes('.')) return false;
   if (process.env.NODE_ENV !== 'production' && (path.includes('.hot-update.') || path.includes('?version='))) return false;
@@ -113,24 +138,6 @@ function shouldPreCache(name: string) {
   return true;
 }
 
-interface ServiceWorkerConfig {
-  /** enabled hosts */
-  hosts: string[];
-  /** service domains */
-  domains: string[];
-  /** assets domains */
-  assets: string[];
-  preload?: string;
-}
-let config: ServiceWorkerConfig = null;
-
-function initConfig(cfg) {
-  config = cfg;
-  config.hosts ||= [];
-  config.domains = Array.from(new Set([location.host, ...(config.domains || [])]));
-  console.log('Config:', config);
-}
-
 self.addEventListener('install', (event) => event.waitUntil((async () => {
   if (process.env.NODE_ENV === 'production' && config?.preload) {
     const [cache, manifest] = await Promise.all([
@@ -145,12 +152,15 @@ self.addEventListener('install', (event) => event.waitUntil((async () => {
 })()));
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
-  const valid = [PRECACHE];
-  caches.keys().then((names) => names
-    .filter((name) => name.startsWith('precache-'))
-    .filter((name) => !valid.includes(name))
-    .map((p) => caches.delete(p)));
+  event.waitUntil(Promise.all([
+    self.clients.claim(),
+    caches.keys().then((names) => Promise.all(names
+      // `ui-resources-cache` was used by older releases and must be removed
+      // explicitly because it does not follow the versioned naming scheme.
+      .filter((name) => (name.startsWith('precache-') || name === 'ui-resources-cache')
+        && name !== PRECACHE)
+      .map((name) => caches.delete(name)))),
+  ]));
 });
 
 async function get(request: Request) {
@@ -207,16 +217,14 @@ async function cached(request: Request, cacheKey: string, fetchFunc: () => Promi
 
   if (!shouldCache(request)) return rewritable ? fetchFunc() : fetch(request);
 
-  const results = await Promise.all(targets.map((i) => caches.match(i)));
+  const cache = await caches.open(cacheKey);
+  const results = await Promise.all(targets.map((i) => cache.match(i)));
   const found = results.find((i) => i);
   if (found) {
     console.debug('Serve from cache %s <- %s', request.url, found.url);
     return found;
   }
-  const [cache, response] = await Promise.all([
-    caches.open(cacheKey),
-    fetchFunc().catch(() => null),
-  ]);
+  const response = await fetchFunc().catch(() => null);
   if (response?.status === 206) return response; // partial response cannot be cached
   if (response?.ok) {
     console.log(`Cached ${url}`);
@@ -230,6 +238,8 @@ async function cached(request: Request, cacheKey: string, fetchFunc: () => Promi
 }
 
 self.addEventListener('fetch', (event: FetchEvent) => {
+  // Always use the current origin's maintenance state, bypassing caches and mirrors.
+  if (isMaintenancePath(event.request.url)) return;
   if (event.request.url.endsWith('/ping')) {
     event.respondWith(new Response('pong'));
     return;

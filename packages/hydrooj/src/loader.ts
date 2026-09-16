@@ -204,6 +204,9 @@ async function preload() {
 }
 
 export async function load() {
+    if (!argv.options.help && !argv.options.h && !process.env.CI) {
+        require('../bin/hydro-maintenance').restoreSchedulerOnStartup();
+    }
     require('./ui');
     await preload();
     Error.stackTraceLimit = 50;

@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 require('@hydrooj/register');
 
-const packageBasedir = require('path').resolve(__dirname, '..');
+const path = require('path');
+const packageBasedir = path.resolve(__dirname, '..');
 const { homedir } = require('os');
+
 const { default: hook } = require('@undefined-moe/require-resolve-hook');
 const { bypass } = hook(/^(hydrooj|@hydrooj|cordis|lodash|js-yaml)($|\/)/, (id) => {
     if (id.startsWith('hydrooj/src') && !('__DISABLE_HYDRO_DEPRECATION_WARNING__' in global)) {

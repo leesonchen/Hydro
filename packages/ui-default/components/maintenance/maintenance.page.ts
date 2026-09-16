@@ -1,6 +1,7 @@
+import './maintenance.page.styl';
+
 import { AutoloadPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
-import './maintenance.page.styl';
 
 interface MaintenanceState {
   state: 'inactive' | 'scheduled' | 'active';
@@ -12,6 +13,7 @@ interface MaintenanceState {
 const POLL_INTERVAL = 15000;
 const defaultMessage = 'The system will enter maintenance soon. Please save your work.';
 let banner: HTMLDivElement;
+let bannerObserver: ResizeObserver;
 let countdownTimer: number;
 let redirectTimer: number;
 let currentState: MaintenanceState;
@@ -24,6 +26,10 @@ function formatRemaining(ms: number) {
   return i18n('{0} hours', Math.ceil(minutes / 60));
 }
 
+function updateBannerOffset() {
+  document.documentElement.style.setProperty('--hydro-maintenance-height', `${banner?.getBoundingClientRect().height || 0}px`);
+}
+
 function ensureBanner() {
   if (banner) return banner;
   banner = document.createElement('div');
@@ -33,6 +39,8 @@ function ensureBanner() {
   banner.innerHTML = '<span class="hydro-maintenance-banner__message"></span>'
     + '<span class="hydro-maintenance-banner__countdown"></span>';
   document.body.prepend(banner);
+  bannerObserver = new ResizeObserver(updateBannerOffset);
+  bannerObserver.observe(banner);
   return banner;
 }
 
@@ -42,6 +50,9 @@ function removeBanner() {
   if (redirectTimer) window.clearTimeout(redirectTimer);
   countdownTimer = undefined;
   redirectTimer = undefined;
+  bannerObserver?.disconnect();
+  bannerObserver = undefined;
+  document.documentElement.style.removeProperty('--hydro-maintenance-height');
   banner?.remove();
   banner = undefined;
 }
@@ -62,18 +73,24 @@ function updateBanner() {
   if (currentState.state === 'active') {
     dom.classList.add('hydro-maintenance-banner--active');
     countdown.textContent = i18n('Redirecting to the maintenance page.');
-    if (!redirectTimer) {
-      redirectTimer = window.setTimeout(() => {
-        window.location.assign('/maintain.html');
-      }, 500);
-    }
+    updateBannerOffset();
+    redirectTimer ||= window.setTimeout(() => {
+      window.location.assign('/maintain.html');
+    }, 500);
     return;
   }
+  countdownTimer ||= window.setInterval(updateBanner, 1000);
   dom.classList.remove('hydro-maintenance-banner--active');
   const remaining = Number(currentState.startAt) - Date.now();
   countdown.textContent = Number.isFinite(remaining) && remaining > 0
     ? i18n('Maintenance starts in {0}.', formatRemaining(remaining))
     : i18n('Maintenance starts soon.');
+  updateBannerOffset();
+}
+
+function startCountdown() {
+  if (countdownTimer) window.clearInterval(countdownTimer);
+  countdownTimer = window.setInterval(updateBanner, 1000);
 }
 
 async function poll() {
@@ -89,11 +106,6 @@ async function poll() {
   } catch (e) {
     // Maintenance status is an optional static endpoint. Retry on the next poll.
   }
-}
-
-function startCountdown() {
-  if (countdownTimer) window.clearInterval(countdownTimer);
-  countdownTimer = window.setInterval(updateBanner, 1000);
 }
 
 export default new AutoloadPage('maintenancePage', () => {

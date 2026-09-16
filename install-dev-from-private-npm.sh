@@ -24,6 +24,7 @@ MAINTENANCE_DIR="${HYDRO_MAINTENANCE_DIR:-$HYDRO_HOME/maintenance}"
 MAINTENANCE_STATE_FILE="$MAINTENANCE_DIR/maintenance.json"
 MAINTENANCE_ACTIVE_FILE="$MAINTENANCE_DIR/active"
 MAINTENANCE_ACTIVE=0
+RELEASE_INCREMENTAL_INSTALL=0
 PACKAGE_KEYS=("framework" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
 SELECTED_PACKAGE_KEYS=()
 declare -A CURRENT_PACKAGE_VERSIONS=()
@@ -41,37 +42,17 @@ export PATH
 
 acquire_operation_lock() {
     mkdir -p "$(dirname "$OPERATION_LOCK_DIR")"
-    local attempt lock_pid=""
-    for attempt in 1 2; do
-        if mkdir "$OPERATION_LOCK_DIR" 2>/dev/null; then
-            if ! (umask 077; printf '%s\n' "$$" > "$OPERATION_LOCK_DIR/owner"); then
-                rmdir "$OPERATION_LOCK_DIR" 2>/dev/null || true
-                echo -e "${RED}错误: 无法初始化操作锁: ${OPERATION_LOCK_DIR}${NC}"
-                return 1
-            fi
-            trap release_operation_lock EXIT
-            return 0
-        fi
-
-        lock_pid=""
-        if [ -f "$OPERATION_LOCK_DIR/owner" ]; then
-            lock_pid=$(tr -d '[:space:]' < "$OPERATION_LOCK_DIR/owner" || true)
-        fi
-        if [[ "$lock_pid" =~ ^[0-9]+$ ]]; then
-            if kill -0 "$lock_pid" 2>/dev/null; then
-                echo -e "${RED}错误: 已有维护或升级操作正在执行 (PID ${lock_pid})${NC}"
-                return 1
-            fi
-            rm -f "$OPERATION_LOCK_DIR/owner"
-            if rmdir "$OPERATION_LOCK_DIR" 2>/dev/null; then
-                continue
-            fi
-        fi
-        echo -e "${RED}错误: 操作锁已存在但无法确认持有者，请检查并清理: ${OPERATION_LOCK_DIR}${NC}"
+    if ! mkdir "$OPERATION_LOCK_DIR" 2>/dev/null; then
+        echo -e "${RED}错误: 已有维护或升级操作锁；确认没有操作运行后再手工清理: ${OPERATION_LOCK_DIR}${NC}"
         return 1
-    done
-    echo -e "${RED}错误: 无法取得操作锁: ${OPERATION_LOCK_DIR}${NC}"
-    return 1
+    fi
+    if ! (umask 077; printf '%s\n' "$$" > "$OPERATION_LOCK_DIR/owner"); then
+        rm -f "$OPERATION_LOCK_DIR/owner"
+        rmdir "$OPERATION_LOCK_DIR" 2>/dev/null || true
+        echo -e "${RED}错误: 无法初始化操作锁: ${OPERATION_LOCK_DIR}${NC}"
+        return 1
+    fi
+    trap release_operation_lock EXIT
 }
 
 release_operation_lock() {
@@ -583,6 +564,7 @@ install_release() {
     local release_id release_dir log_file key package_name current spec active_release
     local package_specs=()
     local incremental_install=0
+    RELEASE_INCREMENTAL_INSTALL=0
     release_id=$(now_id)
     release_dir="$RELEASES_DIR/$release_id"
     log_file="/tmp/hydro-dev-install-${release_id}.log"
@@ -594,6 +576,7 @@ install_release() {
     if [ -n "$active_release" ] && [ -d "$active_release/node_modules" ] \
         && [ ${#SELECTED_PACKAGE_KEYS[@]} -gt 0 ] && [ ${#SELECTED_PACKAGE_KEYS[@]} -lt ${#PACKAGE_KEYS[@]} ]; then
         incremental_install=1
+        RELEASE_INCREMENTAL_INSTALL=1
         log_title "4. 基于当前 release 增量安装选中模块..."
         cp -a "$active_release"/. "$release_dir"/
         echo "  复用当前 release: ${active_release}"
@@ -641,9 +624,11 @@ verify_release() {
         return 1
     fi
     local maintenance_bin="$release_dir/node_modules/.bin/hydro-maintenance"
-    if [ ! -x "$maintenance_bin" ]; then
+    if [ ! -x "$maintenance_bin" ] && { [ "$RELEASE_INCREMENTAL_INSTALL" -eq 0 ] || is_key_selected hydrooj; }; then
         log_error "未找到维护命令: ${maintenance_bin}"
         return 1
+    elif [ ! -x "$maintenance_bin" ]; then
+        log_warn "局部更新未包含 hydrooj，跳过维护命令校验"
     fi
 
     local key package_name package_version
@@ -726,7 +711,7 @@ switch_hydrooj_link() {
         log_error "${hydro_bin} 不可执行"
         return 1
     fi
-    if [ ! -x "$maintenance_bin" ] && { [ "$MAINTENANCE_ACTIVE" -ne 1 ] || [ ! -x "$HYDRO_MAINTENANCE_BIN_LINK" ]; }; then
+    if [ ! -x "$maintenance_bin" ] && { [ "$RELEASE_INCREMENTAL_INSTALL" -eq 0 ] || is_key_selected hydrooj; }; then
         log_error "未找到维护命令: ${maintenance_bin}"
         return 1
     fi
@@ -738,11 +723,8 @@ switch_hydrooj_link() {
     if [ -x "$maintenance_bin" ]; then
         ln -sfn "$maintenance_bin" "$HYDRO_MAINTENANCE_BIN_LINK"
         log_ok "${HYDRO_MAINTENANCE_BIN_LINK} -> ${maintenance_bin}"
-    elif [ "$MAINTENANCE_ACTIVE" -eq 1 ] && [ -x "$HYDRO_MAINTENANCE_BIN_LINK" ]; then
-        log_warn "新 release 未提供 hydro-maintenance，维护中保留现有命令链接"
     else
-        log_error "未找到维护命令: ${maintenance_bin}"
-        return 1
+        log_warn "局部更新未提供 hydro-maintenance，保留现有命令链接（如有）"
     fi
 
     log_ok "${HYDRO_BIN_LINK} -> ${hydro_bin}"

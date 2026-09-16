@@ -1,5 +1,8 @@
+.hasjs .nav, .hasjs .nav.slideout-menu, .nav--shadow
+  top: var(--hydro-maintenance-height, 0px)
+
 .hydro-maintenance-banner
-  position: fixed
+  position: sticky
   top: 0
   left: 0
   z-index: 10000
@@ -36,3 +39,7 @@
 
   .hydro-maintenance-banner__countdown
     display: block
+
++mobile()
+  .hasjs .nav.slideout-menu
+    min-height: calc(100vh - var(--hydro-maintenance-height, 0px))
