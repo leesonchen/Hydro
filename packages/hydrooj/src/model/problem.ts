@@ -547,6 +547,16 @@ export class ProblemModel {
 
     static isModifiedLocally(copiedDoc: ProblemDoc, sourceDoc?: ProblemDoc): boolean {
         if (!copiedDoc.reference) return false;
+        const sameAsSource = sourceDoc
+            ? (() => {
+                const copyTags = (copiedDoc.tag || []).slice().sort();
+                const sourceTags = (sourceDoc.tag || []).slice().sort();
+                return (copiedDoc.title || '') === (sourceDoc.title || '')
+                    && (copiedDoc.content || '') === (sourceDoc.content || '')
+                    && (copiedDoc.difficulty || 0) === (sourceDoc.difficulty || 0)
+                    && JSON.stringify(copyTags) === JSON.stringify(sourceTags);
+            })()
+            : false;
         let modified = false;
         const copiedUpdateAt = copiedDoc.updateAt ? new Date(copiedDoc.updateAt).getTime() : 0;
         if (copiedDoc.reference.lastSyncAt) {
@@ -559,16 +569,13 @@ export class ProblemModel {
             if (createTime) {
                 modified = copiedUpdateAt > createTime + 1000;
             }
+        } else {
+            // Old references may have neither synchronization metadata nor an
+            // edit timestamp. Without a baseline, only an exact content match
+            // is safe to synchronize; otherwise preserve the copy as a conflict.
+            return sourceDoc ? !sameAsSource : true;
         }
-        if (modified && sourceDoc) {
-            const copyTags = (copiedDoc.tag || []).slice().sort();
-            const sourceTags = (sourceDoc.tag || []).slice().sort();
-            const isSame = (copiedDoc.title || '') === (sourceDoc.title || '')
-                && (copiedDoc.content || '') === (sourceDoc.content || '')
-                && (copiedDoc.difficulty || 0) === (sourceDoc.difficulty || 0)
-                && JSON.stringify(copyTags) === JSON.stringify(sourceTags);
-            if (isSame) return false;
-        }
+        if (modified && sourceDoc && sameAsSource) return false;
         return modified;
     }
 

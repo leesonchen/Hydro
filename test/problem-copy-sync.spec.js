@@ -120,6 +120,17 @@ test('ProblemModel.isModifiedLocally detects modifications and avoids false conf
     };
     assert.equal(ProblemModel.isModifiedLocally(legacySubsecond, source), false);
 
+    // Legacy copies without either synchronization or edit metadata are
+    // treated conservatively: an exact match is safe, divergent content is a
+    // conflict rather than an automatic overwrite.
+    const legacyWithoutMetadata = { ...copy3, updateAt: undefined };
+    assert.equal(ProblemModel.isModifiedLocally(legacyWithoutMetadata, source), false);
+    const legacyWithoutMetadataEdited = {
+        ...legacyWithoutMetadata,
+        title: 'Edited before metadata tracking',
+    };
+    assert.equal(ProblemModel.isModifiedLocally(legacyWithoutMetadataEdited, source), true);
+
     // 4. Legacy copy without lastSyncAt (edited locally: updateAt is after creation time)
     const copy4 = {
         _id: createObjectId(Math.floor(new Date('2026-09-03T00:00:00Z').getTime() / 1000)),
