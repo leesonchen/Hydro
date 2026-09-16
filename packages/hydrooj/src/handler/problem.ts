@@ -1040,7 +1040,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
                 domainId: copy.domainId,
                 domainTitle: targetDomain ? (targetDomain.name || targetDomain._id) : copy.domainId,
                 docId: copy.docId,
-                pid: copy.pid || `P${copy.docId}`,
+                pid: copy.pid || copy.docId,
                 title: copy.title,
                 hasModified: hasLocalModifications,
                 updateAt: copy.updateAt || null,
@@ -1085,7 +1085,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
                 domainId: copy.domainId,
                 domainTitle,
                 docId: copy.docId,
-                pid: copy.pid || `P${copy.docId}`,
+                pid: copy.pid || copy.docId,
                 title: copy.title,
             };
 

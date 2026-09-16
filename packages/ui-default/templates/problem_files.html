@@ -219,7 +219,7 @@
           var problemUrl = '/d/' + encodeURIComponent(item.domainId) + '/p/' + encodeURIComponent(item.pid || item.docId);
           var domainDisplay = '<a href="' + domainUrl + '" target="_blank" style="font-weight: 500;">' + escapeHtml(item.domainTitle || item.domainId) + '</a>' +
             '<span style="color: #888; font-size: 0.85em; margin-left: 4px;">(' + escapeHtml(item.domainId) + ')</span>';
-          var problemDisplay = '<a href="' + problemUrl + '" target="_blank">' + escapeHtml((item.pid || ('P' + item.docId)) + ' ' + (item.title || '')) + '</a>';
+          var problemDisplay = '<a href="' + problemUrl + '" target="_blank">' + escapeHtml((item.pid || item.docId) + ' ' + (item.title || '')) + '</a>';
           
           var statusBadge = '';
           if (item.hasModified) {
@@ -274,7 +274,7 @@
         '<ul style="margin: 0; padding-left: 20px; color: #333;">';
       data.synced.forEach(function(s) {
         var problemUrl = '/d/' + encodeURIComponent(s.domainId) + '/p/' + encodeURIComponent(s.pid || s.docId);
-        var label = '[' + (s.domainTitle || s.domainId) + '] ' + (s.pid || ('P' + s.docId)) + ' ' + (s.title || '');
+        var label = '[' + (s.domainTitle || s.domainId) + '] ' + (s.pid || s.docId) + ' ' + (s.title || '');
         html += '<li style="margin: 4px 0;"><a href="' + problemUrl + '" target="_blank">' + escapeHtml(label) + '</a></li>';
       });
       html += '</ul></div>';
@@ -287,7 +287,7 @@
         '<ul style="margin: 0; padding-left: 20px; color: #333;">';
       data.conflicts.forEach(function(c) {
         var problemUrl = '/d/' + encodeURIComponent(c.domainId) + '/p/' + encodeURIComponent(c.pid || c.docId);
-        var label = '[' + (c.domainTitle || c.domainId) + '] ' + (c.pid || ('P' + c.docId)) + ' ' + (c.title || '');
+        var label = '[' + (c.domainTitle || c.domainId) + '] ' + (c.pid || c.docId) + ' ' + (c.title || '');
         var reason = c.reason || tplModifiedLocally;
         html += '<li style="margin: 4px 0;"><a href="' + problemUrl + '" target="_blank">' + escapeHtml(label) + '</a>' +
           '<span style="color: #d4380d; margin-left: 6px; font-size: 0.9em;">(' + escapeHtml(reason) + ')</span></li>';
