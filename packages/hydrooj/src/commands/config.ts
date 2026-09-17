@@ -50,6 +50,10 @@ export function readEnvFileKey(key: string): string | undefined {
 }
 
 export function updateEnvFileKey(key: string, value: string): void {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        throw new Error(`非法环境变量键名: ${key}`);
+    }
+    const sanitizedValue = String(value).replace(/[\r\n]/g, '').trim();
     fs.ensureDirSync(hydroPath);
     let content = '';
     if (fs.existsSync(envFile)) {
@@ -61,17 +65,20 @@ export function updateEnvFileKey(key: string, value: string): void {
         const trimmed = line.trim();
         if (trimmed.startsWith(`${key}=`)) {
             replaced = true;
-            return `${key}=${value}`;
+            return `${key}=${sanitizedValue}`;
         }
         return line;
     });
     if (!replaced) {
-        newLines.push(`${key}=${value}`);
+        newLines.push(`${key}=${sanitizedValue}`);
     }
     writeFileAtomic(envFile, `${newLines.join('\n').trim()}\n`);
 }
 
 export function removeEnvFileKey(key: string): void {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        throw new Error(`非法环境变量键名: ${key}`);
+    }
     if (!fs.existsSync(envFile)) return;
     const lines = fs.readFileSync(envFile, 'utf-8').split('\n');
     const newLines = lines.filter((line) => !line.trim().startsWith(`${key}=`));
@@ -99,6 +106,13 @@ export function register(cli: CAC): void {
     cli.command('config [action] [key] [value]', '配置管理 (get, set, unset, list)。固定读写 ~/.hydro/config.json；dev 源码目录下运行的服务端可能读取 cwd 下的 config.json')
         .action((action = 'list', key, value) => {
             const normalizedAction = action.toLowerCase();
+            const trimmedKey = typeof key === 'string' ? key.trim() : key;
+            const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+            if (trimmedKey && FORBIDDEN_KEYS.has(trimmedKey)) {
+                logger.error(`禁止操作受保护的配置键: ${trimmedKey}`);
+                process.exitCode = 1;
+                return;
+            }
             let config: Record<string, any>;
             try {
                 config = readConfigFile();

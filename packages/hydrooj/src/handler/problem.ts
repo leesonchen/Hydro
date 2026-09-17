@@ -1065,7 +1065,9 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
         const now = new Date();
         const force = !!this.args.force;
         const rawTargets = this.args.targets;
-        const targets: any[] = Array.isArray(rawTargets) ? rawTargets : null;
+        const targets = Array.isArray(rawTargets)
+            ? rawTargets.slice(0, 100).filter((t) => t && (typeof t === 'string' || (typeof t === 'object' && !Array.isArray(t))))
+            : null;
 
         for (const copy of copies) {
             if (targets) {

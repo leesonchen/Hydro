@@ -1111,7 +1111,7 @@ export function canAccessAssignedContest(user: User, tdoc: Tdoc) {
 function canAccessContestResults(user: User, tdoc: Tdoc, allowPermOverride = true) {
     if (!canAccessAssignedContest(user, tdoc)
         && (!allowPermOverride || !canViewHiddenScoreboard.call({ user }, tdoc))) return false;
-    if (!RULES[tdoc.rule].hidden) return true;
+    if (!RULES[tdoc.rule]?.hidden) return true;
     if (user.own(tdoc)
         || user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)
         || user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
@@ -1123,16 +1123,16 @@ function canAccessContestResults(user: User, tdoc: Tdoc, allowPermOverride = tru
 
 export function canShowRecord(this: { user: User }, tdoc: Tdoc, allowPermOverride = true) {
     if (!canAccessContestResults(this.user, tdoc, allowPermOverride)) return false;
-    if (RULES[tdoc.rule].showRecord(tdoc, new Date())) return true;
+    if (RULES[tdoc.rule]?.showRecord) return RULES[tdoc.rule].showRecord(tdoc, new Date());
     if (allowPermOverride && canViewHiddenScoreboard.call(this, tdoc)) return true;
-    return false;
+    return !tdoc.keepScoreboardHidden && (!tdoc.beginAt || new Date() > tdoc.beginAt);
 }
 
 export function canShowSelfRecord(this: { user: User }, tdoc: Tdoc, allowPermOverride = true) {
     if (!canAccessContestResults(this.user, tdoc, allowPermOverride)) return false;
-    if (RULES[tdoc.rule].showSelfRecord(tdoc, new Date())) return true;
+    if (RULES[tdoc.rule]?.showSelfRecord) return RULES[tdoc.rule].showSelfRecord(tdoc, new Date());
     if (allowPermOverride && canViewHiddenScoreboard.call(this, tdoc)) return true;
-    return false;
+    return !tdoc.keepScoreboardHidden && (!tdoc.beginAt || new Date() > tdoc.beginAt);
 }
 
 export function canShowProblemStatus(user: User | null, targetUid: number, tdoc: Tdoc, allowPermOverride = true) {
@@ -1151,9 +1151,10 @@ export function canShowProblemStatus(user: User | null, targetUid: number, tdoc:
 }
 
 export function canShowScoreboard(this: { user: User }, tdoc: Tdoc, allowPermOverride = true) {
-    if (RULES[tdoc.rule].showScoreboard(tdoc, new Date())) return true;
+    if (tdoc.keepScoreboardHidden && (!allowPermOverride || !canViewHiddenScoreboard.call(this, tdoc))) return false;
+    if (RULES[tdoc.rule]?.showScoreboard) return RULES[tdoc.rule].showScoreboard(tdoc, new Date());
     if (allowPermOverride && canViewHiddenScoreboard.call(this, tdoc)) return true;
-    return false;
+    return !tdoc.keepScoreboardHidden && (!tdoc.beginAt || new Date() > tdoc.beginAt);
 }
 
 export async function getScoreboard(

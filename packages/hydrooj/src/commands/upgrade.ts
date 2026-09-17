@@ -41,7 +41,12 @@ function findUpgradeScript(): string {
                 try {
                     fs.chmodSync(candidate, 0o755);
                     logger.warn(`已为更新脚本添加执行权限: ${candidate}`);
-                } catch { }
+                } catch (err: any) {
+                    logger.warn(`无法为更新脚本设置执行权限 (${candidate}): ${err.message}，若后续执行失败请手动赋权 (chmod +x)`);
+                }
+            }
+            if (candidate === process.env.HYDRO_UPGRADE_SCRIPT) {
+                logger.info(`使用环境变量指定的更新脚本: ${candidate}`);
             }
             return candidate;
         }
@@ -106,7 +111,13 @@ export function executeUpgrade(targetPackage: string | undefined, options: Upgra
     } else if (options.rollback !== undefined) {
         scriptArgs.push('rollback');
         if (typeof options.rollback === 'string' && options.rollback.trim()) {
-            scriptArgs.push(options.rollback.trim());
+            const rollbackId = options.rollback.trim();
+            if (rollbackId.startsWith('-') || !/^[a-zA-Z0-9._-]+$/.test(rollbackId)) {
+                logger.error(`非法回退版本参数: ${options.rollback}`);
+                process.exitCode = 1;
+                return;
+            }
+            scriptArgs.push(rollbackId);
         }
     } else if (options.check) {
         scriptArgs.push('check-updates');
@@ -115,10 +126,23 @@ export function executeUpgrade(targetPackage: string | undefined, options: Upgra
     } else {
         scriptArgs.push('update');
         if (targetPackage) {
-            scriptArgs.push(targetPackage);
+            const pkg = targetPackage.trim();
+            const NPM_PKG_REGEX = /^(?:@[a-zA-Z0-9~-][a-zA-Z0-9._~-]*\/)?[a-zA-Z0-9~-][a-zA-Z0-9._~-]*(?:@[a-zA-Z0-9_.~^>=<-]+)?$/;
+            if (pkg.startsWith('-') || pkg.includes('..') || !NPM_PKG_REGEX.test(pkg)) {
+                logger.error(`非法包名参数: ${targetPackage}`);
+                process.exitCode = 1;
+                return;
+            }
+            scriptArgs.push(pkg);
         }
         if (options.packages) {
-            scriptArgs.push(`--packages=${options.packages}`);
+            const pkgs = String(options.packages).trim();
+            if (pkgs.startsWith('-') || pkgs.includes('..') || !/^[a-zA-Z0-9@_.,/-]+$/.test(pkgs)) {
+                logger.error(`非法包名列表参数: ${options.packages}`);
+                process.exitCode = 1;
+                return;
+            }
+            scriptArgs.push(`--packages=${pkgs}`);
         }
     }
 
