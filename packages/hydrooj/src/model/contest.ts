@@ -1136,10 +1136,13 @@ export function canShowSelfRecord(this: { user: User }, tdoc: Tdoc, allowPermOve
 }
 
 export function canShowProblemStatus(user: User | null, targetUid: number, tdoc: Tdoc, allowPermOverride = true) {
+    const isCourseOrHomework = tdoc.rule === 'course' || tdoc.rule === 'homework';
     if (!user) {
-        return !tdoc.assign?.length
-            && !RULES[tdoc.rule].hidden
-            && RULES[tdoc.rule].showRecord(tdoc, new Date());
+        if (isCourseOrHomework) {
+            return !tdoc.keepScoreboardHidden;
+        }
+        if (!tdoc.rated) return false;
+        return !tdoc.keepScoreboardHidden && (!RULES[tdoc.rule]?.showRecord || RULES[tdoc.rule].showRecord(tdoc, new Date()));
     }
     if (!canAccessContestResults(user, tdoc, allowPermOverride)) return false;
     return targetUid === user._id

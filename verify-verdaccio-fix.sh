@@ -45,7 +45,7 @@ if [[ "$TARBALL_URL" == https://npm.leeson.top/* ]]; then
             echo -e "${GREEN}✓ 验证成功！${NC}"
             echo ""
             echo -e "${YELLOW}4. 现在可以测试安装...${NC}"
-            echo "   执行: ./install-dev-from-private-npm.sh"
+            echo "   执行: ./packages/hydrooj/bin/install-dev-from-private-npm.sh"
         else
             echo -e "${RED}✗ 验证失败，URL 仍然不正确${NC}"
         fi

@@ -8,7 +8,7 @@ const { test } = require('node:test');
 
 const script = path.resolve(__dirname, '../packages/hydrooj/bin/hydro-maintenance.js');
 const source = fs.readFileSync(script, 'utf8');
-const installer = fs.readFileSync(path.resolve(__dirname, '../install-dev-from-private-npm.sh'), 'utf8');
+const installer = fs.readFileSync(path.resolve(__dirname, '../packages/hydrooj/bin/install-dev-from-private-npm.sh'), 'utf8');
 const shellLockFunctions = installer.slice(installer.indexOf('acquire_operation_lock()'), installer.indexOf('log_title()'));
 const services = ['mongodb', 'hydro-sandbox', 'hydrojudge', 'hydrooj'];
 

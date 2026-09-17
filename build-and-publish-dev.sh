@@ -752,7 +752,7 @@ main() {
     fi
     echo ""
     echo -e "安装命令:"
-    echo -e "  ${YELLOW}./install-dev-from-private-npm.sh${NC}"
+    echo -e "  ${YELLOW}./packages/hydrooj/bin/install-dev-from-private-npm.sh${NC}"
     echo ""
 }
 

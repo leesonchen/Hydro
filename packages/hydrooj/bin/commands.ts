@@ -3,9 +3,9 @@ import { getAddons } from '../src/options';
 
 const argv = cac().parse();
 
-if (!argv.args[0] || argv.args[0] === 'cli') {
+if ((!argv.args[0] && !argv.options.help && !argv.options.h) || argv.args[0] === 'cli') {
     const hydro = require('../src/loader');
-    (argv.args[0] === 'cli' ? hydro.loadCli : hydro.load)().catch((e) => {
+    (argv.args[0] === 'cli' ? hydro.loadCli : hydro.load)().catch((e: any) => {
         console.error(e);
         process.exit(1);
     });
@@ -16,8 +16,11 @@ if (!argv.args[0] || argv.args[0] === 'cli') {
     require('../src/commands/db').register(cli);
     require('../src/commands/patch').register(cli);
     require('../src/commands/diagnosis').register(cli);
+    require('../src/commands/config').register(cli);
+    require('../src/commands/upgrade').register(cli);
     cli.help();
     cli.parse();
+    if (cli.options.help) process.exit(0);
     if (!cli.matchedCommand) {
         const addons = getAddons();
         for (const i of addons) {

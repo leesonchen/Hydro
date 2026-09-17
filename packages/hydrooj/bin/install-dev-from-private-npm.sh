@@ -1010,7 +1010,11 @@ run_selected_install() {
 
     echo -e "${GREEN}=== 安装/更新完成 ===${NC}"
     echo "当前 release: ${release_dir}"
-    echo "回退命令: $SCRIPT_DIR/$(basename "$0") rollback $(basename "$backup_dir")"
+    if command -v hydrooj >/dev/null 2>&1; then
+        echo "回退命令: hydrooj upgrade --rollback $(basename "$backup_dir")"
+    else
+        echo "回退命令: $SCRIPT_DIR/$(basename "$0") rollback $(basename "$backup_dir")"
+    fi
     if [ "$MAINTENANCE_ACTIVE" -eq 1 ]; then
         echo -e "${YELLOW}当前仍处于维护模式，请确认升级无误后执行: hydro-maintenance off${NC}"
     elif is_skip_restart; then

@@ -8702,3 +8702,6 @@ test-reports/ai-record-verification/results.json
 /ai_problem_profile_jobs.js
 /problem_ai_profile.js
 /problem_ai_profile_jobs.js
+testuser.md
+.devin/
+.zcode/
