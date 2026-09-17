@@ -416,6 +416,8 @@ export class ClassEditHandler extends Handler {
         }
 
         const intervalPreset = intervalDays === 1 ? '1' : intervalDays === 7 ? '7' : 'custom';
+        const publicScoreboard = extra.gdoc ? extra.gdoc.publicScoreboard !== false : true;
+        const enablePenalty = extra.gdoc ? extra.gdoc.enablePenalty !== false : true;
         Object.assign(this.response.body, {
             dateBeginText: beginAt.format('YYYY-M-D'),
             timeBeginText: beginAt.format('H:mm'),
@@ -423,6 +425,8 @@ export class ClassEditHandler extends Handler {
             timeEndText: endAt.format('H:mm'),
             intervalDays,
             intervalPreset,
+            publicScoreboard,
+            enablePenalty,
             ...extra,
         });
 
@@ -475,6 +479,8 @@ export class ClassEditHandler extends Handler {
     @param('EndAtTime', Types.String)
     @param('intervalDays', Types.Int, true)
     @param('archive', Types.Boolean)
+    @param('publicScoreboard', Types.Boolean, true)
+    @param('enablePenalty', Types.Boolean, true)
     async postUpdate(
         domainId: string,
         id: ObjectId | undefined,
@@ -489,6 +495,8 @@ export class ClassEditHandler extends Handler {
         endAtTime: string,
         intervalDays = 1,
         archive = false,
+        publicScoreboard = true,
+        enablePenalty = true,
     ) {
         const beginAt = moment.tz(`${beginAtDate} ${beginAtTime}`, 'YYYY-M-D H:mm', this.user.timeZone);
         if (!beginAt.isValid()) throw new ValidationError('beginAtDate', 'beginAtTime');
@@ -601,6 +609,8 @@ export class ClassEditHandler extends Handler {
                     revokeClassInvitation,
                     expectedName,
                     editToken,
+                    publicScoreboard,
+                    enablePenalty,
                 );
                 if (id && !groupUpdate.matchedCount) {
                     throw new BadRequestError('Class has been modified. Please refresh and try again.');
@@ -791,6 +801,9 @@ export class ClassEditHandler extends Handler {
                 const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
                 const lessonWindow = calcLessonTimeRange(beginAt, getLessonDurationHours(template));
 
+                const classPublicScoreboard = gdoc.publicScoreboard !== false;
+                const classEnablePenalty = gdoc.enablePenalty !== false;
+
                 // eslint-disable-next-line no-await-in-loop
                 await refreshClassEditLock(domainId, id, editToken);
                 // 创建新课程
@@ -811,15 +824,23 @@ export class ClassEditHandler extends Handler {
                         lecture: newLecture,
                         lectureMeta: newLectureMeta,
                         files: template.files,
+                        publicScoreboard: classPublicScoreboard,
+                        enablePenalty: classEnablePenalty,
                         ...lessonWindow,
                     },
                 );
 
-                // ContestModel.add may be extended by hooks; explicitly persist copied lectures after creation
-                // so cross-domain course copies do not lose lecture bodies.
-                if (Object.keys(newLecture).length || Object.keys(newLectureMeta).length) {
-                    await ContestModel.edit(domainId, newTid, { lecture: newLecture, lectureMeta: newLectureMeta });
-                }
+                // ContestModel.add may be extended by hooks; explicitly persist copied lectures and settings after creation
+                // so cross-domain course copies do not lose lecture bodies and class settings.
+                // eslint-disable-next-line no-await-in-loop
+                await ContestModel.edit(domainId, newTid, {
+                    publicScoreboard: classPublicScoreboard,
+                    enablePenalty: classEnablePenalty,
+                    ...(Object.keys(newLecture).length || Object.keys(newLectureMeta).length ? {
+                        lecture: newLecture,
+                        lectureMeta: newLectureMeta,
+                    } : {}),
+                });
 
                 // 复制文件
                 if (template.files?.length) {

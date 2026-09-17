@@ -121,6 +121,21 @@
                   row:false
               }) }}
             </div>
+            <div class="medium-6 columns">
+              <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 24px; align-items: center;">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                  <input type="hidden" name="publicScoreboard" value="false">
+                  <input type="checkbox" name="publicScoreboard" value="true"{% if publicScoreboard !== false %} checked{% endif %}>
+                  <span>{{ _('Public Scoreboard') }}</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px;">
+                  <input type="hidden" name="enablePenalty" value="false">
+                  <input type="checkbox" name="enablePenalty" value="true"{% if enablePenalty !== false %} checked{% endif %}>
+                  <span>{{ _('Enable Penalty') }}</span>
+                </label>
+                <span class="note" style="color: #888; font-size: 12px;">{{ _('Applied as default for newly added courses') }}</span>
+              </div>
+            </div>
       </div>
       <div class="row">
         <div class="columns">

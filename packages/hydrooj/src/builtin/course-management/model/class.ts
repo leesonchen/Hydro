@@ -18,6 +18,8 @@ export interface ClassGDoc {
     intervalDays?: number;
     archive: boolean;
     class: true;
+    publicScoreboard?: boolean;
+    enablePenalty?: boolean;
     invitationCode?: string | null;
     invitationTokenId?: string | null;
     classEditLock?: {
@@ -44,6 +46,8 @@ export const ClassModel = {
                 endAt: new Date(),
                 archive: false,
                 class: true,
+                publicScoreboard: true,
+                enablePenalty: true,
             });
         }
         return docs;
@@ -139,6 +143,8 @@ export const ClassModel = {
         revokeInvitation = false,
         expectedName?: string,
         editToken?: string,
+        publicScoreboard = true,
+        enablePenalty = true,
     ) {
         deleteUserCache(domainId);
         const $set: Partial<ClassGDoc> = {
@@ -152,6 +158,8 @@ export const ClassModel = {
             endAt,
             intervalDays,
             archive,
+            publicScoreboard,
+            enablePenalty,
         };
         if (revokeInvitation) {
             $set.invitationCode = null;
