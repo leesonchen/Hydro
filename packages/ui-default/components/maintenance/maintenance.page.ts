@@ -110,6 +110,7 @@ async function poll() {
 
 export default new AutoloadPage('maintenancePage', () => {
   if (!UserContext?._id || (window as any).__hydroMaintenanceInitialized) return;
+  if (!UiContext?.maintenance_poll) return;
   (window as any).__hydroMaintenanceInitialized = true;
   startCountdown();
   poll();

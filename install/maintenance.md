@@ -23,7 +23,7 @@ hydro-maintenance off
 
 `scheduled` 状态下，开发版本安装脚本会拒绝执行，避免升级和倒计时同时发生。`active` 状态下可以执行安装、更新或回退；脚本会切换 release，但跳过 Hydro/评测服务重启及登录页验证，完成后必须执行 `hydro-maintenance off`。
 
-已登录用户会通过 `/maintenance.json` 轮询维护状态。预告期间页面顶部会显示提示和倒计时；进入维护后会跳转到 `/maintain.html`。这不是站内信，用户必须在维护前打开过页面且浏览器仍能访问站点才会收到提示。
+已登录用户会通过 `/maintenance.json` 轮询维护状态。该轮询受系统设置 `server.maintenance_poll` 控制（默认关闭，避免日常无意义轮询与日志刷屏）。管理员可在控制面板（`/manage/setting` -> 服务器设置）中开启；开启后已登录用户刷新页面即可开始感知维护状态；关闭后用户刷新页面即停止轮询。预告期间页面顶部会显示提示和倒计时；进入维护后会跳转到 `/maintain.html`。这不是站内信，用户必须在维护前打开过页面且浏览器仍能访问站点才会收到提示。
 
 维护状态默认保存在 `~/.hydro/maintenance/`。Docker 单容器中如果存在可写的 `/data-host`，命令会把该目录持久化到 `/data-host/maintenance`，因此重建维护进程不会丢失状态。`--in` 支持 `s/m/h/d`，延迟不能超过 Node.js 定时器的最大值（约 24 天 20 小时）。
 

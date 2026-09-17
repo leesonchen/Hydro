@@ -740,6 +740,8 @@ setting_info_domain: 個人資訊
 setting_info: 個人資訊
 setting_privacy: 隱私
 setting_server: 伺服器設定
+server.maintenance_poll: 維護狀態前端輪詢
+Enable client maintenance status polling. When disabled, reloading pages will stop polling.: 啟用已登入使用者前端對 /maintenance.json 的定期輪詢。關閉後，重新整理頁面將停止輪詢。
 setting_session: Session 設定
 setting_smtp: SMTP 設定
 setting_usage: 使用偏好

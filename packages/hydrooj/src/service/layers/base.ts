@@ -12,12 +12,14 @@ export interface UiContextBase {
     cdn_dynamic: boolean;
     url_prefix: string;
     ws_prefix: string;
+    maintenance_poll: boolean;
 }
 export const UiContextBase: UiContextBase = {
     cdn_prefix: '/',
     cdn_dynamic: false,
     url_prefix: '/',
     ws_prefix: '/',
+    maintenance_poll: false,
 };
 
 export default async (ctx: KoaContext, next: Next) => {
@@ -37,6 +39,7 @@ export default async (ctx: KoaContext, next: Next) => {
         if (UiContext.ws_prefix.includes(',')) UiContext.ws_prefix = randomPick(UiContext.ws_prefix.split(','));
         UiContext.cdn_dynamic = system.get('server.cdn_dynamic');
     }
+    UiContext.maintenance_poll = !!system.get('server.maintenance_poll');
     UiContext.domainId = domainId;
     UiContext.domainVersion = domain.getVersion(domainInfo);
     ctx.HydroContext.UiContext = UiContext;

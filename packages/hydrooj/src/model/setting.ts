@@ -342,6 +342,8 @@ SystemSetting(
         'Log GET/POST requests with uid, username and url. Can also be enabled with HYDRO_REQUEST_TRACE=1.'),
     Setting('setting_server', 'debug.requestTraceUsers', '', 'text', 'debug.requestTraceUsers',
         'Comma-separated uid/username filter for request trace. Empty means all users.'),
+    Setting('setting_server', 'server.maintenance_poll', false, 'boolean', 'server.maintenance_poll',
+        'Enable client maintenance status polling. When disabled, reloading pages will stop polling.'),
     Setting('setting_basic', 'aiedu.internalSubmitToken', '', 'password', 'aiedu.internalSubmitToken',
         'Shared secret for AI-EDU internal submissions.', FLAG_HIDDEN | FLAG_SECRET),
     Setting('setting_limits', 'limit.by_user', false, 'boolean', 'limit.by_user', 'Use per-user limits instead of per ip limits'),

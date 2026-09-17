@@ -43,6 +43,7 @@ export interface SystemKeys {
     'session.saved_expire_seconds': number;
     'session.unsaved_expire_seconds': number;
     'user.quota': number;
+    'server.maintenance_poll': boolean;
 }
 
 export interface Setting {
