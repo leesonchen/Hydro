@@ -25,6 +25,7 @@ MAINTENANCE_STATE_FILE="$MAINTENANCE_DIR/maintenance.json"
 MAINTENANCE_ACTIVE_FILE="$MAINTENANCE_DIR/active"
 MAINTENANCE_ACTIVE=0
 RELEASE_INCREMENTAL_INSTALL=0
+SKIP_RESTART="${SKIP_RESTART:-0}"
 PACKAGE_KEYS=("framework" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
 SELECTED_PACKAGE_KEYS=()
 declare -A CURRENT_PACKAGE_VERSIONS=()
@@ -81,29 +82,35 @@ log_error() {
 usage() {
     cat <<USAGE
 用法:
-  ./install-dev-from-private-npm.sh [install] [--packages all|framework,hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
-  ./install-dev-from-private-npm.sh update [--packages all|framework,hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
-  ./install-dev-from-private-npm.sh update hydrojudge
+  ./install-dev-from-private-npm.sh [install] [--no-restart] [--packages all|framework,hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
+  ./install-dev-from-private-npm.sh update [--no-restart] [--packages all|framework,hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
+  ./install-dev-from-private-npm.sh update hydrojudge [--no-restart]
   ./install-dev-from-private-npm.sh check-updates
-  ./install-dev-from-private-npm.sh upgrade-interactive
-  ./install-dev-from-private-npm.sh rollback [backup-id]
+  ./install-dev-from-private-npm.sh upgrade-interactive [--no-restart]
+  ./install-dev-from-private-npm.sh rollback [backup-id] [--no-restart]
   ./install-dev-from-private-npm.sh list-backups
 
 说明:
   install            默认安装/更新所有 dev 包。
   update             默认只更新远端 dev 版本变化的包，未变化的包固定为当前 release 版本。
   --packages         指定更新模块，未指定的模块固定为当前 release 版本。
+  --no-restart       更新/回退完成后不自动重启服务，亦不进行在线检查（别名: --skip-restart）。
   upgrade-interactive 类似 yarn global upgrade-interactive --latest，先检查可更新模块再交互选择。
 
 环境变量:
   NPM_REGISTRY   npm 仓库地址，默认 ${NPM_REGISTRY}
   HYDRO_HOME     Hydro 数据目录，默认 ${HYDRO_HOME}
   HYDRO_MAINTENANCE_DIR 维护状态目录，默认 ${MAINTENANCE_DIR}
+  SKIP_RESTART   是否跳过服务重启 (1 或 true 为跳过)，默认 0
   LOGIN_VERIFY_TIMEOUT_SECONDS   登录页最多等待秒数，默认 ${LOGIN_VERIFY_TIMEOUT_SECONDS}
   LOGIN_VERIFY_INTERVAL_SECONDS  登录页重试间隔秒数，默认 ${LOGIN_VERIFY_INTERVAL_SECONDS}
   NPM_VIEW_TIMEOUT_SECONDS       npm view 查询超时秒数，默认 ${NPM_VIEW_TIMEOUT_SECONDS}
   HYDRO_OPERATION_LOCK_DIR       与 hydro-maintenance 共用的操作锁目录，默认 ${OPERATION_LOCK_DIR}
 USAGE
+}
+
+is_skip_restart() {
+    [ "$SKIP_RESTART" = "1" ] || [ "$SKIP_RESTART" = "true" ]
 }
 
 maintenance_state() {
@@ -317,6 +324,9 @@ parse_package_selector() {
 parse_update_args() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
+            --no-restart|--skip-restart)
+                SKIP_RESTART=1
+                ;;
             --packages)
                 shift
                 if [ -z "${1:-}" ]; then
@@ -769,6 +779,10 @@ restart_services() {
         log_warn "当前处于维护模式，跳过服务重启；请完成升级后执行 hydro-maintenance off"
         return 0
     fi
+    if is_skip_restart; then
+        log_warn "已指定跳过服务重启"
+        return 0
+    fi
     if ! command -v pm2 >/dev/null 2>&1; then
         return 0
     fi
@@ -792,6 +806,10 @@ restart_services() {
 verify_services() {
     if [ "$MAINTENANCE_ACTIVE" -eq 1 ]; then
         log_warn "当前处于维护模式，跳过服务在线验证"
+        return 0
+    fi
+    if is_skip_restart; then
+        log_warn "已跳过服务重启，跳过服务在线验证"
         return 0
     fi
     if ! command -v pm2 >/dev/null 2>&1; then
@@ -822,6 +840,10 @@ process.stdin.on("end", () => {
 verify_login_page() {
     if [ "$MAINTENANCE_ACTIVE" -eq 1 ]; then
         log_warn "当前处于维护模式，跳过登录页验证"
+        return 0
+    fi
+    if is_skip_restart; then
+        log_warn "已跳过服务重启，跳过登录页验证"
         return 0
     fi
     log_title "10. 验证登录页响应..."
@@ -940,6 +962,9 @@ rollback_release() {
     verify_services
     verify_login_page
     echo -e "${GREEN}=== 回退完成 ===${NC}"
+    if is_skip_restart; then
+        echo -e "${YELLOW}提示: 已跳过自动重启服务。如需生效回退版本，请手动执行: pm2 restart hydrooj${NC}"
+    fi
 }
 
 prepare_selected_packages() {
@@ -988,6 +1013,8 @@ run_selected_install() {
     echo "回退命令: $SCRIPT_DIR/$(basename "$0") rollback $(basename "$backup_dir")"
     if [ "$MAINTENANCE_ACTIVE" -eq 1 ]; then
         echo -e "${YELLOW}当前仍处于维护模式，请确认升级无误后执行: hydro-maintenance off${NC}"
+    elif is_skip_restart; then
+        echo -e "${YELLOW}提示: 已跳过自动重启服务。如需生效新版本，请手动执行: pm2 restart hydrooj${NC}"
     fi
 }
 
@@ -1031,16 +1058,33 @@ rollback_flow() {
 }
 
 main() {
-    local mode="${1:-install}"
-    if [ "$mode" != "install" ] && [ "$#" -gt 0 ]; then
+    local mode=""
+    local args=()
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --no-restart|--skip-restart)
+                SKIP_RESTART=1
+                ;;
+            install|update|check-updates|upgrade-interactive|rollback|list-backups|-h|--help|help)
+                if [ -z "$mode" ]; then
+                    mode="$1"
+                else
+                    args+=("$1")
+                fi
+                ;;
+            *)
+                args+=("$1")
+                ;;
+        esac
         shift
-    elif [ "$mode" = "install" ] && [ "$#" -gt 0 ]; then
-        shift
-    fi
+    done
+
+    mode="${mode:-install}"
 
     case "$mode" in
         install|update)
-            parse_update_args "$@"
+            parse_update_args "${args[@]}"
             (
                 acquire_operation_lock
                 echo -e "${GREEN}=== Hydro 开发版本安装/更新脚本 ===${NC}"
@@ -1069,7 +1113,7 @@ main() {
                 acquire_operation_lock
                 echo -e "${GREEN}=== Hydro 开发版本回退脚本 ===${NC}"
                 echo ""
-                rollback_flow "${1:-}"
+                rollback_flow "${args[0]:-}"
             )
             ;;
         list-backups)
