@@ -10,7 +10,7 @@ interface MaintenanceState {
   message?: string;
 }
 
-const POLL_INTERVAL = 15000;
+const POLL_INTERVAL = 60000;
 const defaultMessage = 'The system will enter maintenance soon. Please save your work.';
 let banner: HTMLDivElement;
 let bannerObserver: ResizeObserver;
