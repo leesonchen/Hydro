@@ -100,6 +100,7 @@ setting_info: Personal Info
 setting_preference: Preference
 setting_privacy: Privacy
 setting_server: Server Settings
+server.maintenance_poll: Frontend Maintenance Polling
 setting_session: Session Settings
 setting_smtp: SMTP Settings
 setting_usage: Usage Preference

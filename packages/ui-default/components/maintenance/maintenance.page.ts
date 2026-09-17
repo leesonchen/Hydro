@@ -10,7 +10,7 @@ interface MaintenanceState {
   message?: string;
 }
 
-const POLL_INTERVAL = 15000;
+const POLL_INTERVAL = 60000;
 const defaultMessage = 'The system will enter maintenance soon. Please save your work.';
 let banner: HTMLDivElement;
 let bannerObserver: ResizeObserver;
@@ -110,6 +110,7 @@ async function poll() {
 
 export default new AutoloadPage('maintenancePage', () => {
   if (!UserContext?._id || (window as any).__hydroMaintenanceInitialized) return;
+  if (!UiContext?.maintenance_poll) return;
   (window as any).__hydroMaintenanceInitialized = true;
   startCountdown();
   poll();

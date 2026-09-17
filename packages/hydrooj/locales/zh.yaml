@@ -743,6 +743,8 @@ setting_info_domain: 个人信息
 setting_info: 个人信息
 setting_privacy: 隐私
 setting_server: 服务器设置
+server.maintenance_poll: 维护状态前端轮询
+Enable client maintenance status polling. When disabled, reloading pages will stop polling.: 启用已登录用户前端对 /maintenance.json 的定期轮询。关闭后，刷新页面将停止轮询。
 setting_session: Session 设置
 setting_smtp: SMTP 设置
 setting_usage: 使用偏好
