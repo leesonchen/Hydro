@@ -179,19 +179,23 @@ export default new NamedPage(['problem_create', 'problem_edit'], () => {
     return c;
   }
   $main.val(getContent(activeTab));
-  function onChange(val) {
+  function syncContent(val) {
     try {
       val = JSON.parse(val);
       if (!(val instanceof Array)) val = JSON.stringify(val);
     } catch { }
-    const empty = /^\s*$/.test(val);
+    const empty = typeof val === 'string' && /^\s*$/.test(val);
     if (empty) delete content[activeTab];
     else content[activeTab] = val;
-    if (!Object.keys(content).length) $field.text('');
-    else $field.text(JSON.stringify(content));
+    const text = Object.keys(content).length ? JSON.stringify(content) : '';
+    $field.val(text);
+    $field.text(text);
   }
-  const editor = Editor.getOrConstruct($main, { onChange });
+  const debouncedSyncContent = _.debounce(syncContent, 300);
+
+  const editor = Editor.getOrConstruct($main, { onChange: debouncedSyncContent });
   $('[data-lang]').on('click', (ev) => {
+    debouncedSyncContent.flush();
     $('[data-lang]').removeClass('tab--active');
     $(ev.currentTarget).addClass('tab--active');
     const lang = $(ev.currentTarget).attr('data-lang');
@@ -200,6 +204,7 @@ export default new NamedPage(['problem_create', 'problem_edit'], () => {
     editor.value(val);
   });
   $('[type="submit"]').on('click', (ev) => {
+    debouncedSyncContent.flush();
     if (!$('[name="title"]').val().toString().length) {
       Notification.error(i18n('Title is required.'));
       $('body').scrollTop();
