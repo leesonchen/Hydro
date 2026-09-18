@@ -53,6 +53,7 @@ config({
     languageUserDefined: {
       'zh-TW': zh_TW,
     },
+    renderDelay: 100,
   },
 });
 

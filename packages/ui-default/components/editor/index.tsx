@@ -180,15 +180,39 @@ export default class Editor extends DOMAttachedObject {
 
     const debouncedTrigger = debounce(() => {
       $(document.querySelector('.md-editor-preview')).trigger('vjContentNew');
-    }, 500, { trailing: true });
+    }, 200, { trailing: true });
     const renderCallback = (ref) => {
       this.markdownEditor = ref;
       setTimeout(debouncedTrigger, 200);
     };
 
+    const FastPreviewRenderer: React.FC<{ html: string, id: string, className: string }> = React.memo(
+      ({ html, id, className }) => (
+        <div
+          id={id}
+          className={className}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      ),
+    );
+
     function EditorComponent() {
       const [val, setVal] = React.useState(value);
-      that.setMarkdownEditorValue = setVal;
+      const debouncedSetVal = React.useMemo(
+        () => debounce((v: string) => {
+          setVal(v);
+        }, 350, { trailing: true }),
+        [],
+      );
+      that.setMarkdownEditorValue = (newVal: string) => {
+        debouncedSetVal.cancel();
+        setVal(newVal);
+      };
+      React.useEffect(() => () => {
+        debouncedSetVal.cancel();
+        debouncedTrigger.cancel();
+      }, [debouncedSetVal]);
+
       return <MdEditor
         className="textbox"
         autoFocus={hasFocus}
@@ -196,6 +220,7 @@ export default class Editor extends DOMAttachedObject {
         codeStyleReverse={false}
         ref={renderCallback}
         value={val}
+        previewComponent={FastPreviewRenderer}
         theme={getTheme()}
         language={UserContext.viewLang === 'zh' ? 'zh-CN' : UserContext.viewLang?.replace('_', '-')}
         noMermaid
@@ -239,11 +264,13 @@ export default class Editor extends DOMAttachedObject {
         ]}
         onChange={(v) => {
           that.valueCache = v;
-          setVal(v);
           $dom.val(v);
           $dom.text(v);
           onChange?.(v);
-          setTimeout(debouncedTrigger, 100);
+          debouncedSetVal(v);
+        }}
+        onHtmlChanged={() => {
+          debouncedTrigger();
         }}
         onUploadImg={async (files, callback) => {
           let ext: string;
@@ -291,14 +318,12 @@ export default class Editor extends DOMAttachedObject {
   value(val?: string) {
     this.ensureValid();
     if (typeof val === 'string') {
+      this.valueCache = val;
+      this.$dom.val(val);
+      this.$dom.text(val);
       if (this.editor) return this.editor.setValue(val);
       this.setMarkdownEditorValue?.(val);
       this.markdownEditor?.resetHistory?.();
-      if (!this.markdownEditor) {
-        this.valueCache = val;
-        this.$dom.val(val);
-        this.$dom.text(val);
-      }
     }
     if (this.editor) return this.editor.getValue({ lineEnding: '\n', preserveBOM: false });
     return this.valueCache ?? this.$dom.val();

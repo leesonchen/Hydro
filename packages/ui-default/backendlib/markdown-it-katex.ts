@@ -109,17 +109,30 @@ function block(state, start, end, silent) {
   return true;
 }
 
+const katexCache = new Map<string, string>();
+const MAX_KATEX_CACHE = 2000;
+
 export default function plugin(md) {
   const options = { throwOnError: false, strict: 'ignore' as 'ignore', displayMode: false };
   const render = (latex: string, displayMode = false) => {
+    const cacheKey = `${displayMode ? '1' : '0'}:${latex}`;
+    const cached = katexCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+    let result = '';
     options.displayMode = displayMode;
     try {
-      latex = latex.replace(/\\def\{\\([a-zA-Z0-9]+)\}/g, '\\def\\$1');
-      return katex.renderToString(latex, options);
+      const normalizedLatex = latex.replace(/\\def\{\\([a-zA-Z0-9]+)\}/g, '\\def\\$1');
+      result = katex.renderToString(normalizedLatex, options);
     } catch (error) {
       if (options.throwOnError) console.error(error);
-      return `<p class='${displayMode ? 'katex-block ' : ''}katex-error' title='${escapeHtml(error.toString())}'>${escapeHtml(latex)}</p>`;
+      result = `<p class='${displayMode ? 'katex-block ' : ''}katex-error' title='${escapeHtml(error.toString())}'>${escapeHtml(latex)}</p>`;
     }
+    if (katexCache.size >= MAX_KATEX_CACHE) {
+      const firstKey = katexCache.keys().next().value;
+      if (firstKey) katexCache.delete(firstKey);
+    }
+    katexCache.set(cacheKey, result);
+    return result;
   };
   const inlineRenderer = function (tokens, idx) {
     if (tokens[idx].content.length > limit) return `$${escapeHtml(tokens[idx].content.trim())}$`;
