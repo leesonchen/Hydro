@@ -1,0 +1,455 @@
+/* eslint-disable no-await-in-loop */
+// rating-v2 shadow replay orchestration. The database handle is injected so this
+// module stays free of hydrooj runtime imports and can be executed standalone
+// (bundled shadow runs). Read-only on source collections; writes only to
+// ratingv2_shadow.* when options.write is enabled.
+
+import { ObjectId } from 'mongodb';
+import { averageRanks, updateContest } from './cf-local';
+import { compositeScore, publicRating, tierForRating } from './composite';
+import { fitDifficulty } from './difficulty';
+import { calibratedProbability, evaluateCalibration, fitSolveCalibration } from './calibration';
+
+const DOC_TYPE_PROBLEM = 10;
+const DOC_TYPE_CONTEST = 30;
+const STATUS_ACCEPTED = 1;
+const INITIAL_MU = 1500;
+const ACM_WRONG_PENALTY = 20;
+
+export interface ShadowOptions {
+    rules?: string[];
+    minParticipants?: number;
+    includeDuration?: boolean;
+    includeAssign?: boolean;
+    provisionalEvents?: number;
+    maxDelta?: number;
+    difficultyMinPriorEvents?: number;
+    difficultyMinStudents?: number;
+    difficultyMaxSe?: number;
+    priorMean?: number;
+    priorSd?: number;
+    refDomain?: string;
+    write?: boolean;
+    poolId?: string;
+}
+
+export interface DbHandle {
+    collection(name: string): any;
+}
+
+type Report = (message: any) => void;
+
+interface ContestDoc {
+    _id: any;
+    domainId: string;
+    rule: string;
+    beginAt: Date;
+    endAt: Date;
+    duration: number;
+    hasAssign: boolean;
+}
+
+interface Standing {
+    uid: number;
+    solved: number;
+    penalty: number;
+    total: number;
+}
+
+/** Build standings (best first) plus per-user full-solve sets for one contest. */
+function buildStandings(
+    rule: string, records: any[], beginAt: Date,
+): { standings: Standing[], fullSolve: Map<number, Set<number>> } {
+    const isAcm = rule === 'acm';
+    const byUser = new Map<number, Map<number, {
+        lastScore: number; ac: boolean; acTime: number; wrong: number;
+    }>>();
+    for (const r of records) {
+        if (!r.pid || !r.uid || r.uid <= 0) continue;
+        let m = byUser.get(r.uid);
+        if (!m) {
+            m = new Map();
+            byUser.set(r.uid, m);
+        }
+        let p = m.get(r.pid);
+        if (!p) {
+            p = { lastScore: 0, ac: false, acTime: 0, wrong: 0 };
+            m.set(r.pid, p);
+        }
+        p.lastScore = r.score || 0;
+        if (r.status === STATUS_ACCEPTED) {
+            if (!p.ac) {
+                p.ac = true;
+                p.acTime = r._id.getTimestamp().getTime();
+            }
+        } else if (!p.ac) {
+            p.wrong++;
+        }
+    }
+    const fullSolve = new Map<number, Set<number>>();
+    const standings: Standing[] = [];
+    for (const [uid, m] of byUser) {
+        let solved = 0;
+        let penalty = 0;
+        let total = 0;
+        const solvedSet = new Set<number>();
+        for (const [pid, p] of m) {
+            if (isAcm) {
+                if (p.ac) {
+                    solved++;
+                    solvedSet.add(pid);
+                    penalty += (p.acTime - beginAt.getTime()) / 60000 + ACM_WRONG_PENALTY * p.wrong;
+                }
+            } else {
+                // OI family: the final scoring result is the last in-window submission.
+                total += p.lastScore;
+                if (p.lastScore >= 100) solvedSet.add(pid);
+            }
+        }
+        if (!isAcm) solved = solvedSet.size;
+        standings.push({ uid, solved, penalty, total });
+        fullSolve.set(uid, solvedSet);
+    }
+    standings.sort((x, y) => (isAcm
+        ? (y.solved - x.solved) || (x.penalty - y.penalty) || (x.uid - y.uid)
+        : (y.total - x.total) || (x.uid - y.uid)));
+    return { standings, fullSolve };
+}
+
+function observe(
+    observations: Map<number, { mu: number, solved: boolean }[]>,
+    raw: { uid: number, pid: number, mu: number, solved: boolean, contestId: any }[],
+    seen: Set<string>, uid: number, pid: number, mu: number, solved: boolean, contestId: any,
+) {
+    const key = `${uid}:${pid}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    let list = observations.get(pid);
+    if (!list) {
+        list = [];
+        observations.set(pid, list);
+    }
+    list.push({ mu, solved });
+    raw.push({ uid, pid, mu: Math.round(mu * 100) / 100, solved, contestId });
+}
+
+export async function runShadowReplay(
+    dbh: DbHandle, options: ShadowOptions = {}, report: Report = () => {},
+): Promise<any> {
+    const rules = options.rules ?? ['acm', 'oi', 'ioi', 'strictioi'];
+    const minParticipants = options.minParticipants ?? 1;
+    const includeDuration = options.includeDuration ?? true;
+    const includeAssign = options.includeAssign ?? true;
+    const provisionalEvents = options.provisionalEvents ?? 5;
+    const maxDelta = options.maxDelta ?? 200;
+    const difficultyMinPriorEvents = options.difficultyMinPriorEvents ?? 5;
+    const difficultyMinStudents = options.difficultyMinStudents ?? 20;
+    const difficultyMaxSe = options.difficultyMaxSe ?? 150;
+    const priorMean = options.priorMean ?? 1500;
+    const priorSd = options.priorSd ?? 600;
+    const poolId = options.poolId ?? 'default';
+    const refDomain = options.refDomain ?? 'cpptrain';
+    const docColl = dbh.collection('document');
+    const recordColl = dbh.collection('record');
+    const statusColl = dbh.collection('document.status');
+
+    // 1. candidates ------------------------------------------------------------
+    const tdocs = await docColl.find(
+        { docType: DOC_TYPE_CONTEST, rated: true, rule: { $in: rules } },
+        { projection: { beginAt: 1, endAt: 1, duration: 1, assign: 1, domainId: 1, rule: 1 } },
+    ).toArray() as any[];
+    const contests: ContestDoc[] = [];
+    for (const t of tdocs) {
+        if (!(t.beginAt instanceof Date) || !(t.endAt instanceof Date)) continue;
+        contests.push({
+            _id: t._id,
+            domainId: t.domainId,
+            rule: t.rule,
+            beginAt: t.beginAt,
+            endAt: t.endAt,
+            duration: t.duration || 0,
+            hasAssign: !!(t.assign && t.assign.length),
+        });
+    }
+    contests.sort((a, b) => (a.beginAt.getTime() - b.beginAt.getTime())
+        || (a._id.toString().localeCompare(b._id.toString())));
+    report(`[replay] ${contests.length} rated contests loaded`);
+
+    // 2. sequential replay -----------------------------------------------------
+    const states = new Map<number, { mu: number, events: number }>();
+    const stateOf = (uid: number) => {
+        let s = states.get(uid);
+        if (!s) {
+            s = { mu: INITIAL_MU, events: 0 };
+            states.set(uid, s);
+        }
+        return s;
+    };
+    const observationSeen = new Set<string>();
+    const observationRaw: { uid: number, pid: number, mu: number, solved: boolean, contestId: any }[] = [];
+    const observations = new Map<number, { mu: number, solved: boolean }[]>();
+    let processed = 0;
+    let skipped = 0;
+    let frozenContests = 0;
+    let failedContests = 0;
+    for (const contest of contests) {
+        if (!includeDuration && contest.duration) {
+            skipped++;
+            continue;
+        }
+        if (!includeAssign && contest.hasAssign) {
+            skipped++;
+            continue;
+        }
+        const records = await recordColl.find(
+            {
+                contest: contest._id, uid: { $gt: 0 },
+                _id: {
+                    $gte: ObjectId.createFromTime(Math.floor(contest.beginAt.getTime() / 1000)),
+                    $lt: ObjectId.createFromTime(Math.ceil(contest.endAt.getTime() / 1000)),
+                },
+            },
+            { projection: { pid: 1, uid: 1, status: 1, score: 1, _id: 1 } },
+        ).toArray();
+        const participants = new Set(records.map((r) => r.uid));
+        if (participants.size < Math.max(2, minParticipants)) {
+            skipped++;
+            continue;
+        }
+        const tdoc = await docColl.findOne({ _id: contest._id }, { projection: { pids: 1 } });
+        const pids: number[] = tdoc?.pids?.length ? tdoc.pids : [...new Set(records.map((r) => r.pid))];
+        const { standings, fullSolve } = buildStandings(contest.rule, records, contest.beginAt);
+        if (standings.length < 2) {
+            skipped++;
+            continue;
+        }
+        const tied = contest.rule === 'acm'
+            ? (a: Standing, b: Standing) => a.solved === b.solved && a.penalty === b.penalty
+            : (a: Standing, b: Standing) => a.total === b.total;
+        const ranks = averageRanks(standings, tied);
+        const entries = standings.map((s) => {
+            const st = stateOf(s.uid);
+            return { uid: s.uid, mu: st.mu, ratedEvents: st.events };
+        });
+        const result = updateContest(entries, ranks, { maxDelta, provisionalEvents });
+        if (!result.ok) {
+            failedContests++;
+            report(`[replay] contest ${contest._id} rejected: ${result.reason}`);
+            continue;
+        }
+        // difficulty observations consume pre-contest maturity (plan §8.2):
+        // every contest problem is an answering opportunity for every valid participant.
+        for (let i = 0; i < standings.length; i++) {
+            const st = entries[i];
+            if (st.ratedEvents < difficultyMinPriorEvents) continue;
+            const solvedSet = fullSolve.get(standings[i].uid) ?? new Set<number>();
+            for (const pid of pids) {
+                observe(observations, observationRaw, observationSeen, st.uid, pid, st.mu, solvedSet.has(pid), contest._id);
+            }
+        }
+        if (!result.frozen) {
+            for (const r of result.results) {
+                const st = stateOf(r.uid);
+                st.mu += r.delta;
+                st.events++;
+            }
+        } else {
+            frozenContests++;
+            for (const r of result.results) stateOf(r.uid).events++;
+        }
+        processed++;
+    }
+    report(`[replay] processed=${processed} skipped=${skipped} frozen=${frozenContests} failed=${failedContests}`);
+
+    // 3. difficulty fits -------------------------------------------------------
+    const fits: any[] = [];
+    for (const [pid, obs] of observations) {
+        const fit = fitDifficulty(obs, { priorMean, priorSd });
+        const pos = obs.filter((o) => o.solved).length;
+        const neg = obs.length - pos;
+        const provisionalLike = fit.status === 'ok'
+            && obs.length >= difficultyMinStudents && pos >= 3 && neg >= 3
+            && fit.se !== null && fit.se <= difficultyMaxSe;
+        fits.push({ pid, students: obs.length, pos, neg, ...fit, provisionalLike });
+    }
+    fits.sort((x, y) => y.students - x.students);
+
+    // 3b. prediction-layer calibration and M15 residual diagnostics -------------
+    // One global slope multiplier keeps ability and difficulty on a single
+    // shared scale while flattening the tail overconfidence found by the
+    // 2026-09-19 spot check. Fit on half A, report on held-out half B.
+    const calibObs: { mu: number, d: number, solved: boolean, slot: number }[] = [];
+    for (const [pid, obs] of observations) {
+        const fit = fits.find((f) => f.pid === pid);
+        if (!fit || fit.status !== 'ok') continue;
+        for (const o of obs) {
+            calibObs.push({
+                mu: o.mu, d: fit.d, solved: o.solved,
+                slot: ((o.mu * 73856093) ^ (pid * 19349663)) % 2 === 0 ? 0 : 1,
+            });
+        }
+    }
+    const halfA = calibObs.filter((o) => o.slot === 0).map(({ mu, d, solved }) => ({ mu, d, solved }));
+    const halfB = calibObs.filter((o) => o.slot === 1).map(({ mu, d, solved }) => ({ mu, d, solved }));
+    const calibFit = fitSolveCalibration(halfA.length >= halfB.length ? halfA : halfB);
+    const evalSet = halfA.length >= halfB.length ? halfB : halfA;
+    const rawReport = evaluateCalibration(evalSet, 1);
+    const calReport = evaluateCalibration(evalSet, calibFit.slope);
+    const m15Anomalies = fits
+        .filter((f) => f.status === 'ok' && f.students >= difficultyMinStudents)
+        .map((f) => {
+            const obs = observations.get(f.pid) ?? [];
+            const expected = obs.reduce((s, o) => s + calibratedProbability(o.mu, f.d, calibFit.slope), 0) / obs.length;
+            const actual = f.pos / f.students;
+            return { pid: f.pid, students: f.students, expected, actual, residual: actual - expected };
+        })
+        .filter((r) => Math.abs(r.residual) >= 0.25)
+        .sort((x, y) => Math.abs(y.residual) - Math.abs(x.residual))
+        .slice(0, 10);
+    report(`[replay] calibration slope=${calibFit.slope.toFixed(4)} (fit n=${calibFit.used}, held-out n=${evalSet.length}) `
+        + `brier raw=${rawReport.brier.toFixed(4)} -> cal=${calReport.brier.toFixed(4)}; `
+        + `m15 anomalies=${m15Anomalies.length}`);
+
+    // 4. achievements ------------------------------------------------------------
+    const achievementByUser = new Map<string, { domainId: string, uid: number, a: number, problems: number }>();
+    const perUser = new Map<string, Map<number, number>>();
+    let anomalies = 0;
+    const statusCursor = statusColl.find(
+        { docType: DOC_TYPE_PROBLEM, rid: { $ne: null }, uid: { $gt: 0 } },
+        { projection: { domainId: 1, uid: 1, docId: 1, score: 1, status: 1 } },
+    );
+    for await (const s of statusCursor) {
+        let units: number;
+        if (s.status === STATUS_ACCEPTED) units = 1;
+        else if (Number.isFinite(s.score) && s.score > 0) units = 0.5 * Math.min(1, s.score / 100);
+        else {
+            if (s.score !== undefined && !Number.isFinite(s.score)) anomalies++;
+            continue;
+        }
+        const ukey = `${s.domainId}|${s.uid}`;
+        let m = perUser.get(ukey);
+        if (!m) {
+            m = new Map();
+            perUser.set(ukey, m);
+        }
+        if (!m.has(s.docId) || m.get(s.docId) < units) m.set(s.docId, units);
+    }
+    for (const [ukey, m] of perUser) {
+        const [domainId, uidStr] = ukey.split('|');
+        let a = 0;
+        for (const u of m.values()) a += u;
+        achievementByUser.set(ukey, { domainId, uid: +uidStr, a, problems: m.size });
+    }
+    report(`[replay] achievement users=${achievementByUser.size} anomalies=${anomalies}`);
+
+    // 5. composite projections ---------------------------------------------------
+    const projections: any[] = [];
+    for (const ach of achievementByUser.values()) {
+        const st = states.get(ach.uid);
+        const rating = publicRating(st ? st.mu : null);
+        const events = st ? st.events : 0;
+        const comp = compositeScore(ach.a, rating, events);
+        const tier = tierForRating(rating);
+        projections.push({
+            domainId: ach.domainId,
+            uid: ach.uid,
+            a: Math.round(ach.a * 100) / 100,
+            problems: ach.problems,
+            mu: st ? Math.round(st.mu * 100) / 100 : null,
+            rating,
+            tier: tier ? tier.id : null,
+            ratedEvents: events,
+            ...comp,
+        });
+    }
+
+    // 6. rating distribution and old-vs-new comparison ---------------------------
+    const rated = [...states.entries()].map(([uid, s]) => ({ uid, ...s })).filter((s) => s.events > 0);
+    const mus = rated.map((s) => s.mu).sort((a, b) => a - b);
+    const tierHist: Record<string, number> = {};
+    for (const s of rated) {
+        const t = tierForRating(publicRating(s.mu));
+        const k = t ? t.id : 'UNRATED';
+        tierHist[k] = (tierHist[k] || 0) + 1;
+    }
+    const refUsers = await dbh.collection('domain.user').find(
+        { domainId: refDomain, rp: { $gt: 0 } },
+        { projection: { uid: 1, rp: 1, nAccept: 1 } },
+    ).toArray() as any[];
+    const oldMap = new Map(refUsers.map((u) => [u.uid, u]));
+    const cmpRows = projections
+        .filter((p) => p.domainId === refDomain && oldMap.has(p.uid))
+        .map((p) => ({ uid: p.uid, oldRp: oldMap.get(p.uid).rp || 0, newRp: p.rpCents / 100, a: p.a, rating: p.rating, ratedEvents: p.ratedEvents }));
+    cmpRows.sort((x, y) => y.oldRp - x.oldRp);
+    const oldRank = new Map(cmpRows.map((r, i) => [r.uid, i + 1]));
+    const byNew = [...cmpRows].sort((x, y) => y.newRp - x.newRp);
+    const newRank = new Map(byNew.map((r, i) => [r.uid, i + 1]));
+    const movers = cmpRows.map((r) => ({
+        ...r,
+        oldRank: oldRank.get(r.uid),
+        newRank: newRank.get(r.uid),
+        move: (oldRank.get(r.uid) || 0) - (newRank.get(r.uid) || 0),
+    })).sort((x, y) => Math.abs(y.move) - Math.abs(x.move)).slice(0, 10);
+
+    const summary = {
+        generatedAt: new Date().toISOString(),
+        poolId,
+        contests: { total: contests.length, processed, skipped, frozen: frozenContests, failed: failedContests },
+        ratingUsers: rated.length,
+        provisionalUsers: rated.filter((s) => s.events < provisionalEvents).length,
+        rating: mus.length ? {
+            min: Math.round(mus[0]),
+            median: Math.round(mus[Math.floor(mus.length / 2)]),
+            p90: Math.round(mus[Math.floor(mus.length * 0.9)]),
+            max: Math.round(mus[mus.length - 1]),
+        } : null,
+        tierHist,
+        difficulty: {
+            problemsWithObservations: fits.length,
+            provisionalLike: fits.filter((f) => f.provisionalLike).length,
+            degenerate: fits.filter((f) => f.status === 'degenerate').length,
+            nonconverged: fits.filter((f) => f.status === 'nonconverged').length,
+            calibrationSlope: Math.round(calibFit.slope * 10000) / 10000,
+            calibrationHeldOut: {
+                n: evalSet.length,
+                brierRaw: Math.round(rawReport.brier * 10000) / 10000,
+                brierCalibrated: Math.round(calReport.brier * 10000) / 10000,
+                meanAbsDevRaw: Math.round(rawReport.meanAbsDeviation * 10000) / 10000,
+                meanAbsDevCalibrated: Math.round(calReport.meanAbsDeviation * 10000) / 10000,
+                buckets: calReport.buckets,
+            },
+            m15Anomalies,
+            top: fits.slice(0, 5).map((f) => ({
+                pid: f.pid, students: f.students, pos: f.pos,
+                d: Math.round(f.d), se: f.se === null ? null : Math.round(f.se),
+            })),
+        },
+        achievement: {
+            users: achievementByUser.size,
+            top: [...achievementByUser.values()].sort((x, y) => y.a - x.a).slice(0, 5)
+                .map((x) => ({ domainId: x.domainId, uid: x.uid, a: Math.round(x.a * 10) / 10 })),
+        },
+        refDomain,
+        compareUsers: cmpRows.length,
+        movers,
+    };
+
+    if (options.write) {
+        // Shadow collections only; never touch domain.user or existing rp fields.
+        const out = dbh.collection('ratingv2_shadow');
+        await out.deleteMany({ poolId });
+        const docs: any[] = [];
+        for (const [uid, s] of states) {
+            if (s.events === 0) continue;
+            docs.push({ poolId, kind: 'rating_state', uid, ...s });
+        }
+        for (const f of fits) docs.push({ poolId, kind: 'difficulty', ...f });
+        for (const o of observationRaw) docs.push({ poolId, kind: 'observation', ...o });
+        for (const p of projections) docs.push({ poolId, kind: 'projection', ...p });
+        for (let i = 0; i < docs.length; i += 1000) {
+            await out.insertMany(docs.slice(i, i + 1000));
+        }
+        report(`[replay] wrote ${docs.length} shadow documents to ratingv2_shadow`);
+    }
+    return summary;
+}
