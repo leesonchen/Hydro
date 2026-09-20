@@ -2,6 +2,9 @@
 
 `exam-migrate` 是一个只从源库读取、把源数据固化成不可变包，再对目标库执行受保护写入的工具。它不会调用 Hydro 的写 API，也不会写源 MongoDB。
 
+目标库恢复后需要重跑时，先阅读 [EXAM-MIGRATION-REPLAY.md](./EXAM-MIGRATION-REPLAY.md)。
+其中保留了本次已确认的中间决策、审计产物清单和可复制的重跑检查点；实际迁移包不在 Git 中。
+
 ## 1. 导出（源端停写）
 
 先让生产 Hydro 停止写入，再在仓库根目录执行：
