@@ -48,7 +48,9 @@ export const RpTypes: Record<string, RpDef> = {
                     [pdoc.docId],
                     (tdoc, uid) => contest.canShowProblemStatus(null, uid, tdoc, false),
                 );
-                const difficulty = +pdoc.difficulty || difficultyAlgorithm(pdoc.nSubmit, pdoc.nAccept) || 5;
+                // pdoc.difficulty is free user input; clamp the RP weight to the auto-calibrated [1,10] scale.
+                const rawDifficulty = +pdoc.difficulty || difficultyAlgorithm(pdoc.nSubmit, pdoc.nAccept) || 5;
+                const difficulty = Math.max(1, Math.min(10, rawDifficulty));
                 const p = difficulty / 100;
                 for (const psdoc of psdocs) {
                     if (!psdoc.rid || psdoc.uid === pdoc.owner || !psdoc.score) continue;
