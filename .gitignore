@@ -62,6 +62,9 @@ packages/**/*.tgz
 # Local validation reports
 /reports/
 
+# Immutable exam migration packages and audit runs (may contain password hashes)
+/migration-runs/
+
 # Base
 node_modules/
 __*

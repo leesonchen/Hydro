@@ -4,6 +4,28 @@ import {
     Context, md5, Schema, sha1, SystemError, SystemModel,
 } from 'hydrooj';
 
+export {
+    analyzeExamPackage,
+    applyExamPackage,
+    buildProblemDecisions,
+    computePlanHash,
+    CONFIRMED_DECISIONS,
+    CONFIRMED_USER_MAP,
+    DEFAULT_USER_PRIV,
+    exportExamPackage,
+    isHealthyProblemReference,
+    normalizeIdentityEmail,
+    normalizeProblemTitle,
+    redactForLog,
+    resolveIdentities,
+    rewriteObjectIds,
+    rewriteUserIds,
+    rollbackExamMigration,
+    targetFingerprint,
+    USERNAME_CONFLICT_MAP,
+    verifyExamMigration,
+} from './exam';
+
 const RE_MD5 = /^[\da-f]{32}$/;
 
 function checkLock(innerCall) {
