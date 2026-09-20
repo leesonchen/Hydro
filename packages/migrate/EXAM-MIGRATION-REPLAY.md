@@ -97,6 +97,22 @@ tar --zstd -xf /secure/migration-archive/<run-id>.tar.zst -C migration-runs
 chmod -R go-rwx migration-runs/<run-id>
 ```
 
+如果这个源包曾经在另一份目标库上尝试过 apply，不要直接在旧目录上覆盖
+`plan.json`、`apply.json` 或 `backup/`。先把旧目录作为历史审计副本保留，再建立一个
+新的工作目录，只复制不可变源包内容：
+
+```sh
+SOURCE_PACKAGE="$PWD/migration-runs/<old-run-id>"
+RUN_DIR="$PWD/migration-runs/<old-run-id>-rerun-YYYYMMDD"
+test ! -e "$RUN_DIR" || { echo "工作目录已存在，停止以避免覆盖" >&2; exit 1; }
+install -d -m700 "$RUN_DIR"
+cp -a "$SOURCE_PACKAGE/manifest.json" "$SOURCE_PACKAGE/package.sha256" "$RUN_DIR/"
+cp -a "$SOURCE_PACKAGE/collections" "$SOURCE_PACKAGE/files" "$RUN_DIR/"
+```
+
+不要修改复制后的 `manifest.json` 或 `package.sha256`；它们仍代表同一个源包，新的
+目标分析会在这个目录生成新的 `plan.json`、命令记录和验证报告。
+
 ## 目标库恢复后的最短重跑流程
 
 下面的 `RUN_DIR`、URI 和存储根目录均为占位符。凭据建议在仓库外的 `0600` 环境
