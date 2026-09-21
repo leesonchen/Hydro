@@ -9,9 +9,11 @@ import {
     buildContestDecisions,
     computePlanHash,
     normalizeIdentityEmail,
+    mapDocumentForApply,
     redactForLog,
     resolveIdentities,
     rewriteObjectIds,
+    rewriteProblemReferences,
     rewriteUserIds,
     stableStringify,
 } from '../exam';
@@ -108,6 +110,54 @@ function testNestedRewrites() {
     assert.equal(rewriteObjectIds({ value: long }, new Map()).value.toString(), '3');
 }
 
+function testProblemReferenceRewrites() {
+    const problems = new Map<string, number | string>([
+        ['3', 118],
+        ['17', 132],
+        ['101', 5],
+        ['109', 13],
+        ['115', 3],
+    ]);
+    const status = rewriteProblemReferences({
+        detail: {
+            '101': { pid: 101, score: 100 },
+            '115': { pid: 115, score: 80 },
+        },
+        display: {
+            '101': { pid: 101, score: 100 },
+        },
+        journal: [{ pid: 115 }, { pid: 101 }],
+    }, problems);
+    assert.deepEqual(Object.keys(status.detail), ['3', '5']);
+    assert.deepEqual(Object.keys(status.display), ['5']);
+    assert.deepEqual(status.journal.map((item: any) => item.pid), [3, 5]);
+
+    const plan: any = {
+        identities: [],
+        objectIds: { values: {} },
+        storage: [],
+        problemIds: { '3': 118, '115': 3 },
+        problems: [
+            { sourceDocId: 3, sourcePid: 'P3', action: 'copy', targetDomainId: 'exam', targetPid: 118, targetDocId: 118, reason: 'entity', sourceHasFiles: false },
+            { sourceDocId: 115, sourcePid: 'P115', action: 'copy', targetDomainId: 'exam', targetPid: 3, targetDocId: 3, reason: 'entity', sourceHasFiles: false },
+            { sourceDocId: 101, sourcePid: 'P101', action: 'copy', targetDomainId: 'exam', targetPid: 5, targetDocId: 5, reason: 'entity', sourceHasFiles: false },
+        ],
+    };
+    const contest = mapDocumentForApply(
+        { docType: 30, docId: 'contest', domainId: 'exam', pids: [115, 101] },
+        plan, 'exam', new Map(), new Map(), new Map(), new Map([
+            ['115', 3], ['101', 5], ['3', 118],
+        ]),
+    );
+    assert.deepEqual(contest.pids, [3, 5], 'contest PID mapping must happen exactly once');
+
+    const problemStatus = mapDocumentForApply(
+        { docType: 10, docId: 115, domainId: 'exam', uid: 10 },
+        plan, 'exam', new Map(), new Map(), new Map(), new Map([['115', 3]]), false,
+    );
+    assert.equal(problemStatus.docId, 3, 'problem status docId must follow the problem mapping');
+}
+
 function testProblemDecisions() {
     const explicit = CONFIRMED_DECISIONS.problemReferences.P11;
     const source = [
@@ -166,6 +216,7 @@ function testHashesAndRedaction() {
 testIdentityPrecedence();
 testEmailRules();
 testNestedRewrites();
+testProblemReferenceRewrites();
 testProblemDecisions();
 testHashesAndRedaction();
 console.log('exam migration pure tests passed');

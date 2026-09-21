@@ -1717,7 +1717,7 @@ function rewriteStorageReference(value: any, storageIds: Map<string, string>): a
     return output;
 }
 
-function rewriteProblemReferences(value: any, problems: Map<string, number | string>, key = ''): any {
+export function rewriteProblemReferences(value: any, problems: Map<string, number | string>, key = ''): any {
     if (Array.isArray(value)) {
         return value.map((item) => key === 'pids' || key === 'pid' ? problems.get(String(item)) ?? item
             : rewriteProblemReferences(item, problems, key));
@@ -1727,11 +1727,18 @@ function rewriteProblemReferences(value: any, problems: Map<string, number | str
     }
     if (!value || typeof value !== 'object' || value instanceof Date || isBsonValue(value)) return value;
     const output: Record<string, any> = {};
-    for (const [childKey, child] of Object.entries(value)) output[childKey] = rewriteProblemReferences(child, problems, childKey);
+    for (const [childKey, child] of Object.entries(value)) {
+        // Contest status detail/display dictionaries are keyed by PID in
+        // addition to carrying the PID again in each value.  Rewrite both
+        // representations so the scoreboard can find every migrated result.
+        const outputKey = key === 'detail' || key === 'display'
+            ? String(problems.get(childKey) ?? childKey) : childKey;
+        output[outputKey] = rewriteProblemReferences(child, problems, childKey);
+    }
     return output;
 }
 
-function mapDocumentForApply(
+export function mapDocumentForApply(
     original: any, plan: MigrationPlan, domainId: string,
     users = userMapFromPlan(plan), objectIds = objectIdMapFromPlan(plan),
     storageIds = storageMapFromPlan(plan), problems = problemMapFromPlan(plan), isProblemDocument = false,
@@ -1777,7 +1784,6 @@ function mapDocumentForApply(
     if (doc.parentType === 10) {
         doc.parentId = problems.get(String(original.parentId)) ?? doc.parentId;
     }
-    if (doc.docType === 30 && Array.isArray(doc.pids)) doc.pids = doc.pids.map((pid: any) => problems.get(String(pid)) ?? Number(pid));
     return doc;
 }
 
@@ -2298,6 +2304,58 @@ async function verifyFiles(
     return { checked, errors };
 }
 
+async function verifyContestProblemReferences(
+    db: Db, domainId: string, sourceDocuments: any[], plan: MigrationPlan,
+): Promise<{ checked: number; errors: string[] }> {
+    const errors: string[] = [];
+    let checked = 0;
+    for (const source of sourceDocuments.filter((doc) => doc.docType === 30)) {
+        const sourceObjectId = getObjectId(source._id || source.docId);
+        if (!sourceObjectId) {
+            addError(errors, `contest/${String(source.docId)} 缺少 ObjectId`);
+            continue;
+        }
+        const sourceId = sourceObjectId.toHexString();
+        const decision = plan.contests.find((item) => item.sourceDocId === sourceId);
+        if (!decision) {
+            addError(errors, `contest/${sourceId} 没有迁移决策`);
+            continue;
+        }
+        const targetId = plan.objectIds.values[sourceId] || decision.targetObjectId;
+        const target = await db.collection<any>('document').findOne({
+            domainId, docType: 30, _id: new ObjectId(targetId),
+        });
+        checked++;
+        if (!target) {
+            addError(errors, `contest/${sourceId} 目标文档不存在`);
+            continue;
+        }
+        const expectedPids = (source.pids || []).map((pid: any) => String(
+            plan.problemIds[String(pid)] ?? pid,
+        ));
+        const actualPids = (target.pids || []).map((pid: any) => String(pid));
+        if (stableStringify(actualPids) !== stableStringify(expectedPids)) {
+            addError(errors, `contest/${sourceId} 题目列表映射不一致`);
+            continue;
+        }
+        const expectedPidSet = new Set(expectedPids);
+        const statuses = await db.collection<any>('document.status').find({
+            domainId, docType: 30, docId: target.docId,
+        }).project({ uid: 1, detail: 1, display: 1 }).toArray();
+        for (const status of statuses) {
+            for (const field of ['detail', 'display']) {
+                for (const key of Object.keys(status[field] || {})) {
+                    checked++;
+                    if (!expectedPidSet.has(String(key))) {
+                        addError(errors, `status/${String(status.uid)} ${field} 题目 ${key} 不属于比赛`);
+                    }
+                }
+            }
+        }
+    }
+    return { checked, errors };
+}
+
 export async function verifyExamMigration(options: CommandOptions = {}): Promise<VerifyReport> {
     const runDir = path.resolve(options.runDir || options.packageDir || '');
     assert(runDir, 'verify 需要 --package 或 --run-dir');
@@ -2308,6 +2366,7 @@ export async function verifyExamMigration(options: CommandOptions = {}): Promise
     const manifest = await loadManifest(runDir);
     assert(manifest.domainId === plan.domainId, '计划和迁移包域不一致');
     assert(plan.packageHash === manifest.packageHash, '验证计划和迁移包哈希不一致');
+    const docs = await loadPackageCollections(runDir, manifest);
     const client = await MongoClient.connect(options.targetUri);
     try {
         const db = client.db(options.targetDatabase || undefined);
@@ -2322,6 +2381,9 @@ export async function verifyExamMigration(options: CommandOptions = {}): Promise
         }
         const createdUids = plan.identities.filter((identity) => identity.created).map((identity) => identity.targetUid);
         const references = await verifyReferences(db, plan.domainId, createdUids, plan.defaultUserPriv);
+        const contestReferences = await verifyContestProblemReferences(db, plan.domainId, docs.document || [], plan);
+        references.checked += contestReferences.checked;
+        references.errors.push(...contestReferences.errors);
         const files = await verifyFiles(db, runDir, plan, options.targetStorageRoot);
         const users = await db.collection<any>('user').find({}).project({ unameLower: 1, uname: 1, mailLower: 1, mail: 1 }).toArray();
         const usernames = new Map<string, number>();
