@@ -64,6 +64,7 @@ function options(args: ParsedArgs) {
         noStop: flag(args, 'no-stop'),
         noBackup: flag(args, 'no-backup'),
         yes: flag(args, 'yes'),
+        mergeExisting: flag(args, 'merge-existing'),
     };
 }
 
@@ -82,7 +83,7 @@ async function logCommand(runDir: string | undefined, args: ParsedArgs) {
 }
 
 function help() {
-    process.stdout.write(`exam migration (read-only source, immutable package)\n\nUsage:\n  exam-migrate export  --source-uri URI [--source-db DB] [--run-dir DIR]\n  exam-migrate analyze --package DIR --target-uri URI [--target-db DB]\n  exam-migrate apply   --package DIR --target-uri URI --plan-hash HASH [--target-storage-root DIR]\n  exam-migrate verify  --package DIR --target-uri URI [--target-storage-root DIR]\n  exam-migrate rollback --package DIR --target-uri URI --yes\n\nOptions:\n  --no-stop       Do not run pm2 stop/start (only for an explicitly isolated target)\n  --no-backup     Skip the pre-apply mongodump (not recommended)\n  --dry-run       Validate apply preconditions without writing\n  --yes           Confirm rollback\n\nCredentials are accepted through environment variables as well:\n  HYDRO_EXAM_SOURCE_URI, HYDRO_EXAM_TARGET_URI, HYDRO_EXAM_SOURCE_DB,\n  HYDRO_EXAM_TARGET_DB, HYDRO_EXAM_RUN_DIR, HYDRO_EXAM_PLAN_HASH\n`);
+    process.stdout.write(`exam migration (read-only source, immutable package)\n\nUsage:\n  exam-migrate export  --source-uri URI [--source-db DB] [--run-dir DIR]\n  exam-migrate analyze --package DIR --target-uri URI [--target-db DB] [--merge-existing]\n  exam-migrate apply   --package DIR --target-uri URI --plan-hash HASH [--target-storage-root DIR] [--merge-existing]\n  exam-migrate verify  --package DIR --target-uri URI [--target-storage-root DIR]\n  exam-migrate rollback --package DIR --target-uri URI --yes\n\nOptions:\n  --no-stop       Do not run pm2 stop/start (only for an explicitly isolated target)\n  --no-backup     Skip the pre-apply mongodump (not recommended)\n  --dry-run       Validate apply preconditions without writing\n  --merge-existing  Preserve an existing exam domain and merge only new objects\n  --yes           Confirm rollback\n\nCredentials are accepted through environment variables as well:\n  HYDRO_EXAM_SOURCE_URI, HYDRO_EXAM_TARGET_URI, HYDRO_EXAM_SOURCE_DB,\n  HYDRO_EXAM_TARGET_DB, HYDRO_EXAM_RUN_DIR, HYDRO_EXAM_PLAN_HASH\n`);
 }
 
 export async function main(argv = process.argv.slice(2)) {

@@ -28,6 +28,21 @@ node -r @hydrooj/register packages/migrate/bin/exam-migrate.js analyze \
   --target-db hydro2
 ```
 
+目标已经有 `exam` 域时，必须显式使用合并模式；它保留域文档和已有对象，
+只新增没有自然键冲突的用户、成员、组、题目、比赛及关联数据：
+
+```sh
+node -r @hydrooj/register packages/migrate/bin/exam-migrate.js analyze \
+  --package migration-runs/exam-export-YYYYMMDD \
+  --target-uri "$TARGET_MONGO_URI" --target-db hydro2 \
+  --merge-existing
+```
+
+默认模式仍会拒绝已有 `exam` 域。合并计划优先复用目标 exam 中题面和有效配置
+均相同的题目；PID 冲突的生产题目获得确定性新 PID，比赛、提交、状态、统计和
+历史引用同步改写。源端父对象不存在的孤立答疑不会导入，会在 `plan.json` 的
+`excludedDocuments` 和 `audit.jsonl` 中列明，避免制造悬空引用。
+
 `plan.json` 保存目标指纹、身份判定、题目复用/实体化判定、ObjectId 和存储路径映射、预期数量、排除报告和 `planHash`。用户身份顺序固定为：已确认映射、`unameLower`、规范化有效邮箱（`@test.com` 无效）、新用户。计划中的 27 组人工映射、12 组用户名冲突、8 个健康题目引用和悬空 `test`/`oler` 引用规则都可审计。
 
 题目复用会额外记录源/目标测试文件名差异；差异只进入审计，不参与同题判定。
@@ -45,6 +60,17 @@ node -r @hydrooj/register packages/migrate/bin/exam-migrate.js apply \
   --target-db hydro2 \
   --target-storage-root /srv/hydro2-storage \
   --plan-hash SHA256_FROM_PLAN
+```
+
+合并现有域时必须同时携带 `--merge-existing`；apply 会再次锁定分析时的目标
+指纹，只删除/回滚本轮新增对象：
+
+```sh
+node -r @hydrooj/register packages/migrate/bin/exam-migrate.js apply \
+  --package migration-runs/exam-export-YYYYMMDD \
+  --target-uri "$TARGET_MONGO_URI" --target-db hydro2 \
+  --target-storage-root /srv/hydro2-storage \
+  --plan-hash SHA256_FROM_PLAN --merge-existing
 ```
 
 apply 会在写入前重新校验迁移包哈希、目标指纹、`exam` 域不存在、存储路径不会覆盖既有文件，并默认执行 `mongodump` 和 `pm2 stop hydrooj`。应用期间按“用户/system 成员 → 域/成员/组 → 题目 → 文件 → 比赛/题解/答疑 → 提交/历史/统计 → 状态”分阶段记录；提交附件按 exam 记录实际引用的 `submission/<uid>/<id>` 路径重写 UID。阶段失败会保留停止状态和回滚清单。`--no-stop`、`--no-backup` 只允许隔离的演练环境使用。

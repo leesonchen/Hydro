@@ -141,12 +141,15 @@ export interface IdentityDecision {
     targetUname?: string;
     sourceMail?: string;
     targetMail?: string;
+    alias?: boolean;
     note?: string;
 }
 
 export interface IdentityOptions {
     manualMap?: Record<number, number>;
     conflictMap?: Record<number, number>;
+    /** Allow a source identity that exactly aliases a confirmed target. */
+    allowAliases?: boolean;
 }
 
 export interface ProblemReference {
@@ -154,7 +157,7 @@ export interface ProblemReference {
     pid: number | string;
 }
 
-export type ProblemAction = 'copy' | 'reference';
+export type ProblemAction = 'copy' | 'reference' | 'reuse';
 
 export interface ProblemDecision {
     sourceDocId: number;
@@ -162,10 +165,26 @@ export interface ProblemDecision {
     action: ProblemAction;
     targetDomainId: string;
     targetPid: number | string;
-    reason: 'confirmed-reference' | 'matching-reference' | 'entity';
+    targetDocId?: number | string;
+    reason: 'confirmed-reference' | 'matching-reference' | 'matching-existing' | 'entity';
     sourceHasFiles: boolean;
     targetHasFiles?: boolean;
     excludedFiles?: string[];
+}
+
+export interface ContestDecision {
+    sourceDocId: string;
+    action: 'copy' | 'reuse';
+    targetDocId: string;
+    targetObjectId: string;
+    reason: 'matching-contest' | 'entity';
+}
+
+export interface ExcludedDocument {
+    collection: 'document';
+    docType: number;
+    docId: string;
+    reason: 'missing-parent';
 }
 
 export interface ProblemFileDifference {
@@ -238,13 +257,22 @@ export interface MigrationPlan {
     packageHash: string;
     sourceFingerprint: string;
     targetBefore: TargetFingerprint;
+    mergeExisting: boolean;
     identities: IdentityDecision[];
     problems: ProblemDecision[];
+    problemIds: Record<string, number | string>;
+    contests: ContestDecision[];
+    excludedDocuments: ExcludedDocument[];
     problemFileDifferences: ProblemFileDifference[];
     objectIds: ObjectIdMaps;
     storage: FileEntry[];
     defaultUserPriv: number;
     expectedCounts: Record<string, number>;
+    mergeKeys?: {
+        domainMembers: string[];
+        groups: string[];
+        statuses: string[];
+    };
     excludedFiles: MigrationManifest['excludedFiles'];
     confirmedDecisions: typeof CONFIRMED_DECISIONS;
     phases: typeof PHASES;
@@ -267,6 +295,7 @@ export interface CommandOptions {
     noBackup?: boolean;
     yes?: boolean;
     keepGoing?: boolean;
+    mergeExisting?: boolean;
 }
 
 export interface ApplyOptions extends CommandOptions {
@@ -369,6 +398,7 @@ export function resolveIdentities(
     // username/e-mail matches, so an earlier source UID cannot claim a
     // target that a later manual decision must use.
     const reservedTarget = new Set<number>();
+    const confirmedSourcesByTarget = new Map<number, number[]>();
     const sourceIds = new Set(sourceUsers.map((user) => Number(user._id)));
     for (const mapping of [manualMap, conflictMap]) {
         for (const [source, target] of Object.entries(mapping)) {
@@ -378,6 +408,9 @@ export function resolveIdentities(
                 throw new Error(`确认的用户映射不存在目标用户: ${source} -> ${target}`);
             }
             reservedTarget.add(targetUid);
+            const sources = confirmedSourcesByTarget.get(targetUid) || [];
+            sources.push(Number(source));
+            confirmedSourcesByTarget.set(targetUid, sources);
         }
     }
     const usedTarget = new Set<number>();
@@ -388,9 +421,20 @@ export function resolveIdentities(
     const plannedEmails = new Set<string>();
     const sorted = [...sourceUsers].sort((a, b) => Number(a._id) - Number(b._id));
 
-    const chooseOne = (candidates: TargetUser[], sourceUid: number, method: IdentityMethod) => {
-        const available = candidates.filter((candidate) => !usedTarget.has(Number(candidate._id))
-            && !reservedTarget.has(Number(candidate._id)));
+    const chooseOne = (candidates: TargetUser[], source: SourceUser, method: IdentityMethod) => {
+        const sourceUid = Number(source._id);
+        const sourceName = normalizeUsername(source.unameLower || source.uname);
+        const sourceMail = normalizeIdentityEmail(source.mailLower || source.mail);
+        const available = candidates.filter((candidate) => {
+            const candidateUid = Number(candidate._id);
+            const candidateName = normalizeUsername(candidate.unameLower || candidate.uname);
+            const candidateMail = normalizeIdentityEmail(candidate.mailLower || candidate.mail);
+            const exact = (sourceName && sourceName === candidateName) || (sourceMail && sourceMail === candidateMail);
+            if (usedTarget.has(candidateUid)) return !!options.allowAliases && !!exact;
+            if (!reservedTarget.has(candidateUid)) return true;
+            if (!options.allowAliases || !confirmedSourcesByTarget.has(candidateUid)) return false;
+            return !!exact;
+        });
         if (available.length > 1) {
             throw new Error(`身份判定不唯一: source uid ${sourceUid} has ${available.length} ${method} candidates`);
         }
@@ -402,6 +446,7 @@ export function resolveIdentities(
         let target: TargetUser | undefined;
         let method: IdentityMethod;
         let note = '';
+        let alias = false;
 
         if (Object.hasOwn(manualMap, sourceUid)) {
             target = byUid.get(Number(manualMap[sourceUid]));
@@ -414,13 +459,17 @@ export function resolveIdentities(
             note = 'username wins over normalized email';
         } else {
             const sourceName = normalizeUsername(source.unameLower || source.uname);
-            target = chooseOne(byName.get(sourceName) || [], sourceUid, 'username');
-            if (target) method = 'username';
-            else {
+            target = chooseOne(byName.get(sourceName) || [], source, 'username');
+            if (target) {
+                method = 'username';
+                alias = reservedTarget.has(Number(target._id)) || usedTarget.has(Number(target._id));
+            } else {
                 const sourceMail = normalizeIdentityEmail(source.mailLower || source.mail);
-                target = sourceMail ? chooseOne(byMail.get(sourceMail) || [], sourceUid, 'email') : undefined;
-                if (target) method = 'email';
-                else {
+                target = sourceMail ? chooseOne(byMail.get(sourceMail) || [], source, 'email') : undefined;
+                if (target) {
+                    method = 'email';
+                    alias = reservedTarget.has(Number(target._id)) || usedTarget.has(Number(target._id));
+                } else {
                     method = 'new';
                     if (sourceName && ((byName.get(sourceName) || []).length || plannedNames.has(sourceName))) {
                         throw new Error(`新用户用户名会发生唯一性冲突: ${source.uname}`);
@@ -441,10 +490,10 @@ export function resolveIdentities(
         }
 
         const targetUid = target ? Number(target._id) : nextUid++;
-        if (usedTarget.has(targetUid)) {
+        if (usedTarget.has(targetUid) && !alias) {
             throw new Error(`多个源用户映射到同一目标用户: target uid ${targetUid}`);
         }
-        usedTarget.add(targetUid);
+        if (!alias) usedTarget.add(targetUid);
         decisions.push({
             sourceUid,
             targetUid,
@@ -454,7 +503,8 @@ export function resolveIdentities(
             targetUname: target?.uname,
             sourceMail: source.mail,
             targetMail: target?.mail,
-            ...(note ? { note } : {}),
+            ...(alias ? { alias: true } : {}),
+            ...(alias ? { note: 'exact identity alias of a confirmed target mapping' } : note ? { note } : {}),
         });
     }
     return decisions;
@@ -521,6 +571,11 @@ export function isHealthyProblemReference(
     return !!domain || target.domainId === 'system' || target.domainId === 'oler' || target.domainId === 'yizhong';
 }
 
+export interface ProblemDecisionOptions {
+    mergeExisting?: boolean;
+    domainId?: string;
+}
+
 /**
  * Build problem decisions.  Explicitly confirmed references are considered
  * first; generic title/content/config matches are only reused when the source
@@ -528,11 +583,58 @@ export function isHealthyProblemReference(
  */
 export function buildProblemDecisions(
     sourceProblems: any[], targetProblems: any[], targetDomains: any[] = [],
+    options: ProblemDecisionOptions = {},
 ): ProblemDecision[] {
     const explicit = CONFIRMED_DECISIONS.problemReferences as Record<string, ProblemReference>;
     const decisions: ProblemDecision[] = [];
+    const domainId = options.domainId || EXAM_DOMAIN;
+    const existingIds = new Set<number>(targetProblems
+        .filter((problem) => problem.domainId === domainId && Number.isFinite(Number(problem.docId)))
+        .map((problem) => Number(problem.docId)));
+    const sourceIds = new Set(sourceProblems
+        .map((problem) => Number(problem.docId))
+        .filter((value) => Number.isFinite(value)));
+    let nextDocId = Math.max(0, ...existingIds, ...sourceIds) + 1;
+    const reservedDocIds = new Set(existingIds);
+    // Keep free source IDs stable. A conflicting source ID is assigned after
+    // the complete source range, making the result deterministic regardless of
+    // the order in which related collections are processed.
+    for (const source of sourceProblems) {
+        const sourceDocId = Number(source.docId);
+        if (Number.isFinite(sourceDocId) && !reservedDocIds.has(sourceDocId)) reservedDocIds.add(sourceDocId);
+    }
+    const assignTargetDocId = (source: any, reuseTarget?: any): number | string => {
+        if (reuseTarget?.docId !== undefined) return reuseTarget.docId;
+        if (!options.mergeExisting) return source.docId;
+        const sourceDocId = Number(source.docId);
+        if (Number.isFinite(sourceDocId) && !existingIds.has(sourceDocId)) {
+            // The source ID may have been reserved by an earlier source item;
+            // that item is the only legitimate owner of it.
+            const owner = decisions.find((item) => String(item.targetDocId) === String(sourceDocId));
+            if (!owner) return sourceDocId;
+        }
+        while (reservedDocIds.has(nextDocId)) nextDocId++;
+        reservedDocIds.add(nextDocId);
+        return nextDocId++;
+    };
     for (const source of [...sourceProblems].sort((a, b) => Number(a.docId) - Number(b.docId))) {
         const sourcePid = String(source.pid || `P${source.docId}`);
+        const existingExam = options.mergeExisting
+            ? targetProblems.filter((problem) => problem.domainId === domainId)
+                .find((problem) => problemEquivalent(source, problem))
+            : undefined;
+        if (existingExam) {
+            decisions.push({
+                sourceDocId: Number(source.docId), sourcePid, action: 'reuse',
+                targetDomainId: domainId, targetPid: existingExam.pid || existingExam.docId,
+                targetDocId: existingExam.docId,
+                reason: 'matching-existing',
+                sourceHasFiles: !!(source.data?.length || source.additional_file?.length),
+                targetHasFiles: !!(existingExam.data?.length || existingExam.additional_file?.length),
+                excludedFiles: [...(source.data || []), ...(source.additional_file || [])].map((file) => file.name),
+            });
+            continue;
+        }
         const reference = explicit[sourcePid] || explicit[`P${source.docId}`];
         if (reference) {
             const target = targetProblems.find((problem) => problem.domainId === reference.domainId
@@ -543,6 +645,7 @@ export function buildProblemDecisions(
                 decisions.push({
                     sourceDocId: Number(source.docId), sourcePid, action: 'reference',
                     targetDomainId: reference.domainId, targetPid: reference.pid,
+                    targetDocId: assignTargetDocId(source),
                     reason: 'confirmed-reference',
                     sourceHasFiles: !!(source.data?.length || source.additional_file?.length),
                     targetHasFiles: !!(target.data?.length || target.additional_file?.length),
@@ -560,6 +663,7 @@ export function buildProblemDecisions(
             decisions.push({
                 sourceDocId: Number(source.docId), sourcePid, action: 'reference',
                 targetDomainId: equivalent.domainId, targetPid: equivalent.pid || equivalent.docId,
+                targetDocId: assignTargetDocId(source),
                 reason: 'matching-reference',
                 sourceHasFiles: !!(source.data?.length || source.additional_file?.length),
                 targetHasFiles: !!(equivalent.data?.length || equivalent.additional_file?.length),
@@ -568,14 +672,66 @@ export function buildProblemDecisions(
             continue;
         }
 
+        const targetDocId = assignTargetDocId(source);
         decisions.push({
             sourceDocId: Number(source.docId), sourcePid, action: 'copy',
-            targetDomainId: EXAM_DOMAIN, targetPid: sourcePid,
+            targetDomainId: EXAM_DOMAIN,
+            targetPid: source.pid || targetDocId,
+            targetDocId,
             reason: 'entity',
             sourceHasFiles: !!(source.data?.length || source.additional_file?.length),
         });
     }
     return decisions;
+}
+
+function ejsonKey(value: any): string {
+    return EJSON.stringify(value, { relaxed: false });
+}
+
+export function buildContestDecisions(
+    sourceContests: any[], targetContests: any[], problemDecisions: ProblemDecision[],
+    mergeExisting = false,
+): ContestDecision[] {
+    const problemIds = new Map(problemDecisions.map((decision) => [String(decision.sourceDocId), decision.targetDocId ?? decision.sourceDocId]));
+    const targetBySignature = new Map<string, any[]>();
+    for (const target of targetContests) {
+        const signature = stableStringify({
+            title: normalizeProblemTitle(target.title),
+            pids: (target.pids || []).map((pid: any) => String(pid)),
+            rule: target.rule || '',
+            beginAt: target.beginAt || null,
+            endAt: target.endAt || null,
+        });
+        const bucket = targetBySignature.get(signature) || [];
+        bucket.push(target);
+        targetBySignature.set(signature, bucket);
+    }
+    return [...sourceContests].sort((a, b) => ejsonKey(a.docId).localeCompare(ejsonKey(b.docId))).map((source) => {
+        const pids = (source.pids || []).map((pid: any) => {
+            const mapped = problemIds.get(String(pid));
+            if (mapped === undefined) throw new Error(`比赛 ${String(source.docId)} 引用了未映射题目 ${String(pid)}`);
+            return mapped;
+        });
+        const signature = stableStringify({
+            title: normalizeProblemTitle(source.title),
+            pids: pids.map((pid: any) => String(pid)),
+            rule: source.rule || '',
+            beginAt: source.beginAt || null,
+            endAt: source.endAt || null,
+        });
+        const matched = mergeExisting ? targetBySignature.get(signature)?.[0] : undefined;
+        const sourceObjectId = getObjectId(source._id || source.docId);
+        assert(sourceObjectId, `比赛 ${String(source.docId)} 缺少 ObjectId`);
+        const targetObjectId = getObjectId(matched?._id || matched?.docId) || sourceObjectId;
+        return {
+            sourceDocId: sourceObjectId.toHexString(),
+            action: matched ? 'reuse' : 'copy',
+            targetDocId: ejsonKey(matched?.docId ?? source.docId),
+            targetObjectId: targetObjectId.toHexString(),
+            reason: matched ? 'matching-contest' : 'entity',
+        };
+    });
 }
 
 /** Rewrite only fields that represent a user identity; ObjectIds are handled separately. */
@@ -1103,7 +1259,16 @@ function getPlanHashInput(plan: MigrationPlan): Omit<MigrationPlan, 'planHash'> 
 }
 
 export function computePlanHash(plan: MigrationPlan): string {
-    return hashObject(getPlanHashInput(plan));
+    const omitUndefined = (value: any): any => {
+        if (Array.isArray(value)) return value.map((item) => item === undefined ? null : omitUndefined(item));
+        if (!value || typeof value !== 'object' || value instanceof Date || Buffer.isBuffer(value) || isBsonValue(value)) return value;
+        const result: Record<string, any> = {};
+        for (const [key, child] of Object.entries(value)) {
+            if (child !== undefined) result[key] = omitUndefined(child);
+        }
+        return result;
+    };
+    return hashObject(omitUndefined(getPlanHashInput(plan)));
 }
 
 function sourceObjectIds(docs: Record<string, any[]>): string[] {
@@ -1181,12 +1346,14 @@ async function buildObjectIdMap(
     return { values };
 }
 
-function expectedCounts(manifest: MigrationManifest, identities: IdentityDecision[]): Record<string, number> {
-    return {
-        ...manifest.counts,
-        user: identities.filter((decision) => decision.created).length,
-        'domain.user.system': identities.filter((decision) => decision.created).length,
-    };
+function expectedCounts(
+    target: TargetFingerprint, inserted: Record<string, number>, identities: IdentityDecision[],
+): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const name of COLLECTIONS) result[name] = (target.collections[name]?.count || 0) + (inserted[name] || 0);
+    result.user = (target.collections.user?.count || 0) + identities.filter((decision) => decision.created).length;
+    result['domain.user.system'] = identities.filter((decision) => decision.created).length;
+    return result;
 }
 
 function normalizeStorageTargetPath(
@@ -1236,9 +1403,11 @@ function rewriteSubmissionReferences(
 }
 
 function planStorage(
-    files: FileEntry[], problems: ProblemDecision[], users: Map<number, number>, objectIds: ObjectIdMaps, runId: string,
+    files: FileEntry[], problems: ProblemDecision[], contests: ContestDecision[],
+    users: Map<number, number>, objectIds: ObjectIdMaps, runId: string,
 ): FileEntry[] {
     const referenced = new Map<number, ProblemDecision>(problems.map((problem) => [problem.sourceDocId, problem]));
+    const reusedContests = new Set(contests.filter((contest) => contest.action === 'reuse').map((contest) => contest.sourceDocId));
     const objectIdMap = new Map(Object.entries(objectIds.values).map(([source, target]) => [source, new ObjectId(target)]));
     const storageIds = new Set<string>();
     return files.map((source) => {
@@ -1247,9 +1416,25 @@ function planStorage(
             targetPath: normalizeStorageTargetPath(source.sourcePath, users, objectIdMap),
         };
         const problemMatch = source.sourcePath.match(/^problem\/exam\/(\d+)\//);
-        if (problemMatch && referenced.get(Number(problemMatch[1]))?.action === 'reference') {
+        if (problemMatch) {
+            const decision = referenced.get(Number(problemMatch[1]));
+            if (decision?.action === 'reuse' || decision?.action === 'reference') {
+                item.included = false;
+                item.excludedReason = decision.action === 'reuse'
+                    ? 'problem-reuse-does-not-copy-testdata' : 'problem-reference-does-not-copy-testdata';
+                return item;
+            }
+            if (decision?.targetDocId !== undefined) {
+                item.targetPath = item.targetPath.replace(
+                    /^problem\/exam\/\d+(\/)/,
+                    `problem/exam/${String(decision.targetDocId)}$1`,
+                );
+            }
+        }
+        const contestMatch = source.sourcePath.match(/^contest\/exam\/([\da-f]{24})\//i);
+        if (contestMatch && reusedContests.has(contestMatch[1].toLowerCase())) {
             item.included = false;
-            item.excludedReason = 'problem-reference-does-not-copy-testdata';
+            item.excludedReason = 'contest-reuse-does-not-copy-files';
             return item;
         }
         let targetStorageId = source.sourceStorageId;
@@ -1271,20 +1456,46 @@ export async function analyzeExamPackage(options: CommandOptions = {}): Promise<
     try {
         const db = client.db(options.targetDatabase || undefined);
         const target = await targetFingerprint(db, domainId);
-        assert(!target.examDomainExists, `目标已存在 ${domainId} 域，拒绝生成应用计划`);
+        if (options.mergeExisting) assert(target.examDomainExists, `合并模式要求目标已有 ${domainId} 域`);
+        else assert(!target.examDomainExists, `目标已存在 ${domainId} 域，拒绝生成应用计划`);
         const defaultUserPriv = target.defaultUserPriv;
         const targetUsers = await db.collection<any>('user').find({}).toArray();
         const sourceUsers = docs.user || [];
-        const identities = resolveIdentities(sourceUsers, targetUsers);
+        const identities = resolveIdentities(sourceUsers, targetUsers, { allowAliases: !!options.mergeExisting });
         const users = identityMap(identities);
         const targetProblems = await db.collection<any>('document').find({ docType: 10 }).toArray();
         const targetDomains = await db.collection<any>('domain').find({}).toArray();
         const sourceProblems = (docs.document || []).filter((doc) => doc.docType === 10);
-        const problems = buildProblemDecisions(sourceProblems, targetProblems, targetDomains);
+        const problems = buildProblemDecisions(sourceProblems, targetProblems, targetDomains, {
+            mergeExisting: !!options.mergeExisting, domainId,
+        });
+        const problemIds = Object.fromEntries(problems.map((decision) => [
+            String(decision.sourceDocId), decision.targetDocId ?? decision.sourceDocId,
+        ]));
+        const targetContests = await db.collection<any>('document').find({ domainId, docType: 30 }).toArray();
+        const sourceContests = (docs.document || []).filter((doc) => doc.docType === 30);
+        const contests = buildContestDecisions(sourceContests, targetContests, problems, !!options.mergeExisting);
+        const sourceDocumentIds = new Set((docs.document || []).map((doc) => `${doc.docType}:${ejsonKey(doc.docId)}`));
+        const targetDocumentIds = new Set((await db.collection<any>('document').find({})
+            .project({ docType: 1, docId: 1 }).toArray())
+            .map((doc) => `${doc.docType}:${ejsonKey(doc.docId)}`));
+        const excludedDocuments: ExcludedDocument[] = (docs.document || [])
+            .filter((doc) => doc.parentType !== undefined && doc.parentId !== undefined)
+            .filter((doc) => !sourceDocumentIds.has(`${doc.parentType}:${ejsonKey(doc.parentId)}`)
+                && !targetDocumentIds.has(`${doc.parentType}:${ejsonKey(doc.parentId)}`))
+            .map((doc) => ({
+                collection: 'document' as const,
+                docType: Number(doc.docType),
+                docId: ejsonKey(doc.docId),
+                reason: 'missing-parent' as const,
+            }));
+        const excludedDocumentKeys = new Set(excludedDocuments.map((item) => `${item.docType}:${item.docId}`));
         const problemFileDifferences: ProblemFileDifference[] = [];
-        for (const decision of problems.filter((item) => item.action === 'reference')) {
+        for (const decision of problems.filter((item) => item.action === 'reference' || item.action === 'reuse')) {
             const source = sourceProblems.find((item) => Number(item.docId) === decision.sourceDocId);
             const targetProblem = targetProblems.find((item) => item.domainId === decision.targetDomainId
+                && String(item.docId) === String(decision.targetDocId ?? decision.targetPid))
+            || targetProblems.find((item) => item.domainId === decision.targetDomainId
                 && String(item.pid || item.docId) === String(decision.targetPid));
             const sourceFiles = problemFileNames(source);
             const targetFiles = problemFileNames(targetProblem);
@@ -1299,7 +1510,10 @@ export async function analyzeExamPackage(options: CommandOptions = {}): Promise<
             });
         }
         const objectIds = await buildObjectIdMap(db, docs, manifest.runId);
-        const storage = planStorage(manifest.files, problems, users, objectIds, manifest.runId);
+        for (const contest of contests.filter((item) => item.action === 'reuse')) {
+            objectIds.values[contest.sourceDocId] = contest.targetObjectId;
+        }
+        const storage = planStorage(manifest.files, problems, contests, users, objectIds, manifest.runId);
         const storageCandidates = storage.filter((item) => item.included);
         const plannedPaths = new Set<string>();
         for (const item of storageCandidates) {
@@ -1326,6 +1540,64 @@ export async function analyzeExamPackage(options: CommandOptions = {}): Promise<
             item.targetStorageId = targetId;
             reservedIds.add(targetId);
         }
+
+        const targetMembers = await db.collection<any>('domain.user').find({ domainId }).toArray();
+        const domainMemberKeys = new Set(targetMembers.map((member) => `${domainId}:${Number(member.uid)}`));
+        const plannedDomainMemberKeys = new Set<string>();
+        for (const member of docs['domain.user'] || []) {
+            const uid = users.get(Number(member.uid)) ?? Number(member.uid);
+            const key = `${domainId}:${uid}`;
+            if (!domainMemberKeys.has(key)) plannedDomainMemberKeys.add(key);
+        }
+        const targetGroups = await db.collection<any>('user.group').find({ domainId }).toArray();
+        const groupKeys = new Set(targetGroups.map((group) => `${domainId}:${String(group.name || '')}`));
+        const plannedGroupKeys = new Set<string>();
+        for (const group of docs['user.group'] || []) {
+            const key = `${domainId}:${String(group.name || '')}`;
+            if (!groupKeys.has(key)) plannedGroupKeys.add(key);
+        }
+
+        const statusKey = (status: any) => `${status.docType}:${ejsonKey(status.docId)}:${status.uid}`;
+        const targetStatuses = await db.collection<any>('document.status').find({ domainId }).toArray();
+        const existingStatusKeys = new Set(targetStatuses.map(statusKey));
+        const provisionalPlan = {
+            problemIds,
+            problems,
+            objectIds,
+            storage,
+            identities,
+        } as MigrationPlan;
+        const mappedStatuses = (docs['document.status'] || []).map((status) => mapDocumentForApply(
+            status, provisionalPlan, domainId, users, objectIdMapFromPlan(provisionalPlan), storageMapFromPlan(provisionalPlan), problemMapFromPlan(provisionalPlan),
+        ));
+        const plannedStatusKeys = new Set<string>();
+        for (const status of mappedStatuses) {
+            const key = statusKey(status);
+            if (!existingStatusKeys.has(key)) plannedStatusKeys.add(key);
+        }
+
+        const sourceStorage = (docs.storage || []).map((doc) => mapStorageDocument(
+            doc, provisionalPlan, domainId, users, objectIdMapFromPlan(provisionalPlan), storageMapFromPlan(provisionalPlan),
+        )).filter(Boolean);
+        const relatedDocuments = (docs.document || []).filter((doc) => doc.docType !== 10)
+            .filter((doc) => !excludedDocumentKeys.has(`${doc.docType}:${ejsonKey(doc.docId)}`)).filter((doc) => {
+                if (doc.docType !== 30) return true;
+                const sourceId = getObjectId(doc._id || doc.docId)?.toHexString();
+                return !contests.some((contest) => contest.sourceDocId === sourceId && contest.action === 'reuse');
+            });
+        const inserted: Record<string, number> = {
+            domain: options.mergeExisting ? 0 : (docs.domain || []).length,
+            'domain.user': plannedDomainMemberKeys.size,
+            'user.group': plannedGroupKeys.size,
+            document: problems.filter((problem) => problem.action !== 'reuse').length + relatedDocuments.length,
+            storage: sourceStorage.length,
+            'discussion.history': (docs['discussion.history'] || []).length,
+            'contest.balloon': (docs['contest.balloon'] || []).length,
+            record: (docs.record || []).length,
+            'record.stat': (docs['record.stat'] || []).length,
+            'record.history': (docs['record.history'] || []).length,
+            'document.status': plannedStatusKeys.size,
+        };
         const plan: MigrationPlan = {
             schemaVersion: MIGRATION_SCHEMA_VERSION,
             kind: 'hydro.exam-migration-plan',
@@ -1334,16 +1606,28 @@ export async function analyzeExamPackage(options: CommandOptions = {}): Promise<
             packageHash: manifest.packageHash,
             sourceFingerprint: manifest.sourceFingerprint,
             targetBefore: target,
+            mergeExisting: !!options.mergeExisting,
             identities,
             problems,
+            problemIds,
+            contests,
             problemFileDifferences,
             objectIds,
             storage,
             defaultUserPriv,
-            expectedCounts: expectedCounts(manifest, identities),
+            expectedCounts: expectedCounts(target, {
+                ...inserted,
+                user: identities.filter((decision) => decision.created).length,
+            }, identities),
             excludedFiles: manifest.excludedFiles,
             confirmedDecisions: CONFIRMED_DECISIONS,
             phases: PHASES,
+            excludedDocuments,
+            mergeKeys: {
+                domainMembers: [...plannedDomainMemberKeys].sort(),
+                groups: [...plannedGroupKeys].sort(),
+                statuses: [...plannedStatusKeys].sort(),
+            },
         };
         plan.planHash = computePlanHash(plan);
         await writeJson(path.join(runDir, 'plan.json'), plan);
@@ -1359,6 +1643,7 @@ export async function analyzeExamPackage(options: CommandOptions = {}): Promise<
                 result[item.action] = (result[item.action] || 0) + 1;
                 return result;
             }, {} as Record<string, number>),
+            excludedDocuments,
             problemFileDifferences: problemFileDifferences.filter((item) => item.missingInTarget.length || item.extraInTarget.length),
         });
         return plan;
@@ -1396,16 +1681,82 @@ function userMapFromPlan(plan: MigrationPlan): Map<number, number> {
     return identityMap(plan.identities);
 }
 
+function problemMapFromPlan(plan: MigrationPlan): Map<string, number | string> {
+    return new Map(Object.entries(plan.problemIds || {}));
+}
+
+function storageMapFromPlan(plan: MigrationPlan): Map<string, string> {
+    return new Map(plan.storage.map((item) => [item.sourceStorageId, item.targetStorageId || item.sourceStorageId]));
+}
+
+function rewriteStorageReference(value: any, storageIds: Map<string, string>): any {
+    if (typeof value === 'string') {
+        let decoded = value;
+        let encoded = false;
+        try {
+            const candidate = Buffer.from(value, 'base64').toString('utf8');
+            if (candidate.startsWith('/data/file/hydro/')) {
+                decoded = candidate;
+                encoded = true;
+            }
+        } catch { /* not a base64 etag */ }
+        if (decoded.startsWith('/data/file/hydro/')) {
+            const sourceId = decoded.slice('/data/file/hydro/'.length);
+            const targetId = storageIds.get(sourceId);
+            if (targetId) {
+                const result = `/data/file/hydro/${targetId}`;
+                return encoded ? Buffer.from(result).toString('base64') : result;
+            }
+        }
+        return storageIds.get(value) || value;
+    }
+    if (Array.isArray(value)) return value.map((item) => rewriteStorageReference(item, storageIds));
+    if (!value || typeof value !== 'object' || value instanceof Date || isBsonValue(value)) return value;
+    const output: Record<string, any> = {};
+    for (const [key, child] of Object.entries(value)) output[key] = rewriteStorageReference(child, storageIds);
+    return output;
+}
+
+function rewriteProblemReferences(value: any, problems: Map<string, number | string>, key = ''): any {
+    if (Array.isArray(value)) {
+        return value.map((item) => key === 'pids' || key === 'pid' ? problems.get(String(item)) ?? item
+            : rewriteProblemReferences(item, problems, key));
+    }
+    if ((key === 'pid' || key === 'pids' || key === 'subject') && (typeof value === 'number' || typeof value === 'string')) {
+        return problems.get(String(value)) ?? value;
+    }
+    if (!value || typeof value !== 'object' || value instanceof Date || isBsonValue(value)) return value;
+    const output: Record<string, any> = {};
+    for (const [childKey, child] of Object.entries(value)) output[childKey] = rewriteProblemReferences(child, problems, childKey);
+    return output;
+}
+
 function mapDocumentForApply(
     original: any, plan: MigrationPlan, domainId: string,
     users = userMapFromPlan(plan), objectIds = objectIdMapFromPlan(plan),
+    storageIds = storageMapFromPlan(plan), problems = problemMapFromPlan(plan), isProblemDocument = false,
 ): any {
-    const doc = rewriteObjectIds(rewriteUserIds(original, users), objectIds);
+    if (isProblemDocument && original.docType === 10) {
+        const decision = plan.problems.find((item) => Number(item.sourceDocId) === Number(original.docId));
+        if (decision?.action === 'reuse') return null;
+    }
+    const doc = rewriteStorageReference(
+        rewriteProblemReferences(rewriteObjectIds(rewriteUserIds(original, users), objectIds), problems), storageIds,
+    );
     doc.domainId &&= domainId;
+    if (doc.docType === 10) {
+        const problem = plan.problems.find((item) => Number(item.sourceDocId) === Number(original.docId));
+        if (problem?.targetDocId !== undefined) {
+            doc.docId = problem.targetDocId;
+            if (typeof doc.sort === 'string' && /^P\d+$/i.test(doc.sort)) {
+                doc.sort = `P${String(problem.targetDocId).padStart(6, '0')}`;
+            }
+        }
+    }
     if (doc.files && doc.pid !== undefined && doc.uid !== undefined) {
         doc.files = rewriteSubmissionReferences(doc.files, users, objectIds);
     }
-    if (doc.docType === 10) {
+    if (isProblemDocument && doc.docType === 10) {
         const problem = plan.problems.find((item) => Number(item.sourceDocId) === Number(original.docId));
         if (problem?.action === 'reference') {
             doc.reference = {
@@ -1423,26 +1774,22 @@ function mapDocumentForApply(
             delete doc.reference;
         }
     }
-    if (doc.docType === 30 && Array.isArray(doc.pids)) {
-        // Problem docIds are retained in exam, therefore contest order remains
-        // valid even when a problem is represented by a reference copy.
-        doc.pids = doc.pids.map((pid: any) => Number(pid));
+    if (doc.parentType === 10) {
+        doc.parentId = problems.get(String(original.parentId)) ?? doc.parentId;
     }
-    if (doc.docType === 40 && Array.isArray(doc.pids)) doc.pids = doc.pids.map((pid: any) => Number(pid));
+    if (doc.docType === 30 && Array.isArray(doc.pids)) doc.pids = doc.pids.map((pid: any) => problems.get(String(pid)) ?? Number(pid));
     return doc;
 }
 
 function mapStorageDocument(
     original: any, plan: MigrationPlan, domainId: string,
     users = userMapFromPlan(plan), objectIds = objectIdMapFromPlan(plan),
-    storageIds = new Map(plan.storage.map((item) => [
-        item.sourceStorageId, item.targetStorageId || item.sourceStorageId,
-    ])),
+    storageIds = storageMapFromPlan(plan),
 ): any {
     const entry = plan.storage.find((item) => item.sourceStorageId === String(original._id)
         && item.sourcePath === String(original.path));
     if (!entry || !entry.included) return null;
-    const result = rewriteObjectIds(rewriteUserIds(original, users), objectIds);
+    const result = rewriteStorageReference(rewriteObjectIds(rewriteUserIds(original, users), objectIds), storageIds);
     if (typeof result.link === 'string') result.link = storageIds.get(result.link) || result.link;
     result.domainId = domainId;
     result.path = entry.targetPath;
@@ -1473,6 +1820,7 @@ function mapNewUser(original: any, decision: IdentityDecision, defaultUserPriv: 
 async function insertDocuments(
     db: Db, collectionName: string, docs: any[], state: ApplyState, _domainId?: string,
 ): Promise<number> {
+    docs = docs.filter(Boolean);
     if (!docs.length) return 0;
     const collection = db.collection<any>(collectionName);
     let inserted = 0;
@@ -1491,6 +1839,10 @@ async function insertDocuments(
         });
     }
     return inserted;
+}
+
+function statusNaturalKey(status: any): string {
+    return `${status.docType}:${ejsonKey(status.docId)}:${status.uid}`;
 }
 
 async function runPhase(
@@ -1538,12 +1890,13 @@ async function verifyApplyPreconditions(
     assert(computePlanHash(plan) === plan.planHash, 'plan.json 自身哈希不一致');
     const current = await targetFingerprint(db, plan.domainId);
     assert(current.hash === plan.targetBefore.hash, '目标状态已变化，拒绝应用计划');
-    assert(!current.examDomainExists, `目标已存在 ${plan.domainId} 域，拒绝覆盖`);
+    if (plan.mergeExisting) assert(current.examDomainExists, `合并计划要求目标已有 ${plan.domainId} 域`);
+    else assert(!current.examDomainExists, `目标已存在 ${plan.domainId} 域，拒绝覆盖`);
     const marker = await db.collection<any>('exam.migration').findOne({ _id: plan.runId });
     assert(!marker, `迁移 ${plan.runId} 已经执行或正在执行`);
     const required = plan.storage.filter((file) => file.included && file.required);
     const missingRequired = plan.storage.filter((file) => !file.included && file.required
-        && file.excludedReason !== 'problem-reference-does-not-copy-testdata');
+        && !['problem-reference-does-not-copy-testdata', 'problem-reuse-does-not-copy-testdata', 'contest-reuse-does-not-copy-files'].includes(file.excludedReason || ''));
     const missingRequiredExcluded = manifest.excludedFiles.filter((file) => file.reason === 'required-file-missing' && file.missing);
     if (missingRequired.length || missingRequiredExcluded.length) {
         throw new Error(`迁移包缺少必需文件: ${[...missingRequired.map((file) => file.sourcePath), ...missingRequiredExcluded.map((file) => file.sourcePath)].join(', ')}`);
@@ -1642,17 +1995,33 @@ export async function applyExamPackage(options: ApplyOptions = {}): Promise<Appl
                 + await insertDocuments(db, 'domain.user', systemMembers, state, 'system');
         });
 
-        const domainDoc = (docs.domain || []).map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds));
-        const domainUsers = (docs['domain.user'] || []).map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds));
-        const groups = (docs['user.group'] || []).map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds));
+        const domainDoc = plan.mergeExisting ? [] : (docs.domain || []).map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds));
+        const domainMemberKeys = new Set(plan.mergeKeys?.domainMembers || []);
+        const seenDomainMemberKeys = new Set<string>();
+        const domainUsers = (docs['domain.user'] || []).map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds))
+            .filter((doc) => {
+                const key = `${plan.domainId}:${doc.uid}`;
+                if (seenDomainMemberKeys.has(key)) return false;
+                seenDomainMemberKeys.add(key);
+                return domainMemberKeys.has(key);
+            });
+        const groupKeys = new Set(plan.mergeKeys?.groups || []);
+        const seenGroupKeys = new Set<string>();
+        const groups = (docs['user.group'] || []).map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds))
+            .filter((doc) => {
+                const key = `${plan.domainId}:${doc.name || ''}`;
+                if (seenGroupKeys.has(key)) return false;
+                seenGroupKeys.add(key);
+                return groupKeys.has(key);
+            });
         await runPhase(runDir, state, 'domain', async () => {
             return await insertDocuments(db, 'domain', domainDoc, state)
                 + await insertDocuments(db, 'domain.user', domainUsers, state, plan.domainId)
                 + await insertDocuments(db, 'user.group', groups, state, plan.domainId);
         });
 
-        const allDocuments = (docs.document || []).map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds));
-        const problemDocuments = allDocuments.filter((doc) => doc.docType === 10);
+        const problemDocuments = (docs.document || []).filter((doc) => doc.docType === 10)
+            .map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds, storageIds, problemMapFromPlan(plan), true));
         await runPhase(runDir, state, 'problems', async () => insertDocuments(db, 'document', problemDocuments, state, plan.domainId));
 
         const sourceStorage = (docs.storage || []).map((doc) => mapStorageDocument(doc, plan, plan.domainId, users, objectIds, storageIds)).filter(Boolean);
@@ -1669,7 +2038,13 @@ export async function applyExamPackage(options: ApplyOptions = {}): Promise<Appl
             return count;
         });
 
-        const relatedDocuments = allDocuments.filter((doc) => doc.docType !== 10);
+        const reusedContestIds = new Set(plan.contests.filter((contest) => contest.action === 'reuse').map((contest) => contest.sourceDocId));
+        const excludedDocumentKeys = new Set((plan.excludedDocuments || [])
+            .map((item) => `${item.docType}:${item.docId}`));
+        const relatedDocuments = (docs.document || []).filter((doc) => doc.docType !== 10)
+            .filter((doc) => !excludedDocumentKeys.has(`${doc.docType}:${ejsonKey(doc.docId)}`))
+            .filter((doc) => doc.docType !== 30 || !reusedContestIds.has(getObjectId(doc._id || doc.docId)?.toHexString() || ''))
+            .map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds, storageIds, problemMapFromPlan(plan)));
         const discussions = (docs['discussion.history'] || []).map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds));
         const balloons = (docs['contest.balloon'] || []).map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds));
         await runPhase(runDir, state, 'related-documents', async () => {
@@ -1687,7 +2062,16 @@ export async function applyExamPackage(options: ApplyOptions = {}): Promise<Appl
                 + await insertDocuments(db, 'record.history', recordHistory, state, plan.domainId);
         });
 
-        const statuses = (docs['document.status'] || []).map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds));
+        const plannedStatusKeys = new Set(plan.mergeKeys?.statuses || []);
+        const seenStatusKeys = new Set<string>();
+        const statuses = (docs['document.status'] || []).map((doc) => mapDocumentForApply(
+            doc, plan, plan.domainId, users, objectIds, storageIds, problemMapFromPlan(plan), false,
+        )).filter((doc) => {
+            const key = statusNaturalKey(doc);
+            if (seenStatusKeys.has(key)) return false;
+            seenStatusKeys.add(key);
+            return !plan.mergeExisting || plannedStatusKeys.has(key);
+        });
         await runPhase(runDir, state, 'statuses', async () => insertDocuments(db, 'document.status', statuses, state, plan.domainId));
 
         await db.collection<any>('exam.migration').updateOne(
@@ -1929,15 +2313,11 @@ export async function verifyExamMigration(options: CommandOptions = {}): Promise
         const db = client.db(options.targetDatabase || undefined);
         const marker = await db.collection<any>('exam.migration').findOne({ _id: plan.runId });
         const counts: VerifyReport['counts'] = {};
-        const expected = { ...manifest.counts };
-        expected.user = plan.targetBefore.collections.user.count
-            + plan.identities.filter((identity) => identity.created).length;
-        expected.storage = plan.storage.filter((file) => file.included).length;
         for (const name of COLLECTIONS) {
             const actual = await db.collection<any>(name).countDocuments(
                 await collectionFilterForDatabase(db, name, plan.domainId),
             );
-            const value = name === 'user' ? expected.user : expected[name] || 0;
+            const value = plan.expectedCounts[name] ?? 0;
             counts[name] = { expected: value, actual, ok: actual === value };
         }
         const createdUids = plan.identities.filter((identity) => identity.created).map((identity) => identity.targetUid);

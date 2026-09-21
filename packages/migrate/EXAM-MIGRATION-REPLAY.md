@@ -6,14 +6,19 @@
 
 ## 当前轮次的真实状态
 
-- 工具实现已提交，基线提交为 `e8b8e763`（后续文档修订会产生新的提交）。
-- 本轮没有连接生产库，没有执行 `export`、`apply` 或 `rollback`。
-- 当前工作区没有 `migration-runs/<run-id>`；因此这里没有可以替代真实导出包的
-  `manifest.json`、`packageHash` 或 `planHash`。重新执行前必须取得并校验真实导出包。
-- 通过的本地检查：TypeScript 构建、exam 纯测试、exam 文件 ESLint、CLI help、
-  `git diff --check`。完整 `npm test` 的两个失败属于既有测试，与本迁移无关：
-  `Exports files from referenced problems using source-domain permissions` 和
-  `Does not expose hidden OI results through global problem status views`。
+- 本轮源包为 `migration-runs/exam-export-20260921-0915/`，已在恢复后的
+  `hydro2` 目标上以 `--merge-existing` 完成应用和验证。
+- `packageHash`：`7ac89c9ab75dd07ee739930420b8cd90a4d379ed5fea54649155945618db1387`。
+  最终 `planHash`：`aa55b7b570755294533a4811ded0a0e865d226bd7ef209940aa202bbe4c658ae`。
+  目标分析指纹：`b44e3ca25697f4ac8b4afefbd3bf786cfb9c927d3eac9cb3c1ab0af1addca45f`。
+- 第一次 apply 因源端 10 条孤立答疑的父比赛不存在而验证失败，已按清单完整回滚；
+  修正为审计排除后第二次 apply 成功。两次过程均保留在 `audit.jsonl`。
+- 最终 `verify-report.json` 为 `ok: true`、引用检查 98,975 项、文件检查 788 项、
+  用户名/有效邮箱重复均为 0；`hydrooj` 已重新启动。
+- 通过的检查：TypeScript 构建、exam 纯测试、exam 文件 ESLint、dry-run、正式
+  apply/verify、exam 首页/题目/比赛入口 HTTP 抽查。完整 `npm test` 的两个失败属于
+  既有测试，与本迁移无关：`Exports files from referenced problems using source-domain
+  permissions` 和 `Does not expose hidden OI results through global problem status views`。
 
 ## 已确认的迁移输入（用于复核，不替代包内计数）
 
@@ -33,6 +38,15 @@
 | 用户身份 | 27 组人工映射；用户名侧共 207 组（含 12 组冲突）；有效邮箱 116 组；新建 521 人 |
 | 题目判定 | 8 个确认引用，107 个实体化 |
 | 私有用户文件 | 声明 89 个，其中 50 个源端缺失；均不迁移并记录到排除报告 |
+
+本轮合并后的目标计数（以 `verify-report.json` 为准）：4,576 用户、849 个 exam
+成员、2 个用户组、159 个文档（117 题、13 场比赛、14 篇题解、15 条有父对象的
+答疑）、12,993 条提交、8,532 条状态、4,559 条统计、1,882 条历史和 795 条存储
+元数据。原有 17 道题、2 场比赛、6 条提交和 8 条状态均保留。
+
+计划判定为 530 个新用户、4 个精确身份别名、15 个题目复用、8 个健康外部引用、
+92 个题目实体化；生产 11 场比赛均因题目集合或时间与本地对象不完全相同而新增。
+10 条源端父比赛缺失的答疑记录写入 `plan.json.excludedDocuments`，未导入。
 
 确认的用户映射、12 组用户名冲突、8 个健康题目引用和 `@test.com` 规则都已经是
 代码中的唯一来源：
@@ -136,12 +150,14 @@ export EXAM_MIGRATE='node -r @hydrooj/register packages/migrate/bin/exam-migrate
    ```sh
    $EXAM_MIGRATE analyze \
      --package "$RUN_DIR" \
-     --target-uri "$TARGET_URI" --target-db "$TARGET_DB"
+     --target-uri "$TARGET_URI" --target-db "$TARGET_DB" \
+     --merge-existing
    ```
 
    审阅 `plan.json` 的 `targetBefore`、`identities`、`problems`、`storage`、
-   `expectedCounts` 和 `excludedFiles`。特别确认 `examDomainExists` 为 false，
-   目标没有意外的存储路径占用，且 8 个引用题目仍为健康实体。
+   `expectedCounts`、`excludedFiles` 和 `excludedDocuments`。合并模式下
+   `targetBefore.examDomainExists` 应为 true；确认目标没有意外的存储路径占用，
+   且 8 个引用题目仍为健康实体。
 
 3. **记录新的检查点。** 把以下四个值抄入本次运行的交接单或变更记录；不要把
    旧目标的值带到恢复后的数据库：
@@ -166,7 +182,7 @@ export EXAM_MIGRATE='node -r @hydrooj/register packages/migrate/bin/exam-migrate
      --package "$RUN_DIR" \
      --target-uri "$TARGET_URI" --target-db "$TARGET_DB" \
      --target-storage-root "$TARGET_STORAGE_ROOT" \
-     --plan-hash "$PLAN_HASH" --dry-run --no-stop --no-backup
+     --plan-hash "$PLAN_HASH" --merge-existing --dry-run --no-stop --no-backup
    ```
 
 5. **正式 apply。** 确认 MongoDB 在线、本地 `hydrooj` 可以短暂停止，并确认
@@ -178,7 +194,7 @@ export EXAM_MIGRATE='node -r @hydrooj/register packages/migrate/bin/exam-migrate
      --package "$RUN_DIR" \
      --target-uri "$TARGET_URI" --target-db "$TARGET_DB" \
      --target-storage-root "$TARGET_STORAGE_ROOT" \
-     --plan-hash "$PLAN_HASH"
+     --plan-hash "$PLAN_HASH" --merge-existing
    ```
 
 6. **保留结果并抽查。** 保存 `apply.json`、`verify-report.json`、

@@ -6,6 +6,7 @@ import {
     CONFIRMED_DECISIONS,
     USERNAME_CONFLICT_MAP,
     buildProblemDecisions,
+    buildContestDecisions,
     computePlanHash,
     normalizeIdentityEmail,
     redactForLog,
@@ -60,6 +61,16 @@ function testIdentityPrecedence() {
         [1, 21, 'email'],
         [2, 20, 'manual'],
     ]);
+
+    const aliases = resolveIdentities([
+        { _id: 1, uname: 'EmailFirst', mail: 'shared@example.org' },
+        { _id: 2, uname: 'SharedName', mail: 'different@example.org' },
+    ], [
+        { _id: 20, uname: 'SharedName', mail: 'shared@example.org' },
+    ], { manualMap: {}, conflictMap: {}, allowAliases: true });
+    assert.equal(aliases[0].targetUid, 20);
+    assert.equal(aliases[1].targetUid, 20);
+    assert.equal(aliases[1].alias, true);
 }
 
 function testEmailRules() {
@@ -113,6 +124,29 @@ function testProblemDecisions() {
     assert.equal(decisions[0].reason, 'confirmed-reference');
     assert.equal(decisions[1].action, 'copy', 'dangling test reference cannot be reused');
     assert.equal(decisions[2].action, 'copy');
+
+    const merged = buildProblemDecisions([
+        { docId: 1, title: 'Existing', content: 'same', config: '' },
+        { docId: 2, title: 'New', content: 'new', config: '' },
+    ], [
+        { domainId: 'exam', docId: 1, title: 'Existing', content: 'same', config: '' },
+    ], [{ _id: 'exam' }], { mergeExisting: true, domainId: 'exam' });
+    assert.equal(merged[0].action, 'reuse');
+    assert.equal(merged[0].targetDocId, 1);
+    assert.equal(merged[1].targetDocId, 2);
+
+    const contests = buildContestDecisions([
+        { _id: new ObjectId('64b000000000000000000010'), docId: new ObjectId('64b000000000000000000010'), title: 'Same', pids: [1], rule: 'oi', beginAt: new Date('2026-01-01'), endAt: new Date('2026-01-02') },
+        { _id: new ObjectId('64b000000000000000000011'), docId: new ObjectId('64b000000000000000000011'), title: 'New', pids: [2], rule: 'oi', beginAt: new Date('2026-01-01'), endAt: new Date('2026-01-02') },
+    ], [
+        { _id: new ObjectId('64b000000000000000000012'), docId: new ObjectId('64b000000000000000000012'), title: 'Same', pids: [1], rule: 'oi', beginAt: new Date('2026-01-01'), endAt: new Date('2026-01-02') },
+    ], [
+        { sourceDocId: 1, sourcePid: 'P1', action: 'copy', targetDomainId: 'exam', targetPid: 1, targetDocId: 1, reason: 'entity', sourceHasFiles: false },
+        { sourceDocId: 2, sourcePid: 'P2', action: 'copy', targetDomainId: 'exam', targetPid: 2, targetDocId: 2, reason: 'entity', sourceHasFiles: false },
+    ], true);
+    assert.equal(contests[0].action, 'reuse');
+    assert.equal(contests[0].targetObjectId, '64b000000000000000000012');
+    assert.equal(contests[1].action, 'copy');
 }
 
 function testHashesAndRedaction() {
