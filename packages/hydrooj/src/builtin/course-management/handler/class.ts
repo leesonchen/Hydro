@@ -214,8 +214,11 @@ async function buildPidMapping(
 
     for (const pid of Array.from(new Set(pids))) {
         const origin = await resolveProblemOrigin(sourceDomainId, pid, translate);
+        // Dot notation: an exact-match query on the whole `reference` subdocument
+        // would miss copies that carry extra sync fields (sourceUpdateAt/lastSyncAt).
         let matched = await ProblemModel.getMulti(targetDomainId, {
-            reference: { domainId: origin.originDomainId, pid: origin.originPid },
+            'reference.domainId': origin.originDomainId,
+            'reference.pid': origin.originPid,
         }, ['docId', 'reference']).limit(1).next();
 
         if (!matched && targetDomainId === origin.originDomainId) {
