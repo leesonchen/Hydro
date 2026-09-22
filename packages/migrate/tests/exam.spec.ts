@@ -19,66 +19,43 @@ import {
 } from '../exam';
 
 function testIdentityPrecedence() {
-    assert.equal(Object.keys(CONFIRMED_USER_MAP).length, 27);
-    assert.equal(Object.keys(USERNAME_CONFLICT_MAP).length, 12);
+    assert.equal(Object.keys(CONFIRMED_USER_MAP).length, 0);
+    assert.equal(Object.keys(USERNAME_CONFLICT_MAP).length, 0);
     const source = [
-        { _id: 1, uname: 'Manual', mail: 'manual@example.org' },
-        { _id: 2, uname: 'Conflict', mail: 'wrong@example.org' },
-        { _id: 3, uname: 'ByName', mail: 'different@example.org' },
+        { _id: 1, uname: 'Conflict', mail: 'wrong@example.org' },
+        { _id: 2, uname: 'ByName', mail: 'different@example.org' },
+        { _id: 3, uname: 'EmailFirst', mail: 'person@example.org' },
         { _id: 4, uname: 'NoNameSource', mail: 'person+tag@example.org' },
         { _id: 5, uname: 'BrandNew', mail: 'brand@example.org' },
+        { _id: 6, uname: 'TestMatch', mail: 'same@test.com' },
     ];
     const target = [
-        { _id: 11, uname: 'manual-target', mail: 'manual@target.org' },
+        { _id: 11, uname: 'ManualTarget', mail: 'manual@target.org' },
         { _id: 12, uname: 'Conflict', mail: 'conflict@example.org' },
         { _id: 13, uname: 'ByName', mail: 'byname@example.org' },
         { _id: 14, uname: 'NoName', mail: 'other@example.org' },
         { _id: 15, uname: 'EmailTarget', mail: 'person@example.org' },
+        { _id: 16, uname: 'TestTarget', mail: 'same@test.com' },
     ];
-    const decisions = resolveIdentities(source, target, {
-        manualMap: { 1: 11 },
-        conflictMap: { 2: 12 },
-    });
+    const decisions = resolveIdentities(source, target);
     assert.deepEqual(decisions.map((item) => [item.sourceUid, item.targetUid, item.method]), [
-        [1, 11, 'manual'],
-        [2, 12, 'username-conflict'],
-        [3, 13, 'username'],
-        [4, 15, 'email'],
-        [5, 16, 'new'],
+        [1, 17, 'new'],
+        [2, 18, 'new'],
+        [3, 15, 'email'],
+        [4, 19, 'new'],
+        [5, 20, 'new'],
+        [6, 21, 'new'],
     ]);
-
-    // An ordinary match must not consume a target reserved for a later
-    // confirmed mapping merely because source UIDs are processed in order.
-    const reserved = resolveIdentities([
-        { _id: 1, uname: 'ReservedTarget', mail: 'one@example.org' },
-        { _id: 2, uname: 'SourceTwo', mail: 'two@example.org' },
-    ], [
-        { _id: 20, uname: 'ReservedTarget', mail: 'target@example.org' },
-        { _id: 21, uname: 'OtherTarget', mail: 'one@example.org' },
-    ], {
-        manualMap: { 2: 20 },
-        conflictMap: {},
-    });
-    assert.deepEqual(reserved.map((item) => [item.sourceUid, item.targetUid, item.method]), [
-        [1, 21, 'email'],
-        [2, 20, 'manual'],
-    ]);
-
-    const aliases = resolveIdentities([
-        { _id: 1, uname: 'EmailFirst', mail: 'shared@example.org' },
-        { _id: 2, uname: 'SharedName', mail: 'different@example.org' },
-    ], [
-        { _id: 20, uname: 'SharedName', mail: 'shared@example.org' },
-    ], { manualMap: {}, conflictMap: {}, allowAliases: true });
-    assert.equal(aliases[0].targetUid, 20);
-    assert.equal(aliases[1].targetUid, 20);
-    assert.equal(aliases[1].alias, true);
+    assert.equal(decisions[0].targetUname, 'Conflict_exam');
+    assert.equal(decisions[0].note, '未找到可确认的非 @test.com 邮箱，创建独立账号');
+    assert.equal(decisions[5].emailConflict, true);
+    assert.match(decisions[5].targetMail!, /^exam-6-21@invalid\.exam$/);
 }
 
 function testEmailRules() {
-    assert.equal(normalizeIdentityEmail('USER+one@gmail.com'), 'user@gmail.com');
-    assert.equal(normalizeIdentityEmail('u.ser@googlemail.com'), 'user@gmail.com');
-    assert.equal(normalizeIdentityEmail('a+test@example.org'), 'a@example.org');
+    assert.equal(normalizeIdentityEmail('USER+one@gmail.com'), 'user+one@gmail.com');
+    assert.equal(normalizeIdentityEmail('u.ser@googlemail.com'), 'u.ser@googlemail.com');
+    assert.equal(normalizeIdentityEmail('a+test@example.org'), 'a+test@example.org');
     assert.equal(normalizeIdentityEmail('a@test.com'), null);
     assert.equal(normalizeIdentityEmail('not-an-email'), null);
 }

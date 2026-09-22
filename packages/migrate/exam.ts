@@ -51,60 +51,26 @@ export const PHASES = [
 
 export type MigrationPhase = typeof PHASES[number];
 
-/** Confirmed source -> target user mappings supplied with the migration plan. */
-export const CONFIRMED_USER_MAP: Record<number, number> = Object.freeze({
-    1558: 2047,
-    1605: 2381,
-    1632: 3859,
-    1682: 1514,
-    1716: 2553,
-    1888: 2927,
-    1996: 595,
-    2013: 3781,
-    2106: 3494,
-    2110: 3520,
-    2121: 3480,
-    2124: 3510,
-    2142: 3529,
-    2144: 3492,
-    2146: 3507,
-    2147: 3500,
-    2151: 3503,
-    2156: 3464,
-    2159: 3482,
-    2160: 3479,
-    2170: 3513,
-    2172: 3486,
-    2177: 3616,
-    2208: 3676,
-    2242: 1970,
-    2257: 3564,
-    2310: 2992,
-});
-
 /**
- * Twelve known username/e-mail disagreements.  The username side is the
- * confirmed identity decision, so these are kept separate from the ordinary
- * username pass to make the decision auditable.
+ * The former hand-confirmed and username-first maps are intentionally empty.
+ * They remain exported so older callers fail closed instead of silently
+ * reviving a cancelled identity decision.
  */
-export const USERNAME_CONFLICT_MAP: Record<number, number> = Object.freeze({
-    1383: 3919,
-    1450: 2363,
-    1582: 3525,
-    1583: 3398,
-    1623: 3117,
-    1649: 2837,
-    1665: 4020,
-    1765: 2574,
-    1810: 2544,
-    1933: 2972,
-    2100: 3040,
-    2236: 2862,
-});
+export const CONFIRMED_USER_MAP: Record<number, number> = Object.freeze({});
+export const USERNAME_CONFLICT_MAP: Record<number, number> = Object.freeze({});
 
 export const CONFIRMED_DECISIONS = Object.freeze({
     manualUserMappings: CONFIRMED_USER_MAP,
     usernameConflictMappings: USERNAME_CONFLICT_MAP,
+    identityPolicy: {
+        match: 'exact-normalized-email-only',
+        emailNormalization: 'trim-and-lowercase',
+        rejectIdentityDomain: 'test.com',
+        usernameMatching: false,
+        usernameConflictMatching: false,
+        newUsernameSuffix: '_exam',
+        conflictingEmailAction: 'new-account-with-reserved-placeholder',
+    },
     problemReferences: {
         P11: { domainId: 'oler', pid: 1 },
         P12: { domainId: 'oler', pid: 2 },
@@ -130,7 +96,7 @@ export interface SourceUser {
 
 export interface TargetUser extends SourceUser { }
 
-export type IdentityMethod = 'manual' | 'username-conflict' | 'username' | 'email' | 'new';
+export type IdentityMethod = 'email' | 'new';
 
 export interface IdentityDecision {
     sourceUid: number;
@@ -142,14 +108,13 @@ export interface IdentityDecision {
     sourceMail?: string;
     targetMail?: string;
     alias?: boolean;
+    emailConflict?: boolean;
     note?: string;
 }
 
 export interface IdentityOptions {
-    manualMap?: Record<number, number>;
-    conflictMap?: Record<number, number>;
-    /** Allow a source identity that exactly aliases a confirmed target. */
-    allowAliases?: boolean;
+    /** Reserved for forward-compatible policy flags; no username matching is allowed. */
+    allowAliases?: never;
 }
 
 export interface ProblemReference {
@@ -425,24 +390,30 @@ export function normalizeUsername(value: unknown): string {
 }
 
 /**
- * Match Hydro's mail lookup normalization, while explicitly rejecting the
- * synthetic @test.com addresses that were not approved as identity evidence.
+ * Normalize an e-mail only for identity matching.  The current policy is
+ * deliberately conservative: trim and lowercase only.  Plus tags, dots in
+ * local parts, and googlemail/gmail aliases are not identity evidence.
  */
 export function normalizeIdentityEmail(value: unknown): string | null {
     const raw = String(value ?? '').trim().toLowerCase();
     if (!raw || /\s/.test(raw)) return null;
     const at = raw.lastIndexOf('@');
     if (at <= 0 || at === raw.length - 1 || raw.indexOf('@') !== at) return null;
-    const local = raw.slice(0, at);
     const domain = raw.slice(at + 1);
     if (!/^[^@.]+(?:\.[^@.]+)*$/.test(domain)) return null;
     if (domain === 'test.com') return null;
-    const withoutPlus = local.split('+', 1)[0];
-    if (!withoutPlus) return null;
-    const canonicalDomain = domain === 'googlemail.com' ? 'gmail.com' : domain;
-    const canonicalLocal = withoutPlus.replace(/\./g, '');
-    if (!canonicalLocal) return null;
-    return `${canonicalLocal}@${canonicalDomain}`;
+    return raw;
+}
+
+/** Normalize a stored e-mail for uniqueness checks, including @test.com. */
+function normalizeStoredEmail(value: unknown): string | null {
+    const raw = String(value ?? '').trim().toLowerCase();
+    if (!raw || /\s/.test(raw)) return null;
+    const at = raw.lastIndexOf('@');
+    if (at <= 0 || at === raw.length - 1 || raw.indexOf('@') !== at) return null;
+    const domain = raw.slice(at + 1);
+    if (!/^[^@.]+(?:\.[^@.]+)*$/.test(domain)) return null;
+    return raw;
 }
 
 function indexBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
@@ -457,126 +428,77 @@ function indexBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
     return index;
 }
 
-/** Resolve the confirmed identity precedence without touching a database. */
+/** Resolve identities using only a non-test.com e-mail match. */
 export function resolveIdentities(
     sourceUsers: SourceUser[], targetUsers: TargetUser[], options: IdentityOptions = {},
 ): IdentityDecision[] {
-    const manualMap = options.manualMap || CONFIRMED_USER_MAP;
-    const conflictMap = options.conflictMap || USERNAME_CONFLICT_MAP;
-    const byUid = new Map(targetUsers.map((user) => [Number(user._id), user]));
-    const byName = indexBy(targetUsers, (user) => normalizeUsername(user.unameLower || user.uname));
+    void options;
     const byMail = indexBy(targetUsers, (user) => normalizeIdentityEmail(user.mailLower || user.mail) || '');
-    // Reserve explicitly confirmed targets before resolving ordinary
-    // username/e-mail matches, so an earlier source UID cannot claim a
-    // target that a later manual decision must use.
-    const reservedTarget = new Set<number>();
-    const confirmedSourcesByTarget = new Map<number, number[]>();
-    const sourceIds = new Set(sourceUsers.map((user) => Number(user._id)));
-    for (const mapping of [manualMap, conflictMap]) {
-        for (const [source, target] of Object.entries(mapping)) {
-            if (!sourceIds.has(Number(source))) continue;
-            const targetUid = Number(target);
-            if (!byUid.has(targetUid)) {
-                throw new Error(`确认的用户映射不存在目标用户: ${source} -> ${target}`);
-            }
-            reservedTarget.add(targetUid);
-            const sources = confirmedSourcesByTarget.get(targetUid) || [];
-            sources.push(Number(source));
-            confirmedSourcesByTarget.set(targetUid, sources);
-        }
-    }
+    const byStoredMail = indexBy(targetUsers, (user) => normalizeStoredEmail(user.mailLower || user.mail) || '');
     const usedTarget = new Set<number>();
     const existingMax = targetUsers.reduce((max, user) => Math.max(max, Number(user._id) || 0), 0);
     let nextUid = existingMax + 1;
     const decisions: IdentityDecision[] = [];
     const plannedNames = new Set<string>();
-    const plannedEmails = new Set<string>();
+    const plannedEmails = new Set<string>(targetUsers
+        .map((user) => normalizeStoredEmail(user.mailLower || user.mail))
+        .filter((value): value is string => !!value));
     const sorted = [...sourceUsers].sort((a, b) => Number(a._id) - Number(b._id));
-
-    const chooseOne = (candidates: TargetUser[], source: SourceUser, method: IdentityMethod) => {
-        const sourceUid = Number(source._id);
-        const sourceName = normalizeUsername(source.unameLower || source.uname);
-        const sourceMail = normalizeIdentityEmail(source.mailLower || source.mail);
-        const available = candidates.filter((candidate) => {
-            const candidateUid = Number(candidate._id);
-            const candidateName = normalizeUsername(candidate.unameLower || candidate.uname);
-            const candidateMail = normalizeIdentityEmail(candidate.mailLower || candidate.mail);
-            const exact = (sourceName && sourceName === candidateName) || (sourceMail && sourceMail === candidateMail);
-            if (usedTarget.has(candidateUid)) return !!options.allowAliases && !!exact;
-            if (!reservedTarget.has(candidateUid)) return true;
-            if (!options.allowAliases || !confirmedSourcesByTarget.has(candidateUid)) return false;
-            return !!exact;
-        });
-        if (available.length > 1) {
-            throw new Error(`身份判定不唯一: source uid ${sourceUid} has ${available.length} ${method} candidates`);
-        }
-        return available[0];
-    };
 
     for (const source of sorted) {
         const sourceUid = Number(source._id);
-        let target: TargetUser | undefined;
-        let method: IdentityMethod;
+        const sourceMail = normalizeIdentityEmail(source.mailLower || source.mail);
+        const sourceStoredMail = normalizeStoredEmail(source.mailLower || source.mail);
+        const candidates = sourceMail ? (byMail.get(sourceMail) || []) : [];
+        if (candidates.length > 1) {
+            throw new Error(`邮箱身份判定不唯一: source uid ${sourceUid} has ${candidates.length} candidates`);
+        }
+        const target = candidates.length === 1 && !usedTarget.has(Number(candidates[0]._id)) ? candidates[0] : undefined;
+        const emailConflict = !!sourceStoredMail && (byStoredMail.has(sourceStoredMail) || plannedEmails.has(sourceStoredMail));
+        let method: IdentityMethod = target ? 'email' : 'new';
+        let targetUid: number;
+        let targetUname: string | undefined;
+        let targetMail: string | undefined;
         let note = '';
-        let alias = false;
-
-        if (Object.hasOwn(manualMap, sourceUid)) {
-            target = byUid.get(Number(manualMap[sourceUid]));
-            if (!target) throw new Error(`确认的用户映射不存在目标用户: ${sourceUid} -> ${manualMap[sourceUid]}`);
-            method = 'manual';
-        } else if (Object.hasOwn(conflictMap, sourceUid)) {
-            target = byUid.get(Number(conflictMap[sourceUid]));
-            if (!target) throw new Error(`确认的用户名冲突映射不存在目标用户: ${sourceUid} -> ${conflictMap[sourceUid]}`);
-            method = 'username-conflict';
-            note = 'username wins over normalized email';
+        if (target) {
+            targetUid = Number(target._id);
+            targetUname = target.uname;
+            targetMail = target.mail;
+            usedTarget.add(targetUid);
+            note = '唯一依据：非 @test.com 的规范化邮箱完全相同';
         } else {
-            const sourceName = normalizeUsername(source.unameLower || source.uname);
-            target = chooseOne(byName.get(sourceName) || [], source, 'username');
-            if (target) {
-                method = 'username';
-                alias = reservedTarget.has(Number(target._id)) || usedTarget.has(Number(target._id));
-            } else {
-                const sourceMail = normalizeIdentityEmail(source.mailLower || source.mail);
-                target = sourceMail ? chooseOne(byMail.get(sourceMail) || [], source, 'email') : undefined;
-                if (target) {
-                    method = 'email';
-                    alias = reservedTarget.has(Number(target._id)) || usedTarget.has(Number(target._id));
-                } else {
-                    method = 'new';
-                    if (sourceName && ((byName.get(sourceName) || []).length || plannedNames.has(sourceName))) {
-                        throw new Error(`新用户用户名会发生唯一性冲突: ${source.uname}`);
-                    }
-                    const sourceStoredMail = String(source.mailLower || source.mail || '').trim().toLowerCase();
-                    const sourceMailKey = sourceMail || sourceStoredMail;
-                    if (sourceMailKey && (plannedEmails.has(sourceMailKey)
-                        || (sourceMail && (byMail.get(sourceMail) || []).length)
-                        || targetUsers.some((user) => String(user.mailLower || user.mail || '').trim().toLowerCase() === sourceStoredMail))) {
-                        throw new Error(`新用户邮箱会发生唯一性冲突: ${source.mail || source.mailLower}`);
-                    }
-                    if (sourceName) plannedNames.add(sourceName);
-                    if (sourceMailKey) plannedEmails.add(sourceMailKey);
-                    while (byUid.has(nextUid) || usedTarget.has(nextUid)) nextUid++;
-                    target = undefined;
-                }
+            targetUname = `${source.uname || `user_${sourceUid}`}_exam`;
+            const targetNameKey = normalizeUsername(targetUname);
+            if (!targetNameKey || plannedNames.has(targetNameKey)
+                || targetUsers.some((user) => normalizeUsername(user.unameLower || user.uname) === targetNameKey)) {
+                throw new Error(`新用户用户名会发生唯一性冲突: ${targetUname}`);
             }
+            plannedNames.add(targetNameKey);
+            while (targetUsers.some((user) => Number(user._id) === nextUid) || usedTarget.has(nextUid)) nextUid++;
+            targetUid = nextUid++;
+            targetMail = sourceStoredMail && !emailConflict
+                ? sourceStoredMail
+                : `exam-${sourceUid}-${targetUid}@invalid.exam`;
+            let placeholderIndex = 1;
+            while (plannedEmails.has(targetMail)) {
+                targetMail = `exam-${sourceUid}-${targetUid}-${placeholderIndex++}@invalid.exam`;
+            }
+            plannedEmails.add(targetMail);
+            if (emailConflict) note = '邮箱已存在或为 @test.com 冲突值，账号不合并，改用迁移占位邮箱';
+            else if (!sourceStoredMail) note = '源邮箱无效或为空，使用迁移占位邮箱';
+            else note = '未找到可确认的非 @test.com 邮箱，创建独立账号';
         }
-
-        const targetUid = target ? Number(target._id) : nextUid++;
-        if (usedTarget.has(targetUid) && !alias) {
-            throw new Error(`多个源用户映射到同一目标用户: target uid ${targetUid}`);
-        }
-        if (!alias) usedTarget.add(targetUid);
         decisions.push({
             sourceUid,
             targetUid,
             method,
-            created: method === 'new',
+            created: !target,
             sourceUname: source.uname,
-            targetUname: target?.uname,
+            targetUname,
             sourceMail: source.mail,
-            targetMail: target?.mail,
-            ...(alias ? { alias: true } : {}),
-            ...(alias ? { note: 'exact identity alias of a confirmed target mapping' } : note ? { note } : {}),
+            targetMail,
+            ...(emailConflict && !target ? { emailConflict: true } : {}),
+            ...(note ? { note } : {}),
         });
     }
     return decisions;
@@ -1536,7 +1458,7 @@ export async function analyzeExamPackage(options: CommandOptions = {}): Promise<
         const defaultUserPriv = target.defaultUserPriv;
         const targetUsers = await db.collection<any>('user').find({}).toArray();
         const sourceUsers = docs.user || [];
-        const identities = resolveIdentities(sourceUsers, targetUsers, { allowAliases: !!options.mergeExisting });
+        const identities = resolveIdentities(sourceUsers, targetUsers);
         const users = identityMap(identities);
         const targetProblems = await db.collection<any>('document').find({ docType: 10 }).toArray();
         const targetDomains = await db.collection<any>('domain').find({}).toArray();
@@ -1880,7 +1802,13 @@ function mapStorageDocument(
 }
 
 function mapNewUser(original: any, decision: IdentityDecision, defaultUserPriv: number): any {
-    const user = { ...original, _id: decision.targetUid };
+    const user = {
+        ...original,
+        _id: decision.targetUid,
+        uname: decision.targetUname || `${original.uname || `user_${decision.sourceUid}`}_exam`,
+        mail: decision.targetMail,
+        mailLower: decision.targetMail,
+    };
     delete user.domains;
     delete user.pinnedDomains;
     delete user.perm;
@@ -1889,8 +1817,6 @@ function mapNewUser(original: any, decision: IdentityDecision, defaultUserPriv: 
     // declarations pointing at source UID paths that were not copied.
     user._files = [];
     user.unameLower = normalizeUsername(user.uname);
-    user.mailLower = normalizeIdentityEmail(user.mailLower || user.mail)
-        || String(user.mailLower || user.mail || '').trim().toLowerCase();
     if (typeof user.avatar === 'string' && user.avatar.startsWith(`url:/file/${original._id}/`)) {
         user.avatar = `gravatar:${user.mail}`;
     }

@@ -43,7 +43,7 @@ node -r @hydrooj/register packages/migrate/bin/exam-migrate.js analyze \
 历史引用同步改写。源端父对象不存在的孤立答疑不会导入，会在 `plan.json` 的
 `excludedDocuments` 和 `audit.jsonl` 中列明，避免制造悬空引用。
 
-`plan.json` 保存目标指纹、身份判定、题目复用/实体化判定、ObjectId 和存储路径映射、预期数量、排除报告和 `planHash`。用户身份顺序固定为：已确认映射、`unameLower`、规范化有效邮箱（`@test.com` 无效）、新用户。计划中的 27 组人工映射、12 组用户名冲突、8 个健康题目引用和悬空 `test`/`oler` 引用规则都可审计。
+`plan.json` 保存目标指纹、身份判定、题目复用/实体化判定、ObjectId 和存储路径映射、预期数量、排除报告和 `planHash`。当前身份规则只有一条自动合并路径：源、目标的非 `@test.com` 邮箱在 trim+小写后完全相同；不再使用人工映射、用户名匹配或用户名冲突规则。其余源账号均创建独立的 `<源用户名>_exam` 账号；邮箱已占用、`@test.com` 冲突或无效时使用逐 UID 唯一的 `@invalid.exam` 占位邮箱，并在计划中保留原邮箱供后续人工关联。8 个已知 `@test.com` 冲突账号因此不会自动合并。题目的 8 个健康引用和悬空 `test`/`oler` 引用规则仍可审计。
 
 题目复用会额外记录源/目标测试文件名差异；差异只进入审计，不参与同题判定。
 
