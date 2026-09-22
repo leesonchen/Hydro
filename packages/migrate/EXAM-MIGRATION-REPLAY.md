@@ -6,19 +6,20 @@
 
 ## 当前轮次的真实状态
 
-- 本轮源包为 `migration-runs/exam-export-20260921-0915/`，已在恢复后的
-  `hydro2` 目标上以 `--merge-existing` 完成应用和验证。
-- `packageHash`：`7ac89c9ab75dd07ee739930420b8cd90a4d379ed5fea54649155945618db1387`。
-  最终 `planHash`：`aa55b7b570755294533a4811ded0a0e865d226bd7ef209940aa202bbe4c658ae`。
-  目标分析指纹：`b44e3ca25697f4ac8b4afefbd3bf786cfb9c927d3eac9cb3c1ab0af1addca45f`。
-- 第一次 apply 因源端 10 条孤立答疑的父比赛不存在而验证失败，已按清单完整回滚；
-  修正为审计排除后第二次 apply 成功。两次过程均保留在 `audit.jsonl`。
-- 最终 `verify-report.json` 为 `ok: true`、引用检查 98,975 项、文件检查 788 项、
-  用户名/有效邮箱重复均为 0；`hydrooj` 已重新启动。
-- 通过的检查：TypeScript 构建、exam 纯测试、exam 文件 ESLint、dry-run、正式
-  apply/verify、exam 首页/题目/比赛入口 HTTP 抽查。完整 `npm test` 的两个失败属于
-  既有测试，与本迁移无关：`Exports files from referenced problems using source-domain
-  permissions` 和 `Does not expose hidden OI results through global problem status views`。
+- 本轮使用 37017 生产环境的不可变源包
+  `migration-runs/exam-export-37017-20260922-r2/`；针对恢复后的本地
+  `hydro2` 目标生成的分析、应用和验证产物位于
+  `migration-runs/exam-export-37017-20260922-r3/`，使用了 `--merge-existing`。
+- `packageHash`：`7a6c3ac59522b67b9413607b8693939f7263d4df7732045a8e6784cdf4a70dd2`。
+  最终 `planHash`：`e1fb98451be57c5dd87589299c922fb61e6940b0e262fa969227a58e88f4a147`。
+  本地目标分析指纹：`f772e2f8f205b19a03802c2cd66056971b26bea38aa7d07e3324b57dc9ad0da3`。
+- 旧计划因目标指纹变化被安全拒绝，未产生写入；重新 `analyze` 后才完成 dry-run、
+  apply 和 verify。旧计划与本轮命令记录均保留在各自审计目录中。
+- 最终 `verify-report.json` 为 `ok: true`：675 项引用检查、7 个比赛附件的容器内
+  SHA-256 已单独抽查、用户名/有效邮箱重复均为 0；本地 `hydrooj` 已重新启动。
+  本轮生产环境仍未执行任何写操作。
+- 已通过：exam 纯测试、dry-run、正式 apply/verify，以及 exam 首页、题目、比赛入口
+  和成绩表页面抽查；测试账号登录成功，浏览器控制台错误为 0。
 
 ## 已确认的迁移输入（用于复核，不替代包内计数）
 
@@ -39,14 +40,15 @@
 | 题目判定 | 8 个确认引用，107 个实体化 |
 | 私有用户文件 | 声明 89 个，其中 50 个源端缺失；均不迁移并记录到排除报告 |
 
-本轮合并后的目标计数（以 `verify-report.json` 为准）：4,576 用户、849 个 exam
-成员、2 个用户组、159 个文档（117 题、13 场比赛、14 篇题解、15 条有父对象的
-答疑）、12,993 条提交、8,532 条状态、4,559 条统计、1,882 条历史和 795 条存储
-元数据。原有 17 道题、2 场比赛、6 条提交和 8 条状态均保留。
+本轮 37017 合并后的目标计数（以 `verify-report.json` 为准）：4,082 个用户、18 个
+exam 成员、19 个文档、37 条状态、63 条提交、31 条统计和 7 条存储元数据；目标原有
+exam 数据均保留。源端 19 个用户中新增 3 个目标用户，新增 8 个 exam 成员；17 道题
+和 2 场比赛均安全复用，没有重复创建。
 
-计划判定为 530 个新用户、4 个精确身份别名、15 个题目复用、8 个健康外部引用、
-92 个题目实体化；生产 11 场比赛均因题目集合或时间与本地对象不完全相同而新增。
-10 条源端父比赛缺失的答疑记录写入 `plan.json.excludedDocuments`，未导入。
+源包清单为 19 个用户、18 个域成员、17 道题、2 场比赛、46 条提交、37 条状态、22
+条统计和 7 个比赛附件。计划、应用和验证的精确阶段计数以本轮 `r3/plan.json`、
+`r3/apply.json` 和 `r3/verify-report.json` 为准，不要把旧 20260921 演练的计数带入
+新的目标分析。
 
 确认的用户映射、12 组用户名冲突、8 个健康题目引用和 `@test.com` 规则都已经是
 代码中的唯一来源：
