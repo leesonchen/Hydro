@@ -319,6 +319,78 @@ export interface VerifyReport {
     errors: string[];
 }
 
+export interface MergeReport {
+    schemaVersion: number;
+    runId: string;
+    generatedAt: string;
+    packageHash: string;
+    planHash: string;
+    targetBeforeHash: string;
+    verification: { ok: boolean; errors: string[] };
+    identities: Array<{
+        sourceUid: number;
+        targetUid: number;
+        username: string;
+        targetUsername: string;
+        method: IdentityMethod;
+        result: 'created' | 'reused';
+        alias?: boolean;
+        examMember: boolean;
+        systemMember: boolean;
+        email: string;
+        targetEmail: string;
+        records: number;
+        statuses: number;
+        statistics: number;
+    }>;
+    contests: Array<{
+        sourceObjectId: string;
+        targetObjectId: string;
+        title: string;
+        action: ContestDecision['action'];
+        sourcePids: Array<number | string>;
+        targetPids: Array<number | string>;
+        sourceStatusCount: number;
+        targetStatusCount: number;
+        sourceRecordCount: number;
+        targetRecordCount: number;
+        attachmentCount: number;
+        referencesRewritten: boolean;
+    }>;
+    problems: Array<{
+        sourcePid: string;
+        sourceTitle: string;
+        targetDomainId: string;
+        targetPid: number | string;
+        targetDocId?: number | string;
+        action: ProblemAction;
+        reason: ProblemDecision['reason'];
+        comparison: 'equivalent' | 'different' | 'unavailable';
+        sourceFiles: string[];
+        targetFiles: string[];
+        attachmentCount: number;
+        filesIncluded: boolean;
+        excluded: boolean;
+    }>;
+    statusCollisions: Array<{
+        docType: number;
+        docId: string;
+        targetUid: number;
+        sourceUids: number[];
+    }>;
+    summary: {
+        identityMethods: Record<string, number>;
+        problemActions: Record<string, number>;
+        contestActions: Record<string, number>;
+        excludedDocuments: number;
+        excludedFiles: number;
+        statusCollisionCount: number;
+        sourceCounts: Record<string, number>;
+        expectedCounts: Record<string, number>;
+        actualCounts: Record<string, number>;
+    };
+}
+
 const UID_KEYS = new Set([
     'uid', 'owner', 'editor', 'operator', 'sent', 'from', 'to', 'teachers', 'students',
     'uids', 'maintainer', 'extraStudents', 'author', 'processer', 'judger',
@@ -950,6 +1022,9 @@ async function hashPackageDirectory(directory: string): Promise<string> {
             if (relative === 'manifest.json' || relative === 'plan.json' || relative === 'apply.json'
                 || relative === 'verify-report.json' || relative === 'rollback.json'
                 || relative === 'verify-summary.txt' || relative === 'package.sha256'
+                || relative === 'merge-report.json' || relative === 'merge-report.sha256'
+                || relative === 'merge-summary.md'
+                || relative === 'browser-regression.json'
                 || relative === 'audit.jsonl' || relative === 'commands.jsonl') continue;
             if (entry.isDirectory()) await visit(full);
             else files.push(relative);
@@ -2100,6 +2175,271 @@ export async function applyExamPackage(options: ApplyOptions = {}): Promise<Appl
 
 function addError(errors: string[], message: string) {
     if (!errors.includes(message)) errors.push(message);
+}
+
+function redactEmailForReport(value: unknown): string {
+    const email = String(value ?? '').trim();
+    const at = email.lastIndexOf('@');
+    if (at <= 0 || at === email.length - 1) return '';
+    return `${email.slice(0, 1)}***@${email.slice(at + 1)}`;
+}
+
+function containsExactValue(value: any, candidates: Set<string>): boolean {
+    if (value instanceof ObjectId || (isBsonValue(value) && value._bsontype === 'ObjectId')) {
+        return candidates.has(value.toHexString());
+    }
+    if (typeof value === 'string') return candidates.has(value);
+    if (Array.isArray(value)) return value.some((item) => containsExactValue(item, candidates));
+    if (value && typeof value === 'object' && !(value instanceof Date) && !isBsonValue(value)) {
+        return Object.values(value).some((child) => containsExactValue(child, candidates));
+    }
+    return false;
+}
+
+function markdownCell(value: unknown): string {
+    return String(value ?? '').replace(/[|\r\n]/g, ' ');
+}
+
+/**
+ * Write an auditable account/contest/problem merge report after verification.
+ * The report is deliberately separate from the immutable package payload and
+ * is excluded from packageHash calculation.
+ */
+export async function generateMergeReport(options: CommandOptions = {}): Promise<MergeReport> {
+    const runDir = path.resolve(options.runDir || options.packageDir || '');
+    assert(runDir, 'report 需要 --package 或 --run-dir');
+    assert(options.targetUri, 'report 需要 --target-uri 或 HYDRO_EXAM_TARGET_URI');
+    const plan = await readJson<MigrationPlan>(path.join(runDir, 'plan.json'));
+    assert(plan.schemaVersion === MIGRATION_SCHEMA_VERSION && plan.kind === 'hydro.exam-migration-plan', '不是有效的 exam 迁移计划');
+    assert(computePlanHash(plan) === plan.planHash, 'plan.json 自身哈希不一致');
+    const manifest = await loadManifest(runDir);
+    assert(manifest.packageHash === plan.packageHash, '计划和迁移包哈希不一致');
+    const docs = await loadPackageCollections(runDir, manifest);
+    const verification = await readJson<VerifyReport>(path.join(runDir, 'verify-report.json'));
+    assert(verification.runId === plan.runId, '验证报告和计划 run-id 不一致');
+    assert(verification.applied, '尚未完成正式 apply，不能生成合并报告');
+    const client = await MongoClient.connect(options.targetUri);
+    try {
+        const db = client.db(options.targetDatabase || undefined);
+        const targetDomain = plan.domainId;
+        const targetUsers = await db.collection<any>('user').find({}).project({ _id: 1, uname: 1, mail: 1 }).toArray();
+        const targetUserById = new Map(targetUsers.map((user) => [Number(user._id), user]));
+        const sourceRecords = docs.record || [];
+        const sourceStatuses = docs['document.status'] || [];
+        const sourceStats = docs['record.stat'] || [];
+        const countByUid = (items: any[]) => {
+            const result = new Map<number, number>();
+            for (const item of items) {
+                const uid = Number(item.uid);
+                if (Number.isFinite(uid)) result.set(uid, (result.get(uid) || 0) + 1);
+            }
+            return result;
+        };
+        const sourceRecordCounts = countByUid(sourceRecords);
+        const sourceStatusCounts = countByUid(sourceStatuses);
+        const sourceStatCounts = countByUid(sourceStats);
+        const mappedUsers = identityMap(plan.identities);
+        const statusCollisionMap = new Map<string, { docType: number; docId: string; targetUid: number; sourceUids: Set<number> }>();
+        for (const status of sourceStatuses) {
+            const sourceUid = Number(status.uid);
+            const targetUid = mappedUsers.get(sourceUid) ?? sourceUid;
+            if (!Number.isFinite(sourceUid) || !Number.isFinite(targetUid)) continue;
+            const docType = Number(status.docType);
+            const docId = ejsonKey(status.docId);
+            const key = `${docType}:${docId}:${targetUid}`;
+            const entry = statusCollisionMap.get(key) || { docType, docId, targetUid, sourceUids: new Set<number>() };
+            entry.sourceUids.add(sourceUid);
+            statusCollisionMap.set(key, entry);
+        }
+        const statusCollisions = [...statusCollisionMap.values()]
+            .filter((item) => item.sourceUids.size > 1)
+            .map((item) => ({ ...item, sourceUids: [...item.sourceUids].sort((a, b) => a - b) }))
+            .sort((a, b) => `${a.docType}:${a.docId}:${a.targetUid}`.localeCompare(`${b.docType}:${b.docId}:${b.targetUid}`));
+        const identities: MergeReport['identities'] = [];
+        for (const decision of plan.identities) {
+            const target = targetUserById.get(decision.targetUid);
+            identities.push({
+                sourceUid: decision.sourceUid,
+                targetUid: decision.targetUid,
+                username: decision.sourceUname,
+                targetUsername: target?.uname || decision.targetUname || '',
+                method: decision.method,
+                result: decision.created ? 'created' as const : 'reused' as const,
+                alias: decision.alias,
+                examMember: !!(await db.collection<any>('domain.user').findOne({ domainId: targetDomain, uid: decision.targetUid })),
+                systemMember: !!(await db.collection<any>('domain.user').findOne({ domainId: 'system', uid: decision.targetUid })),
+                email: redactEmailForReport(decision.sourceMail),
+                targetEmail: redactEmailForReport(target?.mail || decision.targetMail),
+                records: sourceRecordCounts.get(decision.sourceUid) || 0,
+                statuses: sourceStatusCounts.get(decision.sourceUid) || 0,
+                statistics: sourceStatCounts.get(decision.sourceUid) || 0,
+            });
+        }
+
+        const contests: MergeReport['contests'] = [];
+        for (const source of (docs.document || []).filter((doc) => doc.docType === 30)) {
+            const sourceObject = getObjectId(source._id || source.docId);
+            if (!sourceObject) continue;
+            const sourceObjectId = sourceObject.toHexString();
+            const decision = plan.contests.find((item) => item.sourceDocId === sourceObjectId);
+            if (!decision) continue;
+            const targetObject = getObjectId(decision.targetObjectId);
+            const target = targetObject ? await db.collection<any>('document').findOne({
+                domainId: targetDomain, docType: 30, _id: targetObject,
+            }) : null;
+            const sourceStatusCount = sourceStatuses.filter((status) => status.docType === 30
+                && ejsonKey(status.docId) === ejsonKey(source.docId)).length;
+            const targetStatusCount = target ? await db.collection<any>('document.status').countDocuments({
+                domainId: targetDomain, docType: 30, docId: target.docId,
+            }) : 0;
+            const sourceRecordCount = sourceRecords.filter((record) => containsExactValue(record, new Set([sourceObjectId]))).length;
+            const targetRecords = await db.collection<any>('record').find({ domainId: targetDomain }).toArray();
+            const targetRecordCount = targetRecords.filter((record) => target && containsExactValue(record, new Set([decision.targetObjectId]))).length;
+            const targetStatuses = target ? await db.collection<any>('document.status').find({
+                domainId: targetDomain, docType: 30, docId: target.docId,
+            }).toArray() : [];
+            const referencesRewritten = !!target
+                && !targetRecords.some((record) => containsExactValue(record, new Set([sourceObjectId])))
+                && !targetStatuses.some((status) => containsExactValue(status, new Set([sourceObjectId])));
+            contests.push({
+                sourceObjectId,
+                targetObjectId: decision.targetObjectId,
+                title: String(source.title || target?.title || ''),
+                action: decision.action,
+                sourcePids: [...(source.pids || [])],
+                targetPids: [...(target?.pids || source.pids || [])],
+                sourceStatusCount,
+                targetStatusCount,
+                sourceRecordCount,
+                targetRecordCount,
+                attachmentCount: manifest.files.filter((file) => file.included
+                    && file.sourcePath.startsWith(`contest/${targetDomain}/${sourceObjectId}/`)).length,
+                referencesRewritten,
+            });
+        }
+
+        const problems: MergeReport['problems'] = [];
+        for (const source of (docs.document || []).filter((doc) => doc.docType === 10)) {
+            const decision = plan.problems.find((item) => item.sourceDocId === Number(source.docId));
+            if (!decision) continue;
+            const target = await db.collection<any>('document').findOne({
+                domainId: decision.targetDomainId,
+                docType: 10,
+                ...(decision.targetDocId !== undefined
+                    ? { docId: decision.targetDocId }
+                    : { pid: decision.targetPid }),
+            });
+            const comparison = target ? (problemEquivalent(source, target) ? 'equivalent' : 'different') : 'unavailable';
+            const sourceFiles = problemFileNames(source);
+            const targetFiles = problemFileNames(target);
+            const prefix = `problem/${targetDomain}/${source.docId}/`;
+            const alternatePrefix = `problem/${targetDomain}/${source.pid}/`;
+            const attachments = manifest.files.filter((file) => file.included
+                && (file.sourcePath.startsWith(prefix) || file.sourcePath.startsWith(alternatePrefix)));
+            problems.push({
+                sourcePid: decision.sourcePid,
+                sourceTitle: String(source.title || ''),
+                targetDomainId: decision.targetDomainId,
+                targetPid: decision.targetPid,
+                targetDocId: decision.targetDocId,
+                action: decision.action,
+                reason: decision.reason,
+                comparison,
+                sourceFiles,
+                targetFiles,
+                attachmentCount: attachments.length,
+                filesIncluded: attachments.length > 0 || !decision.sourceHasFiles,
+                excluded: false,
+            });
+        }
+
+        const actualCounts = Object.fromEntries(Object.entries(verification.counts).map(([key, value]) => [key, value.actual]));
+        const identityMethods = identities.reduce((result, item) => {
+            result[item.method] = (result[item.method] || 0) + 1;
+            return result;
+        }, {} as Record<string, number>);
+        const problemActions = problems.reduce((result, item) => {
+            result[item.action] = (result[item.action] || 0) + 1;
+            return result;
+        }, {} as Record<string, number>);
+        const contestActions = contests.reduce((result, item) => {
+            result[item.action] = (result[item.action] || 0) + 1;
+            return result;
+        }, {} as Record<string, number>);
+        const report: MergeReport = {
+            schemaVersion: MIGRATION_SCHEMA_VERSION,
+            runId: plan.runId,
+            generatedAt: new Date().toISOString(),
+            packageHash: plan.packageHash,
+            planHash: plan.planHash!,
+            targetBeforeHash: plan.targetBefore.hash,
+            verification: { ok: verification.ok, errors: verification.errors },
+            identities,
+            contests,
+            problems,
+            statusCollisions,
+            summary: {
+                identityMethods,
+                problemActions,
+                contestActions,
+                excludedDocuments: plan.excludedDocuments.length,
+                excludedFiles: plan.excludedFiles.length,
+                statusCollisionCount: statusCollisions.length,
+                sourceCounts: manifest.counts,
+                expectedCounts: plan.expectedCounts,
+                actualCounts,
+            },
+        };
+        const reportJson = `${JSON.stringify(report, null, 2)}\n`;
+        await writePrivateFile(path.join(runDir, 'merge-report.json'), reportJson);
+        await writePrivateFile(path.join(runDir, 'merge-report.sha256'), `${sha256(reportJson)}\n`);
+        const lines = [
+            '# exam 合并结果报告', '',
+            `- run-id: ${report.runId}`,
+            `- packageHash: ${report.packageHash}`,
+            `- planHash: ${report.planHash}`,
+            `- targetBeforeHash: ${report.targetBeforeHash}`,
+            `- verify: ${report.verification.ok ? 'ok' : 'failed'}`,
+            '', '## 账户合并', '',
+            '| 源 UID | 目标 UID | 用户名 | 方法 | 结果 | exam | system | 提交 | 状态 | 统计 |',
+            '| ---: | ---: | --- | --- | --- | --- | --- | ---: | ---: | ---: |',
+            ...identities.map((item) => `| ${item.sourceUid} | ${item.targetUid} | ${markdownCell(item.username)} | ${item.method} | ${item.result} | ${item.examMember ? '是' : '否'} | ${item.systemMember ? '是' : '否'} | ${item.records} | ${item.statuses} | ${item.statistics} |`),
+            '', '## 比赛合并', '',
+            '| 源 ObjectId | 目标 ObjectId | 标题 | 方式 | 源题目 | 目标题目 | 源状态 | 目标状态 | 附件 | 引用重写 |',
+            '| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |',
+            ...contests.map((item) => `| ${item.sourceObjectId} | ${item.targetObjectId} | ${markdownCell(item.title)} | ${item.action} | ${item.sourcePids.join(', ')} | ${item.targetPids.join(', ')} | ${item.sourceStatusCount} | ${item.targetStatusCount} | ${item.attachmentCount} | ${item.referencesRewritten ? '是' : '否'} |`),
+            '', '## 题目合并', '',
+            '| 源 PID | 标题 | 目标域 | 目标 PID | 方式 | 原因 | 配置比较 | 附件 | 文件完整 |',
+            '| --- | --- | --- | --- | --- | --- | --- | ---: | --- |',
+            ...problems.map((item) => `| ${markdownCell(item.sourcePid)} | ${markdownCell(item.sourceTitle)} | ${item.targetDomainId} | ${item.targetPid} | ${item.action} | ${item.reason} | ${item.comparison} | ${item.attachmentCount} | ${item.filesIncluded ? '是' : '否'} |`),
+            '', '## 汇总', '',
+            `- 账户映射：${JSON.stringify(identityMethods)}`,
+            `- 题目处理：${JSON.stringify(problemActions)}`,
+            `- 比赛处理：${JSON.stringify(contestActions)}`,
+            `- 排除文档：${plan.excludedDocuments.length}`,
+            `- 排除文件：${plan.excludedFiles.length}`,
+            '', '## 成绩自然键碰撞', '',
+            '| docType | docId | 目标 UID | 源 UID |',
+            '| ---: | --- | ---: | --- |',
+            ...statusCollisions.map((item) => `| ${item.docType} | ${item.docId} | ${item.targetUid} | ${item.sourceUids.join(', ')} |`),
+            `- 成绩自然键碰撞数：${statusCollisions.length}`,
+            `- 源集合计数：${JSON.stringify(manifest.counts)}`,
+            `- 计划计数：${JSON.stringify(plan.expectedCounts)}`,
+            `- 实际计数：${JSON.stringify(actualCounts)}`,
+            '', '排除文档和文件的详细原因见 `plan.json`、`manifest.json` 与 `audit.jsonl`。', '',
+        ];
+        await writePrivateFile(path.join(runDir, 'merge-summary.md'), `${lines.join('\n')}\n`);
+        await writeAudit(runDir, 'merge-report.complete', {
+            identities: identities.length,
+            contests: contests.length,
+            problems: problems.length,
+            packageHash: report.packageHash,
+            planHash: report.planHash,
+        });
+        return report;
+    } finally {
+        await client.close();
+    }
 }
 
 function isSpecialContestId(value: any): boolean {

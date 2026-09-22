@@ -2,7 +2,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import {
-    analyzeExamPackage, applyExamPackage, exportExamPackage, redactForLog,
+    analyzeExamPackage, applyExamPackage, exportExamPackage, generateMergeReport, redactForLog,
     rollbackExamMigration, verifyExamMigration,
 } from './exam';
 
@@ -120,6 +120,7 @@ export async function main(argv = process.argv.slice(2)) {
         // fails, leave it stopped so an operator can inspect and roll back.
         const verification = await verifyExamMigration(common);
         if (!verification.ok) throw new Error(`迁移验证失败，服务保持停止: ${verification.errors.join('; ')}`);
+        const mergeReport = await generateMergeReport(common);
         if (!common.noStop) {
             const { spawn } = await import('child_process');
             await new Promise<void>((resolve, reject) => {
@@ -128,14 +129,22 @@ export async function main(argv = process.argv.slice(2)) {
                 child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(`pm2 start hydrooj exited ${code}`)));
             });
         }
-        print({ runId: result.runId, applied: true, verified: true, inserted: result.inserted.length });
+        print({ runId: result.runId, applied: true, verified: true, inserted: result.inserted.length, mergeReport: 'merge-report.json', identities: mergeReport.identities.length, contests: mergeReport.contests.length, problems: mergeReport.problems.length });
         return;
     }
     if (command === 'verify') {
         await logCommand(common.runDir, args);
         const result = await verifyExamMigration(common);
+        const mergeReport = result.ok ? await generateMergeReport(common) : null;
         print(result);
+        if (mergeReport) print({ mergeReport: 'merge-report.json' });
         if (!result.ok) process.exitCode = 2;
+        return;
+    }
+    if (command === 'report') {
+        await logCommand(common.runDir, args);
+        const result = await generateMergeReport(common);
+        print({ runId: result.runId, mergeReport: 'merge-report.json', identities: result.identities.length, contests: result.contests.length, problems: result.problems.length });
         return;
     }
     if (command === 'rollback') {
