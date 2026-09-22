@@ -7,6 +7,7 @@ import DOMAttachedObject from 'vj/components/DOMAttachedObject';
 import { isMonacoUnsupportedError } from 'vj/components/monaco/loader';
 import { getTheme, i18n } from 'vj/utils';
 import uploadFiles from '../upload';
+import { AsyncPreview, editorPreviews } from './async-preview';
 
 interface MonacoOptions {
   language?: string;
@@ -177,13 +178,27 @@ export default class Editor extends DOMAttachedObject {
     const value = $dom.val();
     const { onChange } = this.options;
     const { MdEditor } = await import('./mdeditor');
+    const editorId = `hydro-markdown-${nanoid()}`;
+    const lecture = origin.getAttribute('name') === 'lecture';
+    const preview = new AsyncPreview(
+      () => new Worker(new URL('./markdown.worker.ts', import.meta.url)),
+      () => this.markdownEditor?.rerender(),
+      {
+        lecture,
+        filePrefix: lecture ? '../file/' : ({
+          problem_edit: './file/', homework_edit: './file/public/', contest_edit: './file/public/',
+        }[pagename] || (useFileProtocol ? `/file/${UserContext._id}/` : undefined)),
+        errorHtml: `<p role="status">${i18n('Preview could not be rendered. You can continue editing and saving.')}</p>`,
+      },
+    );
+    editorPreviews.set(editorId, preview);
 
     const debouncedTrigger = debounce(() => {
-      $(document.querySelector('.md-editor-preview')).trigger('vjContentNew');
+      $(ele).find('.md-editor-preview').trigger('vjContentNew');
     }, 200, { trailing: true });
     const renderCallback = (ref) => {
       this.markdownEditor = ref;
-      setTimeout(debouncedTrigger, 200);
+      if (ref) debouncedTrigger();
     };
 
     const FastPreviewRenderer: React.FC<{ html: string, id: string, className: string }> = React.memo(
@@ -198,22 +213,15 @@ export default class Editor extends DOMAttachedObject {
 
     function EditorComponent() {
       const [val, setVal] = React.useState(value);
-      const debouncedSetVal = React.useMemo(
-        () => debounce((v: string) => {
-          setVal(v);
-        }, 350, { trailing: true }),
-        [],
-      );
-      that.setMarkdownEditorValue = (newVal: string) => {
-        debouncedSetVal.cancel();
-        setVal(newVal);
-      };
+      that.setMarkdownEditorValue = setVal;
       React.useEffect(() => () => {
-        debouncedSetVal.cancel();
         debouncedTrigger.cancel();
-      }, [debouncedSetVal]);
+        preview.dispose();
+        editorPreviews.delete(editorId);
+      }, []);
 
       return <MdEditor
+        id={editorId}
         className="textbox"
         autoFocus={hasFocus}
         codeTheme="github"
@@ -227,6 +235,8 @@ export default class Editor extends DOMAttachedObject {
         noPrettier
         noKatex
         noHighlight
+        noEcharts
+        scrollAuto={false}
         autoDetectCode
         toolbarsExclude={[
           // 'bold',
@@ -265,9 +275,9 @@ export default class Editor extends DOMAttachedObject {
         onChange={(v) => {
           that.valueCache = v;
           $dom.val(v);
-          $dom.text(v);
           onChange?.(v);
-          debouncedSetVal(v);
+          // Update the controlled input immediately; debounce only the preview.
+          setVal(v);
         }}
         onHtmlChanged={() => {
           debouncedTrigger();

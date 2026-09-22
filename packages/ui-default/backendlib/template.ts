@@ -8,6 +8,7 @@ import { cac } from 'cac';
 import { convert } from 'html-to-text';
 import jsesc from 'jsesc';
 import nunjucks from 'nunjucks';
+import { normalizeLectureMarkdown } from './lecture-markdown';
 import markdown from './markdown';
 import { ensureTag, xss } from './markdown-it-xss';
 import * as misc from './misc';
@@ -74,6 +75,7 @@ class Nunjucks extends nunjucks.Environment {
     this.addFilter('dumpYaml', (self) => yaml.dump(self));
     this.addFilter('assign', (self, data) => Object.assign(self, data));
     this.addFilter('markdown', (self) => ensureTag(markdown.render(self)));
+    this.addFilter('lectureMarkdown', (self) => ensureTag(markdown.render(normalizeLectureMarkdown(self || ''))));
     this.addFilter('markdownInline', (self) => ensureTag(markdown.renderInline(self)));
     this.addFilter('ansi', (self) => misc.ansiToHtml(self));
     this.addFilter('base64_encode', (s) => Buffer.from(s).toString('base64'));

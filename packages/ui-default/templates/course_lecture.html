@@ -42,7 +42,7 @@
         {%- if lecture -%}
         {{ set(UiContext, 'preventCopy', preventCopy) }}
         <div data-heading-extract-to="#menu-item-lecture_section" id="lecture-main" class="section__body typo richmedia">
-          {{ lecture|markdown|safe }}
+          {{ lecture|lectureMarkdown|safe }}
         </div>
         <script>
           document.querySelectorAll('#lecture-main h1, #lecture-main h2').forEach(function(e) {

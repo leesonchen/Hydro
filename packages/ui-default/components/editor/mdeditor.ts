@@ -10,6 +10,7 @@ import Imsize from '../../backendlib/markdown-it-imsize';
 import katex from '../../backendlib/markdown-it-katex';
 import { Media } from '../../backendlib/markdown-it-media';
 import { xssProtector } from '../../backendlib/markdown-it-xss';
+import { editorPreviews } from './async-preview';
 
 const pagename = document.documentElement.getAttribute('data-page');
 const previewConfig: Record<string, string> = {
@@ -21,7 +22,14 @@ const isCreatePage = ['problem_create', 'homework_create', 'contest_create'].inc
 const filePreviewPrefix = previewConfig[pagename] || (isCreatePage ? `/file/${UserContext._id}/` : null);
 
 config({
-  markdownItConfig(mdit) {
+  markdownItConfig(mdit, { editorId }) {
+    const preview = editorPreviews.get(editorId);
+    if (preview) {
+      // md-editor-rt expects a synchronous renderer. Return the last completed
+      // preview; the worker notifies this editor to rerender when ready.
+      mdit.render = preview.render;
+      return;
+    }
     mdit.options.html = true;
     mdit.options.linkify = true;
     mdit.options.breaks = true;
