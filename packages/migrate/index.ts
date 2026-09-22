@@ -11,6 +11,7 @@ export {
     computePlanHash,
     CONFIRMED_DECISIONS,
     CONFIRMED_USER_MAP,
+    CONFIRMED_TEST_EMAIL_SOURCE_UIDS,
     DEFAULT_USER_PRIV,
     exportExamPackage,
     isHealthyProblemReference,

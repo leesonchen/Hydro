@@ -4,6 +4,7 @@ import { Long, ObjectId } from 'bson';
 import {
     CONFIRMED_USER_MAP,
     CONFIRMED_DECISIONS,
+    CONFIRMED_TEST_EMAIL_SOURCE_UIDS,
     USERNAME_CONFLICT_MAP,
     buildProblemDecisions,
     buildContestDecisions,
@@ -21,6 +22,7 @@ import {
 function testIdentityPrecedence() {
     assert.equal(Object.keys(CONFIRMED_USER_MAP).length, 0);
     assert.equal(Object.keys(USERNAME_CONFLICT_MAP).length, 0);
+    assert.deepEqual([...CONFIRMED_TEST_EMAIL_SOURCE_UIDS], [270, 298, 314, 334, 415, 523, 600, 1204]);
     const source = [
         { _id: 1, uname: 'Conflict', mail: 'wrong@example.org' },
         { _id: 2, uname: 'ByName', mail: 'different@example.org' },
@@ -50,6 +52,24 @@ function testIdentityPrecedence() {
     assert.equal(decisions[0].note, '未找到可确认的非 @test.com 邮箱，创建独立账号');
     assert.equal(decisions[5].emailConflict, true);
     assert.match(decisions[5].targetMail!, /^exam-6-21@invalid\.exam$/);
+
+    const confirmedTestEmail = resolveIdentities([
+        { _id: 270, uname: 'Student', mail: 's0266@test.com' },
+    ], [
+        { _id: 99, uname: 'Student', mail: 's0266@test.com' },
+    ]);
+    assert.deepEqual(
+        [confirmedTestEmail[0].targetUid, confirmedTestEmail[0].method, confirmedTestEmail[0].created],
+        [99, 'email', false],
+    );
+    assert.match(confirmedTestEmail[0].note!, /明确例外/);
+
+    const unconfirmedTestEmail = resolveIdentities([
+        { _id: 271, uname: 'Student', mail: 's0266@test.com' },
+    ], [
+        { _id: 99, uname: 'Student', mail: 's0266@test.com' },
+    ]);
+    assert.equal(unconfirmedTestEmail[0].method, 'new');
 }
 
 function testEmailRules() {

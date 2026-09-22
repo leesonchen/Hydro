@@ -58,6 +58,13 @@ export type MigrationPhase = typeof PHASES[number];
  */
 export const CONFIRMED_USER_MAP: Record<number, number> = Object.freeze({});
 export const USERNAME_CONFLICT_MAP: Record<number, number> = Object.freeze({});
+/**
+ * The only approved @test.com exception: these source accounts were checked
+ * manually and may merge when both their stored e-mail and username match.
+ */
+export const CONFIRMED_TEST_EMAIL_SOURCE_UIDS = Object.freeze([
+    270, 298, 314, 334, 415, 523, 600, 1204,
+]);
 
 export const CONFIRMED_DECISIONS = Object.freeze({
     manualUserMappings: CONFIRMED_USER_MAP,
@@ -68,6 +75,7 @@ export const CONFIRMED_DECISIONS = Object.freeze({
         rejectIdentityDomain: 'test.com',
         usernameMatching: false,
         usernameConflictMatching: false,
+        testEmailExactNameSourceUids: CONFIRMED_TEST_EMAIL_SOURCE_UIDS,
         newUsernameSuffix: '_exam',
         conflictingEmailAction: 'new-account-with-reserved-placeholder',
     },
@@ -416,6 +424,11 @@ function normalizeStoredEmail(value: unknown): string | null {
     return raw;
 }
 
+function normalizeTestEmail(value: unknown): string | null {
+    const raw = normalizeStoredEmail(value);
+    return raw?.endsWith('@test.com') ? raw : null;
+}
+
 function indexBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
     const index = new Map<string, T[]>();
     for (const item of items) {
@@ -428,7 +441,7 @@ function indexBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
     return index;
 }
 
-/** Resolve identities using only a non-test.com e-mail match. */
+/** Resolve identities using exact non-test.com e-mail matches plus the eight confirmed test-email exceptions. */
 export function resolveIdentities(
     sourceUsers: SourceUser[], targetUsers: TargetUser[], options: IdentityOptions = {},
 ): IdentityDecision[] {
@@ -447,9 +460,15 @@ export function resolveIdentities(
 
     for (const source of sorted) {
         const sourceUid = Number(source._id);
+        const sourceName = normalizeUsername(source.unameLower || source.uname);
         const sourceMail = normalizeIdentityEmail(source.mailLower || source.mail);
         const sourceStoredMail = normalizeStoredEmail(source.mailLower || source.mail);
-        const candidates = sourceMail ? (byMail.get(sourceMail) || []) : [];
+        const sourceTestMail = normalizeTestEmail(source.mailLower || source.mail);
+        const testCandidates = sourceTestMail && CONFIRMED_TEST_EMAIL_SOURCE_UIDS.includes(sourceUid)
+            ? (byStoredMail.get(sourceTestMail) || []).filter((candidate) =>
+                normalizeUsername(candidate.unameLower || candidate.uname) === sourceName)
+            : [];
+        const candidates = sourceMail ? (byMail.get(sourceMail) || []) : testCandidates;
         if (candidates.length > 1) {
             throw new Error(`邮箱身份判定不唯一: source uid ${sourceUid} has ${candidates.length} candidates`);
         }
@@ -465,7 +484,9 @@ export function resolveIdentities(
             targetUname = target.uname;
             targetMail = target.mail;
             usedTarget.add(targetUid);
-            note = '唯一依据：非 @test.com 的规范化邮箱完全相同';
+            note = sourceTestMail
+                ? '明确例外：@test.com 邮箱和用户名完全相同'
+                : '唯一依据：非 @test.com 的规范化邮箱完全相同';
         } else {
             targetUname = `${source.uname || `user_${sourceUid}`}_exam`;
             const targetNameKey = normalizeUsername(targetUname);
