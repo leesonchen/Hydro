@@ -38,6 +38,7 @@ export interface SystemKeys {
     'server.port': number;
     'server.language': string;
     'limit.problem_files_max': number;
+    'limit.team_members': number;
     'problem.categories': string;
     'session.keys': string[];
     'session.saved_expire_seconds': number;
@@ -93,7 +94,7 @@ export interface Udoc extends Record<string, any> {
     loginip: string;
 }
 
-export interface VUdoc {
+export interface VUdoc extends Record<string, any> {
     _id: number;
     mail: string;
     mailLower: string;
@@ -107,6 +108,11 @@ export interface VUdoc {
     loginat: Date;
     ip: ['127.0.0.1'];
     loginip: '127.0.0.1';
+
+    // for contest team
+    displayName?: string;
+    members?: number[];
+    invite?: number[];
 }
 
 export interface GDoc {
@@ -293,6 +299,7 @@ export interface Tdoc extends Document {
     balloon?: Record<number, string | { color: string, name: string }>;
     score?: Record<number, number>;
     langs?: string[];
+    allowTeam?: boolean;
 
     /**
      * In hours
@@ -495,6 +502,8 @@ export interface ContestStatusDoc extends StatusDocBase, ContestStat {
     startAt?: Date;
     endAt?: Date; // 灵活时间模式的结束时间，或者是提前结束比赛的时间
     rev?: number;
+    displayName?: string;
+    members?: number[];
 }
 
 export interface TrainingStatusDoc extends StatusDocBase, Record<string, any> {

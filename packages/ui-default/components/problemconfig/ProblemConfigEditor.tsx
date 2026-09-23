@@ -1,7 +1,7 @@
 import type { ProblemConfigFile, TestCaseConfig } from 'hydrooj/src/interface';
 import { diffLines } from 'diff';
 import $ from 'jquery';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { isEqual } from 'lodash';
 import type { editor } from 'monaco-editor';
 import React from 'react';
@@ -132,7 +132,7 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MonacoEditor e
     }
     const { monaco } = loadedMonaco;
     const uri = monaco.Uri.parse('hydro://problem/file/config.yaml');
-    this.model = monaco.editor.createModel(initialValue, 'yaml', uri);
+    this.model = monaco.editor.createModel(yaml.dump(configYamlFormat(this.props.config), { seqNoIndent: true }), 'yaml', uri);
     this.vjEditor = Editor.getOrConstruct($(this.containerElement), {
       language: 'yaml',
       model: this.model,
@@ -155,7 +155,7 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MonacoEditor e
       return;
     }
     if (this.__preventUpdate || !this.model || !this.props.config.__valid) return;
-    if (yaml.dump(prevProps.config, { noArrayIndent: true }) === yaml.dump(this.props.config, { noArrayIndent: true })) return;
+    if (yaml.dump(prevProps.config, { seqNoIndent: true }) === yaml.dump(this.props.config, { seqNoIndent: true })) return;
     const curValue = this.model.getValue();
     const pending = configYamlFormat(this.props.config);
     try {
@@ -163,7 +163,7 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MonacoEditor e
       if (isEqual(curConfig, pending)) return;
     } catch { }
     this.__preventFormat = true;
-    const diff = diffLines(curValue, yaml.dump(pending, { noArrayIndent: true }));
+    const diff = diffLines(curValue, yaml.dump(pending, { seqNoIndent: true }));
     const ops = [];
     let cursor = 1;
     for (const line of diff) {
