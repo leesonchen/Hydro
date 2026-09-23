@@ -89,6 +89,15 @@ export const CONFIRMED_DECISIONS = Object.freeze({
         P29: { domainId: 'yizhong', pid: 419 },
         P72: { domainId: 'yizhong', pid: 480 },
     },
+    problemReuses: {
+        P105: {
+            domainId: EXAM_DOMAIN,
+            pid: 9,
+            title: '翻转链（reversal）',
+            reference: { domainId: 'contests', pid: 3230 },
+            requiredReferenceDataFiles: 40,
+        },
+    },
     danglingOlerTestReferencesAreNotReused: true,
     testFilesDoNotDecideProblemReuse: true,
 });
@@ -139,7 +148,7 @@ export interface ProblemDecision {
     targetDomainId: string;
     targetPid: number | string;
     targetDocId?: number | string;
-    reason: 'confirmed-reference' | 'matching-reference' | 'matching-existing' | 'entity';
+    reason: 'confirmed-reference' | 'confirmed-reuse' | 'matching-reference' | 'matching-existing' | 'entity';
     sourceHasFiles: boolean;
     targetHasFiles?: boolean;
     excludedFiles?: string[];
@@ -341,6 +350,7 @@ export interface MergeReport {
         comparison: 'equivalent' | 'different' | 'unavailable';
         sourceFiles: string[];
         targetFiles: string[];
+        effectiveTestData: { source: string; files: number } | null;
         attachmentCount: number;
         filesIncluded: boolean;
         excluded: boolean;
@@ -570,8 +580,11 @@ export function isHealthyProblemReference(
     problem: any,
     targetProblems: any[],
     targetDomains: any[] = [],
+    visited = new Set<any>(),
 ): boolean {
     if (!problem) return false;
+    if (visited.has(problem)) return false;
+    visited.add(problem);
     if (problem.domainId === 'test' || problem.domainId === 'prepare') return false;
     if (!problem.reference) {
         return targetDomains.length === 0 || targetDomains.some((candidate) => candidate._id === problem.domainId)
@@ -583,7 +596,8 @@ export function isHealthyProblemReference(
         && (String(candidate.docId) === String(reference.pid) || String(candidate.pid) === String(reference.pid)));
     if (!target) return false;
     const domain = targetDomains.find((candidate) => candidate._id === target.domainId);
-    return !!domain || target.domainId === 'system' || target.domainId === 'oler' || target.domainId === 'yizhong';
+    return (!!domain || target.domainId === 'system' || target.domainId === 'oler' || target.domainId === 'yizhong')
+        && isHealthyProblemReference(target, targetProblems, targetDomains, visited);
 }
 
 export interface ProblemDecisionOptions {
@@ -634,6 +648,38 @@ export function buildProblemDecisions(
     };
     for (const source of [...sourceProblems].sort((a, b) => Number(a.docId) - Number(b.docId))) {
         const sourcePid = String(source.pid || `P${source.docId}`);
+        const isConfirmedP105 = !!options.mergeExisting && (Number(source.docId) === 105 || sourcePid === 'P105');
+        if (isConfirmedP105) {
+            const confirmedReuse = CONFIRMED_DECISIONS.problemReuses.P105;
+            const target = targetProblems.find((problem) => problem.domainId === confirmedReuse.domainId
+                && String(problem.docId) === String(confirmedReuse.pid));
+            const reference = target?.reference;
+            const referenced = reference && targetProblems.find((problem) => problem.domainId === confirmedReuse.reference.domainId
+                && (String(problem.docId) === String(reference.pid) || String(problem.pid) === String(reference.pid)));
+            const valid = Number(source.docId) === 105
+                && normalizeProblemTitle(source.title) === normalizeProblemTitle(confirmedReuse.title)
+                && normalizeProblemTitle(target?.title) === normalizeProblemTitle(confirmedReuse.title)
+                && reference?.domainId === confirmedReuse.reference.domainId
+                && String(reference?.pid) === String(confirmedReuse.reference.pid)
+                && !!referenced
+                && isHealthyProblemReference(target, targetProblems, targetDomains)
+                && isHealthyProblemReference(referenced, targetProblems, targetDomains)
+                && Array.isArray(referenced.data)
+                && referenced.data.length === confirmedReuse.requiredReferenceDataFiles;
+            if (valid) {
+                decisions.push({
+                    sourceDocId: Number(source.docId), sourcePid, action: 'reuse',
+                    targetDomainId: confirmedReuse.domainId, targetPid: confirmedReuse.pid,
+                    targetDocId: confirmedReuse.pid,
+                    reason: 'confirmed-reuse',
+                    sourceHasFiles: !!(source.data?.length || source.additional_file?.length),
+                    targetHasFiles: true,
+                    excludedFiles: [...(source.data || []), ...(source.additional_file || [])].map((file) => file.name),
+                });
+                continue;
+            }
+            throw new Error('合并模式下 P105 必须复用已验证的 exam/9（contests/3230，40 个测试数据文件）');
+        }
         const existingExam = options.mergeExisting
             ? targetProblems.filter((problem) => problem.domainId === domainId)
                 .find((problem) => problemEquivalent(source, problem))
@@ -2270,7 +2316,7 @@ export async function generateMergeReport(options: CommandOptions = {}): Promise
             const decision = plan.problems.find((item) => item.sourceDocId === Number(source.docId));
             if (!decision) continue;
             const target = await db.collection<any>('document').findOne({
-                domainId: decision.targetDomainId,
+                domainId: decision.action === 'reference' ? targetDomain : decision.targetDomainId,
                 docType: 10,
                 ...(decision.targetDocId !== undefined
                     ? { docId: decision.targetDocId }
@@ -2279,6 +2325,25 @@ export async function generateMergeReport(options: CommandOptions = {}): Promise
             const comparison = target ? (problemEquivalent(source, target) ? 'equivalent' : 'different') : 'unavailable';
             const sourceFiles = problemFileNames(source);
             const targetFiles = problemFileNames(target);
+            let effectiveTarget = target;
+            const visited = new Set<string>();
+            while (effectiveTarget?.reference) {
+                const key = `${effectiveTarget.domainId}/${String(effectiveTarget.docId)}`;
+                if (visited.has(key)) {
+                    effectiveTarget = null;
+                    break;
+                }
+                visited.add(key);
+                effectiveTarget = await db.collection<any>('document').findOne({
+                    domainId: effectiveTarget.reference.domainId,
+                    docType: 10,
+                    $or: [{ docId: effectiveTarget.reference.pid }, { pid: effectiveTarget.reference.pid }],
+                });
+            }
+            const effectiveTestData = effectiveTarget ? {
+                source: `${effectiveTarget.domainId}/${String(effectiveTarget.pid || effectiveTarget.docId)}`,
+                files: (effectiveTarget.data || []).length,
+            } : null;
             const prefix = `problem/${targetDomain}/${source.docId}/`;
             const alternatePrefix = `problem/${targetDomain}/${source.pid}/`;
             const attachments = manifest.files.filter((file) => file.included
@@ -2294,6 +2359,7 @@ export async function generateMergeReport(options: CommandOptions = {}): Promise
                 comparison,
                 sourceFiles,
                 targetFiles,
+                effectiveTestData,
                 attachmentCount: attachments.length,
                 filesIncluded: attachments.length > 0 || !decision.sourceHasFiles,
                 excluded: false,
@@ -2356,9 +2422,9 @@ export async function generateMergeReport(options: CommandOptions = {}): Promise
             '| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |',
             ...contests.map((item) => `| ${item.sourceObjectId} | ${item.targetObjectId} | ${markdownCell(item.title)} | ${item.action} | ${item.sourcePids.join(', ')} | ${item.targetPids.join(', ')} | ${item.sourceStatusCount} | ${item.targetStatusCount} | ${item.attachmentCount} | ${item.referencesRewritten ? '是' : '否'} |`),
             '', '## 题目合并', '',
-            '| 源 PID | 标题 | 目标域 | 目标 PID | 方式 | 原因 | 配置比较 | 附件 | 文件完整 |',
-            '| --- | --- | --- | --- | --- | --- | --- | ---: | --- |',
-            ...problems.map((item) => `| ${markdownCell(item.sourcePid)} | ${markdownCell(item.sourceTitle)} | ${item.targetDomainId} | ${item.targetPid} | ${item.action} | ${item.reason} | ${item.comparison} | ${item.attachmentCount} | ${item.filesIncluded ? '是' : '否'} |`),
+            '| 源 PID | 标题 | 目标域 | 目标 PID | 方式 | 原因 | 配置比较 | 附件 | 目标有效测试文件（元数据） | 文件完整 |',
+            '| --- | --- | --- | --- | --- | --- | --- | ---: | --- | --- |',
+            ...problems.map((item) => `| ${markdownCell(item.sourcePid)} | ${markdownCell(item.sourceTitle)} | ${item.targetDomainId} | ${item.targetPid} | ${item.action} | ${item.reason} | ${item.comparison} | ${item.attachmentCount} | ${item.effectiveTestData ? `${item.effectiveTestData.source} (${item.effectiveTestData.files})` : '缺失'} | ${item.filesIncluded ? '是' : '否'} |`),
             '', '## 汇总', '',
             `- 账户映射：${JSON.stringify(identityMethods)}`,
             `- 题目处理：${JSON.stringify(problemActions)}`,

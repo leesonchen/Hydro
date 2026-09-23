@@ -16,9 +16,40 @@
 
 这 8 个例外源 UID 为：`270, 298, 314, 334, 415, 523, 600, 1204`。
 
+## 2026-09-23 最新本地重跑
+
+源为 37018 `hydro`，目标为本地 `hydro2` 的 `hydro` 数据库；37017 全程未写入。
+审计目录为 `migration-runs/exam-export-37018-20260923-p105/`，其中保留新源包、
+目标完整备份、计划、逐阶段日志、机器验证、逐账户/比赛/题目合并报告和网页核验。
+
+- `packageHash`: `552a35d62d2e55862303ffaa9c721a61b00a3681f90793c5af47ecdd5a706dcd`
+- `planHash`: `e2b21ca936148ed8e97ac6d2e9f0d7ff6b07d1c70fb88573e6001c310847a664`
+- apply 前目标指纹: `bb90356bb91455ee55d507cbec5e5061b2a02b62cc4378e47c79b8b03bb77b38`
+- 身份判定：296 个邮箱合并（含 8 个已确认的 `@test.com` 例外），591 个新建；
+  无人工/用户名合并，新建用户名均带 `_exam`。
+- 题目：91 道实体复制、14 道引用、10 道复用；11 场比赛复制。P105 明确复用原有
+  `exam/9 → contests/3230`，没有新建 `exam/105`。源 `prepare/88` 与目标
+  `contests/3230` 各有 40 个测试文件，题面相同，40 个文件的 SHA-256 逐一相同。
+- 结果报告按完整引用链统计最终题源的测试文件元数据。例如 `E2512T13` 通过
+  `exam → cpptrain/AT7 → yizhong/AT7` 获得 48 个文件；报告中的文件数不是
+  物理哈希核验结果。分析阶段现会拒绝链中缺失、指向 `prepare`/`test` 或循环的引用。
+  本轮报告初版定位 exam 包装题有误且只看一层引用，曾误报 5 道引用题“缺失”；最终报告已重生成，
+  数据库中的题目和成绩未因此更改。
+- P105 的 48 条提交、29 条题目状态、2 条统计均映射到 PID 9；原 `exam/9` 的
+  ObjectId 未改变。`verify-report.json` 为 `ok: true`，0 个错误，检查了 110,713 项
+  引用和 788 个导入文件；总计插入 30,912 条文档。
+- 网页抽查：exam 首页、P9 详情、代表性提交正常。11 场迁入比赛的榜单中，10 场
+  HTTP 200 且行数与状态数一致；秋季插班测试的 144 条状态也在库中，但源比赛原本
+  设置 `keepScoreboardHidden: true`，因此榜单 HTTP 403，属预期可见性规则。
+  `/d/exam/` 是可用首页；无尾斜杠的 `/d/exam` 在登录后为 404。
+- 新导出包相较 9 月 22 日包，exam 业务集合和文件清单未变化；3 个源用户的
+  `loginat` 发生变化，其中 1 个还更新了密码凭据。正式迁移前应再次确认源端停写，
+  以新的不可变源包为准。详细结果见该 run 的 `merge-summary.md` 和
+  `browser-regression.json`。
+
 ## 37018 中需要补充导出测试数据的题目
 
-源包中 115 道题里，有 30 道已经带测试数据；以下 63 道是“实体化复制但源题目
+源包中 115 道题里，有 30 道自身带测试数据；以下 62 道是“实体化复制但源题目
 没有 `data`/`additional_file` 文件”的题目。如果生产 37018 上这些题目实际有
 测试数据，请先按下列**生产 PID**导出，再导入当前环境；表中的目标 PID 是上一轮
 目标备份快照的映射，正式恢复后仍以新生成的 `plan.json` 为准。
@@ -32,15 +63,19 @@
 | `C250801–C250813` | 13 | 原 PID | a–m |
 | `E2512T01–E2512T12` | 12 | 原 PID | AtCoder 煎饼至涂色 |
 | `E2512T14–E2512T16` | 3 | 原 PID | 排列、黑白格子、相邻合并 |
-| `P105` | 1 | `105` | 翻转链（reversal） |
-| **合计** | **63** |  |  |
+| **合计** | **62** |  |  |
 
 不需要从 37018 补文件的无测试数据题目包括：`P11–P14`、`P27–P29`、
 `E2512T13` 以及 `P101–P104`、`P106–P115`；这些题目按已确认的健康引用或
 目标已有题目复用，不会从源端复制测试数据。导入前应保留题面、配置和测试文件
 的 SHA-256，避免把其他域的同名题覆盖到 `exam`。
 
-## 最新最终模拟：37018 → 本地 hydro2
+`P105` 不在上表：源题通过 `prepare/88` 取得 40 个测试文件，本地 `exam/9`
+通过 `contests/3230` 取得同样的 40 个文件。2026-09-23 已逐文件确认 SHA-256
+相同，因此本地重跑直接复用 `exam/9`；以后更换目标库时必须重新核对引用和文件，
+否则显式复用规则应拒绝执行。
+
+## 2026-09-22 历史模拟：37018 → 本地 hydro2
 
 2026-09-22 的最后一次模拟已完成，源为停写的 37018 `hydro` 数据库，目标为本地
 `hydro2` 容器的 `local` 配置。37017 全程没有写操作。完整审计目录为
@@ -73,7 +108,7 @@
 exam 登录页且控制台/页面错误为 0，但恢复库不接受 `testuser.md` 中的旧密码，所以认证
 后的成绩表、题目详情和比赛榜单仍需用有效账号补测；未为此修改任何账户或业务数据。
 
-## 当前轮次的真实状态
+## 更早的 37017 历史模拟
 
 - 本轮使用 37017 生产环境的不可变源包
   `migration-runs/exam-export-37017-20260922-r2/`；针对恢复后的本地
@@ -177,34 +212,34 @@ tar --zstd -xf /secure/migration-archive/<run-id>.tar.zst -C migration-runs
 chmod -R go-rwx migration-runs/<run-id>
 ```
 
-如果这个源包曾经在另一份目标库上尝试过 apply，不要直接在旧目录上覆盖
-`plan.json`、`apply.json` 或 `backup/`。先把旧目录作为历史审计副本保留，再建立一个
-新的工作目录，只复制不可变源包内容：
-
-```sh
-SOURCE_PACKAGE="$PWD/migration-runs/<old-run-id>"
-RUN_DIR="$PWD/migration-runs/<old-run-id>-rerun-YYYYMMDD"
-test ! -e "$RUN_DIR" || { echo "工作目录已存在，停止以避免覆盖" >&2; exit 1; }
-install -d -m700 "$RUN_DIR"
-cp -a "$SOURCE_PACKAGE/manifest.json" "$SOURCE_PACKAGE/package.sha256" "$RUN_DIR/"
-cp -a "$SOURCE_PACKAGE/collections" "$SOURCE_PACKAGE/files" "$RUN_DIR/"
-```
-
-不要修改复制后的 `manifest.json` 或 `package.sha256`；它们仍代表同一个源包，新的
-目标分析会在这个目录生成新的 `plan.json`、命令记录和验证报告。
+如果这个源包曾经在同一目标库上 apply，不能只换工作目录并复制旧
+`manifest.json`：其中的 `runId` 不变，目标 `exam.migration` 的完成标记仍会拒绝
+重复执行。保留旧目录作为历史审计，优先从停写的 37018 重新 `export` 到**全新
+run-id**（本轮采用 `exam-export-37018-20260923-p105`），再分析目标。若源端不可读，
+现有工具没有安全的“仅更换 run-id”命令；不要手工改 manifest 或删除完成标记来绕过。
 
 ## 目标库恢复后的最短重跑流程
 
-下面的 `RUN_DIR`、URI 和存储根目录均为占位符。凭据建议在仓库外的 `0600` 环境
-文件中提供，避免写进 shell 历史或本记录。
+下面的 `RUN_DIR` 和 URI 为占位符。`hydro2` 是**容器名**，其本轮实际 MongoDB
+名称是 `hydro`，容器内物理存储根为 `/data/file/hydro`。凭据建议在仓库外的
+`0600` 环境文件中提供，避免写进 shell 历史或本记录。
 
 ```sh
 export RUN_DIR="$PWD/migration-runs/<run-id>"
 export TARGET_URI='mongodb://<目标凭据>@<目标主机>/'
-export TARGET_DB='hydro2'
-export TARGET_STORAGE_ROOT='/srv/hydro2-storage'
+export TARGET_DB='hydro'
+export TARGET_STORAGE_ROOT='/data/file/hydro' # 容器内路径，不是宿主机路径
 export EXAM_MIGRATE='node -r @hydrooj/register packages/migrate/bin/exam-migrate.js'
 ```
+
+以下 `analyze` 可在能连接本地 MongoDB 的宿主机运行，但 `apply`、`verify`、`rollback`
+必须在能访问同一物理存储根和 `pm2` 的执行环境运行。对当前 `hydro2`，应先将本轮
+包与迁移工具暂存到容器内独立的 `/tmp/<run-id>/` 路径；不要在宿主机用
+`/data/file/hydro` 执行 apply。本轮实际采用：容器内 `pm2 stop hydrooj` → 冻结后
+重新 analyze → 容器内 dry-run → 容器内带 `mongodump` 的 apply（`--no-stop`，因为
+服务已手动停止）→ verify/report → 容器内 `pm2 start hydrooj` → 复制容器审计产物
+回本地 run 目录。具体脱敏命令见本轮 `commands.jsonl`；`--no-stop` 绝不能用于仍
+在线写入的目标。
 
 1. **确认代码和包。** 工作区应包含迁移工具；检查 `manifest.json` 的 `packageHash`
    与 `package.sha256` 相同，并确认包目录中的 `collections/`、`files/` 没有被改动。
@@ -223,7 +258,8 @@ export EXAM_MIGRATE='node -r @hydrooj/register packages/migrate/bin/exam-migrate
    审阅 `plan.json` 的 `targetBefore`、`identities`、`problems`、`storage`、
    `expectedCounts`、`excludedFiles` 和 `excludedDocuments`。合并模式下
    `targetBefore.examDomainExists` 应为 true；确认目标没有意外的存储路径占用，
-   且 8 个引用题目仍为健康实体。
+   且 8 个健康引用题和 P105→`exam/9` 复用仍有效；P105 的目标引用实体 40 个文件
+   必须与源 `prepare/88` 逐文件核对 SHA-256。
 
 3. **记录新的检查点。** 把以下四个值抄入本次运行的交接单或变更记录；不要把
    旧目标的值带到恢复后的数据库：
@@ -286,7 +322,15 @@ export EXAM_MIGRATE='node -r @hydrooj/register packages/migrate/bin/exam-migrate
   后都要重新 `analyze`，重新人工确认 `planHash`。
 - **包哈希变化立即停止。** 不要编辑 `collections/`、`files/` 或 `manifest.json`；
   如果源数据变了，生成一个新的 run-id 和新的不可变包。
-- **目标出现 exam 域、迁移标记或路径碰撞时停止。** 先验证是否是本次 run 的残留，
-  通过 `rollback` 或目标备份恢复处理，不能用 `--no-stop`/手工删除绕过保护。
+- **同一 run-id 的迁移标记或路径碰撞时停止。** `--merge-existing` 要求目标已有
+  exam 域；旧 run-id 的历史标记可以保留，但本次 run-id 不得碰撞。先验证是否有本次
+  run 的残留，通过 `rollback` 或目标备份恢复处理，不能手工删除标记绕过保护。
 - **真实环境必须重新做身份和题目分析。** 本地目标 UID、ObjectId、存储 ID、
   `targetBefore.hash` 都不可带到另一套环境；只复用源包和代码中已确认的判定规则。
+- **P105 文件校验尚未自动化。** 当前 `analyze` 只确认目标引用实体有 40 条文件
+  元数据；`verify` 只校验本轮新导入的文件，不校验复用题目的既有物理文件。正式
+  `apply` 前必须重新从 37018 读取 `prepare/88`，逐一核对文件名、物理存在性与
+  SHA-256 是否等于目标 `contests/3230`，并把 40 项校验结果保存到新 run 审计目录。
+  当前不可变源包不含 `prepare/88` 的物理文件（它在 exam 域之外），因此需保持
+  37018 及其文件存储可读，或提前单独归档这 40 个源文件和哈希。更换目标库时
+  不能沿用本轮的“40/40 相同”结论；未完成这项校验不得上线。

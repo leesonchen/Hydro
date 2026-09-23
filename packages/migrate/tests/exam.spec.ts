@@ -8,6 +8,7 @@ import {
     USERNAME_CONFLICT_MAP,
     buildProblemDecisions,
     buildContestDecisions,
+    isHealthyProblemReference,
     computePlanHash,
     normalizeIdentityEmail,
     mapDocumentForApply,
@@ -156,6 +157,20 @@ function testProblemReferenceRewrites() {
 }
 
 function testProblemDecisions() {
+    const finalEntity = { domainId: 'yizhong', docId: 507, pid: 'AT7' };
+    const middleReference = { domainId: 'cpptrain', docId: 4762, pid: 'AT7', reference: { domainId: 'yizhong', pid: 507 } };
+    const firstReference = { domainId: 'exam', docId: 68, reference: { domainId: 'cpptrain', pid: 'AT7' } };
+    const chainedDomains = [{ _id: 'exam' }, { _id: 'cpptrain' }, { _id: 'yizhong' }];
+    assert.equal(isHealthyProblemReference(firstReference, [middleReference, finalEntity], chainedDomains), true);
+    assert.equal(isHealthyProblemReference(firstReference, [middleReference], chainedDomains), false,
+        'a missing entity at the end of a reference chain is not healthy');
+    assert.equal(isHealthyProblemReference(firstReference, [
+        { ...middleReference, reference: { domainId: 'prepare', pid: 74 } }, finalEntity,
+    ], chainedDomains), false, 'a nested prepare reference is not healthy');
+    assert.equal(isHealthyProblemReference(firstReference, [
+        { ...middleReference, reference: { domainId: 'exam', pid: 68 } }, firstReference,
+    ], chainedDomains), false, 'a reference cycle is not healthy');
+
     const explicit = CONFIRMED_DECISIONS.problemReferences.P11;
     const source = [
         { docId: 11, pid: 'P11', title: 'A+B', content: 'statement', config: 'time: 1s', data: [{ name: '1.in' }] },
@@ -182,6 +197,58 @@ function testProblemDecisions() {
     assert.equal(merged[0].targetDocId, 1);
     assert.equal(merged[1].targetDocId, 2);
 
+    const p105Source = {
+        docId: 105, pid: 'P105', title: '翻转链（reversal）', content: 'source', config: '',
+    };
+    const p105Reference = {
+        domainId: 'contests', docId: 3230, title: '翻转链（reversal）', content: 'tests', config: '',
+        data: Array.from({ length: 40 }, (_, index) => ({ name: `data-${index}` })),
+    };
+    const p105Target = {
+        domainId: 'exam', docId: 9, title: '翻转链（reversal）', content: 'target', config: '',
+        reference: { domainId: 'contests', pid: 3230 }, data: [],
+    };
+    const p105Domains = [{ _id: 'exam' }, { _id: 'contests' }];
+    const p105Targets = [p105Target, p105Reference];
+    const reused = buildProblemDecisions(
+        [p105Source], p105Targets, p105Domains, { mergeExisting: true, domainId: 'exam' },
+    )[0];
+    assert.equal(reused.action, 'reuse');
+    assert.equal(reused.targetDocId, 9);
+    assert.equal(reused.targetPid, 9);
+    assert.equal(reused.reason, 'confirmed-reuse');
+    const numericPid = buildProblemDecisions(
+        [{ ...p105Source, pid: 105 }], p105Targets, p105Domains,
+        { mergeExisting: true, domainId: 'exam' },
+    )[0];
+    assert.equal(numericPid.targetDocId, 9, 'numeric PID 105 must follow P105 -> 9 mapping');
+
+    const p105Failure = (candidateTargets: any[], domains = p105Domains) => buildProblemDecisions(
+        [p105Source], candidateTargets, domains, { mergeExisting: true, domainId: 'exam' },
+    );
+    assert.throws(() => p105Failure([p105Reference]), /P105.*exam\/9/, 'missing exam/9 must fail closed');
+    assert.throws(() => buildProblemDecisions(
+        [{ ...p105Source, docId: 106 }], p105Targets, p105Domains,
+        { mergeExisting: true, domainId: 'exam' },
+    ), /P105.*exam\/9/, 'mismatched source docId must fail closed');
+    assert.throws(() => p105Failure([
+        { ...p105Target, title: '错误题目' }, p105Reference,
+    ]), /P105.*exam\/9/, 'wrong target title must fail closed');
+    assert.throws(() => p105Failure([
+        { ...p105Target, reference: { domainId: 'contests', pid: 999 } }, p105Reference,
+    ]), /P105.*exam\/9/, 'wrong target reference must fail closed');
+    assert.throws(() => p105Failure([
+        p105Target, { ...p105Reference, reference: { domainId: 'prepare', pid: 88 } },
+    ]), /P105.*exam\/9/, 'unhealthy referenced entity must fail closed');
+    assert.throws(() => p105Failure([
+        p105Target, { ...p105Reference, data: p105Reference.data.slice(0, 39) },
+    ]), /P105.*exam\/9/, 'incomplete referenced testdata must fail closed');
+
+    const nonMerge = buildProblemDecisions(
+        [p105Source], p105Targets, p105Domains, { domainId: 'exam' },
+    )[0];
+    assert.notEqual(nonMerge.reason, 'confirmed-reuse', 'P105 reuse is merge-only');
+
     const contests = buildContestDecisions([
         { _id: new ObjectId('64b000000000000000000010'), docId: new ObjectId('64b000000000000000000010'), title: 'Same', pids: [1], rule: 'oi', beginAt: new Date('2026-01-01'), endAt: new Date('2026-01-02') },
         { _id: new ObjectId('64b000000000000000000011'), docId: new ObjectId('64b000000000000000000011'), title: 'New', pids: [2], rule: 'oi', beginAt: new Date('2026-01-01'), endAt: new Date('2026-01-02') },
@@ -194,6 +261,15 @@ function testProblemDecisions() {
     assert.equal(contests[0].action, 'reuse');
     assert.equal(contests[0].targetObjectId, '64b000000000000000000012');
     assert.equal(contests[1].action, 'copy');
+
+    const p105Contest = buildContestDecisions([
+        { _id: new ObjectId('64b000000000000000000013'), docId: new ObjectId('64b000000000000000000013'), title: 'P105 contest', pids: [105], rule: 'oi', beginAt: new Date('2026-01-03'), endAt: new Date('2026-01-04') },
+    ], [
+        { _id: new ObjectId('64b000000000000000000014'), docId: new ObjectId('64b000000000000000000014'), title: 'P105 contest', pids: [9], rule: 'oi', beginAt: new Date('2026-01-03'), endAt: new Date('2026-01-04') },
+    ], [
+        { sourceDocId: 105, sourcePid: 'P105', action: 'reuse', targetDomainId: 'exam', targetPid: 9, targetDocId: 9, reason: 'confirmed-reuse', sourceHasFiles: false },
+    ], true);
+    assert.equal(p105Contest[0].action, 'reuse', 'contest PID 105 must follow P105 -> 9 mapping');
 }
 
 function testHashesAndRedaction() {
