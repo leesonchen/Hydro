@@ -27,7 +27,7 @@
       flex: 1 1 auto
       width: auto
 
-  html.hasjs[data-layout-mode='wide'] .page--training_detail .main > .responsive-sidebar-layout
+  html.hasjs.page--training_detail[data-layout-mode='wide'] .main > .responsive-sidebar-layout
     > .columns:first-child:nth-last-child(3)
       flex-basis: 16.66667%
 
@@ -79,8 +79,8 @@
   html.hasjs[data-layout-mode='wide'] .responsive-sidebar-column--open .responsive-sidebar-content
     display: block
 
-  html.hasjs[data-layout-mode='wide'] .page--problem_main .responsive-sidebar-column--open .responsive-sidebar-content,
-  html.hasjs[data-layout-mode='wide'] .page--course_lecture .responsive-sidebar-column--open .responsive-sidebar-content
+  html.hasjs.page--problem_main[data-layout-mode='wide'] .responsive-sidebar-column--open .responsive-sidebar-content,
+  html.hasjs.page--course_lecture[data-layout-mode='wide'] .responsive-sidebar-column--open .responsive-sidebar-content
     display: flex
     flex-direction: column
 
@@ -94,6 +94,9 @@
 
 @media (max-width: 600px)
   html.hasjs[data-layout-mode='wide'] .main > .responsive-sidebar-layout
+    > .responsive-sidebar-secondary.responsive-sidebar-column
+      display: block
+
     > .responsive-sidebar-column
       padding-left: 0
       padding-right: 0
