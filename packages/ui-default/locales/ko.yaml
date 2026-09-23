@@ -1,5 +1,10 @@
 __id: ko
 __langname: 한국어
+Page Tools: 페이지 도구
+Page Layout: 페이지 레이아웃
+Choose between the classic and wide page layouts.: 클래식 레이아웃과 와이드 레이아웃 중에서 선택합니다.
+Classic layout: 클래식 레이아웃
+Wide layout: 와이드 레이아웃
 '"{data}" copied to clipboard!': “{data}”복사 완료
 '{0} comments': '{0} 댓글'
 '{0} discussions': '{0} 토론'
@@ -110,6 +115,7 @@ Change Password: 비밀번호 변경
 Check In: 로그인
 Course Period Begin: 강좌 기간 시작
 Course Period End: 강좌 기간 종료
+Course Permissions: 강좌 권한 관리
 Finish Batch Manage: 완료
 No template selected: 선택한 템플릿 없음
 Please input template category.: 템플릿 분류를 입력하세요.
@@ -274,6 +280,7 @@ Duration: 지속시간
 Edit any contests: 모든 대회 수정
 Edit any homework: 모든 과제 수정
 Edit Contest: 대회 수정
+Edit Course: 강좌 편집
 Edit description of this domain: 그룹 설명 수정
 Edit discussion replies of own discussion: 본인의 토론에 대한 댓글 수정
 Edit discussion replies: 토론에서 본인 댓글 수정
@@ -281,6 +288,7 @@ Edit discussions: 토론 수정
 Edit domain settings: 그룹 설정 수정
 Edit Domain: 그룹 수정
 Edit Homework: 과제 수정
+Edit Lecture: 강의 자료 편집
 Edit own contests: 본인의 대회 수정
 Edit own discussion replies: 본인의 토론 댓글 수정
 Edit own discussions: 본인의 토론 수정
@@ -427,6 +435,7 @@ manage_user_import: 사용자 불러오기
 manage_users_import: 사용자 불러오기
 manage: 관리
 Manage: 관리
+Manage Course: 강좌 관리
 Manager: 관리
 Mark Green: 초록으로 표시
 Mark Yellow: 노랑으로 표시

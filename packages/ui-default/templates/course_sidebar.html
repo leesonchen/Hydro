@@ -2,6 +2,8 @@
 {% import "components/contest.html" as contest with context %}
 <div class="section side">
 {% set isTemplate = tdoc.assign and ('teachers' in tdoc.assign) %}
+{% set canEditCourse = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+{% set canManageCourse = handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or (handler.user.own(tdoc) and handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
 {% if page_name != 'training_detail' %}
   <a class="contest-sidebar__bg" href="{{ url('course_detail', tid=tdoc.docId) }}">
     <div class="section__body">
@@ -69,15 +71,15 @@
         </a></li>
       {% endif %}
     {% endif %}
-    {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+    {% if canEditCourse %}
       <li class="menu__item"><a class="menu__link" href="{{ url('course_edit', tid=tdoc.docId) }}">
-        <span class="icon icon-edit"></span> {{ _('Edit') }}
+        <span class="icon icon-edit"></span> {{ _('Edit Course') }}
       </a></li>
-      {% if not isTemplate %}
+    {% endif %}
+    {% if not isTemplate and canManageCourse %}
       <li class="menu__item"><a class="menu__link" href="{{ url('course_manage', tid=tdoc.docId) }}">
-        <span class="icon icon-settings"></span> {{ _('Manage') }}
+        <span class="icon icon-settings"></span> {{ _('Manage Course') }}
       </a></li>
-      {% endif %}
     {% endif %}
     {% if not isTemplate and (handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE)) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={tid:tdoc.docId}) }}">

@@ -57,11 +57,27 @@ async function renderLectureMermaid(target: ParentNode) {
   });
 }
 
+function wrapLectureTables(target: ParentNode) {
+  const roots: Element[] = [];
+  if (target instanceof Element && target.id === 'lecture-main') roots.push(target);
+  roots.push(...Array.from(target.querySelectorAll('#lecture-main')));
+  for (const root of roots) {
+    root.querySelectorAll(':scope > table').forEach((table) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'course-lecture-table-scroll';
+      table.replaceWith(wrapper);
+      wrapper.append(table);
+    });
+  }
+}
+
 export default new NamedPage(['course_lecture', 'contest_manage'], async () => {
   if (!document.querySelector('#lecture-main, textarea[name="lecture"]')) return;
+  wrapLectureTables(document);
   const render = (target: ParentNode) => renderLectureMermaid(target)
     .catch((error) => console.warn('Failed to load Mermaid renderer', error));
   $(document).on('vjContentNew.courseMermaid', (event) => {
+    wrapLectureTables(event.target as ParentNode);
     void render(event.target as ParentNode);
   });
   await render(document);

@@ -33,6 +33,149 @@
     .col--ac
       border-left: 1px solid $table-border-color
 
+.search.search--with-scope
+  align-items: stretch
+  border: 1px solid $border-1-color
+  display: flex
+  min-height: 36px
+
+  > .search-query,
+  > .search-options
+    position: static
+    right: auto
+    top: auto
+    font-size: inherit
+
+  > .search-query
+    display: flex
+    flex: 1 1 auto
+    min-width: 0
+
+    > input
+      border: 0
+      flex: 1 1 auto
+      font-size: rem($font-size-secondary)
+      height: 36px
+      min-width: 0
+      outline: none
+      padding: 5px 10px
+
+    > button
+      background: #00B4CC
+      border: 0
+      color: #fff
+      cursor: pointer
+      flex: 0 0 40px
+      font-size: rem($font-size-icon)
+      height: 36px
+      width: 40px
+
+      &:hover
+        background: #0099aa
+
+  > .search-options
+    display: flex
+    min-width: 0
+
+    > select.search-sort
+      background: $input-background-color
+      border: 0
+      border-left: 1px solid $table-border-color
+      cursor: pointer
+      font-size: rem($font-size-secondary)
+      height: 36px
+      padding: 0 8px
+      position: static
+      width: 110px
+
+    > label.search-filter
+      align-items: center
+      background: $input-background-color
+      border-left: 1px solid $table-border-color
+      color: $label-color
+      display: flex
+      font-size: rem($font-size-small)
+      gap: 4px
+      height: 36px
+      margin: 0
+      padding: 0 10px
+      white-space: nowrap
+
+      input
+        margin: 0
+
+    > div[data-fragment-id="problem_stat"]
+      align-items: center
+      border-left: 1px solid $table-border-color
+      color: $text-2-color
+      display: flex
+      font-size: rem($font-size-secondary)
+      padding: 0 12px
+      white-space: nowrap
+
+.theme--dark .search.search--with-scope
+  border-color: #434343
+
+  > .search-options > select.search-sort,
+  > .search-options > label.search-filter
+    background: #1f1f1f
+    border-color: #434343
+    color: #eee
+
+  > .search-options > div[data-fragment-id="problem_stat"]
+    border-color: #434343
+    color: #bdbdbd
+
+@media (max-width: 1399px)
+  .search.search--with-scope
+    display: block
+
+    > .search-query
+      height: 36px
+
+    > .search-options
+      border-top: 1px solid $table-border-color
+      flex-wrap: wrap
+
+      > select.search-sort,
+      > label.search-filter,
+      > div[data-fragment-id="problem_stat"]
+        border-bottom: 1px solid $table-border-color
+        flex: 1 1 auto
+        min-width: 0
+
+      > label.search-filter
+        height: auto
+        min-height: 36px
+        white-space: normal
+
+      > div[data-fragment-id="problem_stat"]
+        justify-content: center
+
+@media (max-width: 720px)
+  .page--problem_main,
+  .page--problem_category
+    .col--status,
+    .col--difficulty
+      display: none
+
+    .col--ac-tried
+      width: rem(90px)
+
+@media (max-width: 600px)
+  .page--problem_main,
+  .page--problem_category
+    .pager
+      overflow-x: auto
+      white-space: nowrap
+      -webkit-overflow-scrolling: touch
+
+    .section__table-container .data-table
+      min-width: 360px
+
+    .edit-mode .section__table-container .data-table
+      min-width: 600px
+
 
 .widget--category-filter
   &__category
