@@ -70,11 +70,7 @@ Language ${SettingModel.langs[lang].display} (${lang})
             domainId, this.pdoc.docId, this.user._id, lang, code, true,
             { contest: this.tdoc.docId, files, type: 'judge', notify: true },
         );
-        await Promise.all([
-            ProblemModel.inc(domainId, this.pdoc.docId, 'nSubmit', 1),
-            DomainModel.incUserInDomain(domainId, this.user._id, 'nSubmit'),
-            ContestModel.updateStatus(domainId, this.tdoc.docId, this.team ?? this.user._id, rid, this.pdoc.docId),
-        ]);
+        await ContestModel.updateStatus(domainId, this.tdoc.docId, this.team ?? this.user._id, rid, this.pdoc.docId);
         return { rid };
     }
 
