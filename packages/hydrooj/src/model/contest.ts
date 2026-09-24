@@ -1123,15 +1123,15 @@ function canAccessContestResults(user: User, tdoc: Tdoc, allowPermOverride = tru
 
 export function canShowRecord(this: { user: User }, tdoc: Tdoc, allowPermOverride = true) {
     if (!canAccessContestResults(this.user, tdoc, allowPermOverride)) return false;
-    if (RULES[tdoc.rule]?.showRecord) return RULES[tdoc.rule].showRecord(tdoc, new Date());
     if (allowPermOverride && canViewHiddenScoreboard.call(this, tdoc)) return true;
+    if (RULES[tdoc.rule]?.showRecord) return RULES[tdoc.rule].showRecord(tdoc, new Date());
     return !tdoc.keepScoreboardHidden && (!tdoc.beginAt || new Date() > tdoc.beginAt);
 }
 
 export function canShowSelfRecord(this: { user: User }, tdoc: Tdoc, allowPermOverride = true) {
     if (!canAccessContestResults(this.user, tdoc, allowPermOverride)) return false;
-    if (RULES[tdoc.rule]?.showSelfRecord) return RULES[tdoc.rule].showSelfRecord(tdoc, new Date());
     if (allowPermOverride && canViewHiddenScoreboard.call(this, tdoc)) return true;
+    if (RULES[tdoc.rule]?.showSelfRecord) return RULES[tdoc.rule].showSelfRecord(tdoc, new Date());
     return !tdoc.keepScoreboardHidden && (!tdoc.beginAt || new Date() > tdoc.beginAt);
 }
 
@@ -1152,8 +1152,8 @@ export function canShowProblemStatus(user: User | null, targetUid: number, tdoc:
 
 export function canShowScoreboard(this: { user: User }, tdoc: Tdoc, allowPermOverride = true) {
     if (tdoc.keepScoreboardHidden && (!allowPermOverride || !canViewHiddenScoreboard.call(this, tdoc))) return false;
-    if (RULES[tdoc.rule]?.showScoreboard) return RULES[tdoc.rule].showScoreboard(tdoc, new Date());
     if (allowPermOverride && canViewHiddenScoreboard.call(this, tdoc)) return true;
+    if (RULES[tdoc.rule]?.showScoreboard) return RULES[tdoc.rule].showScoreboard(tdoc, new Date());
     return !tdoc.keepScoreboardHidden && (!tdoc.beginAt || new Date() > tdoc.beginAt);
 }
 
