@@ -193,6 +193,47 @@ export interface FileEntry {
     excludedReason?: string;
 }
 
+export type MaterializedProblemFileKind = 'data' | 'additional_file';
+
+/**
+ * A storage record cloned from a referenced problem outside the exported
+ * domain.  It is kept in the materialized-problem sidecar rather than the
+ * source `storage.jsonl` snapshot so the latter remains an exact exam-domain
+ * snapshot.
+ */
+export interface MaterializedProblemClonedFile {
+    kind: MaterializedProblemFileKind;
+    name: string;
+    originPath: string;
+    originStorageId: string;
+    storage: Record<string, any>;
+    file: FileEntry;
+}
+
+export interface MaterializedProblemSnapshot {
+    sourceDocId: number | string;
+    sourcePid?: number | string;
+    sourceReference: ProblemReference & Record<string, any>;
+    effectiveSource: {
+        domainId: string;
+        docId: number | string;
+        pid: number | string;
+        path: string;
+        referenceChain: Array<ProblemReference & Record<string, any>>;
+    };
+    config: any;
+    data: any[];
+    additional_file: any[];
+    clonedFiles: MaterializedProblemClonedFile[];
+}
+
+export interface MaterializedProblemsManifest {
+    file: string;
+    count: number;
+    sha256: string;
+    bytes: number;
+}
+
 export interface CollectionManifest {
     name: MigrationCollection;
     file: string;
@@ -211,6 +252,7 @@ export interface MigrationManifest {
     sourceDatabase: string;
     collections: CollectionManifest[];
     files: FileEntry[];
+    materializedProblems?: MaterializedProblemsManifest;
     excludedFiles: Array<{ sourcePath: string; reason: string; missing?: boolean }>;
     counts: Record<string, number>;
     packageHash?: string;
@@ -932,7 +974,7 @@ function sourceStoragePathIsPersonal(sourcePath: string, domainId: string): bool
     return sourcePath.includes(`/${domainId}/`) || /^(?:user|avatar|profile)\//.test(sourcePath);
 }
 
-function safeRelativePath(root: string, relative: string): string {
+export function safeRelativePath(root: string, relative: string): string {
     const clean = relative.replace(/^[/\\]+/, '');
     if (!clean || clean.split(/[\\/]/).includes('..') || path.isAbsolute(relative)) {
         throw new Error(`不安全的存储路径: ${relative}`);
@@ -1095,6 +1137,89 @@ async function sourceFingerprint(db: Db, domainId: string, docs: Record<string, 
     return hashObject({ summary, server: { version: server.version, setName: server.setName } });
 }
 
+function materializedProblemPath(sourceDocId: number | string, kind: MaterializedProblemFileKind, name: string): string {
+    return `problem/${EXAM_DOMAIN}/${String(sourceDocId)}/${kind === 'data' ? 'testdata' : kind}/${name}`;
+}
+
+function materializedStorageId(runId: string, sourceDocId: number | string, originPath: string, name: string): string {
+    const suffix = path.extname(name).replace(/[^a-z0-9.]/gi, '').toLowerCase();
+    return `migration/${runId}/materialized/${String(sourceDocId)}/${sha256(originPath).slice(0, 24)}${suffix}`;
+}
+
+function materializedStorageEtag(storageId: string): string {
+    // Match Hydro's local storage etag shape so normal storage-reference
+    // rewriting can map sidecar file descriptors through plan.storage.
+    return Buffer.from(`/data/file/hydro/${storageId}`).toString('base64');
+}
+
+function materializedFileName(file: any, sourceDocId: number | string, kind: MaterializedProblemFileKind): string {
+    const name = String(file?.name || file?._id || '').trim();
+    assert(name && name !== '.' && name !== '..' && !name.includes('/') && !name.includes('\\'),
+        `题目 ${String(sourceDocId)} 的 ${kind} 文件名不安全: ${name}`);
+    return name;
+}
+
+async function findReferencedProblem(db: Db, reference: ProblemReference & Record<string, any>, sourceDocId: number | string): Promise<any> {
+    const domainId = String(reference.domainId || '').trim();
+    const pid = reference.pid;
+    assert(domainId && pid !== undefined && pid !== null,
+        `题目 ${String(sourceDocId)} 的引用缺少 domainId/pid`);
+    const candidates = await db.collection<any>('document').find({
+        docType: 10,
+        domainId,
+        $or: [{ docId: pid }, { pid: String(pid) }, { pid }],
+    }).limit(2).toArray();
+    assert(candidates.length === 1,
+        `题目 ${String(sourceDocId)} 的引用 ${domainId}/${String(pid)} ${candidates.length ? '不唯一' : '不存在'}`);
+    return candidates[0];
+}
+
+/**
+ * Resolve an exam wrapper's reference chain. Only chains which ultimately
+ * resolve to the prepare domain are materialized; other references continue
+ * to be handled by the existing decision logic.
+ */
+export async function resolveMaterializedProblem(db: Db, wrapper: any): Promise<{
+    sourceReference: ProblemReference & Record<string, any>;
+    effectiveSource: MaterializedProblemSnapshot['effectiveSource'];
+    problem: any;
+} | null> {
+    if (!wrapper?.reference) return null;
+    const sourceDocId = wrapper.docId;
+    const sourceReference = wrapper.reference as ProblemReference & Record<string, any>;
+    if (sourceReference.domainId !== 'prepare') return null;
+    const referenceChain: Array<ProblemReference & Record<string, any>> = [];
+    const visited = new Set<string>();
+    let current = wrapper;
+    while (current?.reference) {
+        const reference = current.reference as ProblemReference & Record<string, any>;
+        const key = `${String(reference.domainId)}:${String(reference.pid)}`;
+        assert(!visited.has(key), `题目 ${String(sourceDocId)} 的题目引用形成循环: ${key}`);
+        visited.add(key);
+        referenceChain.push(reference);
+        current = await findReferencedProblem(db, reference, sourceDocId);
+    }
+    const effectiveDomainId = String(current?.domainId || '');
+    if (!referenceChain.some((reference) => String(reference.domainId) === 'prepare')
+        && effectiveDomainId !== 'prepare') return null;
+    assert(effectiveDomainId === 'prepare',
+        `题目 ${String(sourceDocId)} 的引用链未以 prepare 题目结束: ${effectiveDomainId}`);
+    const effectiveDocId = current.docId;
+    assert(effectiveDocId !== undefined && effectiveDocId !== null,
+        `题目 ${String(sourceDocId)} 的 prepare 引用缺少 docId`);
+    return {
+        sourceReference,
+        effectiveSource: {
+            domainId: effectiveDomainId,
+            docId: effectiveDocId,
+            pid: current.pid ?? effectiveDocId,
+            path: `problem/${effectiveDomainId}/${String(effectiveDocId)}`,
+            referenceChain,
+        },
+        problem: current,
+    };
+}
+
 export async function targetFingerprint(db: Db, domainId = EXAM_DOMAIN): Promise<TargetFingerprint> {
     const collections: Record<string, { count: number; idsHash: string }> = {};
     for (const name of COLLECTIONS) {
@@ -1247,6 +1372,149 @@ export async function exportExamPackage(options: CommandOptions = {}): Promise<M
             }
         }
 
+        // Exam problem documents frequently only contain a reference to a
+        // prepare problem. Keep the exam document snapshot unchanged, but
+        // materialize the ultimate prepare config/files in a separate,
+        // immutable sidecar. Every wrapper receives its own logical storage
+        // path and synthetic storage identity so the apply phase can safely
+        // turn it into an exam-owned entity.
+        const materializedProblems: MaterializedProblemSnapshot[] = [];
+        const materializedStorageIds = new Set<string>();
+        const materializedEtags = new Set<string>();
+        const examProblems = (selected.document || []).filter((doc) => doc.docType === 10 && doc.domainId === domainId);
+        for (const wrapper of examProblems) {
+            const resolved = await resolveMaterializedProblem(db, wrapper);
+            if (!resolved) continue;
+            const sourceDocId = wrapper.docId as number | string;
+            const effective = resolved.effectiveSource;
+            assert(wrapper.owner !== undefined && wrapper.owner !== null,
+                `题目 ${String(sourceDocId)} 缺少 owner，无法克隆存储元数据`);
+            const clonedFiles: MaterializedProblemClonedFile[] = [];
+            const clonedData: any[] = [];
+            const clonedAdditionalFiles: any[] = [];
+            const fileKinds: Array<[MaterializedProblemFileKind, any[]]> = [
+                ['data', clonedData], ['additional_file', clonedAdditionalFiles],
+            ];
+            for (const [kind, output] of fileKinds) {
+                const sourceFiles = Array.isArray(resolved.problem[kind]) ? resolved.problem[kind] : [];
+                for (const sourceFile of sourceFiles) {
+                    const name = materializedFileName(sourceFile, sourceDocId, kind);
+                    const folder = kind === 'data' ? 'testdata' : kind;
+                    const originCandidates = [
+                        `problem/${effective.domainId}/${String(effective.docId)}/${folder}/${name}`,
+                        ...(String(effective.pid) !== String(effective.docId)
+                            ? [`problem/${effective.domainId}/${String(effective.pid)}/${folder}/${name}`] : []),
+                    ];
+                    const originPath = originCandidates.find((candidate) => storageByPath.has(candidate));
+                    assert(originPath, `题目 ${String(sourceDocId)} 的 prepare 文件元数据不存在: ${originCandidates[0]}`);
+                    const originStorage = storageByPath.get(originPath)!;
+                    const originStorageId = String(originStorage._id || '');
+                    assert(originStorageId, `题目 ${String(sourceDocId)} 的 prepare 文件缺少 storage._id: ${originPath}`);
+                    const bytes = await readStorageBytes(originStorage, options.sourceStorageRoot);
+                    assert(bytes, `题目 ${String(sourceDocId)} 的 prepare 文件实体不存在: ${originPath}`);
+                    if (originStorage.size !== undefined && originStorage.size !== null
+                        && Number(originStorage.size) !== bytes.length) {
+                        throw new Error(`题目 ${String(sourceDocId)} 的 prepare 文件大小不一致: ${originPath}`);
+                    }
+                    if (sourceFile.size !== undefined && sourceFile.size !== null
+                        && Number(sourceFile.size) !== bytes.length) {
+                        throw new Error(`题目 ${String(sourceDocId)} 的 prepare 文件描述大小不一致: ${originPath}`);
+                    }
+                    const logicalPath = materializedProblemPath(sourceDocId, kind, name);
+                    assert(!files.some((file) => file.sourcePath === logicalPath),
+                        `迁移包存储路径重复: ${logicalPath}`);
+                    const syntheticId = materializedStorageId(path.basename(runDir), sourceDocId, originPath, name);
+                    const syntheticEtag = materializedStorageEtag(syntheticId);
+                    assert(!materializedStorageIds.has(syntheticId), `合成 storage ID 重复: ${syntheticId}`);
+                    assert(!materializedEtags.has(syntheticEtag), `合成 etag 重复: ${logicalPath}`);
+                    materializedStorageIds.add(syntheticId);
+                    materializedEtags.add(syntheticEtag);
+                    const digest = sha256(bytes);
+                    if (!fileHashes.has(digest)) {
+                        const packagePath = `files/${digest}`;
+                        await writePrivateFile(path.join(runDir, packagePath), bytes);
+                        fileHashes.set(digest, packagePath);
+                    }
+                    const file: FileEntry = {
+                        sourceStorageId: syntheticId,
+                        sourcePath: logicalPath,
+                        targetPath: logicalPath,
+                        packagePath: fileHashes.get(digest),
+                        size: bytes.length,
+                        sha256: digest,
+                        required: true,
+                        included: true,
+                    };
+                    const storage = {
+                        ...originStorage,
+                        _id: syntheticId,
+                        path: logicalPath,
+                        size: bytes.length,
+                        etag: syntheticEtag,
+                        owner: wrapper.owner,
+                    };
+                    if (originStorage.meta && typeof originStorage.meta === 'object') storage.meta = { ...originStorage.meta };
+                    delete storage.link;
+                    delete storage.autoDelete;
+                    delete storage.lastUsage;
+                    delete storage.operator;
+                    clonedFiles.push({
+                        kind,
+                        name,
+                        originPath,
+                        originStorageId,
+                        storage,
+                        file,
+                    });
+                    output.push({
+                        ...sourceFile,
+                        _id: name,
+                        name,
+                        size: bytes.length,
+                        etag: syntheticEtag,
+                        ...(storage.lastModified ? { lastModified: storage.lastModified } : {}),
+                    });
+                    files.push(file);
+                }
+            }
+            materializedProblems.push({
+                sourceDocId,
+                ...(wrapper.pid !== undefined ? { sourcePid: wrapper.pid } : {}),
+                sourceReference: resolved.sourceReference,
+                effectiveSource: effective,
+                config: resolved.problem.config ?? null,
+                data: clonedData,
+                additional_file: clonedAdditionalFiles,
+                clonedFiles,
+            });
+        }
+        const materializedProblemsFile = materializedProblems.length
+            ? 'collections/materialized-problems.jsonl' : undefined;
+        const materializedProblemsManifest = materializedProblemsFile
+            ? { file: materializedProblemsFile, count: materializedProblems.length,
+                ...(await writeJsonLines(path.join(runDir, materializedProblemsFile), materializedProblems)) }
+            : undefined;
+        const selectedFingerprint = await sourceFingerprint(db, domainId, selected);
+        const sourceFingerprintValue = hashObject({
+            selected: selectedFingerprint,
+            materializedProblems: materializedProblems.map((problem) => ({
+                sourceDocId: problem.sourceDocId,
+                sourceReference: problem.sourceReference,
+                effectiveSource: problem.effectiveSource,
+                config: problem.config,
+                data: problem.data,
+                additional_file: problem.additional_file,
+                clonedFiles: problem.clonedFiles.map((file) => ({
+                    kind: file.kind,
+                    name: file.name,
+                    originPath: file.originPath,
+                    originStorageId: file.originStorageId,
+                    storage: file.storage,
+                    file: file.file,
+                })),
+            })),
+        });
+
         const collections: CollectionManifest[] = [];
         for (const name of COLLECTIONS) {
             const docs = (selected[name] || []).map((doc) => scrubExportDocument(name, doc));
@@ -1261,10 +1529,11 @@ export async function exportExamPackage(options: CommandOptions = {}): Promise<M
             runId: path.basename(runDir),
             domainId,
             createdAt: new Date().toISOString(),
-            sourceFingerprint: await sourceFingerprint(db, domainId, selected),
+            sourceFingerprint: sourceFingerprintValue,
             sourceDatabase,
             collections,
             files,
+            ...(materializedProblemsManifest ? { materializedProblems: materializedProblemsManifest } : {}),
             excludedFiles,
             counts: Object.fromEntries(collections.map((item) => [item.name, item.count])),
         };
@@ -1278,6 +1547,12 @@ export async function exportExamPackage(options: CommandOptions = {}): Promise<M
             counts: manifest.counts,
             includedFiles: files.filter((file) => file.included).length,
             excludedFiles: excludedFiles.length,
+            materializedProblems: materializedProblems.map((problem) => ({
+                sourceDocId: problem.sourceDocId,
+                originPath: problem.effectiveSource.path,
+                originFiles: problem.clonedFiles.map((file) => file.originPath),
+                fileCount: problem.clonedFiles.length,
+            })),
         });
         return manifest;
     } finally {
@@ -1285,7 +1560,7 @@ export async function exportExamPackage(options: CommandOptions = {}): Promise<M
     }
 }
 
-async function loadManifest(runDir: string): Promise<MigrationManifest> {
+export async function loadManifest(runDir: string): Promise<MigrationManifest> {
     const manifest = await readJson<MigrationManifest>(path.join(runDir, 'manifest.json'));
     assert(manifest.schemaVersion === MIGRATION_SCHEMA_VERSION, `不支持的迁移包版本: ${manifest.schemaVersion}`);
     assert(manifest.kind === 'hydro.exam-migration', '不是 exam 迁移包');
@@ -1297,6 +1572,10 @@ async function loadManifest(runDir: string): Promise<MigrationManifest> {
     for (const file of manifest.files) {
         if (file.packagePath) assert(safePackageRelative(file.packagePath, 'files/'), `不安全的文件包路径: ${file.packagePath}`);
     }
+    if (manifest.materializedProblems) {
+        assert(safePackageRelative(manifest.materializedProblems.file, 'collections/'),
+            `不安全的题源快照路径: ${manifest.materializedProblems.file}`);
+    }
     const packageHash = await hashPackageDirectory(runDir);
     assert(packageHash === manifest.packageHash, `迁移包哈希不匹配: ${packageHash} != ${manifest.packageHash}`);
     for (const collection of manifest.collections) {
@@ -1304,10 +1583,14 @@ async function loadManifest(runDir: string): Promise<MigrationManifest> {
         const content = await fsp.readFile(file);
         assert(sha256(content) === collection.sha256, `集合文件哈希不匹配: ${collection.name}`);
     }
+    if (manifest.materializedProblems) {
+        const content = await fsp.readFile(path.join(runDir, manifest.materializedProblems.file));
+        assert(sha256(content) === manifest.materializedProblems.sha256, '题源快照哈希不匹配');
+    }
     return manifest;
 }
 
-async function loadPackageCollections(runDir: string, manifest: MigrationManifest) {
+export async function loadPackageCollections(runDir: string, manifest: MigrationManifest) {
     const result: Record<string, any[]> = {};
     for (const collection of manifest.collections) {
         const docs = await readJsonLines(path.join(runDir, collection.file));
@@ -1315,6 +1598,26 @@ async function loadPackageCollections(runDir: string, manifest: MigrationManifes
         result[collection.name] = docs;
     }
     return result;
+}
+
+export async function loadMaterializedProblems(runDir: string, manifest: MigrationManifest): Promise<MaterializedProblemSnapshot[]> {
+    if (!manifest.materializedProblems) return [];
+    const snapshots = await readJsonLines(path.join(runDir, manifest.materializedProblems.file)) as MaterializedProblemSnapshot[];
+    assert(snapshots.length === manifest.materializedProblems.count, '题源快照数量不匹配');
+    const manifestFiles = new Map(manifest.files.map((file) => [file.sourcePath, file]));
+    const sourceDocIds = new Set<string>();
+    for (const snapshot of snapshots) {
+        const sourceDocId = String(snapshot.sourceDocId);
+        assert(!sourceDocIds.has(sourceDocId), `题源快照重复: ${sourceDocId}`);
+        sourceDocIds.add(sourceDocId);
+        for (const cloned of snapshot.clonedFiles) {
+            const file = manifestFiles.get(cloned.file.sourcePath);
+            assert(file && file.sha256 === cloned.file.sha256
+                && file.sourceStorageId === cloned.file.sourceStorageId,
+            `题源快照文件清单不一致: ${cloned.file.sourcePath}`);
+        }
+    }
+    return snapshots;
 }
 
 function getPlanHashInput(plan: MigrationPlan): Omit<MigrationPlan, 'planHash'> {
@@ -1466,7 +1769,7 @@ function rewriteSubmissionReferences(
     return output;
 }
 
-function planStorage(
+export function planStorage(
     files: FileEntry[], problems: ProblemDecision[], contests: ContestDecision[],
     users: Map<number, number>, objectIds: ObjectIdMaps, runId: string,
 ): FileEntry[] {
@@ -1516,6 +1819,8 @@ export async function analyzeExamPackage(options: CommandOptions = {}): Promise<
     const domainId = (options.domainId || manifest.domainId || EXAM_DOMAIN).toLowerCase();
     assert(domainId === manifest.domainId, `分析域与迁移包不一致: ${domainId} != ${manifest.domainId}`);
     const docs = await loadPackageCollections(runDir, manifest);
+    const materializedProblems = await loadMaterializedProblems(runDir, manifest);
+    const materializedById = new Map(materializedProblems.map((problem) => [Number(problem.sourceDocId), problem]));
     const client = await MongoClient.connect(options.targetUri);
     try {
         const db = client.db(options.targetDatabase || undefined);
@@ -1533,6 +1838,15 @@ export async function analyzeExamPackage(options: CommandOptions = {}): Promise<
         const problems = buildProblemDecisions(sourceProblems, targetProblems, targetDomains, {
             mergeExisting: !!options.mergeExisting, domainId,
         });
+        for (const decision of problems.filter((item) => item.action === 'copy')) {
+            const source = sourceProblems.find((item) => Number(item.docId) === decision.sourceDocId);
+            if (!source?.reference || source.data?.length || source.additional_file?.length) continue;
+            const materialized = materializedById.get(decision.sourceDocId);
+            assert(materialized && materialized.sourceReference.domainId === source.reference.domainId
+                && String(materialized.sourceReference.pid) === String(source.reference.pid)
+                && materialized.data.length + materialized.additional_file.length > 0,
+            `题目 ${decision.sourcePid} 的引用题源测试数据未打包，拒绝实体化复制`);
+        }
         const problemIds = Object.fromEntries(problems.map((decision) => [
             String(decision.sourceDocId), decision.targetDocId ?? decision.sourceDocId,
         ]));
@@ -1640,7 +1954,8 @@ export async function analyzeExamPackage(options: CommandOptions = {}): Promise<
             if (!existingStatusKeys.has(key)) plannedStatusKeys.add(key);
         }
 
-        const sourceStorage = (docs.storage || []).map((doc) => mapStorageDocument(
+        const materializedStorage = materializedProblems.flatMap((problem) => problem.clonedFiles.map((file) => file.storage));
+        const sourceStorage = [...(docs.storage || []), ...materializedStorage].map((doc) => mapStorageDocument(
             doc, provisionalPlan, domainId, users, objectIdMapFromPlan(provisionalPlan), storageMapFromPlan(provisionalPlan),
         )).filter(Boolean);
         const relatedDocuments = (docs.document || []).filter((doc) => doc.docType !== 10)
@@ -1753,7 +2068,7 @@ function storageMapFromPlan(plan: MigrationPlan): Map<string, string> {
     return new Map(plan.storage.map((item) => [item.sourceStorageId, item.targetStorageId || item.sourceStorageId]));
 }
 
-function rewriteStorageReference(value: any, storageIds: Map<string, string>): any {
+export function rewriteStorageReference(value: any, storageIds: Map<string, string>): any {
     if (typeof value === 'string') {
         let decoded = value;
         let encoded = false;
@@ -1955,10 +2270,58 @@ async function defaultMongoDump(uri: string, database: string, output: string) {
     await runCommand('mongodump', ['--uri', uri, '--db', database, '--out', output]);
 }
 
+export async function checkConfirmedP105Files(
+    db: Db, storageRoot: string | undefined, plan: MigrationPlan,
+    materializedProblems: MaterializedProblemSnapshot[],
+): Promise<{ checked: number; errors: string[] }> {
+    const decision = plan.problems.find((item) => item.sourceDocId === 105 && item.reason === 'confirmed-reuse');
+    if (!decision) return { checked: 0, errors: [] };
+    const errors: string[] = [];
+    const snapshot = materializedProblems.find((item) => Number(item.sourceDocId) === 105);
+    if (!snapshot || !storageRoot) return { checked: 0, errors: ['P105 复用缺少源题文件快照或目标存储根目录'] };
+    if (snapshot.effectiveSource.domainId !== 'prepare' || String(snapshot.effectiveSource.docId) !== '88') {
+        return { checked: 0, errors: ['P105 源题不再指向 prepare/88'] };
+    }
+    const reference = CONFIRMED_DECISIONS.problemReuses.P105.reference;
+    const entity = await db.collection<any>('document').findOne({
+        domainId: reference.domainId, docType: 10, docId: reference.pid,
+    });
+    const expected = snapshot.clonedFiles.filter((item) => item.kind === 'data');
+    const expectedNames = expected.map((item) => item.name).sort();
+    const actualNames = (entity?.data || []).map((item) => String(item.name)).sort();
+    const expectedAdditionalNames = snapshot.clonedFiles.filter((item) => item.kind === 'additional_file')
+        .map((item) => item.name).sort();
+    const actualAdditionalNames = (entity?.additional_file || []).map((item) => String(item.name)).sort();
+    if (!entity || entity.reference || expected.length !== 40
+        || stableStringify(expectedNames) !== stableStringify(actualNames)
+        || stableStringify(expectedAdditionalNames) !== stableStringify(actualAdditionalNames)) {
+        return { checked: 0, errors: ['P105 源 prepare/88 与目标 contests/3230 测试文件清单不一致'] };
+    }
+    let checked = 0;
+    for (const file of snapshot.clonedFiles) {
+        const folder = file.kind === 'data' ? 'testdata' : 'additional_file';
+        const targetPath = `problem/${reference.domainId}/${reference.pid}/${folder}/${file.name}`;
+        const metadata = await db.collection<any>('storage').findOne({ path: targetPath, autoDelete: null });
+        if (!metadata) {
+            errors.push(`P105 目标存储元数据不存在: ${targetPath}`);
+            continue;
+        }
+        try {
+            const bytes = await fsp.readFile(safeRelativePath(storageRoot, String(metadata._id)));
+            checked++;
+            if (sha256(bytes) !== file.file.sha256) errors.push(`P105 文件 SHA-256 不一致: ${targetPath}`);
+        } catch {
+            errors.push(`P105 目标物理文件不存在: ${targetPath}`);
+        }
+    }
+    return { checked, errors };
+}
+
 async function verifyApplyPreconditions(
     db: Db, runDir: string, plan: MigrationPlan, options: ApplyOptions,
 ): Promise<MigrationManifest> {
     const manifest = await loadManifest(runDir);
+    const materializedProblems = await loadMaterializedProblems(runDir, manifest);
     assert(manifest.domainId === plan.domainId, '计划和迁移包域不一致');
     assert(manifest.packageHash === plan.packageHash, '计划和迁移包哈希不一致');
     assert(computePlanHash(plan) === plan.planHash, 'plan.json 自身哈希不一致');
@@ -1988,6 +2351,8 @@ async function verifyApplyPreconditions(
             }
         }
     }
+    const p105Files = await checkConfirmedP105Files(db, options.targetStorageRoot, plan, materializedProblems);
+    assert(!p105Files.errors.length, p105Files.errors.join('; '));
     return manifest;
 }
 
@@ -2001,6 +2366,8 @@ export async function applyExamPackage(options: ApplyOptions = {}): Promise<Appl
     assert(plan.planHash === options.planHash, `计划哈希不匹配: ${options.planHash}`);
     const manifest = await loadManifest(runDir);
     const docs = await loadPackageCollections(runDir, manifest);
+    const materializedProblems = await loadMaterializedProblems(runDir, manifest);
+    const materializedById = new Map(materializedProblems.map((problem) => [Number(problem.sourceDocId), problem]));
     const client = await MongoClient.connect(options.targetUri);
     let stopped = false;
     let completed = false;
@@ -2095,10 +2462,22 @@ export async function applyExamPackage(options: ApplyOptions = {}): Promise<Appl
         });
 
         const problemDocuments = (docs.document || []).filter((doc) => doc.docType === 10)
-            .map((doc) => mapDocumentForApply(doc, plan, plan.domainId, users, objectIds, storageIds, problemMapFromPlan(plan), true));
+            .map((doc) => {
+                const decision = plan.problems.find((item) => item.sourceDocId === Number(doc.docId));
+                const materialized = decision?.action === 'copy' ? materializedById.get(Number(doc.docId)) : undefined;
+                const source = materialized ? {
+                    ...doc,
+                    config: materialized.config,
+                    data: materialized.data,
+                    additional_file: materialized.additional_file,
+                } : doc;
+                return mapDocumentForApply(source, plan, plan.domainId, users, objectIds, storageIds, problemMapFromPlan(plan), true);
+            });
         await runPhase(runDir, state, 'problems', async () => insertDocuments(db, 'document', problemDocuments, state, plan.domainId));
 
-        const sourceStorage = (docs.storage || []).map((doc) => mapStorageDocument(doc, plan, plan.domainId, users, objectIds, storageIds)).filter(Boolean);
+        const materializedStorage = materializedProblems.flatMap((problem) => problem.clonedFiles.map((file) => file.storage));
+        const sourceStorage = [...(docs.storage || []), ...materializedStorage]
+            .map((doc) => mapStorageDocument(doc, plan, plan.domainId, users, objectIds, storageIds)).filter(Boolean);
         await runPhase(runDir, state, 'storage', async () => {
             let count = 0;
             for (const file of plan.storage.filter((item) => item.included && item.packagePath)) {
@@ -2208,6 +2587,8 @@ export async function generateMergeReport(options: CommandOptions = {}): Promise
     const manifest = await loadManifest(runDir);
     assert(manifest.packageHash === plan.packageHash, '计划和迁移包哈希不一致');
     const docs = await loadPackageCollections(runDir, manifest);
+    const materializedProblems = await loadMaterializedProblems(runDir, manifest);
+    const materializedById = new Map(materializedProblems.map((problem) => [Number(problem.sourceDocId), problem]));
     const verification = await readJson<VerifyReport>(path.join(runDir, 'verify-report.json'));
     assert(verification.runId === plan.runId, '验证报告和计划 run-id 不一致');
     assert(verification.applied, '尚未完成正式 apply，不能生成合并报告');
@@ -2315,6 +2696,7 @@ export async function generateMergeReport(options: CommandOptions = {}): Promise
         for (const source of (docs.document || []).filter((doc) => doc.docType === 10)) {
             const decision = plan.problems.find((item) => item.sourceDocId === Number(source.docId));
             if (!decision) continue;
+            const materialized = decision.action === 'copy' ? materializedById.get(Number(source.docId)) : undefined;
             const target = await db.collection<any>('document').findOne({
                 domainId: decision.action === 'reference' ? targetDomain : decision.targetDomainId,
                 docType: 10,
@@ -2322,8 +2704,9 @@ export async function generateMergeReport(options: CommandOptions = {}): Promise
                     ? { docId: decision.targetDocId }
                     : { pid: decision.targetPid }),
             });
-            const comparison = target ? (problemEquivalent(source, target) ? 'equivalent' : 'different') : 'unavailable';
-            const sourceFiles = problemFileNames(source);
+            const comparableSource = materialized ? { ...source, config: materialized.config } : source;
+            const comparison = target ? (problemEquivalent(comparableSource, target) ? 'equivalent' : 'different') : 'unavailable';
+            const sourceFiles = problemFileNames(materialized || source);
             const targetFiles = problemFileNames(target);
             let effectiveTarget = target;
             const visited = new Set<string>();
@@ -2361,7 +2744,7 @@ export async function generateMergeReport(options: CommandOptions = {}): Promise
                 targetFiles,
                 effectiveTestData,
                 attachmentCount: attachments.length,
-                filesIncluded: attachments.length > 0 || !decision.sourceHasFiles,
+                filesIncluded: decision.action !== 'copy' || attachments.length === sourceFiles.length,
                 excluded: false,
             });
         }
@@ -2720,6 +3103,7 @@ export async function verifyExamMigration(options: CommandOptions = {}): Promise
     assert(manifest.domainId === plan.domainId, '计划和迁移包域不一致');
     assert(plan.packageHash === manifest.packageHash, '验证计划和迁移包哈希不一致');
     const docs = await loadPackageCollections(runDir, manifest);
+    const materializedProblems = await loadMaterializedProblems(runDir, manifest);
     const client = await MongoClient.connect(options.targetUri);
     try {
         const db = client.db(options.targetDatabase || undefined);
@@ -2734,10 +3118,31 @@ export async function verifyExamMigration(options: CommandOptions = {}): Promise
         }
         const createdUids = plan.identities.filter((identity) => identity.created).map((identity) => identity.targetUid);
         const references = await verifyReferences(db, plan.domainId, createdUids, plan.defaultUserPriv);
+        const materializedById = new Map(materializedProblems.map((problem) => [Number(problem.sourceDocId), problem]));
+        const storageIds = storageMapFromPlan(plan);
+        for (const decision of plan.problems.filter((item) => item.action === 'copy')) {
+            const materialized = materializedById.get(decision.sourceDocId);
+            if (!materialized) continue;
+            const target = await db.collection<any>('document').findOne({
+                domainId: plan.domainId, docType: 10, docId: decision.targetDocId,
+            });
+            const expectedData = rewriteStorageReference(materialized.data, storageIds);
+            const expectedAdditionalFiles = rewriteStorageReference(materialized.additional_file, storageIds);
+            references.checked++;
+            if (!target || target.reference
+                || stableStringify(target.data || []) !== stableStringify(expectedData)
+                || stableStringify(target.additional_file || []) !== stableStringify(expectedAdditionalFiles)
+                || stableStringify(target.config ?? null) !== stableStringify(materialized.config ?? null)) {
+                references.errors.push(`problem/${String(decision.targetDocId)} 题源测试数据物化不一致`);
+            }
+        }
         const contestReferences = await verifyContestProblemReferences(db, plan.domainId, docs.document || [], plan);
         references.checked += contestReferences.checked;
         references.errors.push(...contestReferences.errors);
         const files = await verifyFiles(db, runDir, plan, options.targetStorageRoot);
+        const p105Files = await checkConfirmedP105Files(db, options.targetStorageRoot, plan, materializedProblems);
+        files.checked += p105Files.checked;
+        files.errors.push(...p105Files.errors);
         const users = await db.collection<any>('user').find({}).project({ unameLower: 1, uname: 1, mailLower: 1, mail: 1 }).toArray();
         const usernames = new Map<string, number>();
         const emails = new Map<string, number>();

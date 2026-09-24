@@ -5,6 +5,9 @@ import {
     analyzeExamPackage, applyExamPackage, exportExamPackage, generateMergeReport, redactForLog,
     rollbackExamMigration, verifyExamMigration,
 } from './exam';
+import {
+    assertSeparateRepairDirectories, testdataAnalyze, testdataApply, testdataRollback, testdataVerify,
+} from './exam-testdata-run';
 
 interface ParsedArgs {
     _: string[];
@@ -68,6 +71,25 @@ function options(args: ParsedArgs) {
     };
 }
 
+function testdataOptions(args: ParsedArgs) {
+    const priorRunDir = env(args, 'prior-run-dir', 'HYDRO_EXAM_PRIOR_RUN_DIR');
+    const sourcePackageDir = env(args, 'source-package', 'HYDRO_EXAM_SOURCE_PACKAGE');
+    const repairRunDir = env(args, 'repair-run-dir', 'HYDRO_EXAM_REPAIR_RUN_DIR');
+    return {
+        priorRunDir: priorRunDir ? path.resolve(priorRunDir) : undefined,
+        sourcePackageDir: sourcePackageDir ? path.resolve(sourcePackageDir) : undefined,
+        repairRunDir: repairRunDir ? path.resolve(repairRunDir) : undefined,
+        targetUri: env(args, 'target-uri', 'HYDRO_EXAM_TARGET_URI'),
+        targetDatabase: env(args, 'target-db', 'HYDRO_EXAM_TARGET_DB'),
+        targetStorageRoot: env(args, 'target-storage-root', 'HYDRO_EXAM_TARGET_STORAGE_ROOT'),
+        planHash: env(args, 'plan-hash', 'HYDRO_EXAM_PLAN_HASH'),
+        dryRun: flag(args, 'dry-run'),
+        noStop: flag(args, 'no-stop'),
+        noBackup: flag(args, 'no-backup'),
+        yes: flag(args, 'yes'),
+    };
+}
+
 function print(value: any) {
     process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
@@ -83,7 +105,16 @@ async function logCommand(runDir: string | undefined, args: ParsedArgs) {
 }
 
 function help() {
-    process.stdout.write(`exam migration (read-only source, immutable package)\n\nUsage:\n  exam-migrate export  --source-uri URI [--source-db DB] [--run-dir DIR]\n  exam-migrate analyze --package DIR --target-uri URI [--target-db DB] [--merge-existing]\n  exam-migrate apply   --package DIR --target-uri URI --plan-hash HASH [--target-storage-root DIR] [--merge-existing]\n  exam-migrate verify  --package DIR --target-uri URI [--target-storage-root DIR]\n  exam-migrate rollback --package DIR --target-uri URI --yes\n\nOptions:\n  --no-stop       Do not run pm2 stop/start (only for an explicitly isolated target)\n  --no-backup     Skip the pre-apply mongodump (not recommended)\n  --dry-run       Validate apply preconditions without writing\n  --merge-existing  Preserve an existing exam domain and merge only new objects\n  --yes           Confirm rollback\n\nCredentials are accepted through environment variables as well:\n  HYDRO_EXAM_SOURCE_URI, HYDRO_EXAM_TARGET_URI, HYDRO_EXAM_SOURCE_DB,\n  HYDRO_EXAM_TARGET_DB, HYDRO_EXAM_RUN_DIR, HYDRO_EXAM_PLAN_HASH\n`);
+    process.stdout.write(`exam migration (read-only source, immutable package)\n\nUsage:\n  exam-migrate export  --source-uri URI [--source-db DB] [--run-dir DIR]\n  exam-migrate analyze --package DIR --target-uri URI [--target-db DB] [--merge-existing]\n  exam-migrate apply   --package DIR --target-uri URI --plan-hash HASH [--target-storage-root DIR] [--merge-existing]\n  exam-migrate verify  --package DIR --target-uri URI [--target-storage-root DIR]\n  exam-migrate rollback --package DIR --target-uri URI --yes\n\n  exam-migrate testdata-analyze --prior-run-dir OLD --source-package NEW --repair-run-dir RUN --target-uri URI\n  exam-migrate testdata-apply   --prior-run-dir OLD --source-package NEW --repair-run-dir RUN --target-uri URI --target-storage-root DIR --plan-hash HASH\n  exam-migrate testdata-verify  --prior-run-dir OLD --source-package NEW --repair-run-dir RUN --target-uri URI --target-storage-root DIR\n  exam-migrate testdata-rollback --prior-run-dir OLD --source-package NEW --repair-run-dir RUN --target-uri URI --target-storage-root DIR --yes\n\nOptions:\n  --no-stop       Do not run pm2 stop/start (only for an explicitly isolated target)\n  --no-backup     Skip the pre-apply mongodump (not recommended)\n  --dry-run       Validate apply preconditions without writing\n  --merge-existing  Preserve an existing exam domain and merge only new objects\n  --yes           Confirm rollback\n\nCredentials are accepted through environment variables as well:\n  HYDRO_EXAM_SOURCE_URI, HYDRO_EXAM_TARGET_URI, HYDRO_EXAM_SOURCE_DB,\n  HYDRO_EXAM_TARGET_DB, HYDRO_EXAM_RUN_DIR, HYDRO_EXAM_PLAN_HASH\n`);
+}
+
+async function pm2(action: 'start' | 'stop') {
+    const { spawn } = await import('child_process');
+    await new Promise<void>((resolve, reject) => {
+        const child = spawn('pm2', [action, 'hydrooj'], { stdio: 'inherit' });
+        child.once('error', reject);
+        child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(`pm2 ${action} hydrooj exited ${code}`)));
+    });
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -94,6 +125,44 @@ export async function main(argv = process.argv.slice(2)) {
         return;
     }
     const common = options(args);
+    if (command.startsWith('testdata-')) {
+        const repair = testdataOptions(args);
+        assertSeparateRepairDirectories(repair);
+        if (command === 'testdata-analyze') {
+            const result = await testdataAnalyze(repair);
+            await logCommand(repair.repairRunDir, args);
+            print({ runId: result.runId, planHash: result.planHash, sourcePackageHash: result.sourcePackageHash, problems: result.items.length, files: result.items.reduce((sum, item) => sum + item.files.length, 0) });
+            return;
+        }
+        await logCommand(repair.repairRunDir, args);
+        if (command === 'testdata-apply') {
+            const result = await testdataApply(repair);
+            if (result.dryRun) {
+                print({ runId: result.runId, dryRun: true, planHash: result.planHash });
+                return;
+            }
+            const verification = await testdataVerify(repair);
+            if (!verification.ok) throw new Error(`测试数据修复验证失败，服务保持停止: ${verification.errors.join('; ')}`);
+            if (!repair.noStop) await pm2('start');
+            print({ runId: result.runId, applied: true, verified: true, problems: verification.problems.checked, files: verification.files.checked });
+            return;
+        }
+        if (command === 'testdata-verify') {
+            const result = await testdataVerify(repair);
+            print(result);
+            if (!result.ok) process.exitCode = 2;
+            return;
+        }
+        if (command === 'testdata-rollback') {
+            if (!repair.yes) throw new Error('testdata-rollback 需要 --yes');
+            if (!repair.noStop) await pm2('stop');
+            const result = await testdataRollback(repair);
+            if (!repair.noStop) await pm2('start');
+            print(result);
+            return;
+        }
+        throw new Error(`未知子命令: ${command}`);
+    }
     if (command === 'export') {
         const result = await exportExamPackage(common);
         await logCommand(path.resolve(common.runDir || path.join('migration-runs', result.runId)), args);

@@ -4,6 +4,8 @@
 
 目标库恢复后需要重跑时，先阅读 [EXAM-MIGRATION-REPLAY.md](./EXAM-MIGRATION-REPLAY.md)。
 其中保留了本次已确认的中间决策、审计产物清单和可复制的重跑检查点；实际迁移包不在 Git 中。
+已完成旧合并、仅需补齐 `prepare` 引用题测试数据的目标，请改用
+[EXAM-TESTDATA-REPAIR.md](./EXAM-TESTDATA-REPAIR.md) 的独立回填流程，不要重跑完整 apply。
 
 ## 1. 导出（源端停写）
 
@@ -18,6 +20,9 @@ node -r @hydrooj/register packages/migrate/bin/exam-migrate.js export \
 ```
 
 导出目录权限为 `0700`，其中用户集合可能包含 Hydro 密码凭据；命令日志只记录脱敏参数，不能把 URI、哈希或 Token 复制到工单。`manifest.json`、逐集合 JSONL（Mongo Extended JSON）、文件包、文件 SHA-256、缺失/排除文件清单和 `audit.jsonl` 都属于同一不可变包。个人文件不进入包；生产中声明但缺失的文件会进入排除报告。
+新版导出会另外沿 `exam → prepare` 引用找到真正题源，把其有效配置、测试数据、
+附加文件和物理文件写入 `materialized-problems.jsonl` 快照；缺元数据或物理文件时
+导出失败，不会产生可用于 apply 的完整包。旧包没有这份快照，不能用于补齐旧目标。
 
 ## 2. 目标分析（只读 dry-run）
 
@@ -46,6 +51,8 @@ node -r @hydrooj/register packages/migrate/bin/exam-migrate.js analyze \
 `plan.json` 保存目标指纹、身份判定、题目复用/实体化判定、ObjectId 和存储路径映射、预期数量、排除报告和 `planHash`。当前身份规则允许源、目标的非 `@test.com` 邮箱在 trim+小写后完全相同的账号合并；另有 8 个已确认的源 UID，仅在 `@test.com` 邮箱和用户名都完全相同时合并。不再使用人工映射、一般用户名匹配或用户名冲突规则。其余源账号均创建独立的 `<源用户名>_exam` 账号；邮箱已占用、未获确认的 `@test.com` 冲突或无效时使用逐 UID 唯一的 `@invalid.exam` 占位邮箱，并在计划中保留原邮箱供后续人工关联。题目的 8 个健康引用和悬空 `test`/`oler` 引用规则仍可审计。
 
 题目复用会额外记录源/目标测试文件名差异；差异只进入审计，不参与同题判定。
+但 P105 的确认复用是例外：新包中的 `prepare/88` 物理文件与目标
+`contests/3230` 的文件须在 apply 前及 verify 时逐一通过 SHA-256 核对。
 
 人工确认 `planHash` 后，必须在 apply 命令中原样携带它。重新分析目标会得到新的目标指纹和新的哈希，不得把本地 UID 直接带到另一套真实环境。
 

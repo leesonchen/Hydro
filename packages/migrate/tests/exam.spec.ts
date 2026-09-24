@@ -12,6 +12,7 @@ import {
     computePlanHash,
     normalizeIdentityEmail,
     mapDocumentForApply,
+    planStorage,
     redactForLog,
     resolveIdentities,
     rewriteObjectIds,
@@ -154,9 +155,36 @@ function testProblemReferenceRewrites() {
         plan, 'exam', new Map(), new Map(), new Map(), new Map([['115', 3]]), false,
     );
     assert.equal(problemStatus.docId, 3, 'problem status docId must follow the problem mapping');
+
+    const copiedSourceId = 'migration/source/18/testdata/1.in';
+    const copiedTargetId = 'migration/target/118/testdata/1.in';
+    const materialized = mapDocumentForApply({
+        docType: 10, docId: 18, domainId: 'exam', title: 'Prepared',
+        reference: { domainId: 'prepare', pid: 18 }, config: 'time: 1s',
+        data: [{ name: '1.in', etag: Buffer.from(`/data/file/hydro/${copiedSourceId}`).toString('base64') }],
+        additional_file: [],
+    }, {
+        ...plan,
+        problems: [{ sourceDocId: 18, sourcePid: 'P18', action: 'copy', targetDomainId: 'exam', targetPid: 118, targetDocId: 118, reason: 'entity', sourceHasFiles: true }],
+    }, 'exam', new Map(), new Map(), new Map([[copiedSourceId, copiedTargetId]]), new Map([['18', 118]]), true);
+    assert.equal(materialized.docId, 118);
+    assert.equal(materialized.reference, undefined, 'materialized entity must not retain prepare reference');
+    assert.equal(Buffer.from(materialized.data[0].etag, 'base64').toString(), `/data/file/hydro/${copiedTargetId}`);
+    assert.equal(materialized.config, 'time: 1s');
 }
 
 function testProblemDecisions() {
+    const plannedMaterializedFiles = planStorage([
+        { sourceStorageId: 'source-18', sourcePath: 'problem/exam/18/testdata/1.in', targetPath: 'problem/exam/18/testdata/1.in', included: true, required: true, sha256: 'a'.repeat(64), packagePath: 'files/a' },
+        { sourceStorageId: 'source-105', sourcePath: 'problem/exam/105/testdata/1.in', targetPath: 'problem/exam/105/testdata/1.in', included: true, required: true, sha256: 'b'.repeat(64), packagePath: 'files/b' },
+    ], [
+        { sourceDocId: 18, sourcePid: 'P18', action: 'copy', targetDomainId: 'exam', targetPid: 130, targetDocId: 130, reason: 'entity', sourceHasFiles: false },
+        { sourceDocId: 105, sourcePid: 'P105', action: 'reuse', targetDomainId: 'exam', targetPid: 9, targetDocId: 9, reason: 'confirmed-reuse', sourceHasFiles: false },
+    ], [], new Map(), { values: {} }, 'test-materialize');
+    assert.equal(plannedMaterializedFiles[0].targetPath, 'problem/exam/130/testdata/1.in');
+    assert.equal(plannedMaterializedFiles[0].included, true);
+    assert.equal(plannedMaterializedFiles[1].included, false, 'P105 source data is audit-only and must not overwrite the reuse target');
+
     const finalEntity = { domainId: 'yizhong', docId: 507, pid: 'AT7' };
     const middleReference = { domainId: 'cpptrain', docId: 4762, pid: 'AT7', reference: { domainId: 'yizhong', pid: 507 } };
     const firstReference = { domainId: 'exam', docId: 68, reference: { domainId: 'cpptrain', pid: 'AT7' } };
