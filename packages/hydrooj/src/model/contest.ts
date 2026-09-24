@@ -1151,8 +1151,8 @@ export function canShowProblemStatus(user: User | null, targetUid: number, tdoc:
 }
 
 export function canShowScoreboard(this: { user: User }, tdoc: Tdoc, allowPermOverride = true) {
-    if (tdoc.keepScoreboardHidden && (!allowPermOverride || !canViewHiddenScoreboard.call(this, tdoc))) return false;
     if (allowPermOverride && canViewHiddenScoreboard.call(this, tdoc)) return true;
+    if (tdoc.keepScoreboardHidden) return false;
     if (RULES[tdoc.rule]?.showScoreboard) return RULES[tdoc.rule].showScoreboard(tdoc, new Date());
     return !tdoc.keepScoreboardHidden && (!tdoc.beginAt || new Date() > tdoc.beginAt);
 }
