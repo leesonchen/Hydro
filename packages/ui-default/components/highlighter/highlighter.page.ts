@@ -6,6 +6,9 @@ import { i18n, tpl } from 'vj/utils';
 const highlighterPage = new AutoloadPage('highlighterPage', () => {
   import('./prismjs').then(({ default: prismjs }) => {
     function runHighlight($container) {
+      // Preview HTML is replaced frequently. Synchronous Prism grammars (notably
+      // Markdown containing fences) can freeze the tab on long input.
+      if ($container.closest('.md-editor-preview').length) return;
       $container.find('pre code').get().forEach((code) => {
         const language = ($(code).attr('class') || '').trim();
         if (language.includes('line-numbers')) $(code).parent().addClass('line-numbers');

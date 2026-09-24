@@ -1,4 +1,5 @@
 __langname: 简体中文
+Preview could not be rendered. You can continue editing and saving.: 预览暂时无法生成，仍可继续编辑和保存。
 '"{data}" copied to clipboard!': “{data}”已复制到剪贴板！
 '[Richtext message]': '[富文本消息]'
 '{0} comments': '{0} 条评论'
@@ -1211,4 +1212,4 @@ High Risk Warning: 高危操作警告
 'Force sync will overwrite all local modifications (title, content, tags, difficulty) in the target domains with the source problem, and cannot be undone!': 强制同步将使用当前源头题目的题面（标题、内容、标签、难度）直接覆盖目标域题目的所有改动，且无法撤销！
 'You have selected {0} problems to force sync:': '本次将对以下 {0} 个题目执行强制同步：'
 'Are you sure you want to proceed with force sync?': 是否确认继续执行强制同步？
-
+'Mermaid diagram could not be rendered. Source code is shown below.': Mermaid 图表无法渲染，已在下方显示源代码。

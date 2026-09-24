@@ -1,0 +1,25 @@
+.course-mermaid
+  margin: 1.2rem 0
+  overflow-x: auto
+  overflow-y: hidden
+  padding: 0.25rem 0
+  text-align: center
+  -webkit-overflow-scrolling: touch
+
+  svg
+    display: block
+    height: auto
+    margin: 0 auto
+    // Do not scale a wide graph down to the article width. Mermaid's native
+    // SVG size keeps node labels readable; the parent scrolls horizontally.
+    max-width: none
+    min-width: min-content
+
+  @media (max-width: 720px)
+    svg
+      margin-left: 0
+      margin-right: 0
+
+.course-mermaid__error
+  color: $fail-color
+  margin-bottom: 0.4rem

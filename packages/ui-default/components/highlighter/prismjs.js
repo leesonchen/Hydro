@@ -100,6 +100,8 @@ Prism.hooks.add('before-highlight', (env) => {
 const prismjsApiWrap = {
   highlightBlocks: ($dom) => {
     $dom.find('pre code').get().forEach((code) => {
+      if (code.closest('.md-editor-preview') || code.classList.contains('language-mermaid')) return;
+      if ((code.textContent || '').length > 10000) return;
       const $code = $(code);
       const $pre = $code.parent();
       $pre.addClass('syntax-hl');

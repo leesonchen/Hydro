@@ -139,6 +139,7 @@
     "markdown-it-mark": "^4.0.0",
     "markdown-it-merge-cells": "^2.0.0",
     "markdown-it-table-of-contents": "^1.2.0",
+    "mermaid": "^11.12.3",
     "nunjucks": "^3.2.4",
     "schemastery-jsonschema": "^1.1.1",
     "streamsaver": "^2.0.6",
