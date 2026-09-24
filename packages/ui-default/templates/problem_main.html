@@ -2,104 +2,40 @@
 {% import "components/problem.html" as problem with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
-  <style>
-    /* Keep layout in-template to avoid touching styl file */
-    .search.search--with-scope {
-      display: flex;
-      align-items: stretch;
-      height: 36px;
-      border: 1px solid #ccc;
-    }
-    .search.search--with-scope > input {
-      flex: 1;
-      border: none;
-      height: 100%;
-      padding: 5px 10px;
-      outline: none;
-      font-size: 14px;
-    }
-    .search.search--with-scope > select.search-sort {
-      position: static;
-      border: none;
-      border-left: 1px solid #ddd;
-      width: 110px;
-      height: 100%;
-      padding: 0 8px;
-      font-size: 14px;
-      background: #fff;
-      cursor: pointer;
-    }
-    .search.search--with-scope > label.search-filter {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      height: 100%;
-      margin: 0;
-      padding: 0 10px;
-      border-left: 1px solid #ddd;
-      white-space: nowrap;
-      font-size: 13px;
-      color: #555;
-      background: #fff;
-    }
-    .search.search--with-scope > label.search-filter input {
-      margin: 0;
-    }
-    .search.search--with-scope > div[data-fragment-id="problem_stat"] {
-      position: static;
-      display: flex;
-      align-items: center;
-      padding: 0 12px;
-      border-left: 1px solid #ddd;
-      font-size: 14px;
-      color: #666;
-      white-space: nowrap;
-    }
-    .search.search--with-scope > button {
-      width: 40px;
-      height: 100%;
-      border: none;
-      background: #00B4CC;
-      color: #fff;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    .search.search--with-scope > button:hover {
-      background: #0099aa;
-    }
-  </style>
-  <div class="row">
+  <div class="row responsive-sidebar-layout">
     <div class="medium-9 columns">
       <div class="section display-mode">
         <div class="section__body no-padding">
           <form method="get" id="searchForm" action="{{ url('problem_main') }}">
             <div class="search search--with-scope">
-              <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search') }}">
-              <select name="scope" class="search-sort">
-                <option value="title" {{ "selected" if scope == 'title' else '' }}>{{ _('仅标题') }}</option>
-                <option value="all" {{ "selected" if scope == 'all' else '' }}>{{ _('全文') }}</option>
-              </select>
-              {% if handler.user.hasPerm(perm.PERM_VIEW_PROBLEM_HIDDEN) %}
-                <label class="search-filter">
-                  <input name="hideHidden" type="checkbox" value="true" {{ "checked" if handler.request.query.hideHidden == 'true' else "" }}>
-                  {{ _('Exclude hidden problems') }}
-                </label>
-              {% endif %}
-              {% if canGlobalSearch %}
-                <label class="search-filter">
-                  <input name="global" type="checkbox" value="true" {{ "checked" if globalSearch or handler.request.query.global == 'true' else "" }}>
-                  {{ _('Global Search') }}
-                </label>
-              {% endif %}
-              {% include "partials/problem_stat.html" %}
-              <select name="sort" class="search-sort">
-                {%- for sortType in ["default", "recent"] -%}
-                  <option value="{{ sortType }}" {{ "selected" if sort == sortType else "" }}>{{ _('sort::' + sortType) }}</option>
-                {%- endfor -%}
-              </select>
-              <button type="submit">
-                <span class="icon icon-search"></span>
-              </button>
+              <div class="search-query">
+                <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search') }}">
+                <button type="submit" aria-label="{{ _('Search') }}"><span class="icon icon-search"></span></button>
+              </div>
+              <div class="search-options">
+                <select name="scope" class="search-sort">
+                  <option value="title" {{ "selected" if scope == 'title' else '' }}>{{ _('仅标题') }}</option>
+                  <option value="all" {{ "selected" if scope == 'all' else '' }}>{{ _('全文') }}</option>
+                </select>
+                {% if handler.user.hasPerm(perm.PERM_VIEW_PROBLEM_HIDDEN) %}
+                  <label class="search-filter">
+                    <input name="hideHidden" type="checkbox" value="true" {{ "checked" if handler.request.query.hideHidden == 'true' else "" }}>
+                    {{ _('Exclude hidden problems') }}
+                  </label>
+                {% endif %}
+                {% if canGlobalSearch %}
+                  <label class="search-filter">
+                    <input name="global" type="checkbox" value="true" {{ "checked" if globalSearch or handler.request.query.global == 'true' else "" }}>
+                    {{ _('Global Search') }}
+                  </label>
+                {% endif %}
+                {% include "partials/problem_stat.html" %}
+                <select name="sort" class="search-sort">
+                  {%- for sortType in ["default", "recent"] -%}
+                    <option value="{{ sortType }}" {{ "selected" if sort == sortType else "" }}>{{ _('sort::' + sortType) }}</option>
+                  {%- endfor -%}
+                </select>
+              </div>
             </div>
           </form>
         </div>

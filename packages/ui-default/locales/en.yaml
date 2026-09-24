@@ -1,5 +1,9 @@
 __langname: English
 'File IO: {0}': 'File IO: {0}'
+Course Permissions: Course Permissions
+Edit Course: Edit Course
+Edit Lecture: Edit Lecture
+Manage Course: Manage Course
 'Tip: You are entering sudo mode.': 'Tip: You are entering <a href="https://docs.github.com/articles/sudo-mode">sudo mode</a>.'
 Can be Extended For: Extension
 Current Status: Status
@@ -63,6 +67,11 @@ Solutions Pinned: Pinned Solutions
 sort::default: Default
 sort::recent: Recent
 tasks_list: Task list
+Page Tools: Page tools
+Page Layout: Page Layout
+Choose between the classic and wide page layouts.: Choose between the classic and wide page layouts.
+Classic layout: Classic layout
+Wide layout: Wide layout
 timeago_locale: en_US
 training_create: Training Create
 training_edit: Training Edit

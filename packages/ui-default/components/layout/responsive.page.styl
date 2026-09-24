@@ -1,0 +1,106 @@
+@media (min-width: 1000px)
+  html.hasjs[data-layout-mode='wide'] .main > .responsive-sidebar-layout,
+  html.hasjs[data-layout-mode='wide'].has-responsive-sidebar-layout .nav > .row
+    max-width: 1800px
+    width: calc(100% - 48px)
+
+  html.hasjs[data-layout-mode='wide'] .main > .responsive-sidebar-layout
+    display: flex
+
+    > .columns
+      float: none
+      min-width: 0
+
+    > .columns:first-child:nth-last-child(2)
+      flex: 1 1 auto
+      width: auto
+
+    > .columns:last-child
+      flex: 0 0 clamp(260px, 20vw, 320px)
+      width: auto
+
+    > .columns:first-child:nth-last-child(3)
+      flex: 0 0 41.66667%
+      width: auto
+
+    > .columns:nth-child(2):nth-last-child(2)
+      flex: 1 1 auto
+      width: auto
+
+  html.hasjs.page--training_detail[data-layout-mode='wide'] .main > .responsive-sidebar-layout
+    > .columns:first-child:nth-last-child(3)
+      flex-basis: 16.66667%
+
+  html.hasjs[data-layout-mode='wide'] .responsive-sidebar-toggle
+    display: none
+
+@media (max-width: 999px)
+  html.hasjs[data-layout-mode='wide'] .main > .responsive-sidebar-layout
+    display: flex
+    flex-direction: column
+
+    > .columns
+      float: none
+      width: 100%
+
+    > .responsive-sidebar-column
+      order: -1
+
+    > .responsive-sidebar-secondary
+      order: -2
+
+  html.hasjs[data-layout-mode='wide'] .responsive-sidebar-toggle
+    align-items: center
+    background: $section-bg-color
+    border: 0
+    border-bottom: 1px solid $table-border-color
+    color: $text-1-color
+    cursor: pointer
+    display: flex
+    font-size: rem($font-size-secondary)
+    gap: rem(6px)
+    min-height: 44px
+    padding: rem(10px $section-gap-h)
+    text-align: left
+    width: 100%
+
+    .icon:last-child
+      margin-left: auto
+      transition: transform .2s ease-out-cubic
+
+  html.hasjs[data-layout-mode='wide'] .responsive-sidebar-column--open .responsive-sidebar-toggle .icon:last-child
+    transform: rotate(180deg)
+
+  html.hasjs[data-layout-mode='wide'] .responsive-sidebar-content
+    display: none
+    max-height: min(65vh, 680px)
+    overflow-y: auto
+
+  html.hasjs[data-layout-mode='wide'] .responsive-sidebar-column--open .responsive-sidebar-content
+    display: block
+
+  html.hasjs.page--problem_main[data-layout-mode='wide'] .responsive-sidebar-column--open .responsive-sidebar-content,
+  html.hasjs.page--course_lecture[data-layout-mode='wide'] .responsive-sidebar-column--open .responsive-sidebar-content
+    display: flex
+    flex-direction: column
+
+    > .section.side:last-child
+      order: -1
+
+  html.hasjs[data-layout-mode='wide'].theme--dark .responsive-sidebar-toggle
+    background: #323334
+    border-color: #2b2b2b
+    color: #eee
+
+@media (max-width: 600px)
+  html.hasjs[data-layout-mode='wide'] .main > .responsive-sidebar-layout
+    > .responsive-sidebar-secondary.responsive-sidebar-column
+      display: block
+
+    > .responsive-sidebar-column
+      padding-left: 0
+      padding-right: 0
+
+  html.hasjs[data-layout-mode='wide'] .responsive-sidebar-column .section.side
+    margin-left: 0
+    margin-right: 0

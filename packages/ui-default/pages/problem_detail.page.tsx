@@ -176,6 +176,7 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
 
     // @ts-ignore
     window.store = store;
+    document.dispatchEvent(new Event('hydro:scratchpad-store-ready'));
     const sock = new WebSocket(UiContext.ws_prefix + UiContext.pretestConnUrl);
     sock.onmessage = (message) => {
       const msg = JSON.parse(message.data);

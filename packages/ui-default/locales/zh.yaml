@@ -171,6 +171,7 @@ Change Theme: 切换主题
 Check In: 签到
 Course Period Begin: 课程周期-开始
 Course Period End: 课程周期-结束
+Course Permissions: 权限管理
 Finish Batch Manage: 完成
 No template selected: 未选择模板
 Please input template category.: 请输入模板分类。
@@ -373,12 +374,14 @@ Duration: 持续时间
 Edit any contests: 修改任意的比赛
 Edit any homework: 修改任意的作业
 Edit Contest: 编辑比赛
+Edit Course: 编辑课程
 Edit description of this domain: 修改此域描述
 Edit discussion replies of own discussion: 修改自己讨论中的回复
 Edit discussion replies: 修改讨论的回复
 Edit discussions: 修改讨论
 Edit Domain: 编辑域
 Edit Homework: 编辑作业
+Edit Lecture: 编辑讲义
 Edit own contests: 修改自己的比赛
 Edit own discussion replies: 修改讨论中自己的回复
 Edit own discussions: 修改自己的讨论
@@ -594,6 +597,7 @@ manage_setting: 系统设置
 manage_user_priv: 用户权限
 manage: 管理
 Manage: 管理
+Manage Course: 管理课程
 Manager: 管理
 Mark Green: 标绿
 Mark Red: 标红
@@ -971,6 +975,11 @@ Switch account: 切换账户
 Tags: 标签
 Task Settings: 任务设置
 tasks_list: 任务列表
+Page Tools: 页面工具
+Page Layout: 页面布局
+Choose between the classic and wide page layouts.: 选择经典布局或宽屏布局。
+Classic layout: 经典布局
+Wide layout: 宽屏布局
 Technical Information: 技术信息
 Temporary session: 临时会话
 Terms of Service: 服务条款
