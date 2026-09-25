@@ -509,6 +509,11 @@ Manage Teams: 管理隊伍
 Members: 成員
 My Teams: 我的隊伍
 Once enabled, team participation cannot be disabled for this contest.: 一旦啟用，該比賽將無法關閉團隊參賽。
+Team participation cannot be rated. Once enabled, it cannot be disabled for this contest.: 團隊參賽不能計入個人評分；一旦啟用，該比賽將無法關閉團隊參賽。
+Rated contests cannot allow team participation.: 計入個人評分的比賽不能啟用團隊參賽。
+Team participation is not supported for courses or homework.: 課程和作業不支援團隊參賽。
+Team participation cannot be disabled after it has been enabled.: 團隊參賽一旦啟用就不能關閉。
+Contest changed. Please refresh and try again.: 比賽設定已被修改，請重新整理後再試。
 Pending Invites: 待處理邀請
 Personal Participation: 個人參賽
 Please select a team.: 請選擇一個隊伍。
@@ -1058,5 +1063,3 @@ High Risk Warning: 高危操作警告
 'Force sync will overwrite all local modifications (title, content, tags, difficulty) in the target domains with the source problem, and cannot be undone!': 強制同步將直接使用當前源頭題目的題面（標題、內容、標籤、難度）覆蓋目標域題目的所有改動，且無法撤銷！
 'You have selected {0} problems to force sync:': '本次將對以下 {0} 個題目執行強制同步：'
 'Are you sure you want to proceed with force sync?': 是否確認繼續執行強制同步？
-
-

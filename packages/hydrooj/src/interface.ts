@@ -504,6 +504,7 @@ export interface ContestStatusDoc extends StatusDocBase, ContestStat {
     rev?: number;
     displayName?: string;
     members?: number[];
+    participantUids?: number[];
 }
 
 export interface TrainingStatusDoc extends StatusDocBase, Record<string, any> {

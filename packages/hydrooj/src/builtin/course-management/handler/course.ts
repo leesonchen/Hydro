@@ -1500,7 +1500,7 @@ export class CourseManageHandler extends Handler {
                 await ContestModel.attend(domainId, tid, uid);
                 await updateAllowedNodes(domainId, tid, uid, tdoc);
             } else {
-                await DocumentModel.deleteMultiStatus(domainId, DocumentModel.TYPE_CONTEST, { docId: tid, uid });
+                await ContestModel.cancelAttend(domainId, tid, uid);
             }
         } else if (tdoc.assign?.includes(uid.toString())) {
             // 处理临时学生（UID 已作为字符串存储在 assign 中）
@@ -1508,7 +1508,7 @@ export class CourseManageHandler extends Handler {
                 await ContestModel.attend(domainId, tid, uid);
                 await updateAllowedNodes(domainId, tid, uid, tdoc);
             } else {
-                await DocumentModel.deleteMultiStatus(domainId, DocumentModel.TYPE_CONTEST, { docId: tid, uid });
+                await ContestModel.cancelAttend(domainId, tid, uid);
             }
         } else if (uid === 0) {
             // 批量操作
@@ -1527,10 +1527,7 @@ export class CourseManageHandler extends Handler {
                 }));
             } else {
                 const toRemove = group.students.filter((s) => existingStatus.some((e) => e.uid === s));
-                await DocumentModel.deleteMultiStatus(domainId, DocumentModel.TYPE_CONTEST, {
-                    docId: tid,
-                    uid: { $in: toRemove },
-                });
+                await Promise.all(toRemove.map((studentUid) => ContestModel.cancelAttend(domainId, tid, studentUid)));
             }
         } else {
             throw new ForbiddenError('用户不在该课程的学生名单中');

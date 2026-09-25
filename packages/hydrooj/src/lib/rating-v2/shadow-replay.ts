@@ -5,10 +5,10 @@
 // ratingv2_shadow.* when options.write is enabled.
 
 import { ObjectId } from 'mongodb';
+import { calibratedProbability, evaluateCalibration, fitSolveCalibration } from './calibration';
 import { averageRanks, updateContest } from './cf-local';
 import { compositeScore, publicRating, tierForRating } from './composite';
 import { fitDifficulty } from './difficulty';
-import { calibratedProbability, evaluateCalibration, fitSolveCalibration } from './calibration';
 
 const DOC_TYPE_PROBLEM = 10;
 const DOC_TYPE_CONTEST = 30;
@@ -156,11 +156,30 @@ export async function runShadowReplay(
     // 1. candidates ------------------------------------------------------------
     const tdocs = await docColl.find(
         { docType: DOC_TYPE_CONTEST, rated: true, rule: { $in: rules } },
-        { projection: { beginAt: 1, endAt: 1, duration: 1, assign: 1, domainId: 1, rule: 1 } },
+        { projection: { beginAt: 1, endAt: 1, duration: 1, assign: 1, allowTeam: 1, domainId: 1, rule: 1 } },
     ).toArray() as any[];
     const contests: ContestDoc[] = [];
+    let teamExcluded = 0;
+    let teamFlagMismatch = 0;
     for (const t of tdocs) {
         if (!(t.beginAt instanceof Date) || !(t.endAt instanceof Date)) continue;
+        if (t.allowTeam) {
+            teamExcluded++;
+            continue;
+        }
+        const teamStatus = await statusColl.findOne({
+            domainId: t.domainId,
+            docType: DOC_TYPE_CONTEST,
+            docId: t._id,
+            attend: { $gt: 0 },
+            'members.0': { $exists: true },
+        }, { projection: { _id: 1 } });
+        if (teamStatus) {
+            teamExcluded++;
+            teamFlagMismatch++;
+            report(`[replay] contest ${t._id} excluded: team status exists while allowTeam is false`);
+            continue;
+        }
         contests.push({
             _id: t._id,
             domainId: t.domainId,
@@ -173,7 +192,7 @@ export async function runShadowReplay(
     }
     contests.sort((a, b) => (a.beginAt.getTime() - b.beginAt.getTime())
         || (a._id.toString().localeCompare(b._id.toString())));
-    report(`[replay] ${contests.length} rated contests loaded`);
+    report(`[replay] ${contests.length} rated contests loaded; team-excluded=${teamExcluded}`);
 
     // 2. sequential replay -----------------------------------------------------
     const states = new Map<number, { mu: number, events: number }>();
@@ -394,7 +413,15 @@ export async function runShadowReplay(
     const summary = {
         generatedAt: new Date().toISOString(),
         poolId,
-        contests: { total: contests.length, processed, skipped, frozen: frozenContests, failed: failedContests },
+        contests: {
+            total: contests.length,
+            processed,
+            skipped,
+            frozen: frozenContests,
+            failed: failedContests,
+            teamExcluded,
+            teamFlagMismatch,
+        },
         ratingUsers: rated.length,
         provisionalUsers: rated.filter((s) => s.events < provisionalEvents).length,
         rating: mus.length ? {

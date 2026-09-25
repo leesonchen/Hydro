@@ -30,6 +30,27 @@ const { log, max, min } = Math;
 export const RpTypes: Record<string, RpDef> = {
     problem: {
         async run(domainIds, udict, report) {
+            const teamContestCache = new Map<string, Promise<boolean>>();
+            const reportedTeamMismatch = new Set<string>();
+            const canCountContestRecord = async (tdoc: Tdoc, uid: number) => {
+                const key = `${tdoc.domainId}/${tdoc.docId}`;
+                if (!teamContestCache.has(key)) {
+                    teamContestCache.set(
+                        key,
+                        tdoc.allowTeam
+                            ? Promise.resolve(true)
+                            : contest.hasTeamParticipation(tdoc.domainId, tdoc.docId),
+                    );
+                }
+                if (await teamContestCache.get(key)) {
+                    if (!tdoc.allowTeam && !reportedTeamMismatch.has(key)) {
+                        reportedTeamMismatch.add(key);
+                        await report({ message: `Excluded contest ${tdoc.docId}: team status exists while allowTeam is false` });
+                    }
+                    return false;
+                }
+                return contest.canShowProblemStatus(null, uid, tdoc, false);
+            };
             // const problems = await problem.getMulti('', { domainId: { $in: domainIds }, nAccept: { $gt: 0 }, hidden: false }).toArray();
             const problems = await problem.getMulti('', { domainId: { $in: domainIds }, nAccept: { $gt: 0 } }).toArray();
             if (problems.length) await report({ message: `Found ${problems.length} problems in ${domainIds[0]}` });
@@ -46,7 +67,7 @@ export const RpTypes: Record<string, RpDef> = {
                     pdoc.domainId,
                     rawStatuses.map((psdoc) => psdoc.uid),
                     [pdoc.docId],
-                    (tdoc, uid) => contest.canShowProblemStatus(null, uid, tdoc, false),
+                    canCountContestRecord,
                 );
                 // pdoc.difficulty is free user input; clamp the RP weight to the auto-calibrated [1,10] scale.
                 const rawDifficulty = +pdoc.difficulty || difficultyAlgorithm(pdoc.nSubmit, pdoc.nAccept) || 5;
@@ -64,8 +85,18 @@ export const RpTypes: Record<string, RpDef> = {
     },
     contest: {
         async run(domainIds, udict, report) {
-            const contests: Tdoc[] = await contest.getMulti('', { domainId: { $in: domainIds }, rated: true })
-                .limit(10).toArray() as any;
+            const contests: Tdoc[] = [];
+            const cursor = contest.getMulti('', {
+                domainId: { $in: domainIds }, rated: true, allowTeam: { $ne: true },
+            });
+            for await (const tdoc of cursor) {
+                if (await contest.hasTeamParticipation(tdoc.domainId, tdoc.docId)) {
+                    await report({ message: `Excluded contest ${tdoc.docId}: team status exists while allowTeam is false` });
+                    continue;
+                }
+                contests.push(tdoc);
+                if (contests.length === 10) break;
+            }
             if (contests.length) await report({ message: `Found ${contests.length} contests in ${domainIds[0]}` });
             for (const tdoc of contests.reverse()) {
                 const start = Date.now();
@@ -74,8 +105,8 @@ export const RpTypes: Record<string, RpDef> = {
                     journal: { $ne: null },
                 };
                 if (!await contest.countStatus(tdoc.domainId, query)) continue;
-                const cursor = contest.getMultiStatus(tdoc.domainId, query).sort(contest.RULES[tdoc.rule].statusSort);
-                const rankedTsdocs = await contest.RULES[tdoc.rule].ranked(tdoc, cursor);
+                const statusCursor = contest.getMultiStatus(tdoc.domainId, query).sort(contest.RULES[tdoc.rule].statusSort);
+                const rankedTsdocs = await contest.RULES[tdoc.rule].ranked(tdoc, statusCursor);
                 const users = rankedTsdocs.map((i) => ({ uid: i[1].uid, rank: i[0], old: udict[i[1].uid] }));
                 // FIXME sum(rating.new) always less than sum(rating.old)
                 for (const udoc of rating(users)) udict[udoc.uid] = udoc.new;

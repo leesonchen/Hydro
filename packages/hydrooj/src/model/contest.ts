@@ -5,8 +5,8 @@ import {
 } from '@hydrooj/utils/lib/utils';
 import { Context } from '../context';
 import {
-    ContestAlreadyAttendedError, ContestNotFoundError,
-    ContestScoreboardHiddenError, ValidationError,
+    BadRequestError, ContestAlreadyAttendedError, ContestNotFoundError,
+    ContestScoreboardHiddenError, NotAssignedError, PermissionError, UserNotFoundError, ValidationError,
 } from '../error';
 import {
     BaseUserDict, ContestJournalEntry, ContestPrintDoc, ContestRule, ContestRules,
@@ -14,6 +14,7 @@ import {
     ScoreboardRow, SubtaskResult, Tdoc,
 } from '../interface';
 import avatar from '../lib/avatar';
+import { hasTeamParticipation } from '../lib/contest-participation';
 import bus from '../service/bus';
 import db from '../service/db';
 import type { Handler } from '../service/server';
@@ -24,6 +25,8 @@ import MessageModel from './message';
 import problem, { ProblemModel } from './problem';
 import RecordModel from './record';
 import UserModel, { User } from './user';
+
+export { hasTeamParticipation };
 
 export enum PrintTaskStatus {
     pending = 'pending',
@@ -824,6 +827,14 @@ export const RULES: ContestRules = {
     acm, oi, homework, ioi, ledo, strictioi,
 };
 
+export function validateContestConfiguration(tdoc: Pick<Tdoc, 'allowTeam' | 'rated' | 'rule'>) {
+    if (!tdoc.allowTeam) return;
+    if (tdoc.rated) throw new BadRequestError('Rated contests cannot allow team participation.');
+    if (['course', 'homework'].includes(tdoc.rule)) {
+        throw new BadRequestError('Team participation is not supported for courses or homework.');
+    }
+}
+
 const collBalloon = db.collection('contest.balloon');
 
 function _getStatusJournal(tsdoc: ContestStatusDoc): ContestJournalEntry[] {
@@ -837,25 +848,43 @@ export async function add(
 ) {
     if (!RULES[rule]) throw new ValidationError('rule');
     if (beginAt >= endAt) throw new ValidationError('beginAt', 'endAt');
-    Object.assign(data, {
-        content, owner, title, rule, beginAt, endAt, pids, attend: 0,
-    });
-    RULES[rule].check(data);
-    await bus.parallel('contest/before-add', data);
-    const docId = await document.add(domainId, content, owner, document.TYPE_CONTEST, null, null, null, {
-        assign: [], ...data, title, rule, beginAt, endAt, pids, attend: 0, rated,
-    });
-    await bus.parallel('contest/add', data, docId);
+    const payload = {
+        assign: [], ...data, content, owner, title, rule, beginAt, endAt, pids, attend: 0, rated,
+    } as Partial<Tdoc>;
+    validateContestConfiguration(payload as Tdoc);
+    RULES[rule].check(payload);
+    await bus.parallel('contest/before-add', payload);
+    const docId = await document.add(
+        domainId, content, owner, document.TYPE_CONTEST, null, null, null, payload,
+    );
+    await bus.parallel('contest/add', payload, docId);
     return docId;
 }
 
-export async function edit(domainId: string, tid: ObjectId, $set: Partial<Tdoc>) {
+export async function edit(
+    domainId: string, tid: ObjectId, $set: Partial<Tdoc>, expected?: Tdoc,
+) {
     if ($set.rule && !RULES[$set.rule]) throw new ValidationError('rule');
     const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
     if (!tdoc) throw new ContestNotFoundError(domainId, tid);
     await bus.parallel('contest/before-edit', tdoc, $set);
-    RULES[$set.rule || tdoc.rule].check(Object.assign(tdoc, $set));
-    const res = await document.set(domainId, document.TYPE_CONTEST, tid, $set);
+    if (tdoc.allowTeam && $set.allowTeam === false) {
+        throw new BadRequestError('Team participation cannot be disabled after it has been enabled.');
+    }
+    const next = { ...tdoc, ...$set };
+    validateContestConfiguration(next);
+    RULES[next.rule].check(next);
+    const source = expected || tdoc;
+    const condition: Filter<Tdoc> = {};
+    const conditionKeys = new Set<keyof Tdoc>([
+        ...(Object.keys($set) as (keyof Tdoc)[]),
+        'rule', 'rated', 'allowTeam',
+    ]);
+    for (const key of conditionKeys) {
+        condition[key] = source[key] === undefined ? { $exists: false } as any : source[key] as any;
+    }
+    const res = await document.setIfCondition(domainId, document.TYPE_CONTEST, tid, condition, $set);
+    if (!res) throw new BadRequestError('Contest changed. Please refresh and try again.');
     await bus.parallel('contest/edit', res);
     return res;
 }
@@ -870,9 +899,19 @@ export async function editIfAssigned(
     const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
     if (!tdoc) throw new ContestNotFoundError(domainId, tid);
     await bus.parallel('contest/before-edit', tdoc, $set);
-    RULES[$set.rule || tdoc.rule].check(Object.assign(tdoc, $set));
+    if (tdoc.allowTeam && $set.allowTeam === false) {
+        throw new BadRequestError('Team participation cannot be disabled after it has been enabled.');
+    }
+    const next = { ...tdoc, ...$set };
+    validateContestConfiguration(next);
+    RULES[next.rule].check(next);
+    const configurationCondition: Filter<Tdoc> = {};
+    for (const key of ['rule', 'rated', 'allowTeam'] as const) {
+        configurationCondition[key] = tdoc[key] === undefined ? { $exists: false } as any : tdoc[key] as any;
+    }
     const res = await document.coll.findOneAndUpdate(
         {
+            ...configurationCondition,
             domainId,
             docType: document.TYPE_CONTEST,
             docId: tid,
@@ -898,7 +937,9 @@ export async function replaceAssignGroup(
         assign: tdoc.assign.map((item) => (item === expectedGroup ? assignGroup : item)),
     };
     await bus.parallel('contest/before-edit', tdoc, $set);
-    RULES[tdoc.rule].check(Object.assign(tdoc, $set));
+    const next = { ...tdoc, ...$set };
+    validateContestConfiguration(next);
+    RULES[next.rule].check(next);
     const res = await document.coll.findOneAndUpdate(
         {
             domainId,
@@ -1025,6 +1066,24 @@ export async function getTeamVid(domainId: string, tid: ObjectId, uid: number): 
     return s?.uid ?? null;
 }
 
+export async function validateTeamParticipants(domainId: string, tdoc: Tdoc, members: number[]) {
+    const participantUids = Array.from(new Set(members));
+    if (!participantUids.length
+        || participantUids.some((uid) => !Number.isSafeInteger(uid) || uid <= 0)) {
+        throw new ValidationError('members');
+    }
+    const memberUdocs = await Promise.all(participantUids.map((uid) => UserModel.getById(domainId, uid)));
+    for (let index = 0; index < participantUids.length; index++) {
+        const uid = participantUids[index];
+        const udoc = memberUdocs[index];
+        if (!udoc) throw new UserNotFoundError(uid);
+        if (!udoc.hasPerm(PERM.PERM_ATTEND_CONTEST)) throw new PermissionError(PERM.PERM_ATTEND_CONTEST, uid);
+        // eslint-disable-next-line ts/no-use-before-define
+        if (!canAccessAssignedContest(udoc, tdoc)) throw new NotAssignedError('contest', tdoc.docId, uid);
+    }
+    return participantUids.sort((a, b) => a - b);
+}
+
 export async function updateStatus(
     domainId: string, tid: ObjectId, uid: number, rid: ObjectId, pid: number,
     {
@@ -1062,18 +1121,32 @@ export async function getListStatus(domainId: string, uid: number, tids: ObjectI
 }
 
 export async function attend(domainId: string, tid: ObjectId, uid: number, payload: any = {}) {
+    const tdoc = await get(domainId, tid);
+    validateContestConfiguration(tdoc);
+    const statusPayload = payload && typeof payload === 'object' && !Array.isArray(payload) ? { ...payload } : {};
+    if (Object.hasOwn(statusPayload, 'members')) {
+        if (!tdoc.allowTeam || !Array.isArray(statusPayload.members)) throw new ValidationError('members');
+        const participantUids = await validateTeamParticipants(domainId, tdoc, statusPayload.members);
+        statusPayload.members = participantUids;
+        statusPayload.participantUids = participantUids;
+    } else if (uid > 0) statusPayload.participantUids = [uid];
     try {
-        await document.cappedIncStatus(domainId, document.TYPE_CONTEST, tid, uid, 'attend', 1, 0, 1, payload);
+        await document.cappedIncStatus(
+            domainId, document.TYPE_CONTEST, tid, uid, 'attend', 1, 0, 1, statusPayload,
+        );
     } catch (e) {
-        throw new ContestAlreadyAttendedError(tid, uid);
+        if (e?.code === 11000) throw new ContestAlreadyAttendedError(tid, uid);
+        throw e;
     }
     await document.inc(domainId, document.TYPE_CONTEST, tid, 'attend', 1);
     return {};
 }
 
 export async function cancelAttend(domainId: string, tid: ObjectId, uid: number) {
-    await document.deleteMultiStatus(domainId, document.TYPE_CONTEST, { docId: tid, uid });
-    await document.inc(domainId, document.TYPE_CONTEST, tid, 'attend', -1);
+    const tsdoc = await document.collStatus.findOneAndDelete({
+        domainId, docType: document.TYPE_CONTEST, docId: tid, uid,
+    });
+    if (tsdoc?.attend > 0) await document.inc(domainId, document.TYPE_CONTEST, tid, 'attend', -1);
     return {};
 }
 
@@ -1189,6 +1262,7 @@ export function canShowSelfRecord(this: { user: User }, tdoc: Tdoc, allowPermOve
 export function canShowProblemStatus(user: User | null, targetUid: number, tdoc: Tdoc, allowPermOverride = true) {
     const isCourseOrHomework = tdoc.rule === 'course' || tdoc.rule === 'homework';
     if (!user) {
+        if (tdoc.allowTeam) return false;
         if (isCourseOrHomework) {
             return !tdoc.keepScoreboardHidden;
         }
@@ -1338,8 +1412,11 @@ global.Hydro.model.contest = {
     getListStatus,
     getMultiStatus,
     getTeamVid,
+    hasTeamParticipation,
     isSameTeam,
     isOwnOrTeammateRecord,
+    validateContestConfiguration,
+    validateTeamParticipants,
     attend,
     cancelAttend,
     edit,

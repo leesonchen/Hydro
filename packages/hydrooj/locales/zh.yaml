@@ -513,6 +513,11 @@ Manage Teams: 管理队伍
 Members: 成员
 My Teams: 我的队伍
 Once enabled, team participation cannot be disabled for this contest.: 一旦启用，该比赛将无法关闭团队参赛。
+Team participation cannot be rated. Once enabled, it cannot be disabled for this contest.: 团队参赛不能计入个人评分；一旦启用，该比赛将无法关闭团队参赛。
+Rated contests cannot allow team participation.: 计入个人评分的比赛不能启用团队参赛。
+Team participation is not supported for courses or homework.: 课程和作业不支持团队参赛。
+Team participation cannot be disabled after it has been enabled.: 团队参赛一旦启用就不能关闭。
+Contest changed. Please refresh and try again.: 比赛配置已被修改，请刷新后重试。
 Pending Invites: 待处理邀请
 Personal Participation: 个人参赛
 Please select a team.: 请选择一个队伍。
@@ -1061,4 +1066,3 @@ High Risk Warning: 高危操作警告
 'Force sync will overwrite all local modifications (title, content, tags, difficulty) in the target domains with the source problem, and cannot be undone!': 强制同步将使用当前源头题目的题面（标题、内容、标签、难度）直接覆盖目标域题目的所有改动，且无法撤销！
 'You have selected {0} problems to force sync:': '本次将对以下 {0} 个题目执行强制同步：'
 'Are you sure you want to proceed with force sync?': 是否确认继续执行强制同步？
-

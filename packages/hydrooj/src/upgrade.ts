@@ -6,6 +6,9 @@ import * as yaml from 'js-yaml';
 import { ObjectId } from 'mongodb';
 import { randomstring, sleep } from '@hydrooj/utils';
 import { buildContent } from './lib/content';
+import {
+    ensureContestParticipantIndex, migrateContestParticipantUids,
+} from './lib/contest-participation';
 import { Logger } from './logger';
 import { PERM, PRIV, STATUS } from './model/builtin';
 import * as contest from './model/contest';
@@ -48,6 +51,7 @@ export const coreScripts: MigrationScript[] = [
         const ddoc = await domain.get('system');
         if (!ddoc) await domain.add('system', 1, 'Hydro', 'Welcome to Hydro!');
         await welcome();
+        await ensureContestParticipantIndex();
         return true;
     },
     // Init
@@ -639,6 +643,13 @@ export const coreScripts: MigrationScript[] = [
                 await rename(file.path, `contest/${domainId}/${tid}/public/${name || type}`);
             }
         }
+        return true;
+    },
+    async function _97_98() {
+        const updated = await migrateContestParticipantUids((finding) => {
+            logger.error('Contest team audit finding: %o', finding);
+        });
+        logger.info('Backfilled participantUids on %d contest status document(s).', updated);
         return true;
     },
 ];

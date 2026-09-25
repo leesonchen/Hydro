@@ -59,13 +59,15 @@ export class RecordListHandler extends ContestDetailBaseHandler {
             // this.tsdoc is already the team vuser's tsdoc (swapped in __prepare); no extra DB fetch needed
             teamMembers = this.tsdoc?.members?.length ? this.tsdoc.members : null;
         }
-        if (q.uid !== this.user._id && !teamMembers) this.checkPerm(PERM.PERM_VIEW_RECORD);
+        const viewingTeammate = !!(tid && this.team && typeof q.uid === 'number'
+            && this.tsdoc?.members?.includes(q.uid));
+        if (q.uid !== this.user._id && !teamMembers && !viewingTeammate) this.checkPerm(PERM.PERM_VIEW_RECORD);
         if (tid) {
             tdoc = await contest.get(domainId, tid);
             this.tdoc = tdoc;
             if (!tdoc) throw new ContestNotFoundError(domainId, pid);
             if (!contest.canShowScoreboard.call(this, tdoc, true)) throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
-            const viewingSelf = q.uid === this.user._id || !!teamMembers;
+            const viewingSelf = q.uid === this.user._id || !!teamMembers || viewingTeammate;
             if (!contest[viewingSelf ? 'canShowSelfRecord' : 'canShowRecord'].call(this, tdoc, true)) {
                 throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             }

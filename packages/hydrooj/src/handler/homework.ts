@@ -236,7 +236,7 @@ class HomeworkEditHandler extends Handler {
                 maintainer,
                 assign,
                 langs,
-            });
+            }, tdoc);
             if (tdoc.beginAt !== beginAt.toDate()
                 || tdoc.endAt !== endAt.toDate()
                 || tdoc.penaltySince !== penaltySince.toDate()
