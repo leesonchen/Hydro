@@ -206,7 +206,7 @@ export async function backfillContestParticipantUids() {
     let updated = 0;
     const cursor = document.collStatus.find({
         docType: document.TYPE_CONTEST,
-        attend: { $gt: 0 },
+        $or: [{ attend: { $gt: 0 } }, { attend: true }],
         participantUids: { $exists: false },
     });
     for await (const raw of cursor) {
@@ -225,7 +225,7 @@ export async function countPendingContestParticipantUids() {
     let pending = 0;
     const cursor = document.collStatus.find({
         docType: document.TYPE_CONTEST,
-        attend: { $gt: 0 },
+        $or: [{ attend: { $gt: 0 } }, { attend: true }],
         participantUids: { $exists: false },
     });
     for await (const raw of cursor) {

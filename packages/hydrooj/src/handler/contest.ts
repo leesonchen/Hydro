@@ -6,7 +6,7 @@ import { escapeRegExp, pick } from 'lodash';
 import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
 import {
-    Counter, diffArray, getAlphabeticId, randomstring, sortFiles, Time, yaml,
+    Counter, getAlphabeticId, randomstring, sortFiles, Time, yaml,
 } from '@hydrooj/utils/lib/utils';
 import { Context, Service } from '../context';
 import {
@@ -481,7 +481,8 @@ export class ContestEditHandler extends Handler {
         const needsRecalc = !!tid && (
             this.tdoc.beginAt.getTime() !== beginAt.getTime()
             || this.tdoc.endAt.getTime() !== endAt.getTime()
-            || diffArray(this.tdoc.pids, pids)
+            || this.tdoc.pids.length !== pids.length
+            || this.tdoc.pids.some((pid, index) => pid !== pids[index])
             || this.tdoc.rule !== rule
             || this.tdoc.lockAt?.getTime() !== lockAt?.getTime()
             || this.tdoc.duration !== contestDuration
