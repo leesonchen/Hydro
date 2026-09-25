@@ -1,5 +1,22 @@
 __id: ko
 __langname: 한국어
+Auto Format Code: 코드 자동 서식
+Code Font Family: 코드 글꼴
+Enable Time Ago: 상대 시간 표시
+Find custom font: 사용자 지정 글꼴 찾기
+Font Family: 글꼴
+Monaco Editor: Monaco 편집기
+Preferred Editor Type: 기본 편집기 유형
+Rounded Corners: 모서리를 둥글게
+Select Custom Font: 사용자 지정 글꼴 선택
+Select Custom Code Font: 사용자 지정 코드 글꼴 선택
+Show Invisible Characters: 공백 문자 표시
+Skip Animation: 애니메이션 건너뛰기
+Split View: 분할 보기
+'Dark': 어두운 테마
+'Light': 밝은 테마
+Theme: 테마
+'Using custom font: {0}': '사용자 지정 글꼴 사용 중: {0}'
 Page Tools: 페이지 도구
 Page Layout: 페이지 레이아웃
 Choose between the classic and wide page layouts.: 클래식 레이아웃과 와이드 레이아웃 중에서 선택합니다.
@@ -215,7 +232,7 @@ Dataset: 데이터셋
 Day: 일
 Deadline: 제출 기한
 Default Code Language: 기본 언어
-Default Code Template: 기본 탬플릿
+Default Code Template: 기본 코드 템플릿
 Delete discussion replies of own discussion: 본인의 토론의 댓글 제거
 Delete discussion replies: 토론 댓글 제거
 Delete discussions: 토론 제거
@@ -368,7 +385,7 @@ Homework: 관제
 Host: 호스트
 hour(s): 시간
 If enabled, source code will be emailed to you after the submission is accepted.: 허용하면, 제출이 맞았을 경우 이메일로 보낼 것입니다.
-If left blank, the built-in template of the corresponding language will be used.: 공백으로 둔다면, 기본 언어로 적용합니다.
+If left blank, the built-in template of the corresponding language will be used.: 비워 두면 해당 언어의 기본 제공 템플릿을 사용합니다.
 Images: 사진
 Import from: '다음에서 가져오기: '
 Import Problem: 문제 가져오기
@@ -663,7 +680,9 @@ setting_server: 서버 설정
 setting_session: 세션 설정
 setting_smtp: SMTP 설정
 setting_storage: 설정 저장
-setting_usage: 언어 설정
+setting_usage: 사용 환경 설정
+setting_markdown: Markdown 설정
+setting_highlight: 코드 강조 표시 설정
 Settings: 설정
 Share: 공유
 Show all tags: 모든 분류 보이기
@@ -740,7 +759,7 @@ Time Cost: 시간
 Time Extension: 시간 연장
 Time: 시간
 timeago_locale: ko
-Timezone: Timezone
+Timezone: 시간대
 title: 제목
 Title: 제목
 Toggle Pretest Panel: 프리테스트

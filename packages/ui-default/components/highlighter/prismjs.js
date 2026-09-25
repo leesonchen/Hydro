@@ -140,28 +140,6 @@ function observeScratchpadStore() {
 document.addEventListener('hydro:scratchpad-store-ready', observeScratchpadStore);
 if (window.store) observeScratchpadStore();
 
-Prism.plugins.toolbar.registerButton('scratchpad-fill-pretest', (env) => createSampleInputButton(
-  env,
-  'scratchpad-fill-button',
-  'Fill to Pretest',
-  (sample) => {
-    const store = window.store;
-    if (!store) return;
-    try {
-      store.dispatch({
-        type: 'SCRATCHPAD_PRETEST_DATA_CHANGE',
-        payload: {
-          type: 'input',
-          value: getSampleInputCode(sample),
-        },
-      });
-      Notification.success(i18n('Input filled to pretest!'), 2000);
-    } catch (err) {
-      Notification.error(i18n('Failed to fill input'));
-    }
-  },
-));
-
 Prism.plugins.toolbar.registerButton('scratchpad-run-pretest', (env) => {
   if (getSampleInputCode(env) === null) return null;
   const button = createSampleInputButton(

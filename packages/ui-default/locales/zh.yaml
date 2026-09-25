@@ -1,4 +1,18 @@
 __langname: 简体中文
+Auto Format Code: 自动格式化代码
+Code Font Family: 代码字体
+Enable Time Ago: 启用相对时间
+Find custom font: 查找自定义字体
+Font Family: 字体
+Monaco Editor: Monaco 编辑器
+Preferred Editor Type: 首选编辑器类型
+Rounded Corners: 圆角
+Select Custom Font: 选择自定义字体
+Select Custom Code Font: 选择自定义代码字体
+Show Invisible Characters: 显示不可见字符
+Skip Animation: 跳过动画
+Split View: 分栏视图
+'Using custom font: {0}': '正在使用自定义字体：{0}'
 Preview could not be rendered. You can continue editing and saving.: 预览暂时无法生成，仍可继续编辑和保存。
 '"{data}" copied to clipboard!': “{data}”已复制到剪贴板！
 '[Richtext message]': '[富文本消息]'
@@ -436,7 +450,6 @@ File uploaded successfully.: 上传文件成功
 File: 文件
 Filename: 文件名
 Files: 文件
-Fill to Pretest: 填充到自测
 Filter: 过滤
 First of Contest: 全场一血 
 First of Problem: 题目一血
@@ -499,7 +512,7 @@ Homework: 作业
 Host: 主持人
 hour(s): 小时
 If enabled, source code will be emailed to you after the submission is accepted.: 如果启用，在您通过题目后，源代码会以 Email 的形式发送给您。
-If left blank, the built-in template of the corresponding language will be used.: 若留空，则将使用对应语言的内置代码模板。
+If left blank, the built-in template of the corresponding language will be used.: 留空时将使用对应语言的内置代码模板。
 Ignore trailing space and enter.: 忽略行末空格与文件尾回车。
 Images With Size: 指定大小的图片
 Images: 图片
@@ -914,6 +927,8 @@ setting_info_domain: 个人信息
 setting_info: 个人信息
 setting_privacy: 隐私
 setting_usage: 使用偏好
+setting_markdown: Markdown 设置
+setting_highlight: 代码高亮设置
 Settings: 设置
 Share: 分享
 She: 她

@@ -1,6 +1,7 @@
 @media (min-width: 1000px)
-  html.hasjs[data-layout-mode='wide'] .main > .responsive-sidebar-layout,
-  html.hasjs[data-layout-mode='wide'].has-responsive-sidebar-layout .nav > .row
+  html.hasjs[data-layout-mode='wide'] .main > .row:not(.expanded),
+  html.hasjs[data-layout-mode='wide'] .nav > .row,
+  html.hasjs[data-layout-mode='wide'] .footer > .row
     max-width: 1800px
     width: calc(100% - 48px)
 

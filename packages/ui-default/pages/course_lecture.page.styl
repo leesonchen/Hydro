@@ -36,16 +36,10 @@
       min-width: 100%
       width: max-content
 
-.course-lecture-edit-float
-  align-items: center
-  bottom: 30px
-  display: flex
-  gap: 0.4rem
-  margin: 0
-  position: fixed
-  right: 70px
-  white-space: nowrap
-  z-index: 100
+@media (min-width: 1000px)
+  html[data-layout-mode='wide'].page--course_lecture #lecture-main
+    > :not(.course-lecture-table-scroll):not(.course-mermaid):not(hr)
+      max-width: 100%
 
 @media (max-width: 1399px)
   .page--course_lecture
@@ -58,8 +52,3 @@
 
       .button
         min-height: 36px
-
-@media (max-width: 999px)
-  .course-lecture-edit-float
-    bottom: 76px
-    right: 16px
