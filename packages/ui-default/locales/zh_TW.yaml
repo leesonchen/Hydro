@@ -1,4 +1,18 @@
 __langname: 正體中文
+Auto Format Code: 自動格式化程式碼
+Code Font Family: 程式碼字型
+Enable Time Ago: 顯示相對時間
+Find custom font: 尋找自訂字型
+Font Family: 字型
+Monaco Editor: Monaco 編輯器
+Preferred Editor Type: 偏好編輯器類型
+Rounded Corners: 圓角
+Select Custom Font: 選擇自訂字型
+Select Custom Code Font: 選擇自訂程式碼字型
+Show Invisible Characters: 顯示空白字元
+Skip Animation: 略過動畫
+Split View: 分割檢視
+'Using custom font: {0}': '正在使用自訂字型：{0}'
 '"{data}" copied to clipboard!': “{data}”已複製到剪貼簿！
 '[Richtext message]': '[富文字訊息]'
 '{0} comments': '{0} 條評論'
@@ -491,7 +505,7 @@ Homework: 功課
 Host: 主持人
 hour(s): 小時
 If enabled, source code will be emailed to you after the submission is accepted.: 如果啟用，在您通過題目後，原始碼會以 Email 的形式傳送給您。
-If left blank, the built-in template of the corresponding language will be used.: 若留空，則將使用對應語言的內建程式碼模板。
+If left blank, the built-in template of the corresponding language will be used.: 留白時將使用對應語言的內建程式碼範本。
 Ignore trailing space and enter.: 忽略行末空格與檔案尾回車。
 Images With Size: 指定大小的圖片
 Images: 圖片
@@ -907,6 +921,8 @@ setting_info_domain: 個人資訊
 setting_info: 個人資訊
 setting_privacy: 隱私
 setting_usage: 使用偏好
+setting_markdown: Markdown 設定
+setting_highlight: 程式碼醒目提示設定
 Settings: 設定
 Share: 分享
 She: 她

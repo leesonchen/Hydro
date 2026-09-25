@@ -83,10 +83,5 @@
     </div>
   </div>
 </div>
-{% if not edit and canEditLecture %}
-<a class="course-lecture-edit-float primary rounded button" href="?edit=true" aria-label="{{ _('Edit Lecture') }}" title="{{ _('Edit Lecture') }}">
-  <span class="icon icon-edit"></span> {{ _('Edit Lecture') }}
-</a>
-{% endif %}
 <script>document.title = document.title.replace(/比赛管理/, '课程讲义')</script>
 {% endblock %}

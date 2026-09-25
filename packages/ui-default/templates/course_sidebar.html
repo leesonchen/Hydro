@@ -4,6 +4,7 @@
 {% set isTemplate = tdoc.assign and ('teachers' in tdoc.assign) %}
 {% set canEditCourse = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
 {% set canManageCourse = handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or (handler.user.own(tdoc) and handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
+{% set canEditLecture = handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or (handler.user.own(tdoc) and handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
 {% if page_name != 'training_detail' %}
   <a class="contest-sidebar__bg" href="{{ url('course_detail', tid=tdoc.docId) }}">
     <div class="section__body">
@@ -70,6 +71,11 @@
           <span class="icon icon-statistics"></span> {{ _('Scoreboard') }}
         </a></li>
       {% endif %}
+    {% endif %}
+    {% if page_name == 'course_lecture' and canEditLecture %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('course_lecture', tid=tdoc.docId, id=node['_id']) }}?edit=true">
+        <span class="icon icon-edit"></span> {{ _('Edit Lecture') }}
+      </a></li>
     {% endif %}
     {% if canEditCourse %}
       <li class="menu__item"><a class="menu__link" href="{{ url('course_edit', tid=tdoc.docId) }}">
