@@ -3,7 +3,14 @@
 <div class="section">
   <div class="section__header">
     <h1 class="section__title">{{ _('Classes Manage') }}</h1>
-    <div class="section__tools">
+    <div class="section__tools domain-class-tools">
+      <input
+        type="search"
+        id="classSearchInput"
+        class="textbox class-search-input"
+        placeholder="{{ _('Search classes by name...') }}"
+        aria-label="{{ _('Search classes by name...') }}"
+      >
       {% if canCreateClass %}
       <a class="primary rounded button" name="create_group" href={{ url('domain_class_create')}}>{{ _('Create Class') }}</a>
       {% endif %}
@@ -20,7 +27,12 @@
       </colgroup>
       <thead>
         <tr>
-          <th class="col--group">{{ _('Class Name') }}</th>
+          <th class="col--group" data-class-sort-header="name" aria-sort="none">
+            <button type="button" class="class-sort-button" data-class-sort="name">
+              <span>{{ _('Class Name') }}</span>
+              <span class="class-sort-indicator" data-class-sort-indicator aria-hidden="true">↕</span>
+            </button>
+          </th>
           <th class="col--teachers">{{ _('Teachers') }}</th>
           <th class="col--students">{{ _('Students') }}</th>
           <th class="col--courses">{{ _('Courses') }}</th>
@@ -42,8 +54,23 @@
           </td>
         </tr>
         {%- endfor -%}
+        <tr data-class-no-results hidden>
+          <td colspan="5">{{ _('No matching classes found in class list') }}</td>
+        </tr>
       </tbody>
     </table>
   </div>
 </div>
+<style>
+.domain-class-tools { display: flex; align-items: center; gap: 8px; }
+.class-search-input { width: 220px; max-width: 100%; }
+.class-sort-button { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.class-sort-button:hover { color: #5f9fd6; }
+.class-sort-indicator { color: #999; font-size: 0.9em; }
+[data-class-no-results] td { color: #999; text-align: center; }
+@media (max-width: 768px) {
+  .domain-class-tools { position: static; flex-wrap: wrap; margin-top: 10px; }
+  .class-search-input { width: 220px; max-width: 100%; }
+}
+</style>
 {% endblock %}

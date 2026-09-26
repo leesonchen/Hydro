@@ -322,10 +322,12 @@ export class ClassHandler extends Handler {
     async get({ domainId }: { domainId: string }) {
         const groups = (await ClassModel.listGroup(domainId))
             .filter((group) => canManageClass(this.user, group));
-        
+
         // 过滤掉 teachers 特殊班级
-        const filteredGroups = groups.filter((g) => g.name !== 'teachers');
-        
+        const filteredGroups = groups
+            .filter((g) => g.name !== 'teachers')
+            .sort((a, b) => String(b._id).localeCompare(String(a._id)));
+
         // 获取每个班级的课程数量
         const groupsWithCourseCount = await Promise.all(
             filteredGroups.map(async (g) => {
@@ -334,9 +336,9 @@ export class ClassHandler extends Handler {
                     assign: { $in: [g.name] },
                 }).count();
                 return { ...g, courseCount: count };
-            })
+            }),
         );
-        
+
         this.response.template = 'domain_class.html';
         this.response.body = {
             canCreateClass: canCreateClass(this.user),
