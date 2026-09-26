@@ -325,27 +325,10 @@ get_current_version() {
     fi
 }
 
-# 增加版本号
-increment_version() {
-    local version="$1"
-    # 检查是否是 dev 版本
-    if [[ "$version" =~ ^(.+)-dev\.([0-9]+)$ ]]; then
-        local base="${BASH_REMATCH[1]}"
-        local num="${BASH_REMATCH[2]}"
-        echo "$base-dev.$((num + 1))"
-    else
-        # 如果不是 dev 版本，添加 -dev.1
-        echo "$version-dev.1"
-    fi
-}
-
-# 基于本地版本和远端 dev dist-tag 计算下一个 dev 版本，避免本地版本落后时把 dev tag 回退。
+# 基于本地版本和远端同基础版本的最高 dev 序号计算下一个 dev 版本。
 next_dev_version() {
     local package_name="$1"
     local current_version="$2"
-    local candidate
-    candidate=$(increment_version "$current_version")
-
     local base="${current_version}"
     local current_num=0
     if [[ "$current_version" =~ ^(.+)-dev\.([0-9]+)$ ]]; then
@@ -353,19 +336,48 @@ next_dev_version() {
         current_num="${BASH_REMATCH[2]}"
     fi
 
-    local remote_version=""
+    local published_versions=""
     if command -v timeout >/dev/null 2>&1; then
-        remote_version=$(timeout 15 npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true)
+        published_versions=$(timeout 15 npm view "$package_name" versions --json --registry "$NPM_REGISTRY" 2>/dev/null) || {
+            echo "无法读取 ${package_name} 的已发布版本列表" >&2
+            return 1
+        }
     else
-        remote_version=$(npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" 2>/dev/null | tr -d '[:space:]' || true)
-    fi
-    if [[ "$remote_version" =~ ^(.+)-dev\.([0-9]+)$ ]] && [ "${BASH_REMATCH[1]}" = "$base" ]; then
-        local remote_num="${BASH_REMATCH[2]}"
-        local next_num=$((current_num > remote_num ? current_num + 1 : remote_num + 1))
-        candidate="${base}-dev.${next_num}"
+        published_versions=$(npm view "$package_name" versions --json --registry "$NPM_REGISTRY" 2>/dev/null) || {
+            echo "无法读取 ${package_name} 的已发布版本列表" >&2
+            return 1
+        }
     fi
 
-    echo "$candidate"
+    local remote_num
+    remote_num=$(printf '%s' "$published_versions" | node -e '
+let input = "";
+process.stdin.on("data", (chunk) => input += chunk);
+process.stdin.on("end", () => {
+  try {
+    let versions = JSON.parse(input);
+    if (!Array.isArray(versions)) versions = [versions];
+    const prefix = `${process.argv[1]}-dev.`;
+    let max = 0;
+    for (const version of versions) {
+      if (typeof version !== "string" || !version.startsWith(prefix)) continue;
+      const suffix = version.slice(prefix.length);
+      if (/^\d+$/.test(suffix)) max = Math.max(max, Number(suffix));
+    }
+    process.stdout.write(String(max));
+  } catch {
+    process.exit(1);
+  }
+});
+' "$base") || return 1
+
+    if [[ ! "$remote_num" =~ ^[0-9]+$ ]]; then
+        echo "无法解析 ${package_name} 的已发布版本列表" >&2
+        return 1
+    fi
+
+    local next_num=$((current_num > remote_num ? current_num + 1 : remote_num + 1))
+    echo "${base}-dev.${next_num}"
 }
 
 # 为 ui-default 生成与完整版本号一致的静态资源别名（并控制别名数量）
@@ -543,7 +555,13 @@ publish_package() {
 
     # 获取当前版本并递增
     local current_version=$(get_current_version "$package_path")
-    local new_version=$(next_dev_version "$package_name" "$current_version")
+    local new_version
+    if ! new_version=$(next_dev_version "$package_name" "$current_version"); then
+        echo -e "${RED}错误: 无法计算 ${package_name} 的下一个 dev 版本${NC}"
+        mv -f "$package_json_backup" "$package_json"
+        cd "$SCRIPT_DIR"
+        return 1
+    fi
 
     echo -e "  版本: $current_version -> $new_version"
 
