@@ -410,10 +410,35 @@ async function getScoreboard(
 
 }
 
+function getLessonDurationHours(tdoc?: Partial<CourseTdoc>) {
+    const value = Number(tdoc?.lessonDurationHours);
+    return Number.isFinite(value) && value > 0 ? value : DEFAULT_COURSE_LESSON_DURATION_HOURS;
+}
+
+function getDateValue(value: any, fallback: Date) {
+    if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+    const date = value == null ? null : new Date(value);
+    return date && Number.isFinite(date.getTime()) ? date : fallback;
+}
+
+function getCourseLessonWindow(course: any) {
+    const courseBeginAt = getDateValue(course.beginAt, new Date(0));
+    const lessonBeginAt = getDateValue(course.lessonBeginAt, courseBeginAt);
+    const lessonEndAt = getDateValue(
+        course.lessonEndAt,
+        new Date(lessonBeginAt.getTime() + getLessonDurationHours(course) * 60 * 60 * 1000),
+    );
+    return { lessonBeginAt, lessonEndAt };
+}
+
 function getCourseOrderStatus(course: any, now: Date) {
-    if (course.beginAt.getTime() > now.getTime()) return 0;
-    if (course.endAt.getTime() < now.getTime()) return 2;
-    return 1;
+    const nowTime = now.getTime();
+    if (course.beginAt.getTime() > nowTime) return 1;
+    if (course.endAt.getTime() < nowTime) return 3;
+
+    const { lessonBeginAt, lessonEndAt } = getCourseLessonWindow(course);
+    if (lessonBeginAt.getTime() <= nowTime && lessonEndAt.getTime() >= nowTime) return 0;
+    return 2;
 }
 
 async function ensureCourseTitleAvailable(
@@ -435,27 +460,26 @@ function compareCourseTitle(a: any, b: any) {
     return (a.title || '').localeCompare(b.title || '', 'zh-CN');
 }
 
-function compareCoursePriorityTime(a: any, b: any, now: Date) {
-    const aStatus = getCourseOrderStatus(a, now);
-    const bStatus = getCourseOrderStatus(b, now);
-    if (aStatus !== bStatus) return aStatus - bStatus;
-
-    const beginDiff = a.beginAt.getTime() - b.beginAt.getTime();
-    if (beginDiff !== 0) {
-        return aStatus === 0 ? beginDiff : -beginDiff;
-    }
-
-    return 0;
-}
-
 function compareCourses(a: any, b: any, now: Date) {
     const aStatus = getCourseOrderStatus(a, now);
     const bStatus = getCourseOrderStatus(b, now);
     if (aStatus !== bStatus) return aStatus - bStatus;
 
-    const beginDiff = a.beginAt.getTime() - b.beginAt.getTime();
+    const aLesson = getCourseLessonWindow(a);
+    const bLesson = getCourseLessonWindow(b);
+    const aLessonIsFuture = aStatus === 2 && aLesson.lessonBeginAt.getTime() > now.getTime();
+    const bLessonIsFuture = bStatus === 2 && bLesson.lessonBeginAt.getTime() > now.getTime();
+    if (aLessonIsFuture !== bLessonIsFuture) return aLessonIsFuture ? -1 : 1;
+
+    const direction = aStatus === 1 || aLessonIsFuture ? 1 : -1;
+    const beginDiff = aLesson.lessonBeginAt.getTime() - bLesson.lessonBeginAt.getTime();
     if (beginDiff !== 0) {
-        return aStatus === 0 ? beginDiff : -beginDiff;
+        return direction * beginDiff;
+    }
+
+    const lessonEndDiff = aLesson.lessonEndAt.getTime() - bLesson.lessonEndAt.getTime();
+    if (lessonEndDiff !== 0) {
+        return direction * lessonEndDiff;
     }
 
     const titleDiff = compareCourseTitle(a, b);
@@ -463,7 +487,7 @@ function compareCourses(a: any, b: any, now: Date) {
 
     const endDiff = a.endAt.getTime() - b.endAt.getTime();
     if (endDiff !== 0) {
-        return aStatus === 0 ? endDiff : -endDiff;
+        return direction * endDiff;
     }
 
     return String(a.docId).localeCompare(String(b.docId));
@@ -520,7 +544,7 @@ function groupAndSortCourses(courseList: any[], now: Date) {
     const sortedGroups = Object.entries(groups)
         .map(([key, list]) => ({ key, tdocs: list }))
         .sort((a, b) => {
-            const courseDiff = compareCoursePriorityTime(a.tdocs[0], b.tdocs[0], now);
+            const courseDiff = compareCourses(a.tdocs[0], b.tdocs[0], now);
             if (courseDiff !== 0) return courseDiff;
             return a.key.localeCompare(b.key, 'zh-CN');
         });
@@ -539,11 +563,6 @@ function groupAndSortTemplates(templateList: any[], now: Date) {
         .sort((a, b) => a.key.localeCompare(b.key, 'zh-CN'));
     if (sortedTemplates.length) sortedGroups.unshift({ key: TEMPLATE_ALL_KEY, tdocs: sortedTemplates });
     return { groups, sortedGroups };
-}
-
-function getLessonDurationHours(tdoc?: Partial<CourseTdoc>) {
-    const value = Number(tdoc?.lessonDurationHours);
-    return Number.isFinite(value) && value > 0 ? value : DEFAULT_COURSE_LESSON_DURATION_HOURS;
 }
 
 function getLessonWindow(tdoc: Partial<CourseTdoc> | undefined, beginAt: moment.Moment, timeZone: string) {
@@ -792,7 +811,21 @@ export class CourseMain1Handler extends Handler {
             }),
         })
             .sort({ beginAt: -1 })
-            .project({ _id: 1, docId: 1, title: 1, beginAt: 1, endAt: 1, assign: 1, rule: 1, owner: 1, editor: 1, updateAt: 1 })
+            .project({
+                _id: 1,
+                docId: 1,
+                title: 1,
+                beginAt: 1,
+                endAt: 1,
+                assign: 1,
+                rule: 1,
+                owner: 1,
+                editor: 1,
+                updateAt: 1,
+                lessonDurationHours: 1,
+                lessonBeginAt: 1,
+                lessonEndAt: 1,
+            })
             .toArray();
 
         const uids = Array.from(new Set(tdocs.flatMap((t) => [t.owner, t.editor].filter(Boolean))));
@@ -876,7 +909,21 @@ export class CourseMain2Handler extends Handler {
             }),
         })
             .sort({ beginAt: -1 })
-            .project({ _id: 1, docId: 1, title: 1, beginAt: 1, endAt: 1, assign: 1, rule: 1, owner: 1, editor: 1, updateAt: 1 })
+            .project({
+                _id: 1,
+                docId: 1,
+                title: 1,
+                beginAt: 1,
+                endAt: 1,
+                assign: 1,
+                rule: 1,
+                owner: 1,
+                editor: 1,
+                updateAt: 1,
+                lessonDurationHours: 1,
+                lessonBeginAt: 1,
+                lessonEndAt: 1,
+            })
             .toArray();
 
         const uids = Array.from(new Set(tdocs.flatMap((t) => [t.owner, t.editor].filter(Boolean))));

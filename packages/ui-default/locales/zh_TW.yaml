@@ -1,4 +1,18 @@
 __langname: 正體中文
+Auto Format Code: 自動格式化程式碼
+Code Font Family: 程式碼字型
+Enable Time Ago: 顯示相對時間
+Find custom font: 尋找自訂字型
+Font Family: 字型
+Monaco Editor: Monaco 編輯器
+Preferred Editor Type: 偏好編輯器類型
+Rounded Corners: 圓角
+Select Custom Font: 選擇自訂字型
+Select Custom Code Font: 選擇自訂程式碼字型
+Show Invisible Characters: 顯示空白字元
+Skip Animation: 略過動畫
+Split View: 分割檢視
+'Using custom font: {0}': '正在使用自訂字型：{0}'
 '"{data}" copied to clipboard!': “{data}”已複製到剪貼簿！
 '[Richtext message]': '[富文字訊息]'
 '{0} comments': '{0} 條評論'
@@ -167,6 +181,7 @@ Change Theme: 切換主題
 Check In: 簽到
 Course Period Begin: 課程週期-開始
 Course Period End: 課程週期-結束
+Course Permissions: 權限管理
 Finish Batch Manage: 完成
 No template selected: 未選擇模板
 Please input template category.: 請輸入模板分類。
@@ -366,12 +381,14 @@ Duration: 持續時間
 Edit any contests: 修改任意的比賽
 Edit any homework: 修改任意功課
 Edit Contest: 編輯比賽
+Edit Course: 編輯課程
 Edit description of this domain: 修改此域描述
 Edit discussion replies of own discussion: 修改自己討論中的回覆
 Edit discussion replies: 修改討論的回覆
 Edit discussions: 修改討論
 Edit Domain: 編輯域
 Edit Homework: 編輯功課
+Edit Lecture: 編輯講義
 Edit own contests: 修改自己的比賽
 Edit own discussion replies: 修改討論中自己的回覆
 Edit own discussions: 修改自己的討論
@@ -488,7 +505,7 @@ Homework: 功課
 Host: 主持人
 hour(s): 小時
 If enabled, source code will be emailed to you after the submission is accepted.: 如果啟用，在您通過題目後，原始碼會以 Email 的形式傳送給您。
-If left blank, the built-in template of the corresponding language will be used.: 若留空，則將使用對應語言的內建程式碼模板。
+If left blank, the built-in template of the corresponding language will be used.: 留白時將使用對應語言的內建程式碼範本。
 Ignore trailing space and enter.: 忽略行末空格與檔案尾回車。
 Images With Size: 指定大小的圖片
 Images: 圖片
@@ -587,6 +604,7 @@ manage_setting: 系統設定
 manage_user_priv: 使用者許可權
 manage: 管理
 Manage: 管理
+Manage Course: 管理課程
 Manager: 管理
 Mark Green: 標綠
 Mark Red: 標紅
@@ -903,6 +921,8 @@ setting_info_domain: 個人資訊
 setting_info: 個人資訊
 setting_privacy: 隱私
 setting_usage: 使用偏好
+setting_markdown: Markdown 設定
+setting_highlight: 程式碼醒目提示設定
 Settings: 設定
 Share: 分享
 She: 她
@@ -962,6 +982,11 @@ Switch account: 切換賬戶
 Tags: 標籤
 Task Settings: 任務設定
 tasks_list: 任務列表
+Page Tools: 頁面工具
+Page Layout: 頁面版面
+Choose between the classic and wide page layouts.: 選擇經典版面或寬螢幕版面。
+Classic layout: 經典版面
+Wide layout: 寬螢幕版面
 Technical Information: 技術資訊
 Temporary session: 臨時會話
 Terms of Service: 服務條款
@@ -1206,4 +1231,3 @@ High Risk Warning: 高危操作警告
 'Force sync will overwrite all local modifications (title, content, tags, difficulty) in the target domains with the source problem, and cannot be undone!': 強制同步將直接使用當前源頭題目的題面（標題、內容、標籤、難度）覆蓋目標域題目的所有改動，且無法撤銷！
 'You have selected {0} problems to force sync:': '本次將對以下 {0} 個題目執行強制同步：'
 'Are you sure you want to proceed with force sync?': 是否確認繼續執行強制同步？
-

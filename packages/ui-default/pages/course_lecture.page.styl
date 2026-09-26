@@ -23,3 +23,32 @@
 .course-mermaid__error
   color: $fail-color
   margin-bottom: 0.4rem
+
+.page--course_lecture #lecture-main
+  > :not(.course-lecture-table-scroll):not(.course-mermaid):not(hr)
+    max-width: 100ch
+
+  .course-lecture-table-scroll
+    overflow-x: auto
+    -webkit-overflow-scrolling: touch
+
+    table
+      min-width: 100%
+      width: max-content
+
+@media (min-width: 1000px)
+  html[data-layout-mode='wide'].page--course_lecture #lecture-main
+    > :not(.course-lecture-table-scroll):not(.course-mermaid):not(hr)
+      max-width: 100%
+
+@media (max-width: 1399px)
+  .page--course_lecture
+    .section__header .section__tools
+      display: flex
+      flex-wrap: wrap
+      gap: rem(6px)
+      margin-top: rem(10px)
+      position: static
+
+      .button
+        min-height: 36px

@@ -18,7 +18,7 @@ function transpileFile(filePath) {
     }).outputText;
 }
 
-test('contest.ts: canShowProblemStatus enforces showRecord for homework and handles course safely', () => {
+test('contest.ts: result visibility protects students and preserves hidden scoreboard access', () => {
     const contestFile = path.resolve(__dirname, '../packages/hydrooj/src/model/contest.ts');
     const compiledContest = transpileFile(contestFile);
 
@@ -147,6 +147,33 @@ test('contest.ts: canShowProblemStatus enforces showRecord for homework and hand
         false,
         '无特殊权限的普通用户绝不可查看设置了 keepScoreboardHidden 的课程自身记录',
     );
+
+    const activeOi = {
+        rule: 'oi',
+        beginAt: new Date(now - 3600 * 1000),
+        endAt: new Date(now + 3600 * 1000),
+        keepScoreboardHidden: false,
+    };
+    const contestAdmin = {
+        _id: 2,
+        own: () => false,
+        hasPerm: (perm) => perm === 64,
+    };
+    assert.equal(canShowScoreboard.call({ user: fakeUser }, activeOi), false);
+    assert.equal(canShowScoreboard.call({ user: contestAdmin }, activeOi), true);
+    assert.equal(canShowScoreboard.call({ user: contestAdmin }, activeOi, false), false);
+    assert.equal(canShowScoreboard.call({ user: contestAdmin }, { ...activeOi, keepScoreboardHidden: true }), true);
+    for (const [name, canShow] of Object.entries({ canShowRecord, canShowSelfRecord })) {
+        assert.equal(canShow.call({ user: fakeUser }, activeOi), false, `${name}: regular user`);
+        assert.equal(canShow.call({ user: contestAdmin }, activeOi), true, `${name}: contest admin`);
+        assert.equal(canShow.call({ user: contestAdmin }, activeOi, false), false, `${name}: no permission override`);
+        assert.equal(canShow.call({ user: contestAdmin }, { ...activeOi, keepScoreboardHidden: true }), true, `${name}: hidden scoreboard`);
+    }
+
+    exports.RULES.course = { hidden: true };
+    const unassignedCourse = { ...hiddenCourseDoc, assign: ['another-class'] };
+    assert.equal(canShowRecord.call({ user: contestAdmin }, unassignedCourse), false, 'Hidden course records require course access');
+    assert.equal(canShowSelfRecord.call({ user: contestAdmin }, unassignedCourse), false, 'Hidden course self records require course access');
 });
 
 test('config.ts: updateEnvFileKey sanitizes newlines and validates key; config set rejects prototype keys', () => {

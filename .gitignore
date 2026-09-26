@@ -8708,3 +8708,4 @@ test-reports/ai-record-verification/results.json
 testuser.md
 .devin/
 .zcode/
+/test/testuser.txt

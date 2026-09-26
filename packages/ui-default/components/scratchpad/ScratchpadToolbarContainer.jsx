@@ -9,6 +9,7 @@ import Toolbar, {
   ToolbarItemComponent as ToolbarItem,
   ToolbarSplitComponent as ToolbarSplit,
 } from './ToolbarComponent';
+import { canUsePretest } from './capabilities';
 
 const mapStateToProps = (state) => ({
   pretestVisible: state.ui.pretest.visible,
@@ -99,16 +100,11 @@ export default connect(mapStateToProps, mapDispatchToProps)(class ScratchpadTool
   }
 
   render() {
-    let canUsePretest = UiContext.pdoc.config?.type === 'default';
     const langInfo = availableLangs[this.props.editorLang];
-    if (UiContext.pdoc.config?.type === 'remote_judge' && langInfo) {
-      if (langInfo.pretest) canUsePretest = true;
-      if (langInfo.validAs && !langInfo.hidden) canUsePretest = true;
-    }
-    if (langInfo?.pretest === false) canUsePretest = false;
+    const canPretest = canUsePretest(UiContext.pdoc.config, langInfo);
     return (
       <Toolbar>
-        {canUsePretest && (
+        {canPretest && (
           <ToolbarButton
             disabled={this.props.isPosting || this.props.isRunning || !!this.props.pretestWaitSec}
             className="scratchpad__toolbar__pretest"
@@ -160,7 +156,7 @@ export default connect(mapStateToProps, mapDispatchToProps)(class ScratchpadTool
           </select>
         </ToolbarItem>
         <ToolbarSplit />
-        {canUsePretest && (
+        {canPretest && (
           <ToolbarButton
             activated={this.props.pretestVisible}
             onClick={() => this.props.togglePanel('pretest')}
