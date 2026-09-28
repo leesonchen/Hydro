@@ -1,0 +1,111 @@
+# exam 域审计迁移
+
+`exam-migrate` 是一个只从源库读取、把源数据固化成不可变包，再对目标库执行受保护写入的工具。它不会调用 Hydro 的写 API，也不会写源 MongoDB。
+
+目标库恢复后需要重跑时，先阅读 [EXAM-MIGRATION-REPLAY.md](./EXAM-MIGRATION-REPLAY.md)。
+其中保留了本次已确认的中间决策、审计产物清单和可复制的重跑检查点；实际迁移包不在 Git 中。
+已完成旧合并、仅需补齐 `prepare` 引用题测试数据的目标，请改用
+[EXAM-TESTDATA-REPAIR.md](./EXAM-TESTDATA-REPAIR.md) 的独立回填流程，不要重跑完整 apply。
+
+## 1. 导出（源端停写）
+
+先让生产 Hydro 停止写入，再在仓库根目录执行：
+
+```sh
+node -r @hydrooj/register packages/migrate/bin/exam-migrate.js export \
+  --source-uri "$SOURCE_MONGO_URI" \
+  --source-db hydro \
+  --source-storage-root /srv/hydro-storage \
+  --run-dir migration-runs/exam-export-YYYYMMDD
+```
+
+导出目录权限为 `0700`，其中用户集合可能包含 Hydro 密码凭据；命令日志只记录脱敏参数，不能把 URI、哈希或 Token 复制到工单。`manifest.json`、逐集合 JSONL（Mongo Extended JSON）、文件包、文件 SHA-256、缺失/排除文件清单和 `audit.jsonl` 都属于同一不可变包。个人文件不进入包；生产中声明但缺失的文件会进入排除报告。
+新版导出会另外沿 `exam → prepare` 引用找到真正题源，把其有效配置、测试数据、
+附加文件和物理文件写入 `materialized-problems.jsonl` 快照；缺元数据或物理文件时
+导出失败，不会产生可用于 apply 的完整包。旧包没有这份快照，不能用于补齐旧目标。
+
+## 2. 目标分析（只读 dry-run）
+
+```sh
+node -r @hydrooj/register packages/migrate/bin/exam-migrate.js analyze \
+  --package migration-runs/exam-export-YYYYMMDD \
+  --target-uri "$TARGET_MONGO_URI" \
+  --target-db hydro2
+```
+
+目标已经有 `exam` 域时，必须显式使用合并模式；它保留域文档和已有对象，
+只新增没有自然键冲突的用户、成员、组、题目、比赛及关联数据：
+
+```sh
+node -r @hydrooj/register packages/migrate/bin/exam-migrate.js analyze \
+  --package migration-runs/exam-export-YYYYMMDD \
+  --target-uri "$TARGET_MONGO_URI" --target-db hydro2 \
+  --merge-existing
+```
+
+默认模式仍会拒绝已有 `exam` 域。合并计划优先复用目标 exam 中题面和有效配置
+均相同的题目；PID 冲突的生产题目获得确定性新 PID，比赛、提交、状态、统计和
+历史引用同步改写。源端父对象不存在的孤立答疑不会导入，会在 `plan.json` 的
+`excludedDocuments` 和 `audit.jsonl` 中列明，避免制造悬空引用。
+
+`plan.json` 保存目标指纹、身份判定、题目复用/实体化判定、ObjectId 和存储路径映射、预期数量、排除报告和 `planHash`。当前身份规则允许源、目标的非 `@test.com` 邮箱在 trim+小写后完全相同的账号合并；另有 8 个已确认的源 UID，仅在 `@test.com` 邮箱和用户名都完全相同时合并。不再使用人工映射、一般用户名匹配或用户名冲突规则。其余源账号均创建独立的 `<源用户名>_exam` 账号；邮箱已占用、未获确认的 `@test.com` 冲突或无效时使用逐 UID 唯一的 `@invalid.exam` 占位邮箱，并在计划中保留原邮箱供后续人工关联。题目的 8 个健康引用和悬空 `test`/`oler` 引用规则仍可审计。
+
+题目复用会额外记录源/目标测试文件名差异；差异只进入审计，不参与同题判定。
+但 P105 的确认复用是例外：新包中的 `prepare/88` 物理文件与目标
+`contests/3230` 的文件须在 apply 前及 verify 时逐一通过 SHA-256 核对。
+
+人工确认 `planHash` 后，必须在 apply 命令中原样携带它。重新分析目标会得到新的目标指纹和新的哈希，不得把本地 UID 直接带到另一套真实环境。
+
+## 3. 应用与验证
+
+正式应用前确认 MongoDB 在线，然后执行：
+
+```sh
+node -r @hydrooj/register packages/migrate/bin/exam-migrate.js apply \
+  --package migration-runs/exam-export-YYYYMMDD \
+  --target-uri "$TARGET_MONGO_URI" \
+  --target-db hydro2 \
+  --target-storage-root /srv/hydro2-storage \
+  --plan-hash SHA256_FROM_PLAN
+```
+
+合并现有域时必须同时携带 `--merge-existing`；apply 会再次锁定分析时的目标
+指纹，只删除/回滚本轮新增对象：
+
+```sh
+node -r @hydrooj/register packages/migrate/bin/exam-migrate.js apply \
+  --package migration-runs/exam-export-YYYYMMDD \
+  --target-uri "$TARGET_MONGO_URI" --target-db hydro2 \
+  --target-storage-root /srv/hydro2-storage \
+  --plan-hash SHA256_FROM_PLAN --merge-existing
+```
+
+apply 会在写入前重新校验迁移包哈希、目标指纹、`exam` 域不存在、存储路径不会覆盖既有文件，并默认执行 `mongodump` 和 `pm2 stop hydrooj`。应用期间按“用户/system 成员 → 域/成员/组 → 题目 → 文件 → 比赛/题解/答疑 → 提交/历史/统计 → 状态”分阶段记录；提交附件按 exam 记录实际引用的 `submission/<uid>/<id>` 路径重写 UID。阶段失败会保留停止状态和回滚清单。`--no-stop`、`--no-backup` 只允许隔离的演练环境使用。
+
+apply 成功后会在服务仍停止时自动运行 verify；验证失败时不会自动启动服务。验证成功才会执行 `pm2 start hydrooj`。
+
+单独验证：
+
+```sh
+node -r @hydrooj/register packages/migrate/bin/exam-migrate.js verify \
+  --package migration-runs/exam-export-YYYYMMDD \
+  --target-uri "$TARGET_MONGO_URI" --target-db hydro2 \
+  --target-storage-root /srv/hydro2-storage
+```
+
+验证报告检查集合数量、UID/PID/TID/RID 和嵌套父对象、`prepare`/悬空 `test` 引用、文件 SHA-256、榜单/状态/统计/重测历史引用及用户名/邮箱唯一性。不会重判历史提交。
+
+## 4. 回滚
+
+回滚需要明确确认，并默认暂停本地服务：
+
+```sh
+node -r @hydrooj/register packages/migrate/bin/exam-migrate.js rollback \
+  --package migration-runs/exam-export-YYYYMMDD \
+  --target-uri "$TARGET_MONGO_URI" --target-db hydro2 \
+  --target-storage-root /srv/hydro2-storage --yes
+```
+
+回滚只删除本次应用清单中的文档和物理文件，最后移除迁移标记；目标中原有用户资料不会被覆盖或删除。若阶段失败，先检查 `apply.json` 和 `audit.jsonl`，再按同一命令回滚。
+
+迁移包和审计目录被 `.gitignore` 排除，仓库只提交工具、测试和本手册。
