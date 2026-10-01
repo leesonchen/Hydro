@@ -1024,5 +1024,8 @@ High Risk Warning: 高危操作警告
 'Force sync will overwrite all local modifications (title, content, tags, difficulty) in the target domains with the source problem, and cannot be undone!': 强制同步将使用当前源头题目的题面（标题、内容、标签、难度）直接覆盖目标域题目的所有改动，且无法撤销！
 'You have selected {0} problems to force sync:': '本次将对以下 {0} 个题目执行强制同步：'
 'Are you sure you want to proceed with force sync?': 是否确认继续执行强制同步？
-
+Roles have changed. Please refresh and try again.: 角色已发生变化，请刷新后重试。
+Guest and root must stay at the ends of the role order.: guest 和 root 必须固定在角色顺序的两端，且不能设为默认角色。
+Select exactly one default invitation role.: 请指定且仅指定一个默认邀请角色。
+Role priorities must be unique positions in the role order.: 优先级必须是角色列表中的唯一位置，不能重复。
 

@@ -26,7 +26,7 @@ const page = new NamedPage('domain_role', () => {
 
   function ensureAndGetSelectedRoles() {
     const roles = _.map(
-      $('.domain-roles tbody [type="checkbox"]:checked'),
+      $('.domain-roles tbody [data-checkbox-group="role"]:checked'),
       (ch) => $(ch).closest('tr').attr('data-role'),
     );
     if (roles.length === 0) {
@@ -75,8 +75,54 @@ const page = new NamedPage('domain_role', () => {
     }
   }
 
+  async function handleClickUpdateRoles() {
+    const roles = _.map($('.domain-roles tbody tr'), (row) => {
+      const $row = $(row);
+      const $default = $row.find('[data-role-default]');
+      const $priority = $row.find('[data-role-priority]');
+      return {
+        role: $default.attr('data-role-default'),
+        default: $default.prop('checked') === true,
+        priority: Number($priority.is('input') ? $priority.val() : $priority.attr('data-priority')),
+      };
+    });
+    if (roles.filter((role) => role.default).length !== 1) {
+      Notification.error(i18n('Select exactly one default invitation role.'));
+      return;
+    }
+    if (roles.some((role) => !Number.isInteger(role.priority) || role.priority < 0 || role.priority >= roles.length)
+      || new Set(roles.map((role) => role.priority)).size !== roles.length) {
+      Notification.error(i18n('Role priorities must be unique positions in the role order.'));
+      return;
+    }
+    try {
+      await request.post('', { operation: 'update', roles });
+      Notification.success(i18n('Role settings have been updated.'));
+      await delay(1000);
+      window.location.reload();
+    } catch (error) {
+      Notification.error(error.message);
+    }
+  }
+
   $('[name="create_role"]').on('click', () => handleClickCreateRole());
+  $('[name="update_roles"]').on('click', () => handleClickUpdateRoles());
   $('[name="delete_selected"]').on('click', () => handleClickDeleteSelected());
+  $('.domain-roles input[data-role-priority]').on('change', (ev) => {
+    const $input = $(ev.currentTarget);
+    const $row = $input.closest('tr');
+    const $otherRows = $row.siblings();
+    const priority = Number($input.val());
+    if (!Number.isInteger(priority) || priority < 1 || priority >= $otherRows.length) {
+      $input.val($row.index());
+      Notification.error(i18n('Role priorities must be unique positions in the role order.'));
+      return;
+    }
+    $row.insertBefore($otherRows.eq(priority));
+    $('.domain-roles tbody tr').each((index, row) => {
+      $(row).find('input[data-role-priority]').val(index);
+    });
+  });
 });
 
 export default page;

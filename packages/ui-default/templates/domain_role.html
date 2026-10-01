@@ -26,11 +26,17 @@
     </div>
   </div>
   {{ noscript_note.render() }}
+  <div class="section__body typo">
+    <p>{{ _('The default role is selected when creating invitations. Higher priority roles are preserved when accepting an invitation.') }}</p>
+    <p>{{ _('Role priority is its position in the list. Guest is always first and root is always last.') }}</p>
+  </div>
   <div class="section__body no-padding domain-roles">
     <table class="data-table">
       <colgroup>
         <col class="col--checkbox">
         <col class="col--id">
+        <col class="col--default">
+        <col class="col--priority">
         <col class="col--users">
       </colgroup>
       <thead>
@@ -41,6 +47,8 @@
             </label>
           </th>
           <th class="col--id">{{ _('Role') }}</th>
+          <th class="col--default">{{ _('Default') }}</th>
+          <th class="col--priority">{{ _('Priority') }}</th>
           <th class="col--users">{{ _('Users') }}</th>
         </tr>
       </thead>
@@ -56,6 +64,18 @@
           <td class="col--id">
             {{ _('Built-in') if isBuiltin else _('User-defined role') }}: {{ role._id }}
           </td>
+          <td class="col--default">
+            <label class="compact radiobox">
+              <input type="radio" name="default_role" value="{{ role._id }}" data-role-default="{{ role._id }}"{% if role.default %} checked{% endif %}{% if role._id in ['guest', 'root'] %} disabled{% endif %} aria-label="{{ _('Default') }}: {{ role._id }}">
+            </label>
+          </td>
+          <td class="col--priority">
+            {% if role._id in ['guest', 'root'] %}
+              <span data-role-priority="{{ role._id }}" data-priority="{{ role.priority }}">{{ role.priority }}</span>
+            {% else %}
+              <input class="text compact" type="number" min="1" max="{{ roles|length - 2 }}" step="1" value="{{ role.priority }}" data-role-priority="{{ role._id }}" aria-label="{{ _('Priority') }}: {{ role._id }}">
+            {% endif %}
+          </td>
           <td class="col--users">
             {{ role.count|default('--') }}
           </td>
@@ -65,6 +85,7 @@
     </table>
   </div>
   <div class="section__body">
+    <button class="primary rounded button" name="update_roles">{{ _('Update Role Settings') }}</button>
     <button class="rounded button" name="delete_selected">{{ _('Delete Selected Roles') }}</button>
   </div>
 </div>
