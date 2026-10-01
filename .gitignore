@@ -61,6 +61,7 @@ packages/**/*.tgz
 
 # Local validation reports
 /reports/
+/migration-runs/
 
 # Base
 node_modules/
