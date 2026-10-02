@@ -1678,7 +1678,8 @@ describe('App', () => {
             const cachedDomain = await DomainModel.get(domainId);
             const originalDomainUserUpdateMany = DomainModel.collUser.updateMany;
             DomainModel.collUser.updateMany = async (...args: any[]) => {
-                if (args[0]?.domainId === domainId && args[0]?.role?.$in?.includes(role)) {
+                const roleFilters = [args[0], ...(args[0]?.$or || [])];
+                if (args[0]?.domainId === domainId && roleFilters.some((filter) => filter?.role?.$in?.includes(role))) {
                     throw new Error('Injected role migration failure');
                 }
                 return await originalDomainUserUpdateMany.call(DomainModel.collUser, ...args);

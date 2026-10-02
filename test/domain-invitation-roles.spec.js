@@ -55,6 +55,7 @@ describe('Domain invitation role order', () => {
     let tokens;
     let clearDomainCache;
     const handlers = {};
+    const userPrivileges = new Map();
     const domainId = 'invite-roles-test';
 
     before(async () => {
@@ -62,7 +63,10 @@ describe('Domain invitation role order', () => {
         client = await MongoClient.connect(mongod.getUri());
         db = client.db('invitation-role-test');
         user = {
-            getById: async (_domain, uid) => ({ _id: uid, uname: `u${uid}`, mail: `u${uid}@example.com` }),
+            getById: async (_domain, uid) => ({
+                _id: uid, uname: `u${uid}`, mail: `u${uid}@example.com`,
+                priv: userPrivileges.get(uid) ?? builtin.PRIV.PRIV_USER_PROFILE,
+            }),
             getMulti: (query) => db.collection('user').find(query),
             collGroup: db.collection('user.group'),
         };
@@ -155,6 +159,7 @@ describe('Domain invitation role order', () => {
     }
 
     async function resetDomain() {
+        userPrivileges.clear();
         await clearDomainCache();
         await domain.coll.deleteMany({});
         await domain.collUser.deleteMany({});
@@ -185,6 +190,24 @@ describe('Domain invitation role order', () => {
             assert.equal(intercepted, true);
         } finally {
             domain.coll.updateOne = originalUpdateOne;
+        }
+    }
+
+    async function duringRoleVerification(change, operation) {
+        const originalFindOne = domain.coll.findOne;
+        let intercepted = false;
+        domain.coll.findOne = async (...args) => {
+            if (!intercepted && args[0]._id === domainId && args[1]?.projection?.roles) {
+                intercepted = true;
+                await change();
+            }
+            return await originalFindOne.apply(domain.coll, args);
+        };
+        try {
+            return await operation();
+        } finally {
+            domain.coll.findOne = originalFindOne;
+            assert.equal(intercepted, true);
         }
     }
 
@@ -340,6 +363,291 @@ describe('Domain invitation role order', () => {
         }
     });
 
+    it('rejects direct invitations changed during the same request and permits a fresh lower-role invitation', async () => {
+        await resetDomain();
+        for (const [index, role] of ['student', 'default', 'guest'].entries()) {
+            const uid = 50 + index;
+            await domain.setUserInDomain(domainId, uid, { join: false, role: 'root' });
+            const joining = handler('domain_join', uid);
+            await joining.prepare({ domainId });
+            await domain.setUserRole(domainId, uid, role);
+            await assert.rejects(joining.post({ domainId }), { name: 'DomainJoinForbiddenError' });
+            const rejected = await domain.collUser.findOne({ domainId, uid });
+            assert.equal(rejected.join, false);
+            assert.equal(rejected.role, role);
+            if (role === 'student') {
+                await joining.prepare({ domainId });
+                await joining.post({ domainId });
+                assert.equal((await domain.collUser.findOne({ domainId, uid })).role, 'student');
+                assert.equal((await domain.collUser.findOne({ domainId, uid })).join, true);
+            }
+        }
+    });
+
+    it('direct invitations guard changes to membership and rejoin requirements and never recreate deleted memberships', async () => {
+        await resetDomain();
+        for (const [index, change] of [
+            async (uid) => domain.setJoin(domainId, uid, true),
+            async (uid) => domain.setUserInDomain(domainId, uid, { requireInvitation: true }),
+            async (uid) => domain.collUser.deleteOne({ domainId, uid }),
+        ].entries()) {
+            const uid = 60 + index;
+            await domain.setUserInDomain(domainId, uid, { role: 'teacher' });
+            const joining = handler('domain_join', uid);
+            await joining.prepare({ domainId });
+            await change(uid);
+            const expected = await domain.collUser.findOne({ domainId, uid });
+            await assert.rejects(joining.post({ domainId }), { name: 'DomainJoinForbiddenError' });
+            assert.deepEqual(await domain.collUser.findOne({ domainId, uid }), expected);
+        }
+    });
+
+    it('joins global administrators through their own privilege without a preassigned membership', async () => {
+        await resetDomain();
+        userPrivileges.set(70, builtin.PRIV.PRIV_USER_PROFILE | builtin.PRIV.PRIV_MANAGE_ALL_DOMAIN);
+        const joining = handler('domain_join', 70);
+        joining.user.hasPriv = (priv) => priv === builtin.PRIV.PRIV_MANAGE_ALL_DOMAIN;
+        await joining.prepare({ domainId });
+        await joining.post({ domainId });
+        const joined = await domain.collUser.findOne({ domainId, uid: 70 });
+        assert.equal(joined.join, true);
+        assert.equal(joined.role, 'root');
+    });
+
+    it('allows global administrators to rejoin after a domain moderator kick', async () => {
+        await resetDomain();
+        userPrivileges.set(83, builtin.PRIV.PRIV_USER_PROFILE | builtin.PRIV.PRIV_MANAGE_ALL_DOMAIN);
+        await domain.setUserInDomain(domainId, 83, { join: false, role: 'guest' });
+        const joining = handler('domain_join', 83);
+        joining.user.hasPriv = (priv) => priv === builtin.PRIV.PRIV_MANAGE_ALL_DOMAIN;
+        await joining.prepare({ domainId });
+        await joining.post({ domainId });
+        const joined = await domain.collUser.findOne({ domainId, uid: 83 });
+        assert.equal(joined.join, true);
+        assert.equal(joined.role, 'root');
+        assert.equal(joined.requireInvitation, undefined);
+        assert.equal(joined._roleAssignment, undefined);
+        const effective = await domain.getDomainUser(domainId, { _id: 83, priv: userPrivileges.get(83) });
+        assert.equal(effective.role, 'root');
+        assert.equal(effective.perm, builtin.BUILTIN_ROLES.root);
+    });
+
+    it('uses global privilege when a moderator ban is written after join preparation', async () => {
+        await resetDomain();
+        userPrivileges.set(84, builtin.PRIV.PRIV_USER_PROFILE | builtin.PRIV.PRIV_MANAGE_ALL_DOMAIN);
+        const joining = handler('domain_join', 84);
+        joining.user.hasPriv = (priv) => priv === builtin.PRIV.PRIV_MANAGE_ALL_DOMAIN;
+        await joining.prepare({ domainId });
+        await domain.setUserInDomain(domainId, 84, { join: false, role: 'guest' });
+        await joining.post({ domainId });
+        const joined = await domain.collUser.findOne({ domainId, uid: 84 });
+        assert.equal(joined.join, true);
+        assert.equal(joined.role, 'root');
+    });
+
+    it('does not bypass moderator bans for root join requests without global privilege', async () => {
+        await resetDomain();
+        await domain.setUserInDomain(domainId, 85, { join: false, role: 'guest', requireInvitation: true });
+        const expected = await domain.collUser.findOne({ domainId, uid: 85 });
+        const joined = await domain.joinUserInDomain(domainId, 85, 'root');
+        assert.equal(joined.role, 'guest');
+        assert.deepEqual(await domain.collUser.findOne({ domainId, uid: 85 }), expected);
+        const joining = handler('domain_join', 85, true);
+        await assert.rejects(joining.prepare({ domainId }), { name: 'DomainJoinForbiddenError' });
+    });
+
+    it('preserves an existing role when the requested role is deleted before the assignment write', async () => {
+        await resetDomain();
+        await domain.setUserInDomain(domainId, 71, { join: true, role: 'student' });
+        const originalFindOneAndUpdate = domain.collUser.findOneAndUpdate;
+        let intercepted = false;
+        domain.collUser.findOneAndUpdate = async (...args) => {
+            if (!intercepted && args[0].uid === 71 && Array.isArray(args[1])) {
+                intercepted = true;
+                await domain.deleteRoles(domainId, ['teacher']);
+            }
+            return await originalFindOneAndUpdate.apply(domain.collUser, args);
+        };
+        try {
+            const joined = await domain.joinUserInDomain(domainId, 71, 'teacher');
+            assert.equal(intercepted, true);
+            assert.equal(joined.role, 'student');
+            assert.equal(joined._roleAssignment, undefined);
+        } finally {
+            domain.collUser.findOneAndUpdate = originalFindOneAndUpdate;
+        }
+    });
+
+    it('role deletion restores pending upgrades while confirmed members fall back to default', async () => {
+        await resetDomain();
+        await domain.setUserInDomain(domainId, 72, { join: true, role: 'student' });
+        await domain.setUserInDomain(domainId, 73, { join: true, role: 'teacher' });
+        const joined = await duringRoleVerification(
+            () => domain.deleteRoles(domainId, ['teacher']),
+            () => domain.joinUserInDomain(domainId, 72, 'teacher'),
+        );
+        assert.equal(joined.role, 'student');
+        assert.equal(joined._roleAssignment, undefined);
+        assert.equal((await domain.collUser.findOne({ domainId, uid: 73 })).role, 'default');
+    });
+
+    it('failed custom-role rechecks preserve valid member roles and unrelated profile updates', async () => {
+        await resetDomain();
+        await domain.setUserInDomain(domainId, 74, { join: true, role: 'student' });
+        const joined = await duringRoleVerification(async () => {
+            await domain.setUserInDomain(domainId, 74, { displayName: 'Updated' });
+            throw new Error('Injected role recheck failure');
+        }, () => domain.joinUserInDomain(domainId, 74, 'teacher'));
+        assert.equal(joined.role, 'student');
+        assert.equal(joined.displayName, 'Updated');
+        assert.equal(joined._roleAssignment, undefined);
+    });
+
+    for (const role of ['teacher', 'root', 'guest']) {
+        it(`does not overwrite a subsequent moderator assignment to ${role} during failed verification`, async () => {
+            await resetDomain();
+            await domain.setUserInDomain(domainId, 75, { join: true, role: 'student' });
+            const joined = await duringRoleVerification(async () => {
+                await domain.setUserRole(domainId, 75, role);
+                throw new Error('Injected role recheck failure');
+            }, () => domain.joinUserInDomain(domainId, 75, 'teacher'));
+            assert.equal(joined.role, role);
+            assert.equal(joined._roleAssignment, undefined);
+        });
+    }
+
+    it('preserves bulk moderator role assignments and subsequent membership revocations', async () => {
+        await resetDomain();
+        await domain.setUserInDomain(domainId, 76, { join: true, role: 'student' });
+        const joined = await duringRoleVerification(async () => {
+            await domain.setUserRole(domainId, [76], 'teacher');
+            throw new Error('Injected role recheck failure');
+        }, () => domain.joinUserInDomain(domainId, 76, 'teacher'));
+        assert.equal(joined.role, 'teacher');
+        assert.equal(joined._roleAssignment, undefined);
+        await domain.setUserRole(domainId, 76, 'student');
+        await duringRoleVerification(async () => {
+            await domain.setUserInDomain(domainId, 76, { join: false, requireInvitation: true, role: 'default' });
+            throw new Error('Injected role recheck failure');
+        }, () => assert.rejects(domain.joinUserInDomain(domainId, 76, 'teacher'), { name: 'DomainJoinForbiddenError' }));
+        const revoked = await domain.collUser.findOne({ domainId, uid: 76 });
+        assert.equal(revoked.join, false);
+        assert.equal(revoked.requireInvitation, true);
+        assert.equal(revoked.role, 'default');
+    });
+
+    it('does not restore a previous role that was deleted while an upgrade was pending', async () => {
+        await resetDomain();
+        await domain.setUserInDomain(domainId, 77, { join: true, role: 'student' });
+        const joined = await duringRoleVerification(async () => {
+            await domain.deleteRoles(domainId, ['student']);
+            throw new Error('Injected role recheck failure');
+        }, () => domain.joinUserInDomain(domainId, 77, 'teacher'));
+        assert.equal(joined.role, 'default');
+        assert.equal(joined._roleAssignment, undefined);
+    });
+
+    it('unverified custom roles cannot grant permissions to existing or new members', async () => {
+        await resetDomain();
+        for (const existing of [true, false]) {
+            const uid = existing ? 78 : 79;
+            if (existing) await domain.setUserInDomain(domainId, uid, { join: true, role: 'student' });
+            const joined = await duringRoleVerification(async () => {
+                const effective = await domain.getDomainUser(domainId, { _id: uid, priv: builtin.PRIV.PRIV_USER_PROFILE });
+                assert.equal(effective.role, existing ? 'student' : 'guest');
+                assert.equal(effective.perm, existing ? 7n : 0n);
+            }, () => domain.joinUserInDomain(domainId, uid, 'teacher'));
+            assert.equal(joined.role, 'teacher');
+            assert.equal(joined._roleAssignment, undefined);
+        }
+    });
+
+    it('recovers abandoned role verification using the previous member role', async () => {
+        await resetDomain();
+        await domain.setUserInDomain(domainId, 80, { join: true, role: 'teacher' });
+        // The fixture represents an interrupted assignment, bypassing moderator invalidation.
+        await domain.collUser.updateOne({ domainId, uid: 80 }, { $set: { _roleAssignment: {
+            token: 'abandoned', role: 'teacher', previousRole: 'student', wasMember: true,
+            expiresAt: new Date(Date.now() - 1000),
+        } } });
+        const joined = await domain.joinUserInDomain(domainId, 80, 'default');
+        assert.equal(joined.role, 'student');
+        assert.equal(joined._roleAssignment, undefined);
+    });
+
+    it('serializes concurrent upgrades so a failed later upgrade preserves a confirmed earlier role', { timeout: 5000 }, async () => {
+        await resetDomain();
+        await domain.addRole(domainId, 'assistant', 1n);
+        await domain.setUserInDomain(domainId, 81, { join: true, role: 'student' });
+        let releaseFirst;
+        let notifyFirst;
+        let notifyWaiting;
+        const firstReleased = new Promise((resolve) => { releaseFirst = resolve; });
+        const firstStarted = new Promise((resolve) => { notifyFirst = resolve; });
+        const secondWaiting = new Promise((resolve) => { notifyWaiting = resolve; });
+        const originalFindOne = domain.coll.findOne;
+        const originalFindOneAndUpdate = domain.collUser.findOneAndUpdate;
+        let verifications = 0;
+        domain.coll.findOne = async (...args) => {
+            if (args[0]._id === domainId && args[1]?.projection?.roles) {
+                verifications++;
+                if (verifications === 1) {
+                    notifyFirst();
+                    await firstReleased;
+                } else throw new Error('Injected second role recheck failure');
+            }
+            return await originalFindOne.apply(domain.coll, args);
+        };
+        domain.collUser.findOneAndUpdate = async (...args) => {
+            const result = await originalFindOneAndUpdate.apply(domain.collUser, args);
+            const ownToken = args[1]?.[0]?.$set?._roleAssignment?.$cond?.[1]?.token;
+            if (ownToken && result?._roleAssignment && result._roleAssignment.token !== ownToken) notifyWaiting();
+            return result;
+        };
+        const firstJoin = domain.joinUserInDomain(domainId, 81, 'teacher');
+        let secondJoin;
+        try {
+            await firstStarted;
+            secondJoin = domain.joinUserInDomain(domainId, 81, 'assistant');
+            await secondWaiting;
+            releaseFirst();
+            const joined = await Promise.all([firstJoin, secondJoin]);
+            assert.deepEqual(Array.from(joined, (member) => member.role), ['teacher', 'teacher']);
+            assert.equal((await domain.collUser.findOne({ domainId, uid: 81 }))._roleAssignment, undefined);
+        } finally {
+            releaseFirst();
+            await Promise.allSettled([firstJoin, secondJoin]);
+            domain.coll.findOne = originalFindOne;
+            domain.collUser.findOneAndUpdate = originalFindOneAndUpdate;
+        }
+    });
+
+    it('failed rollback writes leave permissions at the original role and can be recovered after expiration', async () => {
+        await resetDomain();
+        await domain.setUserInDomain(domainId, 82, { join: true, role: 'student' });
+        const originalFindOneAndUpdate = domain.collUser.findOneAndUpdate;
+        domain.collUser.findOneAndUpdate = async (...args) => {
+            if (args[0]['_roleAssignment.token']) throw new Error('Injected rollback write failure');
+            return await originalFindOneAndUpdate.apply(domain.collUser, args);
+        };
+        try {
+            await duringRoleVerification(async () => {
+                throw new Error('Injected role recheck failure');
+            }, () => assert.rejects(domain.joinUserInDomain(domainId, 82, 'teacher'), /Injected rollback write failure/));
+            const effective = await domain.getDomainUser(domainId, { _id: 82, priv: builtin.PRIV.PRIV_USER_PROFILE });
+            assert.equal(effective.role, 'student');
+            assert.equal(effective.perm, 7n);
+        } finally {
+            domain.collUser.findOneAndUpdate = originalFindOneAndUpdate;
+        }
+        await domain.collUser.updateOne({ domainId, uid: 82 }, {
+            $set: { '_roleAssignment.expiresAt': new Date(Date.now() - 1000) },
+        });
+        const recovered = await domain.joinUserInDomain(domainId, 82, 'default');
+        assert.equal(recovered.role, 'student');
+        assert.equal(recovered._roleAssignment, undefined);
+    });
+
     it('expired links and a concurrent ban cannot change an existing member role', async () => {
         await resetDomain();
         await domain.edit(domainId, { _join: { method: domain.JOIN_METHOD_ALL, role: 'student', expire: new Date(Date.now() - 1000) } });
@@ -457,7 +765,7 @@ describe('Domain invitation role order', () => {
     it('role selectors and omitted creation roles use the marked default, with ordered permission columns', async () => {
         const roles = await resetDomain();
         await domain.setRoleMeta(domainId, meta(roles));
-        await domain.edit(domainId, { _join: { method: domain.JOIN_METHOD_ALL, role: 'default', expire: null } });
+        await domain.edit(domainId, { _join: null });
         const applications = handler('domain_join_applications', 1, true);
         await applications.prepare({ domainId });
         await applications.get();
@@ -485,6 +793,32 @@ describe('Domain invitation role order', () => {
             const dom = new JSDOM(render(template, body));
             assert.equal(dom.window.document.querySelector(`select[name="${selector}"]`).value, 'student');
             dom.window.close();
+        }
+    });
+
+    it('editing public invitations retains the saved role when changing expiration or invitation code', async () => {
+        const roles = await resetDomain();
+        await domain.setRoleMeta(domainId, meta(roles));
+        for (const role of ['default', 'teacher']) {
+            await domain.edit(domainId, { _join: {
+                method: domain.JOIN_METHOD_CODE, role, code: 'oldCode', expire: null,
+            } });
+            const applications = handler('domain_join_applications', 1, true);
+            await applications.prepare({ domainId });
+            await applications.get();
+            assert.equal(applications.response.body.defaultRole, 'student');
+            const dom = new JSDOM(render('domain_join_applications.html', applications.response.body));
+            try {
+                const selectedRole = dom.window.document.querySelector('select[name="role"]').value;
+                assert.equal(selectedRole, role);
+                await applications.post(domainId, domain.JOIN_METHOD_CODE, selectedRole, '', 24, 'newCode');
+                const saved = (await domain.get(domainId))._join;
+                assert.equal(saved.role, role);
+                assert.equal(saved.code, 'newCode');
+                assert(saved.expire > new Date());
+            } finally {
+                dom.window.close();
+            }
         }
     });
 

@@ -12,7 +12,7 @@ import type { DomainDoc, GDoc, TokenDoc } from '../interface';
 import avatar from '../lib/avatar';
 import { PERM, PERMS_BY_FAMILY, PRIV } from '../model/builtin';
 import * as discussion from '../model/discussion';
-import domain from '../model/domain';
+import domain, { type PreassignedDomainUser } from '../model/domain';
 import MessageModel from '../model/message';
 import * as oplog from '../model/oplog';
 import { DOMAIN_SETTINGS, DOMAIN_SETTINGS_BY_KEY } from '../model/setting';
@@ -730,6 +730,7 @@ class DomainGroupJoinHandler extends Handler {
 class DomainJoinHandler extends Handler {
     joinSettings: any;
     roleToAssign = 'default';
+    preassignedUser?: PreassignedDomainUser;
     noCheckPermView = true;
 
     @param('target', Types.DomainId, true)
@@ -745,6 +746,9 @@ class DomainJoinHandler extends Handler {
         if (assignedRole === 'guest') throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
         // Direct invitations apply the moderator's preassigned role independently of public invitations.
         const hasPreassignedRole = !dudoc?.join && assignedRole !== 'default' && roles.includes(assignedRole);
+        this.preassignedUser = hasPreassignedRole && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)
+            ? { role: dudoc.role, join: dudoc.join, requireInvitation: dudoc.requireInvitation }
+            : undefined;
         this.joinSettings = hasPreassignedRole ? null : domain.getJoinSettings(ddoc, roles);
         if (!this.joinSettings) {
             if (dudoc?.join) throw new DomainJoinAlreadyMemberError(target, this.user._id);
@@ -796,7 +800,9 @@ class DomainJoinHandler extends Handler {
             const added = await user.addUserToGroup(target, entry._id, this.user._id);
             if (!added) throw new ValidationError('group');
         }
-        const joinedDomainUser = await domain.joinUserInDomain(target, this.user._id, this.roleToAssign);
+        const joinedDomainUser = this.preassignedUser
+            ? await domain.joinUserWithPreassignedRole(target, this.user._id, this.preassignedUser)
+            : await domain.joinUserInDomain(target, this.user._id, this.roleToAssign);
         if (joinedDomainUser?.role === 'guest') {
             throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
         }

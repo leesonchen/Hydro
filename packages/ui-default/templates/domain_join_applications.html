@@ -39,7 +39,7 @@
         label:'Role Assignment',
         name:'role',
         help_text:'The role to assign when user joining the domain.',
-        value:defaultRole
+        value:joinSettings['role']|default(defaultRole)
       }) }}
       {{ form.form_text({
         label:'Group Assignment (Optional)',

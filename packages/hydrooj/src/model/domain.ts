@@ -1,8 +1,9 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { Dictionary, escapeRegExp } from 'lodash';
 import { LRUCache } from 'lru-cache';
-import { Filter } from 'mongodb';
+import { Filter, ObjectId } from 'mongodb';
 import { Context } from '../context';
-import { NotFoundError, ValidationError } from '../error';
+import { DomainJoinForbiddenError, NotFoundError, ValidationError } from '../error';
 import { DomainDoc } from '../interface';
 import bus from '../service/bus';
 import db from '../service/db';
@@ -15,6 +16,8 @@ const coll = db.collection('domain');
 const collUser = db.collection('domain.user');
 const cache = new LRUCache<string, DomainDoc>({ max: 1000, ttl: 300 * 1000 });
 const cacheVersion = Symbol('domainCacheVersion');
+const ROLE_ASSIGNMENT_TIMEOUT_MS = 30_000;
+const ROLE_ASSIGNMENT_WAIT_MS = 5_000;
 
 function setCache(key: string, ddoc: DomainDoc | null) {
     if (ddoc) {
@@ -30,6 +33,21 @@ function setCache(key: string, ddoc: DomainDoc | null) {
 interface DomainUserArg {
     _id: number;
     priv: number;
+}
+
+export interface PreassignedDomainUser {
+    role: string;
+    join?: boolean;
+    requireInvitation?: boolean;
+}
+
+function invalidateRoleAssignment(update: any) {
+    const membershipFields = ['role', 'join', 'requireInvitation'];
+    if (Object.values(update).some((fields) => fields && typeof fields === 'object'
+        && Object.keys(fields).some((field) => membershipFields.includes(field)))) {
+        return { ...update, $unset: { ...update.$unset, _roleAssignment: '' } };
+    }
+    return update;
 }
 
 interface RoleDoc {
@@ -178,7 +196,7 @@ class DomainModel {
 
     @ArgMethod
     static async setUserRole(domainId: string, uid: MaybeArray<number>, role: string, autojoin = false) {
-        const update = { $set: { role, ...(autojoin ? { join: true } : {}) } };
+        const update = invalidateRoleAssignment({ $set: { role, ...(autojoin ? { join: true } : {}) } });
         if (!(Array.isArray(uid))) {
             const res = await collUser.findOneAndUpdate(
                 { domainId, uid },
@@ -201,7 +219,7 @@ class DomainModel {
             await DomainModel.updateUserInDomain(domainId, uid, { $set: { join } });
             return;
         }
-        await collUser.updateMany({ domainId, uid: { $in: uid } }, { $set: { join } });
+        await collUser.updateMany({ domainId, uid: { $in: uid } }, invalidateRoleAssignment({ $set: { join } }));
         deleteUserCache(domainId);
     }
 
@@ -221,6 +239,7 @@ class DomainModel {
                     requireInvitation: true,
                     role: 'default',
                 },
+                $unset: { _roleAssignment: '' },
             },
         );
     }
@@ -367,7 +386,33 @@ class DomainModel {
             for (const role of roles) delete updatedRoles[role];
         });
         try {
-            await collUser.updateMany({ domainId, role: { $in: roles } }, { $set: { role: 'default' } });
+            const deletedRoles = { $literal: roles };
+            const roleDeleted = { $in: ['$role', deletedRoles] };
+            const previousRoleDeleted = { $in: [{ $ifNull: ['$_roleAssignment.previousRole', 'default'] }, deletedRoles] };
+            const previousRole = { $cond: [previousRoleDeleted, 'default', '$_roleAssignment.previousRole'] };
+            await collUser.updateMany({
+                domainId,
+                $or: [{ role: { $in: roles } }, { '_roleAssignment.previousRole': { $in: roles } }],
+            }, [{
+                $set: {
+                    role: {
+                        $cond: [roleDeleted, {
+                            $cond: [
+                                { $eq: ['$role', '$_roleAssignment.role'] },
+                                previousRole,
+                                'default',
+                            ],
+                        }, '$role'],
+                    },
+                    // Pending upgrades return to their previous role. If that role
+                    // was deleted instead, a later rollback must use default.
+                    _roleAssignment: {
+                        $cond: [roleDeleted, '$$REMOVE', {
+                            $mergeObjects: ['$_roleAssignment', { previousRole }],
+                        }],
+                    },
+                },
+            }]);
         } finally {
             deleteUserCache(domainId);
         }
@@ -376,6 +421,12 @@ class DomainModel {
     static async getDomainUser(domainId: string, udoc: DomainUserArg) {
         let dudoc = await collUser.findOne({ domainId, uid: udoc._id });
         dudoc ||= { domainId, uid: udoc._id };
+        // A custom role grants permissions only after its assignment is verified.
+        if (dudoc._roleAssignment && dudoc.role === dudoc._roleAssignment.role) {
+            dudoc.role = dudoc._roleAssignment.previousRole;
+            dudoc.join = !!dudoc.join && dudoc._roleAssignment.wasMember;
+        }
+        delete dudoc._roleAssignment;
         if (!(udoc.priv & PRIV.PRIV_USER_PROFILE)) dudoc.role = 'guest';
         if (!dudoc.join && !(udoc.priv & PRIV.PRIV_VIEW_ALL_DOMAIN)) dudoc.role = 'guest';
         if (udoc.priv & PRIV.PRIV_MANAGE_ALL_DOMAIN) dudoc.role = 'root';
@@ -393,7 +444,7 @@ class DomainModel {
 
     static setMultiUserInDomain(domainId: string, query: any, params: any) {
         deleteUserCache(domainId);
-        return collUser.updateMany({ domainId, ...query }, { $set: params }, { upsert: true });
+        return collUser.updateMany({ domainId, ...query }, invalidateRoleAssignment({ $set: params }), { upsert: true });
     }
 
     static getMultiUserInDomain(domainId: string, query: any = {}) {
@@ -403,71 +454,137 @@ class DomainModel {
     static async setUserInDomain(domainId: string, uid: number, params: any) {
         const udoc = await UserModel.getById(domainId, uid);
         deleteUserCache(udoc);
-        return await collUser.updateOne({ domainId, uid }, { $set: params }, { upsert: true });
+        return await collUser.updateOne({ domainId, uid }, invalidateRoleAssignment({ $set: params }), { upsert: true });
     }
 
     static async updateUserInDomain(domainId: string, uid: number, update: any) {
         const udoc = await UserModel.getById(domainId, uid);
         deleteUserCache(udoc);
-        return await collUser.updateOne({ domainId, uid }, update, { upsert: true });
+        return await collUser.updateOne({ domainId, uid }, invalidateRoleAssignment(update), { upsert: true });
+    }
+
+    static async joinUserWithPreassignedRole(domainId: string, uid: number, expected: PreassignedDomainUser) {
+        const udoc = await UserModel.getById(domainId, uid);
+        try {
+            const result = await collUser.findOneAndUpdate({
+                domainId,
+                uid,
+                role: expected.role,
+                join: expected.join === undefined ? { $exists: false } : expected.join,
+                requireInvitation: expected.requireInvitation === undefined ? { $exists: false } : expected.requireInvitation,
+                _roleAssignment: { $exists: false },
+            }, {
+                $set: { join: true },
+                $unset: { requireInvitation: '' },
+            }, { returnDocument: 'after' });
+            if (!result) {
+                throw new DomainJoinForbiddenError(domainId, 'The invitation has changed. Please refresh and try again.');
+            }
+            return result;
+        } finally {
+            deleteUserCache(udoc);
+        }
+    }
+
+    private static async finishRoleAssignment(domainId: string, uid: number, token: string, accept: boolean) {
+        return await collUser.findOneAndUpdate({ domainId, uid, '_roleAssignment.token': token }, [{
+            $set: {
+                role: {
+                    $cond: [
+                        { $eq: ['$role', '$_roleAssignment.role'] },
+                        accept ? '$role' : '$_roleAssignment.previousRole',
+                        '$role',
+                    ],
+                },
+            },
+        }, { $unset: '_roleAssignment' }], { returnDocument: 'after' });
     }
 
     static async joinUserInDomain(domainId: string, uid: number, role = 'default') {
-        const [udoc, roles] = await Promise.all([
-            UserModel.getById(domainId, uid),
-            DomainModel.getRoles(domainId),
-        ]);
-        const requestedPriority = DomainModel.getRolePriority(roles, role);
-        const requestedRole = requestedPriority < 0 ? 'default' : role;
-        const roleBranches = roles.map((item) => ({
-            case: { $eq: [{ $ifNull: ['$role', 'default'] }, item._id] },
-            then: item.priority,
-        }));
-        const currentPriority = { $switch: { branches: roleBranches, default: -1 } };
-        const shouldAssignRole = {
-            $or: [
-                { $ne: ['$join', true] },
-                // Missing invitation roles only repair invalid memberships; they cannot upgrade valid members.
-                { $lt: [currentPriority, Math.max(requestedPriority, 0)] },
-            ],
-        };
-        let result = await collUser.findOneAndUpdate(
-            { domainId, uid },
-            [{
-                $set: {
-                    join: { $cond: [{ $eq: ['$role', 'guest'] }, '$join', true] },
-                    role: {
-                        $cond: [
-                            { $eq: ['$role', 'guest'] },
-                            '$role',
-                            { $cond: [shouldAssignRole, requestedRole, { $ifNull: ['$role', 'default'] }] },
-                        ],
+        const udoc = await UserModel.getById(domainId, uid);
+        // Global administrators can restore root membership after a moderator ban.
+        const canOverrideBan = role === 'root'
+            && ((udoc?.priv ?? 0) & PRIV.PRIV_MANAGE_ALL_DOMAIN) === PRIV.PRIV_MANAGE_ALL_DOMAIN;
+        const assignmentToken = new ObjectId().toHexString();
+        const waitUntil = Date.now() + ROLE_ASSIGNMENT_WAIT_MS;
+        try {
+            // Serialize role verification per member, including across workers.
+            while (true) {
+                // eslint-disable-next-line no-await-in-loop
+                const current = await coll.findOne({ _id: domainId });
+                if (!current) throw new NotFoundError(domainId);
+                // eslint-disable-next-line no-await-in-loop
+                const roles = await DomainModel.getRoles(current);
+                const requestedPriority = DomainModel.getRolePriority(roles, role);
+                const requestedRole = requestedPriority < 0 ? 'default' : role;
+                const currentRole = { $ifNull: ['$role', 'default'] };
+                const currentPriority = { $switch: {
+                    branches: roles.map((item) => ({
+                        case: { $eq: [currentRole, { $literal: item._id }] },
+                        then: item.priority,
+                    })),
+                    default: -1,
+                } };
+                const idle = { $eq: [{ $ifNull: ['$_roleAssignment', null] }, null] };
+                const canJoin = { $and: [idle, canOverrideBan ? true : { $ne: ['$role', 'guest'] }] };
+                const shouldAssignRole = { $and: [canJoin, { $or: [
+                    { $ne: ['$join', true] },
+                    { $lt: [currentPriority, Math.max(requestedPriority, 0)] },
+                ] }] };
+                const verifyRole = Object.hasOwn(BUILTIN_ROLES, requestedRole) ? false : shouldAssignRole;
+                // eslint-disable-next-line no-await-in-loop
+                let result = await collUser.findOneAndUpdate({ domainId, uid }, [{
+                    $set: {
+                        join: { $cond: [canJoin, true, '$join'] },
+                        role: { $cond: [shouldAssignRole, { $literal: requestedRole }, currentRole] },
+                        requireInvitation: { $cond: [canJoin, '$$REMOVE', '$requireInvitation'] },
+                        _roleAssignment: { $cond: [verifyRole, {
+                            token: assignmentToken,
+                            role: { $literal: requestedRole },
+                            previousRole: { $cond: [
+                                { $and: [{ $eq: ['$join', true] }, { $gte: [currentPriority, 0] }] },
+                                currentRole,
+                                'default',
+                            ] },
+                            wasMember: { $eq: ['$join', true] },
+                            expiresAt: new Date(Date.now() + ROLE_ASSIGNMENT_TIMEOUT_MS),
+                        }, { $ifNull: ['$_roleAssignment', '$$REMOVE'] }] },
                     },
-                    requireInvitation: {
-                        $cond: [{ $eq: ['$role', 'guest'] }, '$requireInvitation', '$$REMOVE'],
-                    },
-                },
-            }],
-            { upsert: true, returnDocument: 'after' },
-        );
-        if (result?.role === requestedRole && !Object.hasOwn(BUILTIN_ROLES, requestedRole)) {
-            let roleExists = false;
-            try {
-                const current = await coll.findOne({ _id: domainId }, { projection: { roles: 1 } });
-                roleExists = Object.hasOwn(current?.roles || {}, requestedRole);
-            } catch { /* Treat an unverifiable custom role as invalid. */ }
-            if (!roleExists) {
-                try {
-                    result = await collUser.findOneAndUpdate(
-                        { domainId, uid, join: true, role: requestedRole },
-                        { $set: { role: 'default' } },
-                        { returnDocument: 'after' },
-                    ) || result;
-                } catch { /* The join is already durable and cannot be safely rolled back here. */ }
+                }], { upsert: true, returnDocument: 'after' });
+                const pending = result?._roleAssignment;
+                if (pending && pending.token !== assignmentToken) {
+                    if (pending.expiresAt <= new Date()) {
+                        // eslint-disable-next-line no-await-in-loop
+                        await DomainModel.finishRoleAssignment(domainId, uid, pending.token, false);
+                    } else {
+                        if (Date.now() >= waitUntil) {
+                            throw new ValidationError('role', null, 'Roles have changed. Please refresh and try again.');
+                        }
+                        // eslint-disable-next-line no-await-in-loop
+                        await delay(20);
+                    }
+                    continue;
+                }
+                if (pending) {
+                    let roleExists = false;
+                    try {
+                        // eslint-disable-next-line no-await-in-loop
+                        const latest = await coll.findOne({ _id: domainId }, { projection: { roles: 1 } });
+                        roleExists = Object.hasOwn(latest?.roles || {}, requestedRole);
+                    } catch { /* Preserve the previous role when verification fails. */ }
+                    // eslint-disable-next-line no-await-in-loop
+                    result = await DomainModel.finishRoleAssignment(domainId, uid, assignmentToken, roleExists)
+                        // eslint-disable-next-line no-await-in-loop
+                        || await collUser.findOne({ domainId, uid });
+                }
+                if (!result || (!result.join && result.role !== 'guest')) {
+                    throw new DomainJoinForbiddenError(domainId, 'The invitation has changed. Please refresh and try again.');
+                }
+                return result;
             }
+        } finally {
+            deleteUserCache(udoc);
         }
-        deleteUserCache(udoc);
-        return result;
     }
 
     @ArgMethod
