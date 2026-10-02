@@ -304,14 +304,10 @@ check_publish_registry() {
 
 # 安装依赖
 install_deps() {
-    echo -e "${YELLOW}2. 安装依赖...${NC}"
+    echo -e "${YELLOW}2. 同步依赖...${NC}"
     cd "$SCRIPT_DIR"
-    if [ ! -d "node_modules" ]; then
-        yarn install --mode=skip-build
-    else
-        echo -e "  node_modules 已存在，跳过安装（如需重装请手动删除 node_modules 后重跑）"
-    fi
-    echo -e "${GREEN}✓ 依赖安装完成${NC}"
+    yarn install --mode=skip-build
+    echo -e "${GREEN}✓ 依赖已与当前工作区清单同步${NC}"
     echo ""
 }
 
