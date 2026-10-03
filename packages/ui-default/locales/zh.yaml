@@ -1242,3 +1242,13 @@ High Risk Warning: 高危操作警告
 'You have selected {0} problems to force sync:': '本次将对以下 {0} 个题目执行强制同步：'
 'Are you sure you want to proceed with force sync?': 是否确认继续执行强制同步？
 'Mermaid diagram could not be rendered. Source code is shown below.': Mermaid 图表无法渲染，已在下方显示源代码。
+Default: 默认
+Priority: 优先级
+Update Role Settings: 保存角色设置
+Role settings have been updated.: 角色设置已更新。
+The default role is selected when creating invitations. Higher priority roles are preserved when accepting an invitation.: 创建邀请时会自动选中默认角色。接受邀请时会保留优先级更高的角色。
+Role priority is its position in the list. Guest is always first and root is always last.: 优先级数字表示角色在列表中的顺序，数字越大优先级越高。guest 固定在最前面，root 固定在最后面。
+Select exactly one default invitation role.: 请指定且仅指定一个默认邀请角色。
+Role priorities must be unique positions in the role order.: 优先级必须是角色列表中的唯一位置，不能重复。
+This invitation assigns its role to new members and upgrades members with a lower priority role.: 新成员将被分配邀请中的角色；已有成员的角色优先级较低时也会升级为邀请中的角色。
+'If you have not joined this domain or your role has a lower priority, your role will be set to {0}.': 如果你尚未加入此域，或当前角色的优先级较低，你的角色将设为 {0}。

@@ -1,4 +1,4 @@
-import { pick, sumBy } from 'lodash';
+import { get as getPath, pick, sumBy } from 'lodash';
 import { Filter, ObjectId } from 'mongodb';
 import {
     Counter, formatSeconds, getAlphabeticId, sleep, Time,
@@ -881,7 +881,8 @@ export async function edit(
         'rule', 'rated', 'allowTeam',
     ]);
     for (const key of conditionKeys) {
-        condition[key] = source[key] === undefined ? { $exists: false } as any : source[key] as any;
+        const value = getPath(source, key);
+        condition[key] = value === undefined ? { $exists: false } as any : value as any;
     }
     const res = await document.setIfCondition(domainId, document.TYPE_CONTEST, tid, condition, $set);
     if (!res) throw new BadRequestError('Contest changed. Please refresh and try again.');

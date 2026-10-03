@@ -12,7 +12,9 @@
         <p>
           {{ (_('By clicking the button, you will join class {0} in domain {1}.').format(group.name, domainInfo.name) if group.class else _('By clicking the button, you will join group {0} in domain {1}.').format(group.name, domainInfo.name)) }}
         </p>
-        <p>{{ _('If you have not joined the domain yet, you will also join it with role {0}.').format(externalJoinRole) }}</p>
+        {% if canAssignRole %}
+        <p>{{ _('If you have not joined this domain or your role has a lower priority, your role will be set to {0}.').format(externalJoinRole) }}</p>
+        {% endif %}
         {% if alreadyMember %}
         <blockquote class="note">{{ _('You are already a member of this class or group. Continuing will repair your domain membership if needed.') }}</blockquote>
         {% endif %}

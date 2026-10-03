@@ -342,6 +342,11 @@ export interface DomainDoc extends Record<string, any> {
     _id: string;
     owner: number;
     roles: Dictionary<string>;
+    /** Role order and default invitation role; omitted on legacy domains. */
+    roleMeta?: Dictionary<{
+        default: boolean;
+        priority: number;
+    }>;
     avatar: string;
     bulletin: string;
     _join?: any;

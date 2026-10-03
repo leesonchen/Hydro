@@ -1236,3 +1236,13 @@ High Risk Warning: 高危操作警告
 'Force sync will overwrite all local modifications (title, content, tags, difficulty) in the target domains with the source problem, and cannot be undone!': 強制同步將直接使用當前源頭題目的題面（標題、內容、標籤、難度）覆蓋目標域題目的所有改動，且無法撤銷！
 'You have selected {0} problems to force sync:': '本次將對以下 {0} 個題目執行強制同步：'
 'Are you sure you want to proceed with force sync?': 是否確認繼續執行強制同步？
+Default: 預設
+Priority: 優先順序
+Update Role Settings: 儲存角色設定
+Role settings have been updated.: 角色設定已更新。
+The default role is selected when creating invitations. Higher priority roles are preserved when accepting an invitation.: 建立邀請時會自動選中預設角色。接受邀請時會保留優先順序更高的角色。
+Role priority is its position in the list. Guest is always first and root is always last.: 優先順序數字表示角色在列表中的位置，數字越大優先順序越高。guest 固定在最前面，root 固定在最後面。
+Select exactly one default invitation role.: 請指定且僅指定一個預設邀請角色。
+Role priorities must be unique positions in the role order.: 優先順序必須是角色列表中的唯一位置，不能重複。
+This invitation assigns its role to new members and upgrades members with a lower priority role.: 新成員將被分配邀請中的角色；已有成員的角色優先順序較低時也會升級為邀請中的角色。
+'If you have not joined this domain or your role has a lower priority, your role will be set to {0}.': 如果你尚未加入此域，或目前角色的優先順序較低，你的角色將設為 {0}。

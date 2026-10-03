@@ -3,7 +3,7 @@ import {
     mkdtempSync, rmSync, writeFileSync,
 } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import autocannon from 'autocannon';
 import { Binary, ObjectId } from 'mongodb';
 import {
@@ -125,6 +125,181 @@ describe('App', () => {
 
     it('API registered user', async () => {
         await agent.get('/api/user?args={"id":2}&projection=uname').expect({ uname: 'root' });
+    });
+
+    it('only saves editable boolean settings and cannot activate pending invitation roles', async () => {
+        const DomainModel = global.Hydro.model.domain;
+        const UserModel = global.Hydro.model.user;
+        const SettingModel = require('../packages/hydrooj/src/model/setting');
+        const suffix = Date.now().toString(36);
+        const uname = `settingsguard${suffix}`;
+        const domainId = `settings-guard-${suffix}`;
+        const uid = await UserModel.create(`${uname}@example.com`, uname, '123456');
+        const editableKey = `settingsGuard${suffix}`;
+        const disabledKey = `settingsDisabled${suffix}`;
+        const secretKey = `settingsSecret${suffix}`;
+        const disposeSettings = SettingModel.DomainUserSetting(
+            SettingModel.Setting('setting_info', editableKey, true, 'boolean'),
+            SettingModel.Setting('setting_info', disabledKey, true, 'boolean', '', '', SettingModel.FLAG_DISABLED),
+            SettingModel.Setting('setting_storage', secretKey, true, 'boolean'),
+        );
+        const findDomain = DomainModel.coll.findOne;
+        const updateMember = DomainModel.collUser.findOneAndUpdate;
+        try {
+            await DomainModel.add(domainId, 2, 'Settings guard', '');
+            await DomainModel.addRole(domainId, 'student', PERM.PERM_DEFAULT);
+            await DomainModel.addRole(domainId, 'teacher', PERM.PERM_DEFAULT | PERM.PERM_EDIT_DOMAIN);
+            await DomainModel.setUserRole(domainId, uid, 'student', true);
+            await DomainModel.setUserInDomain(domainId, uid, {
+                displayName: 'Student', nAccept: 9, [editableKey]: true, [disabledKey]: true, [secretKey]: true,
+            });
+            const invitee = supertest.agent(require('hydrooj').httpServer);
+            await invitee.post('/login').send({ uname, password: '123456' }).expect(302);
+            DomainModel.coll.findOne = async function (...args: any[]) {
+                if (args[0]?._id === domainId && args[1]?.projection?.roles) throw new Error('Injected role recheck failure');
+                return await findDomain.apply(this, args);
+            };
+            DomainModel.collUser.findOneAndUpdate = async function (...args: any[]) {
+                if (args[0]?.domainId === domainId && args[0]?.['_roleAssignment.token']) throw new Error('Injected rollback failure');
+                return await updateMember.apply(this, args);
+            };
+            try {
+                await assert.rejects(DomainModel.joinUserInDomain(domainId, uid, 'teacher'), /Injected rollback failure/);
+            } finally {
+                DomainModel.coll.findOne = findDomain;
+                DomainModel.collUser.findOneAndUpdate = updateMember;
+            }
+            const memberBefore = await DomainModel.collUser.findOne({ domainId, uid });
+            assert(memberBefore._roleAssignment);
+            await invitee.post(`/d/${domainId}/home/settings/domain`).send({
+                booleanKeys: {
+                    _roleAssignment: true, role: true, join: true, requireInvitation: true,
+                    nAccept: true, displayName: true, constructor: true,
+                    [editableKey]: true, [disabledKey]: true, [secretKey]: true,
+                },
+            }).expect(302);
+            const memberAfter = await DomainModel.collUser.findOne({ domainId, uid });
+            assert.equal(memberAfter[editableKey], false);
+            assert.deepStrictEqual({ ...memberAfter, [editableKey]: memberBefore[editableKey] }, memberBefore);
+            const effective = await UserModel.getById(domainId, uid);
+            assert.equal(effective.role, 'student');
+            assert.equal(effective.hasPerm(PERM.PERM_EDIT_DOMAIN), false);
+            const userBefore = await UserModel.coll.findOne({ _id: uid });
+            await invitee.post('/home/settings/account').send({
+                booleanKeys: { priv: true, authn: true, requirePasswordChange: true, bio: true, constructor: true },
+            }).expect(302);
+            assert.deepStrictEqual(await UserModel.coll.findOne({ _id: uid }), userBefore);
+            await DomainModel.collUser.updateOne({ domainId, uid }, {
+                $set: { '_roleAssignment.expiresAt': new Date(Date.now() - 1000) },
+            });
+            const recovered = await DomainModel.joinUserInDomain(domainId, uid, 'default');
+            assert.equal(recovered.role, 'student');
+            assert.equal(recovered._roleAssignment, undefined);
+        } finally {
+            DomainModel.coll.findOne = findDomain;
+            DomainModel.collUser.findOneAndUpdate = updateMember;
+            disposeSettings();
+            await Promise.all([
+                DomainModel.coll.deleteOne({ _id: domainId }),
+                DomainModel.collUser.deleteMany({ uid }),
+                UserModel.coll.deleteOne({ _id: uid }),
+            ]);
+            UserModel._deleteUserCache({ _id: uid, uname, mail: `${uname}@example.com` });
+        }
+    });
+
+    it('manages legacy reserved roles over HTTP and rejects new reserved names', async () => {
+        const DomainModel = global.Hydro.model.domain;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const domainId = `permission-guard-${suffix}`;
+        const uname = `permissionguard${suffix}`;
+        const uid = await UserModel.create(`${uname}@example.com`, uname, '123456');
+        const manager = supertest.agent(require('hydrooj').httpServer);
+        const names = ['__proto__', 'constructor', 'toString', 'hasOwnProperty'];
+        const roleUrl = `/d/${domainId}/domain/role`;
+        const permissionUrl = `/d/${domainId}/domain/permission`;
+        const origin = `http://127.0.0.1:${require('hydrooj').httpServer.address().port}`;
+        try {
+            await DomainModel.add(domainId, 2, 'Permission guard', '');
+            await manager.post('/login').send({ uname: Root.username, password: Root.password }).expect(302);
+            const sudo = await manager.post(permissionUrl).send({}).expect(302).expect('location', /\/user\/sudo$/);
+            await manager.post(sudo.headers.location).send({ password: Root.password }).expect(200);
+            for (const role of names) {
+                // eslint-disable-next-line no-await-in-loop
+                await manager.post(roleUrl).send({ operation: 'add', role }).expect(403);
+                // eslint-disable-next-line no-await-in-loop
+                assert.equal(Object.hasOwn((await DomainModel.coll.findOne({ _id: domainId })).roles, role), false);
+            }
+            await manager.post(permissionUrl).send({ constructor: ['1', '1000'] }).expect(403);
+            await manager.post(roleUrl).send({ operation: 'add', role: 'permissions' }).expect(302);
+            // Seed the documents an older build could have persisted.
+            await DomainModel.edit(domainId, {
+                roles: Object.fromEntries([...names, 'permissions'].map((name) => [name, PERM.PERM_DEFAULT.toString()])),
+            });
+            for (const [index, role] of names.entries()) {
+                const form = new URLSearchParams([
+                    ['operation', 'update'],
+                    [`permissions[${index}][role]`, role],
+                    [`permissions[${index}][permissions][]`, '1'],
+                    [`permissions[${index}][permissions][]`, '1000'],
+                ]).toString();
+                // eslint-disable-next-line no-await-in-loop
+                await manager.post(permissionUrl).type('form').set('Origin', origin).send(form).expect(302);
+                // eslint-disable-next-line no-await-in-loop
+                assert.equal((await DomainModel.coll.findOne({ _id: domainId })).roles[role], '2');
+            }
+            await manager.post(permissionUrl).send({
+                operation: 'update', permissions: [
+                    { role: '__proto__', permissions: ['2', '1000'] },
+                    { role: 'root', permissions: ['0'] },
+                ],
+            }).expect(302);
+            const stored = await DomainModel.coll.findOne({ _id: domainId });
+            assert.equal(Reflect.get(stored.roles, '__proto__'), '4');
+            assert.equal(Object.hasOwn(stored.roles, 'root'), false);
+            await manager.post(permissionUrl).send({
+                permissions: ['0', '1001', '1000'], constructor: ['2', '1000'],
+            }).expect(302);
+            const legacy = await DomainModel.coll.findOne({ _id: domainId });
+            assert.equal(legacy.roles.permissions, ((1n << 1001n) | 1n).toString());
+            assert.equal(legacy.roles.constructor, '4');
+            await manager.post(permissionUrl).send({
+                operation: 'update', permissions: [{ role: '__proto__', permissions: ['-1'] }],
+            }).expect(403);
+            await manager.post(permissionUrl).send({
+                operation: 'update', permissions: [
+                    { role: '__proto__', permissions: ['0'] }, { role: '__proto__', permissions: ['1'] },
+                ],
+            }).expect(403);
+            assert.deepStrictEqual((await DomainModel.coll.findOne({ _id: domainId })).roles, legacy.roles);
+            await DomainModel.setUserRole(domainId, uid, 'default', true);
+            await manager.post(`/d/${domainId}/domain/user`).send({
+                operation: 'set_users', uids: [uid], role: '__proto__', join: true,
+            }).expect(302);
+            const members = await manager.get(`/d/${domainId}/domain/user`).accept('json').expect(200);
+            assert.equal(Object.hasOwn(members.body.rudocs, '__proto__'), true);
+            assert(Reflect.get(members.body.rudocs, '__proto__').some((member) => member._id === uid));
+            assert.equal(Object.hasOwn(members.body.domain, '_join'), false);
+            assert.equal((await UserModel.getById(domainId, uid)).perm, 4n);
+            const roles = await DomainModel.getRoles(domainId);
+            await manager.post(roleUrl).send({
+                operation: 'update', roles: roles.map((role) => ({
+                    role: role._id, priority: role.priority, default: role._id === '__proto__',
+                })),
+            }).expect(302);
+            assert.equal(DomainModel.getDefaultRole(await DomainModel.getRoles(domainId)), '__proto__');
+            await manager.post(roleUrl).send({ operation: 'delete', roles: names }).expect(302);
+            assert.equal((await DomainModel.collUser.findOne({ domainId, uid })).role, 'default');
+            const remaining = await DomainModel.getRoles(domainId);
+            assert(remaining.every((role) => !names.includes(role._id)));
+        } finally {
+            await Promise.all([
+                DomainModel.del(domainId),
+                UserModel.coll.deleteOne({ _id: uid }),
+            ]);
+            UserModel._deleteUserCache({ _id: uid, uname, mail: `${uname}@example.com` });
+        }
     });
 
     it('Tracks problem edits and falls back to creation metadata', async () => {
@@ -344,13 +519,16 @@ describe('App', () => {
                 domainId: targetDomain,
             }))}`).expect(200);
             assert.deepStrictEqual(limitedApi.body.data, []);
-            assert.deepStrictEqual(limitedApi.body.additional_file, []);
+            assert.deepStrictEqual(limitedApi.body.additional_file.map((file) => file.name), [additionalName]);
             await limitedAgent.post(`/d/${targetDomain}/p/${targetPid}/files`)
                 .send({ operation: 'get_links', files: [testdataName], type: 'testdata' }).expect(403);
-            await limitedAgent.post(`/d/${targetDomain}/p/${targetPid}/files`)
-                .send({ operation: 'get_links', files: [additionalName], type: 'additional_file' }).expect(403);
+            const limitedAdditional = await limitedAgent.post(`/d/${targetDomain}/p/${targetPid}/files`)
+                .set('Accept', 'application/json')
+                .send({ operation: 'get_links', files: [additionalName], type: 'additional_file' }).expect(200);
+            assert.equal(getStorageTarget(limitedAdditional.body.links[additionalName]), sourceAdditionalFile._id);
             await limitedAgent.get(`/d/${targetDomain}/p/${targetPid}/file/${testdataName}?type=testdata`).expect(403);
-            await limitedAgent.get(`/d/${targetDomain}/p/${targetPid}/file/${additionalName}?type=additional_file`).expect(403);
+            const limitedSingle = await limitedAgent.get(`/d/${targetDomain}/p/${targetPid}/file/${additionalName}?type=additional_file`).expect(302);
+            assert.equal(getStorageTarget(limitedSingle.headers.location), sourceAdditionalFile._id);
 
             await ProblemModel.edit(sourceDomain, sourcePid, { hidden: true });
             const hiddenSourceApi = await readerAgent.get(`/d/${targetDomain}/api/problem?args=${encodeURIComponent(JSON.stringify({
@@ -358,10 +536,13 @@ describe('App', () => {
                 domainId: targetDomain,
             }))}`).expect(200);
             assert.deepStrictEqual(hiddenSourceApi.body.data, []);
-            assert.deepStrictEqual(hiddenSourceApi.body.additional_file, []);
+            assert.deepStrictEqual(hiddenSourceApi.body.additional_file.map((file) => file.name), [additionalName]);
             await readerAgent.post(`/d/${targetDomain}/p/${targetPid}/files`)
                 .send({ operation: 'get_links', files: [testdataName], type: 'testdata' }).expect(403);
-            await readerAgent.get(`/d/${targetDomain}/p/${targetPid}/file/${additionalName}?type=additional_file`).expect(403);
+            const hiddenSourceAdditional = await readerAgent.get(
+                `/d/${targetDomain}/p/${targetPid}/file/${additionalName}?type=additional_file`,
+            ).expect(302);
+            assert.equal(getStorageTarget(hiddenSourceAdditional.headers.location), sourceAdditionalFile._id);
         } finally {
             if (targetPid) await ProblemModel.del(targetDomain, targetPid);
             if (sourcePid) await ProblemModel.del(sourceDomain, sourcePid);
@@ -510,6 +691,12 @@ describe('App', () => {
             assert(!editedCourse.lectureMeta[2]);
             assert.equal(editedCourse.editor, 3);
             assert.equal(editedCourse.updateAt.getTime(), courseUpdateAt.getTime());
+            await assert.rejects(ContestModel.edit('system', courseId, {
+                'lecture.1': 'stale replacement',
+            } as any, originalCourse), (err: any) => (
+                err.name === 'BadRequestError' && err.params?.[0] === 'Contest changed. Please refresh and try again.'
+            ));
+            assert.equal((await ContestModel.get('system', courseId)).lecture[1], 'new first');
 
             const lecturePage = await agent.get(`/d/system/course/${courseId}/lecture/1`)
                 .set('Accept', 'application/json')
@@ -825,11 +1012,21 @@ describe('App', () => {
             }
             assert.deepStrictEqual(contestProblems.body.rdict, {});
             assert.deepStrictEqual(contestProblems.body.rdocs, []);
-            const contestProblemPage = await participantAgent.get(`/contest/${tid}/problems`)
-                .set('Accept-Language', 'en').accept('html').expect(200);
-            assert.equal(contestProblemPage.type, 'text/html');
-            assert.match(contestProblemPage.text, /<td class="col--status record-status--border">Submitted<\/td>/);
-            assert.doesNotMatch(contestProblemPage.text, /No Submissions/);
+            const previousUiAddon = global.addons['ui-default'];
+            global.addons['ui-default'] = dirname(require.resolve('@hydrooj/ui-default/package.json'));
+            const renderer = global.app.plugin(require('@hydrooj/ui-default/backendlib/template').TemplateService);
+            try {
+                await renderer;
+                const contestProblemPage = await participantAgent.get(`/contest/${tid}/problems`)
+                    .set('Accept-Language', 'en').accept('html').expect(200);
+                assert.equal(contestProblemPage.type, 'text/html');
+                assert.match(contestProblemPage.text, /<td class="col--status record-status--border">Submitted<\/td>/);
+                assert.doesNotMatch(contestProblemPage.text, /No Submissions/);
+            } finally {
+                await renderer.dispose();
+                if (previousUiAddon === undefined) delete global.addons['ui-default'];
+                else global.addons['ui-default'] = previousUiAddon;
+            }
 
             const profile = await participantAgent.get(`/user/${participant.uid}`)
                 .set('Accept', 'application/json').expect(200);
@@ -920,6 +1117,67 @@ describe('App', () => {
                 DomainModel.collUser.deleteMany({ domainId: 'system', uid: { $in: createdUsers } }),
             ]);
             await DomainModel.deleteRoles('system', [managerRole, privilegedRole]);
+        }
+    });
+
+    it('lets teammates view visible records without bypassing hidden contest results', async () => {
+        const DomainModel = global.Hydro.model.domain;
+        const ContestModel = global.Hydro.model.contest;
+        const ProblemModel = global.Hydro.model.problem;
+        const RecordModel = global.Hydro.model.record;
+        const UserModel = global.Hydro.model.user;
+        const suffix = Date.now().toString(36);
+        const domainId = `team-record-${suffix}`;
+        const users: Array<{ uid: number, uname: string }> = [];
+        let teamUid: number | undefined;
+        try {
+            await DomainModel.add(domainId, 2, 'Team record visibility', '');
+            for (const prefix of ['submitter', 'teammate']) {
+                const uname = `${prefix}${suffix}`;
+                // eslint-disable-next-line no-await-in-loop
+                const uid = await UserModel.create(`${uname}@example.com`, uname, '123456');
+                users.push({ uid, uname });
+                // eslint-disable-next-line no-await-in-loop
+                await DomainModel.setUserRole(domainId, uid, 'default', true);
+            }
+            const members = users.map((user) => user.uid);
+            teamUid = await UserModel.createVuser(`team${suffix}`, { members });
+            const pid = await ProblemModel.add(domainId, '', 'Team record problem', '', 2);
+            const now = Date.now();
+            const tid = await ContestModel.add(
+                domainId, 'Team OI', '', 2, 'oi',
+                new Date(now - 7200000), new Date(now - 1000), [pid], false, { allowTeam: true },
+            );
+            await ContestModel.attend(domainId, tid, teamUid, { members });
+            const rid = new ObjectId();
+            await RecordModel.coll.insertOne({
+                _id: rid, domainId, pid, uid: users[0].uid, contest: tid,
+                status: STATUS.STATUS_ACCEPTED, score: 100, lang: 'cpp', code: 'team source',
+            } as any);
+            const viewers = [];
+            for (const user of users) {
+                const viewer = supertest.agent(require('hydrooj').httpServer);
+                // eslint-disable-next-line no-await-in-loop
+                await viewer.post('/login').send({ uname: user.uname, password: '123456' }).expect(302);
+                // eslint-disable-next-line no-await-in-loop
+                const response = await viewer.get(`/d/${domainId}/record/${rid}`).accept('json').expect(200);
+                assert.equal(response.body.rdoc.code, 'team source');
+                assert.equal(response.body.rdoc.score, 100);
+                viewers.push(viewer);
+            }
+            await ContestModel.edit(domainId, tid, { keepScoreboardHidden: true });
+            for (const viewer of viewers) {
+                // eslint-disable-next-line no-await-in-loop
+                await viewer.get(`/d/${domainId}/record/${rid}`).accept('json').expect(403);
+            }
+            await agent.get(`/d/${domainId}/record/${rid}`).accept('json').expect(200);
+        } finally {
+            await DomainModel.del(domainId);
+            await Promise.all([
+                RecordModel.coll.deleteMany({ domainId }),
+                UserModel.coll.deleteMany({ _id: { $in: users.map((user) => user.uid) } }),
+                require('../packages/hydrooj/src/model/user').collV.deleteMany({ _id: teamUid }),
+            ]);
         }
     });
 
@@ -1678,7 +1936,8 @@ describe('App', () => {
             const cachedDomain = await DomainModel.get(domainId);
             const originalDomainUserUpdateMany = DomainModel.collUser.updateMany;
             DomainModel.collUser.updateMany = async (...args: any[]) => {
-                if (args[0]?.domainId === domainId && args[0]?.role?.$in?.includes(role)) {
+                const roleFilters = [args[0], ...(args[0]?.$or || [])];
+                if (args[0]?.domainId === domainId && roleFilters.some((filter) => filter?.role?.$in?.includes(role))) {
                     throw new Error('Injected role migration failure');
                 }
                 return await originalDomainUserUpdateMany.call(DomainModel.collUser, ...args);
@@ -2902,7 +3161,7 @@ describe('App', () => {
         }
     }
 
-    after(() => {
+    after(async () => {
         if (process.env.BENCHMARK) {
             const metrics = Object.entries(results).map(([k, v]) => ({
                 name: `Benchmark - ${k} - Req/sec`,
@@ -2911,6 +3170,12 @@ describe('App', () => {
             }));
             writeFileSync('./benchmark.json', JSON.stringify(metrics, null, 2));
         }
-        setTimeout(() => process.exit(0), 1000);
+        // Let fire-and-forget cache broadcasts from test cleanup finish before
+        // closing the shared database, as the old delayed exit did.
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await global.app.parallel('app/exit');
+        await global.app.root.fiber.dispose();
+        await require('./entry').stopMongoInstances();
+        process.stdin.pause();
     });
 });

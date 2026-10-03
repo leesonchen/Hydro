@@ -9,6 +9,9 @@
     <p>
       {{ (_('Users can join the class {0} with this link.').format(group.name) if group.class else _('Users can join the group {0} with this link.').format(group.name)) }}
     </p>
+    {% if not group.class or currentInvitation.allowExternalDomainJoin %}
+    <p>{{ _('Role Assignment') }}: {{ currentInvitation.externalJoinRole|default('default') }}</p>
+    {% endif %}
     <pre><code class="language-data">{{ invitationUrl }}</code></pre>
     <blockquote class="note">
       {{ (_('The link will be expired at {0}').format(datetimeSpan(currentInvitation.expireAt, relative=false)))|safe }}
@@ -46,8 +49,8 @@
         options:rolesWithText,
         label:'Role Assignment',
         name:'externalJoinRole',
-        help_text:'The role to assign when a user outside this domain joins through this invitation.',
-        value:currentInvitation.externalJoinRole|default('default')
+        help_text:'This invitation assigns its role to new members and upgrades members with a lower priority role.',
+        value:defaultRole
       }) }}
       {% endif %}
       <button class="rounded primary button" type="submit">

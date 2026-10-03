@@ -184,7 +184,7 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             let canView = this.user.own(this.tdoc);
             canView ||= contest.canShowRecord.call(this, this.tdoc);
             canView ||= contest.canShowSelfRecord.call(this, this.tdoc, true) && isOwnOrTeammate;
-            if (!canView && !isOwnOrTeammate) throw new PermissionError(rid);
+            if (!canView) throw new PermissionError(rid);
             canViewDetail = canView;
             this.args.tid = this.tdoc.docId;
             if (!this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {

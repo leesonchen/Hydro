@@ -76,6 +76,8 @@ export interface HydroRequest {
 }
 export interface HydroResponse {
     body: any;
+    /** Dictionaries whose keys are public data, including keys starting with an underscore. */
+    publicDictionaries?: object[];
     type: string;
     status: number;
     template?: string;

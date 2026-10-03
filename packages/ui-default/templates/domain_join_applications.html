@@ -6,6 +6,7 @@
     <h1 class="section__title">{{ _('Information') }}</h1>
   </div>
   <div class="section__body typo">
+    <p>{{ _('Role Assignment') }}: {{ joinSettings.role }}</p>
     <p>{{ _('User can join this domain by visiting the following URL') }}:</p>
     <pre><code class="language-data">{{ url_prefix|safe }}d/{{ handler.args.domainId }}/domain/join</code></pre>
     {% if joinSettings['method'] == model.domain.JOIN_METHOD_CODE %}
@@ -38,7 +39,7 @@
         label:'Role Assignment',
         name:'role',
         help_text:'The role to assign when user joining the domain.',
-        value:joinSettings['role']|default('')
+        value:joinSettings['role']|default(defaultRole)
       }) }}
       {{ form.form_text({
         label:'Group Assignment (Optional)',

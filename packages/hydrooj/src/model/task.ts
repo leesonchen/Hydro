@@ -1,6 +1,8 @@
 import { hostname } from 'os';
 import cac from 'cac';
-import { BSON, Filter, ObjectId } from 'mongodb';
+import {
+    Abortable, BSON, ChangeStreamOptions, Filter, FindOneAndUpdateOptions, ObjectId,
+} from 'mongodb';
 import { nanoid } from 'nanoid';
 import { sleep } from '@hydrooj/utils/lib/utils';
 import { Context } from '../context';
@@ -13,6 +15,7 @@ const logger = new Logger('model/task');
 const coll = db.collection('task');
 const collEvent = db.collection('event');
 const argv = cac().parse();
+const EVENT_SHUTDOWN_TIMEOUT_MS = 5000;
 
 async function getFirst(query: Filter<Task>) {
     if (process.env.CI) return null;
@@ -152,38 +155,94 @@ export async function apply(ctx: Context) {
     });
 
     if (process.env.NODE_APP_INSTANCE !== '0') return;
-    const stream = collEvent.watch();
+    const controller = new AbortController();
+    // The driver propagates Abortable options through these operations at runtime.
+    const streamOptions: ChangeStreamOptions & Abortable = { signal: controller.signal };
+    const queryOptions: FindOneAndUpdateOptions & Abortable = { signal: controller.signal };
+    const stream = collEvent.watch([], streamOptions);
+    let running = true;
+    let forced = false;
+    let polling: Promise<void> | undefined;
+    let stopping: Promise<void> | undefined;
+    let wakeUp: (() => void) | undefined;
+    const activeEvents = new Set<Promise<void>>();
+    const wait = (ms: number) => new Promise<void>((resolve) => {
+        let timer: ReturnType<typeof setTimeout>;
+        const finish = () => {
+            clearTimeout(timer);
+            wakeUp = undefined;
+            resolve();
+        };
+        timer = setTimeout(finish, ms);
+        wakeUp = finish;
+        if (!running) finish();
+    });
+    const stop = () => {
+        if (stopping) return stopping;
+        running = false;
+        wakeUp?.();
+        const drained = Promise.allSettled([
+            Promise.resolve().then(() => stream.close()), polling, ...activeEvents,
+        ]).then((results) => {
+            for (const result of results) if (result.status === 'rejected') logger.error(result.reason);
+        });
+        let timer: ReturnType<typeof setTimeout>;
+        const deadline = new Promise<void>((resolve) => {
+            timer = setTimeout(() => {
+                forced = true;
+                controller.abort();
+                logger.warn('Timed out waiting for event processing to stop.');
+                resolve();
+            }, EVENT_SHUTDOWN_TIMEOUT_MS);
+        });
+        stopping = Promise.race([drained, deadline]).finally(() => clearTimeout(timer));
+        return stopping;
+    };
+    ctx.on('app/exit', stop);
+    ctx.effect(() => stop);
     const handleEvent = async (doc: EventDoc) => {
         process.send?.({ type: 'hydro:broadcast', data: doc });
         const payload = BSON.EJSON.parse(doc.payload);
         await (bus.parallel as any)(doc.event, ...payload);
     };
-    stream.on('change', async (change) => {
-        if (change.operationType !== 'insert') return;
+    stream.on('change', (change) => {
+        if (!running || change.operationType !== 'insert') return;
         if (change.fullDocument.ack.includes(id)) return;
-        await handleEvent(change.fullDocument);
+        const task = handleEvent(change.fullDocument).catch((error) => logger.error(error));
+        activeEvents.add(task);
+        void task.finally(() => activeEvents.delete(task));
     });
-    stream.on('error', async () => {
-        // The $changeStream stage is only supported on replica sets
-        logger.info('No replica set found.');
-        while (true) {
+    const poll = async () => {
+        // Shutdown and disposal callbacks clear this flag.
+        // eslint-disable-next-line no-unmodified-loop-condition
+        while (running) {
             let res;
             try {
                 // eslint-disable-next-line no-await-in-loop
                 res = await collEvent.findOneAndUpdate(
                     { expire: { $gt: new Date() }, ack: { $nin: [id] } },
                     { $push: { ack: id } },
+                    queryOptions,
                 );
             } catch (e) {
+                if (!running) break;
                 logger.error(e);
                 // eslint-disable-next-line no-await-in-loop
-                await sleep(50); // This allows exiting when shutting down
+                await wait(50);
                 continue;
             }
+            if (forced) break;
             if (argv.options.showEvent) logger.info('Event: %o', res);
+            // Drain a claimed event during a normal stop before its resources are disposed.
             // eslint-disable-next-line no-await-in-loop
-            await (res ? handleEvent(res) : sleep(500));
+            await (res ? handleEvent(res).catch((error) => logger.error(error)) : wait(500));
         }
+    };
+    stream.on('error', () => {
+        if (!running || polling) return;
+        // The $changeStream stage is only supported on replica sets.
+        logger.info('No replica set found.');
+        polling = poll().catch((error) => logger.error(error));
     });
     await db.ensureIndexes(collEvent, { name: 'expire', key: { expire: 1 }, expireAfterSeconds: 0 });
     await db.ensureIndexes(coll, { name: 'task', key: { type: 1, subType: 1, priority: -1 } });

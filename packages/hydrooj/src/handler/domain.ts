@@ -1,5 +1,4 @@
 import { load } from 'js-yaml';
-import { Dictionary } from 'lodash';
 import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
 import Schema from 'schemastery';
@@ -13,7 +12,7 @@ import type { DomainDoc, GDoc, TokenDoc } from '../interface';
 import avatar from '../lib/avatar';
 import { PERM, PERMS_BY_FAMILY, PRIV } from '../model/builtin';
 import * as discussion from '../model/discussion';
-import domain from '../model/domain';
+import domain, { type PreassignedDomainUser } from '../model/domain';
 import MessageModel from '../model/message';
 import * as oplog from '../model/oplog';
 import { DOMAIN_SETTINGS, DOMAIN_SETTINGS_BY_KEY } from '../model/setting';
@@ -202,8 +201,9 @@ class DomainUserHandler extends ManageHandler {
             delete u.user;
             return u;
         });
-        const rudocs = {};
+        const rudocs = Object.create(null);
         for (const role of roles) rudocs[role._id] = users.filter((udoc) => (udoc.role || 'default') === role._id);
+        this.response.publicDictionaries = [rudocs];
         this.response.template = format === 'raw' ? 'domain_user_raw.html' : 'domain_user.html';
         this.response.body = {
             roles, rudocs, domain: this.domain,
@@ -262,16 +262,37 @@ class DomainPermissionHandler extends ManageHandler {
 
     @requireSudo
     async post({ domainId }) {
-        const roles = {};
-        for (const [role, list] of Object.entries(this.request.body)) {
+        if (this.request.body.operation) return;
+        await this.savePermissions(domainId, Object.entries(this.request.body));
+    }
+
+    @requireSudo
+    async postUpdate({ domainId }) {
+        const input = this.request.body.permissions;
+        if (!input || typeof input !== 'object') throw new ValidationError('permissions');
+        // qs represents numbered form entries as an object once its array limit is exceeded.
+        const entries: [string, any][] = Object.values(input).map((entry: any) => {
+            if (!entry || typeof entry !== 'object' || typeof entry.role !== 'string' || !entry.role) {
+                throw new ValidationError('role');
+            }
+            return [entry.role, entry.permissions];
+        });
+        if (new Set(entries.map(([role]) => role)).size !== entries.length) throw new ValidationError('role');
+        await this.savePermissions(domainId, entries);
+    }
+
+    private async savePermissions(domainId: string, entries: [string, any][]) {
+        const roles: Record<string, bigint> = Object.create(null);
+        for (const [role, list] of entries) {
             if (role === 'root') continue; // root role is not editable
             const perms = Array.isArray(list) ? list
                 : (typeof list === 'object' && list)
                     ? Object.values(list) : [list];
             roles[role] = 0n;
             for (const r of perms) {
+                if (!Number.isSafeInteger(+r) || +r < 0) throw new ValidationError('permissions');
                 if (+r === 1000) continue; // skip placeholder value
-                roles[role] |= 1n << BigInt(r);
+                roles[role] |= 1n << BigInt(+r);
             }
         }
         await Promise.all([
@@ -292,14 +313,31 @@ class DomainRoleHandler extends ManageHandler {
 
     @param('role', Types.Role)
     async postAdd(domainId: string, role: string) {
+        domain.validateNewRoleName(role);
         const roles = await domain.getRoles(this.domain);
-        const rdict: Dictionary<any> = {};
-        for (const r of roles) rdict[r._id] = r.perm;
-        if (rdict[role]) throw new RoleAlreadyExistError(role);
+        const rdict = Object.fromEntries(roles.map((r) => [r._id, r.perm]));
+        if (Object.hasOwn(rdict, role)) throw new RoleAlreadyExistError(role);
         await Promise.all([
             domain.addRole(domainId, role, rdict.default),
             oplog.log(this, 'domain.addRole', { role }),
         ]);
+        this.back();
+    }
+
+    @requireSudo
+    @post('roles', Schema.array(Schema.object({
+        role: Schema.string().required(),
+        default: Schema.boolean().required(),
+        priority: Schema.number().step(1).required(),
+    })))
+    async postUpdate(domainId: string, roles: { role: string, default: boolean, priority: number }[]) {
+        if (new Set(roles.map((role) => role.role)).size !== roles.length) throw new ValidationError('roles');
+        const settings = Object.fromEntries(roles.map((role) => [role.role, {
+            default: role.default,
+            priority: role.priority,
+        }]));
+        await domain.setRoleMeta(domainId, settings);
+        await oplog.log(this, 'domain.updateRoleMeta', { settings });
         this.back();
     }
 
@@ -320,8 +358,12 @@ class DomainRoleHandler extends ManageHandler {
 class DomainJoinApplicationsHandler extends ManageHandler {
     async get() {
         const r = await domain.getRoles(this.domain);
-        const roles = r.map((role) => role._id).sort();
-        this.response.body.rolesWithText = roles.filter((i) => i !== 'guest').map((role) => [role, role]);
+        const roles = r.map((role) => role._id);
+        const defaultRole = domain.getDefaultRole(r);
+        this.response.body.rolesWithText = r
+            .filter((role) => role._id !== 'guest')
+            .map((role) => [role._id, role._id]);
+        this.response.body.defaultRole = defaultRole;
         this.response.body.joinSettings = domain.getJoinSettings(this.domain, roles);
         this.response.body.expirations = { ...domain.JOIN_EXPIRATION_RANGE };
         if (!this.response.body.joinSettings) {
@@ -345,7 +387,8 @@ class DomainJoinApplicationsHandler extends ManageHandler {
         let joinSettings;
         if (method === domain.JOIN_METHOD_NONE) joinSettings = null;
         else {
-            if (!roles.includes(role)) throw new ValidationError('role');
+            role ||= domain.getDefaultRole(r);
+            if (!roles.includes(role) || role === 'guest') throw new ValidationError('role');
             if (!current && expire === domain.JOIN_EXPIRATION_KEEP_CURRENT) throw new ValidationError('expire');
             joinSettings = { method, role, group };
             if (expire === domain.JOIN_EXPIRATION_KEEP_CURRENT) joinSettings.expire = current.expire;
@@ -415,6 +458,7 @@ class DomainGroupInvitationHandler extends Handler {
             ? `${protocol}${this.domain.host[0]}`
             : serverUrl;
         const urlPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
+        const roles = await domain.getRoles(domainId);
         this.response.body = {
             canInviteExternalDomainUser: this.user.hasPerm(PERM.PERM_EDIT_DOMAIN),
             currentInvitation,
@@ -426,10 +470,10 @@ class DomainGroupInvitationHandler extends Handler {
                     ? `code=${encodeURIComponent(this.group.invitationCode)}`
                     : `token=${encodeURIComponent(currentInvitation._id)}`}`
                 : '',
-            rolesWithText: (await domain.getRoles(domainId))
+            defaultRole: domain.getDefaultRole(roles),
+            rolesWithText: roles
                 .map((role) => role._id)
                 .filter((role) => !['guest', 'root'].includes(role))
-                .sort()
                 .map((role) => [role, role]),
         };
         this.response.template = 'domain_group_invitation.html';
@@ -460,9 +504,9 @@ class DomainGroupInvitationHandler extends Handler {
         const canInviteExternalDomainUser = this.user.hasPerm(PERM.PERM_EDIT_DOMAIN);
         const allowExternalDomainJoin = !this.group.class || canInviteExternalDomainUser;
         if (!canInviteExternalDomainUser && externalJoinRole) throw new PermissionError(PERM.PERM_EDIT_DOMAIN);
-        const assignedRole = externalJoinRole || 'default';
+        const roles = await domain.getRoles(domainId);
+        const assignedRole = externalJoinRole || domain.getDefaultRole(roles);
         if (allowExternalDomainJoin) {
-            const roles = await domain.getRoles(domainId);
             if (!roles.some((role) => role._id === assignedRole) || ['guest', 'root'].includes(assignedRole)) {
                 throw new ValidationError('externalJoinRole');
             }
@@ -594,6 +638,7 @@ class DomainGroupJoinHandler extends Handler {
                 name: this.targetDomain.name,
             },
             externalJoinRole: this.invitation.externalJoinRole || 'default',
+            canAssignRole: !this.group.class || this.invitation.allowExternalDomainJoin === true,
             group: this.group,
             token: this.invitation._id,
         };
@@ -707,6 +752,8 @@ class DomainGroupJoinHandler extends Handler {
 
 class DomainJoinHandler extends Handler {
     joinSettings: any;
+    roleToAssign = 'default';
+    preassignedUser?: PreassignedDomainUser;
     noCheckPermView = true;
 
     @param('target', Types.DomainId, true)
@@ -716,16 +763,23 @@ class DomainJoinHandler extends Handler {
             domain.collUser.findOne({ domainId: target, uid: this.user._id }),
         ]);
         if (!ddoc) throw new NotFoundError(target);
-        const assignedRole = this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)
-            ? 'root'
-            : dudoc?.role || 'default';
-        if (dudoc?.join) throw new DomainJoinAlreadyMemberError(target, this.user._id);
-        const r = await domain.getRoles(ddoc);
-        const roles = r.map((role) => role._id);
-        this.joinSettings = domain.getJoinSettings(ddoc, roles);
-        if (assignedRole !== 'default') delete this.joinSettings;
-        else if (!this.joinSettings) throw new DomainJoinForbiddenError(target, 'The link is either invalid or expired.');
+        const roleDocs = await domain.getRoles(ddoc);
+        const roles = roleDocs.map((role) => role._id);
+        const assignedRole = this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN) ? 'root' : dudoc?.role || 'default';
         if (assignedRole === 'guest') throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
+        // Direct invitations apply the moderator's preassigned role independently of public invitations.
+        const hasPreassignedRole = !dudoc?.join && assignedRole !== 'default' && roles.includes(assignedRole);
+        this.preassignedUser = hasPreassignedRole && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)
+            ? { role: dudoc.role, join: dudoc.join, requireInvitation: dudoc.requireInvitation }
+            : undefined;
+        this.joinSettings = hasPreassignedRole ? null : domain.getJoinSettings(ddoc, roles);
+        if (!this.joinSettings) {
+            if (dudoc?.join) throw new DomainJoinAlreadyMemberError(target, this.user._id);
+            if (assignedRole === 'default' || !roles.includes(assignedRole)) {
+                throw new DomainJoinForbiddenError(target, 'The link is either invalid or expired.');
+            }
+        }
+        this.roleToAssign = this.joinSettings?.role || assignedRole;
         if (dudoc?.requireInvitation && this.joinSettings?.method !== domain.JOIN_METHOD_CODE) {
             throw new DomainJoinForbiddenError(target, 'An invitation is required to rejoin this domain.');
         }
@@ -739,7 +793,7 @@ class DomainJoinHandler extends Handler {
         const ddoc = await domain.get(target);
         const domainInfo = {
             name: ddoc.name,
-            owner: await user.getById(domainId, ddoc.owner),
+            owner: await user.getById(target, ddoc.owner),
             avatar: ddoc.avatar,
             bulletin: ddoc.showBulletin ? ddoc.bulletin : '',
         };
@@ -769,16 +823,13 @@ class DomainJoinHandler extends Handler {
             const added = await user.addUserToGroup(target, entry._id, this.user._id);
             if (!added) throw new ValidationError('group');
         }
-        await Promise.all([
-            domain.updateUserInDomain(target, this.user._id, {
-                $set: {
-                    join: true,
-                    ...(this.joinSettings ? { role: this.joinSettings.role } : {}),
-                },
-                $unset: { requireInvitation: '' },
-            }),
-            oplog.log(this, 'domain.join', {}),
-        ]);
+        const joinedDomainUser = this.preassignedUser
+            ? await domain.joinUserWithPreassignedRole(target, this.user._id, this.preassignedUser)
+            : await domain.joinUserInDomain(target, this.user._id, this.roleToAssign);
+        if (joinedDomainUser?.role === 'guest') {
+            throw new DomainJoinForbiddenError(target, 'You are banned by the domain moderator.');
+        }
+        await oplog.log(this, 'domain.join', {});
         this.response.redirect = redirect || this.url('homepage', { domainId: target, query: { notification: 'Successfully joined domain.' } });
     }
 }
