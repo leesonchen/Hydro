@@ -30,6 +30,7 @@ PACKAGE_KEYS=("framework" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a1
 SELECTED_PACKAGE_KEYS=()
 declare -A CURRENT_PACKAGE_VERSIONS=()
 declare -A REMOTE_PACKAGE_VERSIONS=()
+declare -A SELECTED_PACKAGE_VERSIONS=()
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd /tmp
@@ -95,7 +96,7 @@ usage() {
   update             默认只更新远端 dev 版本变化的包，未变化的包固定为当前 release 版本。
   --packages         指定更新模块，未指定的模块固定为当前 release 版本。
   --no-restart       更新/回退完成后不自动重启服务，亦不进行在线检查（别名: --skip-restart）。
-  upgrade-interactive 类似 yarn global upgrade-interactive --latest，先检查可更新模块再交互选择。
+  upgrade-interactive 先选择可更新模块，再为每个模块选择要安装的 dev 版本。
 
 环境变量:
   NPM_REGISTRY   npm 仓库地址，默认 ${NPM_REGISTRY}
@@ -354,10 +355,46 @@ parse_update_args() {
 
 current_package_version() {
     local package_name="$1"
-    local active_release
+    local active_release executable resolved package_dir package_root candidate_dir global_root yarn_global_dir version
     active_release=$(read_active_release || true)
     if [ -n "$active_release" ] && [ -d "$active_release/node_modules" ]; then
-        package_version_from_dir "$active_release" "$package_name" 2>/dev/null || true
+        version=$(package_version_from_dir "$active_release" "$package_name" 2>/dev/null || true)
+        if [ -n "$version" ]; then
+            echo "$version"
+            return 0
+        fi
+    fi
+
+    # 兼容尚未通过本脚本创建 release 的全局安装，以及 active 记录缺失的情况。
+    for executable in "$HYDRO_BIN_LINK" "$(command -v hydrooj || true)"; do
+        [ -n "$executable" ] && [ -e "$executable" ] || continue
+        resolved=$(readlink -f "$executable" 2>/dev/null || true)
+        [ -n "$resolved" ] || continue
+        package_dir=$(dirname "$(dirname "$resolved")")
+        if [ "$(basename "$package_dir")" != "hydrooj" ] \
+            || [ "$(basename "$(dirname "$package_dir")")" != "node_modules" ]; then
+            continue
+        fi
+        package_root=$(dirname "$package_dir")
+        for candidate_dir in "$(dirname "$package_root")" "$package_dir"; do
+            if [ -f "$candidate_dir/node_modules/$package_name/package.json" ]; then
+                package_version_from_dir "$candidate_dir" "$package_name"
+                return 0
+            fi
+        done
+    done
+
+    global_root=$(npm root -g 2>/dev/null || true)
+    if [ -n "$global_root" ] && [ -f "$global_root/$package_name/package.json" ]; then
+        node -e 'process.stdout.write(require(process.argv[1]).version)' "$global_root/$package_name/package.json"
+        return 0
+    fi
+
+    if command -v yarn >/dev/null 2>&1; then
+        yarn_global_dir=$(yarn global dir 2>/dev/null || true)
+        if [ -n "$yarn_global_dir" ] && [ -f "$yarn_global_dir/node_modules/$package_name/package.json" ]; then
+            package_version_from_dir "$yarn_global_dir" "$package_name"
+        fi
     fi
 }
 
@@ -412,6 +449,47 @@ process.stdin.on("end", () => {
     else
         npm view "${package_name}@dev" version --registry "$NPM_REGISTRY" --fetch-retries=1 --fetch-timeout=30000 2>/dev/null | tr -d '[:space:]' || true
     fi
+}
+
+newer_dev_versions() {
+    local package_name="$1" current="$2"
+    local fetch_timeout_ms=$((NPM_VIEW_TIMEOUT_SECONDS * 1000))
+    npm view "$package_name" versions --json --registry "$NPM_REGISTRY" \
+        --prefer-online --fetch-retries=1 --fetch-timeout="$fetch_timeout_ms" | node -e '
+const current = process.argv[1];
+const parse = (version) => {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$/.exec(version);
+  return match && match.slice(1).map((part) => part === undefined ? Infinity : Number(part));
+};
+const compare = (a, b) => {
+  for (let i = 0; i < 4; i++) {
+    if (a[i] !== b[i]) return a[i] > b[i] ? 1 : -1;
+  }
+  return 0;
+};
+const installed = current ? parse(current) : null;
+if (current && !installed) {
+  process.stderr.write(`无法比较当前版本: ${current}\n`);
+  process.exit(1);
+}
+let body = "";
+process.stdin.on("data", (chunk) => body += chunk);
+process.stdin.on("end", () => {
+  try {
+    const versions = JSON.parse(body);
+    const available = Array.isArray(versions) ? versions : [versions];
+    const newer = [...new Set(available)]
+      .filter((version) => typeof version === "string" && /-dev\.\d+$/.test(version))
+      .map((version) => ({ version, parts: parse(version) }))
+      .filter(({ parts }) => parts && (!installed || compare(parts, installed) > 0))
+      .sort((a, b) => compare(b.parts, a.parts));
+    process.stdout.write(newer.map(({ version }) => version).join("\n"));
+  } catch (error) {
+    process.stderr.write(`无法解析仓库版本列表: ${error.message}\n`);
+    process.exitCode = 1;
+  }
+});
+' "$current"
 }
 
 load_package_versions() {
@@ -478,7 +556,7 @@ select_outdated_packages() {
 }
 
 interactive_select_updates() {
-    local outdated=() key idx input token selected
+    local outdated=() key idx input token token_index selected
     load_package_versions
     log_title "4. 检查 dev 版本更新..."
     print_update_table
@@ -511,22 +589,72 @@ interactive_select_updates() {
     SELECTED_PACKAGE_KEYS=()
     if [ -z "$input" ] || [ "$input" = "0" ]; then
         SELECTED_PACKAGE_KEYS=("${outdated[@]}")
-        return 0
+    else
+        for token in $input; do
+            if ! [[ "$token" =~ ^[0-9]+$ ]]; then
+                log_warn "忽略无效序号: ${token}"
+                continue
+            fi
+            token_index=$((10#$token))
+            if (( token_index < 1 || token_index > ${#outdated[@]} )); then
+                log_warn "忽略无效序号: ${token}"
+                continue
+            fi
+            selected="${outdated[$((token_index - 1))]}"
+            add_selected_package_key "$selected"
+        done
     fi
-
-    for token in $input; do
-        if ! [[ "$token" =~ ^[0-9]+$ ]] || (( token < 1 || token > ${#outdated[@]} )); then
-            log_warn "忽略无效序号: ${token}"
-            continue
-        fi
-        selected="${outdated[$((token - 1))]}"
-        add_selected_package_key "$selected"
-    done
 
     if [ ${#SELECTED_PACKAGE_KEYS[@]} -eq 0 ]; then
         log_warn "未选择任何模块，取消更新"
         return 1
     fi
+
+    interactive_select_versions
+}
+
+interactive_select_versions() {
+    local key package_name versions input input_index idx
+    local available=()
+    SELECTED_PACKAGE_VERSIONS=()
+    for key in "${SELECTED_PACKAGE_KEYS[@]}"; do
+        package_name=$(package_name_for_key "$key")
+        if ! versions=$(newer_dev_versions "$package_name" "${CURRENT_PACKAGE_VERSIONS[$key]:-}"); then
+            log_error "无法查询 ${package_name} 的可用 dev 版本，取消更新"
+            return 1
+        fi
+        if [ -z "$versions" ]; then
+            log_error "${package_name} 没有比当前版本更新的 dev 版本，取消更新"
+            return 1
+        fi
+        mapfile -t available <<< "$versions"
+        if [ ${#available[@]} -eq 1 ]; then
+            SELECTED_PACKAGE_VERSIONS["$key"]="${available[0]}"
+            echo "${package_name}: ${CURRENT_PACKAGE_VERSIONS[$key]:-none} -> ${available[0]}"
+            continue
+        fi
+
+        echo ""
+        echo -e "${YELLOW}请选择 ${package_name} 的目标版本（当前: ${CURRENT_PACKAGE_VERSIONS[$key]:-none}）:${NC}"
+        for idx in "${!available[@]}"; do
+            echo "  $((idx + 1))) ${available[$idx]}"
+        done
+        echo "  0) 取消更新"
+        while :; do
+            read -r -p "输入序号后回车（默认 1，最新版本）: " input
+            input="${input:-1}"
+            if [[ "$input" =~ ^[0-9]+$ ]] && (( 10#$input <= ${#available[@]} )); then
+                break
+            fi
+            log_warn "无效序号: ${input}"
+        done
+        input_index=$((10#$input))
+        if [ "$input_index" -eq 0 ]; then
+            log_warn "已取消更新"
+            return 1
+        fi
+        SELECTED_PACKAGE_VERSIONS["$key"]="${available[$((input_index - 1))]}"
+    done
 }
 
 link_target() {
@@ -624,7 +752,9 @@ JSON
             echo "  - ${package_name}@${current} (复用当前 release)"
             continue
         fi
-        if is_key_selected "$key" || [ -z "$current" ]; then
+        if [ -n "${SELECTED_PACKAGE_VERSIONS[$key]:-}" ]; then
+            spec="${package_name}@${SELECTED_PACKAGE_VERSIONS[$key]}"
+        elif is_key_selected "$key" || [ -z "$current" ]; then
             spec="${package_name}@dev"
         else
             spec="${package_name}@${current}"
