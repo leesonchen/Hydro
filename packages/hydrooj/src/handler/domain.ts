@@ -201,8 +201,9 @@ class DomainUserHandler extends ManageHandler {
             delete u.user;
             return u;
         });
-        const rudocs = {};
+        const rudocs = Object.create(null);
         for (const role of roles) rudocs[role._id] = users.filter((udoc) => (udoc.role || 'default') === role._id);
+        this.response.publicDictionaries = [rudocs];
         this.response.template = format === 'raw' ? 'domain_user_raw.html' : 'domain_user.html';
         this.response.body = {
             roles, rudocs, domain: this.domain,
@@ -261,16 +262,37 @@ class DomainPermissionHandler extends ManageHandler {
 
     @requireSudo
     async post({ domainId }) {
-        const roles = {};
-        for (const [role, list] of Object.entries(this.request.body)) {
+        if (this.request.body.operation) return;
+        await this.savePermissions(domainId, Object.entries(this.request.body));
+    }
+
+    @requireSudo
+    async postUpdate({ domainId }) {
+        const input = this.request.body.permissions;
+        if (!input || typeof input !== 'object') throw new ValidationError('permissions');
+        // qs represents numbered form entries as an object once its array limit is exceeded.
+        const entries: [string, any][] = Object.values(input).map((entry: any) => {
+            if (!entry || typeof entry !== 'object' || typeof entry.role !== 'string' || !entry.role) {
+                throw new ValidationError('role');
+            }
+            return [entry.role, entry.permissions];
+        });
+        if (new Set(entries.map(([role]) => role)).size !== entries.length) throw new ValidationError('role');
+        await this.savePermissions(domainId, entries);
+    }
+
+    private async savePermissions(domainId: string, entries: [string, any][]) {
+        const roles: Record<string, bigint> = Object.create(null);
+        for (const [role, list] of entries) {
             if (role === 'root') continue; // root role is not editable
             const perms = Array.isArray(list) ? list
                 : (typeof list === 'object' && list)
                     ? Object.values(list) : [list];
             roles[role] = 0n;
             for (const r of perms) {
+                if (!Number.isSafeInteger(+r) || +r < 0) throw new ValidationError('permissions');
                 if (+r === 1000) continue; // skip placeholder value
-                roles[role] |= 1n << BigInt(r);
+                roles[role] |= 1n << BigInt(+r);
             }
         }
         await Promise.all([
@@ -291,6 +313,7 @@ class DomainRoleHandler extends ManageHandler {
 
     @param('role', Types.Role)
     async postAdd(domainId: string, role: string) {
+        domain.validateNewRoleName(role);
         const roles = await domain.getRoles(this.domain);
         const rdict = Object.fromEntries(roles.map((r) => [r._id, r.perm]));
         if (Object.hasOwn(rdict, role)) throw new RoleAlreadyExistError(role);

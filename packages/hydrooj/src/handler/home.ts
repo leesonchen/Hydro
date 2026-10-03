@@ -493,6 +493,7 @@ class HomeSettingsHandler extends Handler {
             : (s) => user.setById(this.user._id, s);
         const settings = args.category === 'domain' ? setting.DOMAIN_USER_SETTINGS_BY_KEY : setting.SETTINGS_BY_KEY;
         for (const key in args) {
+            if (!Object.hasOwn(settings, key)) continue;
             const val = set(settings[key], key, args[key]);
             if (val !== undefined) $set[key] = val;
         }
@@ -500,7 +501,11 @@ class HomeSettingsHandler extends Handler {
             && currentViewLang) {
             delete $set.viewLang;
         }
-        for (const key in booleanKeys) if (!args[key]) $set[key] = false;
+        for (const key of Object.keys(booleanKeys)) {
+            if (!Object.hasOwn(settings, key) || settings[key].type !== 'boolean' || args[key]) continue;
+            const val = set(settings[key], key, false);
+            if (val !== undefined) $set[key] = val;
+        }
         const keys = Object.keys($set);
         let preferenceLogEntry: Record<string, any> | null = null;
         if (args.category === 'preference') {

@@ -42,9 +42,11 @@ export interface PreassignedDomainUser {
 }
 
 function invalidateRoleAssignment(update: any) {
-    const membershipFields = ['role', 'join', 'requireInvitation'];
+    // Explicit moderator role assignments replace pending invitation roles.
+    // Membership-only writes must keep the marker so verification can still
+    // commit or roll back the pending role.
     if (Object.values(update).some((fields) => fields && typeof fields === 'object'
-        && Object.keys(fields).some((field) => membershipFields.includes(field)))) {
+        && Object.hasOwn(fields, 'role'))) {
         return { ...update, $unset: { ...update.$unset, _roleAssignment: '' } };
     }
     return update;
@@ -313,7 +315,7 @@ class DomainModel {
             // eslint-disable-next-line no-await-in-loop
             const current = await coll.findOne({ _id: domainId });
             if (!current) throw new NotFoundError(domainId);
-            const updatedRoles = { ...current.roles };
+            const updatedRoles: Dictionary<string> = Object.assign(Object.create(null), current.roles);
             update(updatedRoles);
             // eslint-disable-next-line no-await-in-loop
             const roles = await DomainModel.getRoles({ ...current, roles: updatedRoles });
@@ -329,13 +331,24 @@ class DomainModel {
         }
     }
 
+    static validateNewRoleName(name: string) {
+        if (Object.hasOwn(Object.prototype, name)) {
+            throw new ValidationError('role', null, 'This role name is reserved.');
+        }
+    }
+
     static async setRoles(domainId: string, roles: Dictionary<bigint | string>) {
         return await DomainModel.updateRoles(domainId, (updatedRoles) => {
-            for (const role in roles) updatedRoles[role] = roles[role].toString();
+            for (const [role, permission] of Object.entries(roles)) {
+                // Existing reserved names remain editable until their owners remove them.
+                if (!Object.hasOwn(updatedRoles, role)) DomainModel.validateNewRoleName(role);
+                updatedRoles[role] = permission.toString();
+            }
         });
     }
 
     static async addRole(domainId: string, name: string, permission: bigint) {
+        DomainModel.validateNewRoleName(name);
         return await DomainModel.updateRoles(domainId, (updatedRoles) => {
             updatedRoles[name] = permission.toString();
         });

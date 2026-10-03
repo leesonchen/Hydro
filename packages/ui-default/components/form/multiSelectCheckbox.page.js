@@ -1,7 +1,7 @@
 import $ from 'jquery';
 import { AutoloadPage } from 'vj/misc/Page';
 
-const lastSelectionByGroup = {};
+const lastSelectionByGroup = Object.create(null);
 
 function isInGroup(group) {
   return (idx, element) => element.getAttribute('data-checkbox-group') === group;

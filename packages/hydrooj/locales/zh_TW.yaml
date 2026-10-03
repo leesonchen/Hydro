@@ -1024,6 +1024,7 @@ High Risk Warning: 高危操作警告
 'You have selected {0} problems to force sync:': '本次將對以下 {0} 個題目執行強制同步：'
 'Are you sure you want to proceed with force sync?': 是否確認繼續執行強制同步？
 Roles have changed. Please refresh and try again.: 角色已發生變化，請重新整理後重試。
+This role name is reserved.: 此角色名稱為保留名稱，請使用其他名稱。
 The invitation has changed. Please refresh and try again.: 邀請已發生變化，請重新整理後重試。
 Guest and root must stay at the ends of the role order.: guest 和 root 必須固定在角色順序的兩端，且不能設為預設角色。
 Select exactly one default invitation role.: 請指定且僅指定一個預設邀請角色。

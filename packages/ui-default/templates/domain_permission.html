@@ -1,6 +1,7 @@
 {% extends "domain_base.html" %}
 {% block domain_content %}
 <form method="post">
+<input type="hidden" name="operation" value="update">
 <div class="section">
   <div class="section__header">
     <h1 class="section__title">{{ _('{0}: Permissions').format(domain.name) }}</h1>
@@ -17,7 +18,10 @@
         <tr>
           <th class="col--description">{{ _('Permissions') }}</th>
           {%- for role in roles -%}
-            <th class="col--p"><span data-tooltip="{{ role._id }}">{{ role._id }}</span></th>
+            <th class="col--p">
+              <span data-tooltip="{{ role._id }}">{{ role._id }}</span>
+              <input type="hidden" name="permissions[{{ loop.index0 }}][role]" value="{{ role._id }}"{% if role._id == 'root' %} disabled{% endif %}>
+            </th>
           {%- endfor -%}
         </tr>
       </thead>
@@ -30,7 +34,7 @@
               {%- for role in roles -%}
                 <td class="col--p">
                   <label class="compact checkbox">
-                    <input name="{{ role._id }}" data-checkbox-group="{{ role._id }}" data-checkbox-range value="{{ log2(perm.key) }}" type="checkbox"{% if role.perm|bitand(perm.key) %} checked{% endif %}{% if role._id == 'root' %} disabled{% endif %}>
+                    <input name="permissions[{{ loop.index0 }}][permissions][]" data-checkbox-group="{{ role._id }}" data-checkbox-range value="{{ log2(perm.key) }}" type="checkbox"{% if role.perm|bitand(perm.key) %} checked{% endif %}{% if role._id == 'root' %} disabled{% endif %}>
                   </label>
                 </td>
               {%- endfor -%}
@@ -45,7 +49,7 @@
             {%- for role in roles -%}
               <td class="col--p">
                 <label class="compact checkbox">
-                  <input name="{{ role._id }}" data-checkbox-group="{{ role._id }}" data-checkbox-range value="1000" type="checkbox" checked{% if role._id == 'root' %} disabled{% endif %}>
+                  <input name="permissions[{{ loop.index0 }}][permissions][]" data-checkbox-group="{{ role._id }}" data-checkbox-range value="1000" type="checkbox" checked{% if role._id == 'root' %} disabled{% endif %}>
                 </label>
               </td>
             {%- endfor -%}

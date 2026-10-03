@@ -221,6 +221,7 @@ describe('Domain invitation role order', () => {
             format: (...values) => (text || '').replace(/\{(\d+)\}/g, (_match, index) => values[index]),
         }));
         env.addFilter('assign', (target, source) => ({ ...target, ...source }));
+        env.addFilter('bitand', (left, right) => BigInt(left) & BigInt(right));
         const source = fs.readFileSync(path.resolve(__dirname, '../packages/ui-default/templates', template), 'utf8');
         return env.renderString('{% import "components/form.html" as form %}' + source, {
             domain: { name: 'Test' }, handler: { args: { domainId } }, model: { domain },
@@ -501,6 +502,121 @@ describe('Domain invitation role order', () => {
         assert.equal(joined.role, 'student');
         assert.equal(joined.displayName, 'Updated');
         assert.equal(joined._roleAssignment, undefined);
+    });
+
+    for (const [name, change] of [
+        ['membership set', () => domain.setUserInDomain(domainId, 91, { join: true })],
+        ['membership update', () => domain.updateUserInDomain(domainId, 91, { $set: { join: true } })],
+        ['invitation requirement', () => domain.setUserInDomain(domainId, 91, { requireInvitation: false })],
+        ['single membership', () => domain.setJoin(domainId, 91, true)],
+        ['bulk membership', () => domain.setJoin(domainId, [91], true)],
+        ['bulk member update', () => domain.setMultiUserInDomain(domainId, { uid: 91 }, { requireInvitation: true })],
+    ]) {
+        // eslint-disable-next-line ts/no-loop-func
+        it(`${name} writes do not confirm a role when invitation verification fails`, async () => {
+            await resetDomain();
+            await domain.setUserInDomain(domainId, 91, { join: true, role: 'student' });
+            const joined = await duringRoleVerification(async () => {
+                await change();
+                const effective = await domain.getDomainUser(domainId, { _id: 91, priv: builtin.PRIV.PRIV_USER_PROFILE });
+                assert.equal(effective.role, 'student');
+                assert.equal(effective.perm, 7n);
+                throw new Error('Injected role recheck failure');
+            }, () => domain.joinUserInDomain(domainId, 91, 'teacher'));
+            assert.equal(joined.role, 'student');
+            assert.equal(joined._roleAssignment, undefined);
+        });
+    }
+
+    it('membership revocation during verification preserves the original role and stays revoked', async () => {
+        await resetDomain();
+        await domain.setUserInDomain(domainId, 91, { join: true, role: 'student' });
+        await duringRoleVerification(async () => {
+            await domain.setJoin(domainId, 91, false);
+            throw new Error('Injected role recheck failure');
+        }, () => assert.rejects(domain.joinUserInDomain(domainId, 91, 'teacher'), { name: 'DomainJoinForbiddenError' }));
+        const member = await domain.collUser.findOne({ domainId, uid: 91 });
+        assert.equal(member.join, false);
+        assert.equal(member.role, 'student');
+        assert.equal(member._roleAssignment, undefined);
+    });
+
+    it('rejects reserved names when creating roles through handlers or either model write path', async () => {
+        await resetDomain();
+        const manager = handler('domain_role', 1, true);
+        await manager.prepare({ domainId });
+        for (const name of Object.getOwnPropertyNames(Object.prototype)) {
+            // eslint-disable-next-line no-await-in-loop
+            await assert.rejects(manager.postAdd(domainId, name), /This role name is reserved/);
+            // eslint-disable-next-line no-await-in-loop
+            await assert.rejects(domain.addRole(domainId, name, 6n), /This role name is reserved/);
+            // eslint-disable-next-line no-await-in-loop
+            await assert.rejects(domain.setRoles(domainId, Object.fromEntries([[name, 6n]])), /This role name is reserved/);
+        }
+        const stored = await domain.coll.findOne({ _id: domainId });
+        assert.deepEqual(Object.keys(stored.roles), ['student', 'teacher']);
+    });
+
+    it('preserves editing, membership, role settings and deletion for legacy reserved names', async () => {
+        await resetDomain();
+        await domain.edit(domainId, { roles: Object.fromEntries([['student', '7'], ['teacher', '2'], ['__proto__', '1']]) });
+        await domain.setRoles(domainId, Object.fromEntries([['__proto__', 6n]]));
+        const roles = await domain.getRoles(domainId);
+        assert.equal(roles.find((role) => role._id === '__proto__').perm, 6n);
+        await domain.setRoleMeta(domainId, meta(roles, '__proto__'));
+        assert.equal(domain.getDefaultRole(await domain.getRoles(domainId)), '__proto__');
+        await domain.setUserRole(domainId, 91, '__proto__', true);
+        assert.equal((await domain.getDomainUser(domainId, { _id: 91, priv: 1 })).perm, 6n);
+        await domain.deleteRoles(domainId, ['__proto__']);
+        assert(!(await domain.getRoles(domainId)).some((role) => role._id === '__proto__'));
+        assert.equal((await domain.collUser.findOne({ domainId, uid: 91 })).role, 'default');
+    });
+
+    it('submits the actual permission form for legacy reserved names and more than twenty roles', async () => {
+        await resetDomain();
+        const names = ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'permissions',
+            ...Array.from({ length: 23 }, (_, index) => `role${index}`)];
+        await domain.edit(domainId, { roles: Object.fromEntries(names.map((name) => [name, '1'])) });
+        const roles = await domain.getRoles(domainId);
+        const dom = new JSDOM(render('domain_permission.html', {
+            roles,
+            PERMS_BY_FAMILY: { permission: [{ desc: 'View', key: 1n }, { desc: 'Edit', key: 2n }] },
+            log2: (value) => value.toString(2).length - 1,
+        }));
+        try {
+            const $ = require('jquery')(dom.window);
+            $.expr.pseudos.visible = (element) => element.value !== '1000';
+            loadSource('packages/ui-default/components/form/multiSelectCheckbox.page.js', {
+                jquery: $,
+                'vj/misc/Page': { AutoloadPage: class { constructor(_name, run) { run(); } } },
+            }, { document: dom.window.document });
+            for (const group of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+                const checkboxes = [...dom.window.document.querySelectorAll('input[data-checkbox-range]')]
+                    .filter((input) => input.getAttribute('data-checkbox-group') === group && input.value !== '1000');
+                assert.doesNotThrow(() => $(dom.window.document).trigger($.Event('click', {
+                    target: checkboxes[0], shiftKey: true,
+                })));
+                $(dom.window.document).trigger($.Event('click', { target: checkboxes[1], shiftKey: true }));
+                assert(checkboxes.every((input) => input.checked));
+            }
+            const inputs = dom.window.document.querySelectorAll('input[type="checkbox"]');
+            for (const input of inputs) if (!input.disabled) input.checked = input.value !== '0';
+            const raw = new URLSearchParams(new dom.window.FormData(dom.window.document.querySelector('form'))).toString();
+            const request = require('node:stream').Readable.from([Buffer.from(raw)]);
+            request.headers = { 'content-type': 'application/x-www-form-urlencoded', 'content-length': Buffer.byteLength(raw) };
+            const parsed = await require('co-body').form(request);
+            assert.equal(Array.isArray(parsed.permissions), false);
+            const permissions = handler('domain_permission', 1, true);
+            await permissions.prepare({ domainId });
+            permissions.request.body = parsed;
+            await permissions.post({ domainId });
+            await permissions.postUpdate({ domainId });
+            const updated = await domain.getRoles(domainId);
+            for (const role of updated) assert.equal(role.perm, role._id === 'root' ? 255n : 2n);
+            assert.deepEqual(Array.from(updated, (role) => role._id), Array.from(roles, (role) => role._id));
+        } finally {
+            dom.window.close();
+        }
     });
 
     for (const role of ['teacher', 'root', 'guest']) {
