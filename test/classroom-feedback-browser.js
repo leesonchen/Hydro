@@ -1,4 +1,4 @@
-// Local component/HTTP smoke harness. No production config, database or accounts.
+// Local page/HTTP smoke harness. No production config, database or accounts.
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -51,11 +51,14 @@ MongoMemoryServer.create = async function (...args) {
     const endpoint = `/d/${domainId}/course/${tid}/feedback`;
     const bundle = await esbuild.build({
         stdin: {
-            contents: `import React from 'react'; import {createRoot} from 'react-dom/client';
-                import Feedback from './packages/ui-default/components/classroom-feedback';
-                createRoot(document.getElementById('feedback-root')).render(<Feedback url=${JSON.stringify(endpoint)} />);`,
+            contents: `import page from './packages/ui-default/pages/classroom_feedback.page';
+                const name = document.documentElement.dataset.page;
+                if (!page.isNameMatch(name)) throw new Error('Feedback page initialization does not match template: ' + name);
+                page.afterLoading(name);`,
             resolveDir: path.resolve(__dirname, '..'), loader: 'tsx',
-        }, bundle: true, write: false, platform: 'browser', define: { 'process.env.NODE_ENV': '"development"' },
+        }, bundle: true, write: false, platform: 'browser',
+        alias: { vj: path.resolve(__dirname, '../packages/ui-default') },
+        define: { 'process.env.NODE_ENV': '"development"' },
     });
     const { Handler } = require('../packages/hydrooj/src/service/server');
     const { ForbiddenError } = require('../packages/hydrooj/src/error');
@@ -83,17 +86,25 @@ MongoMemoryServer.create = async function (...args) {
         async get() {
             this.session.uid = teacherUid;
             this.session.scope = PERM.PERM_ALL.toString();
-            this.response.type = 'text/html';
-            this.response.body = `<!DOCTYPE html><html lang="zh"><meta charset="utf-8"><title>Hydro 课堂反馈 · 隔离验证</title>
+            this.response.redirect = endpoint;
+        }
+    });
+    ctx.on('handler/after/ClassroomFeedback#get', (handler) => {
+        if (handler.request.headers.accept?.includes('application/json')) return;
+        // Match the normal renderer's template-derived data-page, then load the
+        // actual page module. Directly mounting the component would miss routing bugs.
+        const pageName = handler.response.template.split('.')[0];
+        handler.response.template = null;
+        handler.response.type = 'text/html';
+        handler.response.body = `<!DOCTYPE html><html lang="zh" data-page="${pageName}"><meta charset="utf-8"><title>Hydro 课堂反馈 · 隔离验证</title>
                 <style>body{font-family:system-ui;margin:24px auto;max-width:1050px;padding:0 16px;color:#17243a;background:#f3f5f8}
-                #feedback-root{background:white;padding:24px;border-radius:12px}label{display:block;margin:14px 0}select,textarea,input{display:block;padding:8px;min-width:260px}
+                #classroom-feedback{background:white;padding:24px;border-radius:12px}label{display:block;margin:14px 0}select,textarea,input{display:block;padding:8px;min-width:260px}
                 input[type=checkbox]{display:inline;min-width:0}textarea{width:90%}button{padding:9px 16px;margin:6px;border:1px solid #b9c6d8;background:#edf3ff;border-radius:6px;cursor:pointer}
                 button:disabled{opacity:.45}table{width:100%;border-collapse:collapse}td,th{padding:12px;border-bottom:1px solid #dde4ef;text-align:left}p[role=status]{color:#245ab4}fieldset{border:1px solid #dce3ee}</style>
                 <p>隔离验证环境 · 仅含临时测试班级、教师和学生</p>
                 <button onclick="fetch('/feedback-preview-fault',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(()=>document.getElementById('fault').textContent='下一次保存将模拟回执丢失')">模拟下一次回执丢失</button><span id="fault"></span>
                 <button onclick="fetch('/feedback-preview-fault',{method:'POST',headers:{'Content-Type':'application/json'},body:'{&quot;deny&quot;:true}'}).then(()=>document.getElementById('fault').textContent='下一次重试将暂时拒绝')">模拟下一次重试被拒绝</button>
-                <div id="feedback-root"></div><script src="/feedback-preview.js"></script></html>`;
-        }
+                <div id="classroom-feedback"></div><script>window.Hydro={};</script><script src="/feedback-preview.js"></script></html>`;
     });
     ctx.Route('feedback_preview_js', '/feedback-preview.js', class FeedbackPreviewScriptHandler extends Handler {
         async get() { this.response.type = 'application/javascript'; this.response.body = bundle.outputFiles[0].text; }
