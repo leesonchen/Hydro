@@ -41,9 +41,9 @@ export interface FeedbackRecord extends FeedbackInput, FeedbackActor {
     recordedAt: Date;
 }
 
-export interface FeedbackStore {
-    findOne(filter: { _id: string }): Promise<FeedbackRecord | null>;
-    insertOne(record: FeedbackRecord): Promise<{ acknowledged: boolean }>;
+export interface FeedbackStore<T = FeedbackRecord> {
+    findOne(filter: { _id: string }): Promise<T | null>;
+    insertOne(record: T): Promise<{ acknowledged: boolean }>;
 }
 
 export interface FeedbackReceipt {
@@ -127,7 +127,7 @@ export function normalizeFeedbackInput(value: unknown): FeedbackInput {
     };
 }
 
-function normalizeActor(actor: FeedbackActor): FeedbackActor {
+export function normalizeActor(actor: FeedbackActor): FeedbackActor {
     if (!actor || typeof actor.domainId !== 'string' || !actor.domainId
         || actor.domainId !== actor.domainId.trim() || actor.domainId.length > 128) {
         throw new FeedbackValidationError('domainId');
@@ -135,21 +135,78 @@ function normalizeActor(actor: FeedbackActor): FeedbackActor {
     return { domainId: actor.domainId, operatorUid: positiveInteger(actor.operatorUid, 'operatorUid') };
 }
 
-function hash(value: unknown): string {
+export function feedbackHash(value: unknown): string {
     return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-function receipt(record: FeedbackRecord, replayed: boolean): FeedbackReceipt {
+function receipt(record: Pick<FeedbackRecord, '_id' | 'recordedAt'>, replayed: boolean): FeedbackReceipt {
     return { eventId: record._id, recordedAt: record.recordedAt.toISOString(), replayed };
 }
 
-function replay(record: FeedbackRecord, requestHash: string): FeedbackReceipt {
+function replay(record: Pick<FeedbackRecord, '_id' | 'recordedAt' | 'requestHash'>, requestHash: string): FeedbackReceipt {
     if (record.requestHash !== requestHash) throw new FeedbackConflictError();
     return receipt(record, true);
 }
 
 function duplicateKey(error: unknown): boolean {
     return !!error && typeof error === 'object' && 'code' in error && error.code === 11000;
+}
+
+export interface FeedbackChangeInput {
+    requestId: string;
+    note: string;
+    rid?: string;
+}
+
+export interface FeedbackChange extends FeedbackActor, FeedbackChangeInput {
+    _id: string;
+    schemaVersion: 1;
+    source: 'hydro';
+    eventType: 'OBSERVATION_RETRACTED' | 'RETEST_RESOLVED';
+    targetId: string;
+    activityType: FeedbackInput['activityType'];
+    activityId: string;
+    studentUid: number;
+    pid: number;
+    requestHash: string;
+    recordedAt: Date;
+}
+
+export type FeedbackEvent = FeedbackRecord | FeedbackChange;
+
+export function normalizeFeedbackChange(value: unknown): FeedbackChangeInput {
+    const input = object(value);
+    for (const key of Object.keys(input)) {
+        if (!['requestId', 'note', 'rid'].includes(key)) throw new FeedbackValidationError(key);
+    }
+    // Reuse the observation's request key, note and submission contract.
+    const normalized = normalizeFeedbackInput({
+        ...input, studentUid: 1, activityType: 'homework', activityId: '000000000000000000000001', pid: 1, kind: 'GUIDED',
+    });
+    return {
+        requestId: normalized.requestId, note: normalized.note,
+        ...(normalized.rid ? { rid: normalized.rid } : {}),
+    };
+}
+
+export function feedbackEventId(actor: FeedbackActor, requestId: string) {
+    return `feedback:${feedbackHash(['hydro-feedback-v1', actor.domainId, actor.operatorUid, requestId])}`;
+}
+
+/** Shared acknowledged append boundary for facts and corrections. */
+export async function appendFeedbackEvent<T extends FeedbackEvent>(store: FeedbackStore<T>, event: T): Promise<FeedbackReceipt> {
+    const existing = await store.findOne({ _id: event._id });
+    if (existing) return replay(existing, event.requestHash);
+    try {
+        const result = await store.insertOne(event);
+        if (!result.acknowledged) throw new Error('Hydro did not acknowledge the feedback write.');
+        return receipt(event, false);
+    } catch (error) {
+        if (!duplicateKey(error)) throw error;
+        const winner = await store.findOne({ _id: event._id });
+        if (!winner) throw error;
+        return replay(winner, event.requestHash);
+    }
 }
 
 /**
@@ -167,8 +224,8 @@ export function createLocalFeedbackWriter(store: FeedbackStore, clock: () => Dat
             if (typeof authorize !== 'function') throw new TypeError('A Hydro-local authorizer is required.');
             await authorize(actor, input);
 
-            const _id = `feedback:${hash(['hydro-feedback-v1', actor.domainId, actor.operatorUid, input.requestId])}`;
-            const requestHash = hash(input);
+            const _id = feedbackEventId(actor, input.requestId);
+            const requestHash = feedbackHash(input);
             const existing = await store.findOne({ _id });
             if (existing) return replay(existing, requestHash);
 

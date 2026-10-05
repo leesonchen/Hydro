@@ -1,4 +1,5 @@
 import assert from 'assert';
+import { canManageFeedback } from '../../../lib/classroomFeedbackAccess';
 import { getReferenceCodeSolutions, isReferenceCodeSolution, REFERENCE_CODE_TITLE } from '../../../lib/referenceCode';
 import {
     _, BadRequestError, ContestAlreadyAttendedError, ContestModel, ContestNotFoundError, ContestScoreboardHiddenError,
@@ -1033,7 +1034,10 @@ export class CourseDetailHandler extends Handler {
         }
 
         this.response.template = 'course_detail.html';
-        this.response.body = { tdoc: this.tdoc, tsdoc, udict, lectureAccess };
+        this.response.body = {
+            tdoc: this.tdoc, tsdoc, udict, lectureAccess,
+            feedbackUrl: await canManageFeedback(this, this.tdoc) ? this.url('course_feedback', { tid }) : null,
+        };
 
         // 查看学生列表（仅管理员）
         if ((checkstu || uid) && (this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF) || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK))) {
@@ -1498,6 +1502,7 @@ export class CourseManageHandler extends Handler {
         this.response.template = 'course_manage.html';
         this.response.body = {
             page_name: 'course_manage',
+            feedbackUrl: await canManageFeedback(this, tdoc) ? this.url('course_feedback', { tid }) : null,
             tdoc,
             tsdict,
             udict,

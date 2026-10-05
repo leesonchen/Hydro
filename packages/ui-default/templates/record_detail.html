@@ -30,6 +30,11 @@
     {% endif %}
   </div>
   <div class="medium-3 columns">
+    {% if feedbackUrl %}
+    <div class="section"><div class="section__body">
+      <a class="button" href="{{ feedbackUrl }}">课堂反馈</a>
+    </div></div>
+    {% endif %}
     <div class="section side">
       <div class="section__header">
         <h1 class="section__title">{{ _('Information') }}</h1>

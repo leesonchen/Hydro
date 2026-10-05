@@ -1,7 +1,7 @@
 # Hydro 本地课堂反馈开发计划（替代原 PR-02）
 
-版本：2026-10-05 / v2  
-状态：H0 基础代码已编写并通过独立单元测试；H1-H3 未完成，不可据此上线。
+版本：2026-10-05 / v3
+状态：H1、H2 已实现；H3 隔离验证与加固已实现，上线验收部分完成。保持 Draft PR，不可据此上线。
 
 ## 1. 架构决策
 
@@ -47,11 +47,13 @@
 - `package.json`：新增 `test:classroom-feedback`，并接入 `test` 脚本；不改变依赖或锁文件。
 - 本计划及 `review/WORK-HYDRO-LOCAL-FEEDBACK.md`。
 
-**H0 没有注册 HTTP 路由、没有真实 MongoDB 适配器、没有业务权限解析、没有页面。它不是已经可用的教师反馈功能。** 授权回调的调用顺序已测试，但具体教师能否管理某班某学生仍需在 H1 实现。
+H1 新增 `model/classroomFeedback.ts`、`lib/classroomFeedbackAccess.ts`、`handler/classroom-feedback.ts`；使用 Hydro 本地集合和会话，不调用 AI-EDU。`SELF` 权限必须结合所有者、维护者或所分配班级的真实教师关系，最后编辑者不视为永久授课授权。
 
-实际验证环境：Node.js 22.16.0、环境预装 TypeScript 5.8.3。49 项单元测试通过，核心文件 strict/noEmit 检查通过。测试使用内存替身，不等于真实 MongoDB、多进程、HTTP 或浏览器验证。仓库锁定依赖下的 TypeScript 6.0.3 构建、全量测试和 lint 尚未运行。
+H2 新增反馈组件与独立页面，并接入课程管理、课程详情和提交记录页。页面入口与接口采用同一套授课关系判断；提交编号可空，同题多课时不能推断时保持未选。
 
-当前执行环境无法解析 github.com，完整 clone 失败；GitHub 连接器可读写仓库。完整环境验证应在后续 Work／Codex 开发环境中完成，不能省略。
+H3 增加隔离数据库／HTTP 测试入口、浏览器故障验证环境、容器备份恢复脚本。Node 22.20.0、TypeScript 6.0.3 环境中完整测试 198 项通过，包含 49 项核心单元测试、17 项反馈集成测试。容器 Node 22.16.0 中实际备份恢复通过。
+
+全量类型构建、完整 UI 构建与 lint 已运行，但仍有 H0 基线已存在的失败；具体数字、对照方法和未验证事项见 `review/HYDRO-LOCAL-FEEDBACK-VERIFICATION-2026-10-05.md`。运行容器的安装未更新，未部署本功能。
 
 ## 3. 第一版产品范围
 
@@ -74,7 +76,7 @@
 待复测可标记“已处理”，记录处理人、时间、可选备注／rid。处理不自动等于学生复测通过，不生成能力认证。
 
 ### 纠错和材料条件
-追加 `OBSERVATION_RECORDED`、`OBSERVATION_RETRACTED`、`RETEST_RESOLVED` 事件，后两者关联原事件，不直接覆盖原始观察。本批只实现第一类事件，撤销和处理在 H1 实现。
+追加 `OBSERVATION_RECORDED`、`OBSERVATION_RETRACTED`、`RETEST_RESOLVED` 事件，后两者关联原事件，不直接覆盖原始观察。三类事件已实现，展示最近的撤销／处理状态，原始追加历史保留在本地集合。
 
 隐私删除是独立的授权清理流程；不能以审计为由拒绝合理的数据清理。
 
@@ -141,7 +143,7 @@ H1 必须校验：
 - `handler/classroom-feedback.ts` 或课程模块中的 Handler：同源 API／页面。
 - 课程管理及记录页模板中的轻量入口：修改前查清实际模板路径。
 
-建议 API（尚未实现）：
+已实现 API（课程及作业共用 Handler）：
 - GET /course/:tid/feedback
 - POST /course/:tid/feedback
 - POST /course/:tid/feedback/:eventId/retract
@@ -190,6 +192,8 @@ H1 必须校验：
 | A1 | AI-EDU 可选消费和分析 | 后续独立任务，不阻塞 H1-H3 |
 
 H1-H3 初步按 5-8 个开发人日规划，前提是熟悉仓库且已有可运行环境；核对完整构建和权限模型后重估。不以赶时间为由合并未联调功能。
+
+本轮状态：H1 完成，H2 代码完成并通过组件冒烟；H3 隔离验证完成，上线门禁仍有既有环境失败，完整默认 UI 及真实班级试点未完成。材料条件未开发，按原定后续顺序处理。不得将这些剩余事项合并标为“已完成”。
 
 ## 9. 待执行集成验收
 

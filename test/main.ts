@@ -76,6 +76,8 @@ describe('App', () => {
             .expect(302);
     });
 
+    require('./classroom-feedback.integration').register();
+
     it('Does not let API RPC messages override an explicit route domain', () => {
         const args = getApiArgs({
             domainId: 'route-domain',

@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import ClassroomFeedback from 'vj/components/classroom-feedback';
 import Notification from 'vj/components/notification';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
@@ -12,6 +13,7 @@ type CourseManagePayload = {
   group: { students: number[] };
   extraStudents: number[];
   error?: { message: string };
+  feedbackUrl?: string;
 };
 
 async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -534,6 +536,7 @@ function CourseManageApp() {
       {tab === 'students' ? renderStudentsTab() : null}
       {tab === 'extraStudents' ? renderExtraStudentsTab() : null}
       {tab === 'chapters' ? renderNodeTab() : null}
+      {payload.feedbackUrl ? <ClassroomFeedback url={payload.feedbackUrl} /> : null}
     </div>
   );
 }

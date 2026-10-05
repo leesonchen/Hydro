@@ -21,6 +21,9 @@
 {% endif %}
   <div>
     <ol class="menu">
+    {% if feedbackUrl %}
+      <li class="menu__item"><a class="menu__link" href="{{ feedbackUrl }}">课堂反馈</a></li>
+    {% endif %}
     {% if page_name != 'course_detail' %}
       <li class="menu__item"><a class="menu__link" href="{{ url('course_detail', tid=tdoc.docId) }}">
         <span class="icon icon-homework"></span> {{ _('View Course') }}

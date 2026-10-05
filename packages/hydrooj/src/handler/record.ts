@@ -8,6 +8,7 @@ import {
     ProblemNotFoundError, RecordNotFoundError, UserNotFoundError,
 } from '../error';
 import { ContestStatusDoc, RecordDoc, Tdoc } from '../interface';
+import { canManageFeedback } from '../lib/classroomFeedbackAccess';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import problem, { ProblemDoc } from '../model/problem';
@@ -246,6 +247,10 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             rdoc: canViewDetail ? rdoc : pick(rdoc, ['_id', 'lang', 'code']),
             pdoc,
             tdoc: this.tdoc,
+            feedbackUrl: await canManageFeedback(this, this.tdoc)
+                ? this.url(`${this.tdoc.rule}_feedback`, {
+                    tid: this.tdoc.docId, query: { studentUid: rdoc.uid, pid: rdoc.pid, rid: rdoc._id },
+                }) : null,
             rev,
             allRevs,
             submissionHistory,

@@ -22,6 +22,7 @@
         "build:ui-next": "tsc -p tsconfig.ui-next.json --noEmit && yarn workspace @hydrooj/ui-next vite build",
         "test": "node --test test/classroom-feedback.spec.js && node test/maintenance.spec.js && node test/problem-reference-files.spec.js && node test/problem-copy-sync.spec.js && node test/maintenance-service-worker.spec.js && node test/contest-team-regressions.spec.js && node -r @hydrooj/register packages/common/tests/subtask.spec.ts && node -r @hydrooj/register test/markdown-it-media.spec.ts && node -r @hydrooj/register test/course-mermaid.spec.ts && node -r @hydrooj/register test/markdown-preview.spec.ts && node -r @hydrooj/register test/onsite-toolkit.spec.ts && node --test test/domain-invitation-roles.spec.js test/task-lifecycle.spec.js test/serializer.spec.js && node test/entry.js",
         "test:classroom-feedback": "node --test test/classroom-feedback.spec.js",
+        "test:classroom-feedback:integration": "node --test test/classroom-feedback-entry.js",
         "test:domain-invitations": "node --test test/domain-invitation-roles.spec.js",
         "benchmark": "cross-env BENCHMARK=true node test/entry.js",
         "oxlint": "cd framework/eslint-config && node -r @hydrooj/register build.ts && cd ../../ && oxlint --config framework/eslint-config/.oxlintrc.json",
