@@ -14,6 +14,7 @@ import Notification from 'vj/components/notification/index';
 import { getAvailableLangs, i18n, request } from 'vj/utils';
 import { canUsePretest } from '../scratchpad/capabilities';
 import languageMeta from './meta';
+import { getSampleInputCode } from './sample-input';
 
 const files = require.context('prismjs/components/', true, /prism-[a-z0-9-]+\.js/);
 const loadedLanguages = new Set();
@@ -55,25 +56,6 @@ Prism.plugins.toolbar.registerButton('copy-to-clipboard', (env) => {
   });
   return linkCopy;
 });
-
-function getSampleInputCode(env) {
-  const match = (env.element.className || '').match(/(?:^|\s)language-input([0-9]+)(?:\s|$)/);
-  if (match && Number.isSafeInteger(+match[1])) return env.code;
-
-  const pre = env.element.parentElement;
-  const sampleBlock = pre?.parentElement?.classList.contains('code-toolbar') ? pre.parentElement : pre;
-  const inputHeading = sampleBlock?.previousElementSibling;
-  const outputHeading = sampleBlock?.nextElementSibling;
-  const inputNumber = inputHeading?.textContent.trim().match(/^(?:输入|input|sample\s+input)\s*#?\s*(\d+)$/i)?.[1];
-  const outputNumber = outputHeading?.textContent.trim().match(/^(?:输出|output|sample\s+output)\s*#?\s*(\d+)$/i)?.[1];
-  const outputBlock = outputHeading?.nextElementSibling;
-  const hasOutput = outputBlock?.tagName.toLowerCase() === 'pre'
-    || (outputBlock?.classList.contains('code-toolbar') && outputBlock.querySelector('pre'));
-  if (inputNumber && outputNumber === inputNumber && hasOutput) {
-    return env.code;
-  }
-  return null;
-}
 
 function createSampleInputButton(env, className, label, onClick) {
   if (getSampleInputCode(env) === null) return null;
