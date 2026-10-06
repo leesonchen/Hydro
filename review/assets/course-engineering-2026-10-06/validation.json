@@ -1,0 +1,254 @@
+{
+  "date": "2026-10-06",
+  "baseCommit": "6ecad262c152ba00300a411461f85380bc8107ae",
+  "validatedSourceCommit": "a3cbe50183aed7053710d200af6bd15889f51d72",
+  "textParsingCommit": "c2ef7709cd68159e6c22d01e2020052954566342",
+  "fullTests": {
+    "tests": 232,
+    "passed": 232,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 79.3,
+    "preservedTests": 224,
+    "newTextTests": 6,
+    "newYamlTests": 2,
+    "command": "corepack yarn test"
+  },
+  "typescript": {
+    "version": "6.0.3",
+    "errors": 0,
+    "seconds": 171.8,
+    "command": "node node_modules/typescript/bin/tsc -b --pretty false"
+  },
+  "productionBuild": {
+    "webpack": "5.111.1",
+    "errors": 0,
+    "warnings": 2,
+    "childWarnings": 0,
+    "warningNames": [
+      "asset size limit",
+      "entrypoint size limit"
+    ],
+    "webpackSeconds": 162.689,
+    "commandSeconds": 174.2,
+    "command": "node packages/ui-default/build --production --detail",
+    "builtBeforeSourceCommit": true,
+    "footerGitVersion": "c2ef770-dirty"
+  },
+  "narrowTests": {
+    "tests": 12,
+    "passed": 12,
+    "failed": 0,
+    "skipped": 0
+  },
+  "baselinePathology": [
+    {
+      "ref": "6ecad262c152ba00300a411461f85380bc8107ae",
+      "kind": "lecture",
+      "exceededMilliseconds": 2000
+    },
+    {
+      "ref": "6ecad262c152ba00300a411461f85380bc8107ae",
+      "kind": "sample",
+      "exceededMilliseconds": 2000
+    }
+  ],
+  "browser": {
+    "passed": 11,
+    "errors": [],
+    "checks": [
+      "production Monaco loads real TypeScript declarations as text",
+      "A records once with an optional draft, preserves context, and rejects mismatched details",
+      "pending retests complete and undo the exact resolution while retaining history",
+      "lost receipt and a denied replay retain the original request without duplicating the observation",
+      "a confirmed save survives read failure and does not offer a new write retry",
+      "B remembers lesson and draft across real PJAX, filters, collapse and re-opening",
+      "management names exact batch scope, reports individual results and preserves feedback",
+      "course edit rejects invalid JSON inline, preserves the draft and focuses its actual editor",
+      "packed lecture unwraps its body, renders Mermaid and recognizes only matched sample headings",
+      "packed YAML worker validates input while formatting stays disabled",
+      "native mobile layout keeps the table scroll inside the page and keyboard controls available"
+    ],
+    "ui": "production-webpack"
+  },
+  "packages": {
+    "packages": [
+      {
+        "name": "hydrooj",
+        "version": "5.0.7",
+        "files": 141,
+        "locales": 4,
+        "size": 363704,
+        "sha256": "4c02e5c2f18bcc32befc5b1233d92ca4f2993b2e952f044537bc2e0a50e915c4",
+        "required": [
+          "bin/hydrooj.js",
+          "src/model/classroomFeedback.ts",
+          "src/handler/classroom-feedback.ts",
+          "src/builtin/course-management/model/structure.ts",
+          "src/script/course-feedback-structure.ts"
+        ]
+      },
+      {
+        "name": "@hydrooj/ui-default",
+        "version": "4.58.5",
+        "files": 818,
+        "locales": 4,
+        "size": 14936968,
+        "sha256": "0c5a07979409233ce0b45e16b40b630bdd337954800e3e53b24313a133e03e9c",
+        "required": [
+          "templates/classroom_feedback.html",
+          "templates/partials/scoreboard.html",
+          "templates/course_manage.html",
+          "public/manifest.json",
+          "public/hydro-4.58.5.js",
+          "public/theme-4.58.5.css"
+        ]
+      }
+    ],
+    "published": false,
+    "installed": false
+  },
+  "lint": {
+    "baseline": {
+      "files": 535,
+      "errors": 103,
+      "warnings": 122
+    },
+    "current": {
+      "files": 537,
+      "errors": 58,
+      "warnings": 121
+    },
+    "scope": {
+      "files": 13,
+      "errors": 0,
+      "warnings": 40
+    },
+    "originalTen": {
+      "files": 10,
+      "errors": 0,
+      "warnings": 39
+    },
+    "introduced": [],
+    "removed": 46,
+    "details": "lint-details.json"
+  },
+  "readOnlyContainer": {
+    "distribution": "Ubuntu-22.04",
+    "name": "hydro",
+    "status": "running",
+    "health": "healthy",
+    "restarting": false,
+    "node": "v22.16.0",
+    "startedAt": "2026-10-04T13:08:26.782816363Z",
+    "http8082": 200
+  },
+  "materialAvailability": {
+    "removedFromThisPhase": true,
+    "teacherConfigurationAdded": false,
+    "simulationTraining": "separate design"
+  },
+  "isolation": {
+    "temporaryMongoInstancesPerRuntime": 2,
+    "runtimesStoppedNormally": true,
+    "profileCleanup": true,
+    "reusesExistingWorkspaceDependencies": true,
+    "registryInstallVerified": false
+  },
+  "earlierFailedRuns": [
+    {
+      "kind": "default regression",
+      "count": 1,
+      "reason": "App startup exceeded unchanged 30s limit; cleanup produced connection errors",
+      "countedAsPass": false
+    },
+    {
+      "kind": "browser first attempt and trace",
+      "count": 2,
+      "reason": "test disposed YAML editor before validation settled; Canceled captured without filtering",
+      "countedAsPass": false
+    }
+  ],
+  "standaloneAppRecheck": {
+    "tests": 61,
+    "passed": 61,
+    "failed": 0,
+    "skipped": 0,
+    "initializationMs": 9998,
+    "timeoutUnchanged": true
+  },
+  "boundaries": {
+    "apiChanged": false,
+    "eventsChanged": false,
+    "indexesChanged": false,
+    "dependenciesChanged": false,
+    "migration": false,
+    "published": false,
+    "deployed": false,
+    "runningContainerUpgraded": false,
+    "runningContainerRestarted": false
+  },
+  "screenshots": [
+    {
+      "file": "a-roster.png",
+      "bytes": 155880,
+      "sha256": "af71ac5f8396b4a289d5b9aab62801eebd7232b413b834059940bf2a7d65fb0b"
+    },
+    {
+      "file": "b-progress.png",
+      "bytes": 129325,
+      "sha256": "eb354660ed4771fd4557b9d95ab7315a01f57278510aa9fbe529ff7e2e454b03"
+    },
+    {
+      "file": "course-edit-invalid.png",
+      "bytes": 170712,
+      "sha256": "e35f0b986d310f94b52ec01db5a9edfe828506f1d59ceaa38060c592a9451922"
+    },
+    {
+      "file": "course-lecture.png",
+      "bytes": 108003,
+      "sha256": "56a25f82c28086b06a1f5b0ae60464c5e5841a68303d0f9af6fa5d005fded1bf"
+    },
+    {
+      "file": "course-manage.png",
+      "bytes": 105907,
+      "sha256": "4dd86020ce4b4c4683b453e13e0340973687f3a2222306c3caddfb0b793a84dc"
+    },
+    {
+      "file": "mobile.png",
+      "bytes": 66721,
+      "sha256": "ac182e5c41f39b3997e1eaf5cdffff9e37249c18abf913204f77f17c57c2d0e1"
+    },
+    {
+      "file": "pending-retest.png",
+      "bytes": 121102,
+      "sha256": "7dcd98d7e4d82541f9bcf743eff90fe691c66d5b556291aded96cf7d48c41953"
+    }
+  ],
+  "localLogHashes": [
+    {
+      "file": ".cache/feedback-e2-baseline-text.log",
+      "sha256": "0009cc44d49088b4104515aed36c61e2c44dba676ffc0e76e55b568b56aed25f"
+    },
+    {
+      "file": ".cache/feedback-e2-narrow-tests.log",
+      "sha256": "5cb65247f1999682ec89d42a807b61b412ad0acc42d62a2fe30b1e6cf754a4ef"
+    },
+    {
+      "file": ".cache/feedback-e2-gates.log",
+      "sha256": "16c2dc742443af0ef686ef7a8486826f52c0f1534d86ec58b09b216ccb530b80"
+    },
+    {
+      "file": ".cache/feedback-e2-app-check.log",
+      "sha256": "70954b49e4e6f96bc386b4025c01fa8ca8dddd36319fdb3f45fc2c40ab217eac"
+    },
+    {
+      "file": ".cache/feedback-e2-final-gates.log",
+      "sha256": "3219b7ef86db900fed39fb72026aa6cf823b8dbfc61fd4490753ba7294a6fcd0"
+    },
+    {
+      "file": ".cache/feedback-e2-package-browser-final.log",
+      "sha256": "2d8278ec229f04274f50ccfce0d36ceb8674f29e1b303f767c97beda929132df"
+    }
+  ]
+}
