@@ -326,7 +326,10 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         minChunkSize: 128000,
       }),
       new webpack.NormalModuleReplacementPlugin(/\/(vscode-)?nls\.js/, require.resolve('../../components/monaco/nls')),
-      new webpack.NormalModuleReplacementPlugin(/^prettier[$/]/, root('../../modules/nop.ts')),
+      new webpack.NormalModuleReplacementPlugin(/^prettier[$/]/, (resource) => {
+        resource.request = resource.request === 'prettier/standalone'
+          ? root('components/monaco/disabled-format.ts') : root('../../modules/nop.ts');
+      }),
       new webpack.NormalModuleReplacementPlugin(/^highlightjs[$/]/, root('../../modules/nop.ts')),
       new webpack.NormalModuleReplacementPlugin(/core-js\/stable/, root('__core-js.js')),
       new MonacoWebpackPlugin({

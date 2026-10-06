@@ -140,14 +140,14 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       itemText: (domain: any) => domain.name,
       itemKey: (domain: any) => domain._id,
     });
-    const templateData: Array<{ _id: string; name: string; title?: string; sourceDomainId?: string }> = [];
+    const templateData: Array<{ _id: string, name: string, title?: string, sourceDomainId?: string }> = [];
     const templateSelect = CustomSelectAutoComplete.getOrConstruct<CustomSelectAutoComplete<true>>(dialogContent.find('[name="template"]'), {
       multi: true,
       data: templateData,
       allowEmptyQuery: true,
       clearDefaultValue: false,
     });
-    let currentTemplates: Array<{ _id: string; name: string; title?: string; sourceDomainId?: string }> = [];
+    let currentTemplates: Array<{ _id: string, name: string, title?: string, sourceDomainId?: string }> = [];
     let loadedSourceDomain = '';
     let lastTemplateLoadError = '';
     let lastTemplateLoadErrorDomain = '';
@@ -195,7 +195,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       return resolveSourceDomainId(selected);
     };
 
-    const applyTemplates = (templates: Array<{ _id: string; name: string; title?: string; sourceDomainId?: string }>) => {
+    const applyTemplates = (templates: Array<{ _id: string, name: string, title?: string, sourceDomainId?: string }>) => {
       currentTemplates = templates;
       templateData.length = 0;
       templateData.push(...templates);
@@ -345,7 +345,7 @@ const page = new NamedPage(['domain_class_edit', 'domain_class_create'], () => {
       try {
         await loadTemplates(sourceDomain);
       } catch (e: any) {
-        if (sourceDomain !== getSelectedSourceDomain()) return;
+        // loadTemplates already reports failure and ignores stale responses.
       }
     });
 

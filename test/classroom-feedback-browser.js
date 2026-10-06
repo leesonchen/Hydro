@@ -64,10 +64,13 @@ MongoMemoryServer.create = async function (...args) {
     });
     const pid = await model.problem.add(domainId, '', '数字反转', '临时测试题', teacherUid);
     const secondPid = await model.problem.add(domainId, '', '循环求和', '临时测试题', teacherUid);
+    const lectureBody = ['# 讲义核验', '', '```mermaid', 'graph TD', 'A-->B', '```', '',
+        '### Sample Input #01', '', '```cpp', '1 2', '```', '', '### Sample Output #01', '', '```cpp', '3', '```', '',
+        '### 输入2', '', '```cpp', '4', '```', '', '### 输出3', '', '```cpp', '5', '```'].join('\n');
     const tid = await model.contest.add(domainId, 'GESP 二级 · 循环练习', '', teacherUid, 'course',
         new Date(Date.now() - 60000), new Date(Date.now() + 3600000), [pid, secondPid], false,
-        { assign: ['试验班'], dag: [
-            { _id: 1, title: '第 3 课', pids: [pid, secondPid] },
+        { assign: ['试验班'], lecture: { 1: '````markdown\n' + lectureBody + '\n````' }, dag: [
+            { _id: 1, title: '第 3 课', pids: [pid, secondPid], lecture: true },
             { _id: 2, title: '复习巩固', pids: [pid] },
         ] });
     await model.contest.attend(domainId, tid, studentUid);
@@ -183,6 +186,12 @@ MongoMemoryServer.create = async function (...args) {
         fs.rmSync(profile, { recursive: true, force: true });
         process.exit(0);
     };
+    ctx.Route('feedback_preview_stop', '/feedback-preview-stop', class FeedbackPreviewStopHandler extends Handler {
+        async post() {
+            this.response.body = { stopping: true };
+            setTimeout(() => stop().catch((error) => { console.error(error); process.exit(1); }), 100);
+        }
+    });
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);
 })().catch(async (error) => {

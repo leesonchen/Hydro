@@ -12,9 +12,15 @@ fs.mkdirSync(output, { recursive: true });
     const browser = await chromium.launch({ channel: 'chrome', headless: true });
     const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
     const errors = [];
-    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('pageerror', (error) => {
+        console.error('BROWSER_PAGE_ERROR', page.url(), error.stack || error.message);
+        errors.push(error.message);
+    });
     page.on('console', (message) => {
-        if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) errors.push(message.text());
+        if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
+            console.error('BROWSER_CONSOLE_ERROR', page.url(), message.text());
+            errors.push(message.text());
+        }
     });
     page.on('response', (response) => {
         if (response.status() >= 400 && ['script', 'stylesheet', 'font'].includes(response.request().resourceType())) {
@@ -177,6 +183,78 @@ fs.mkdirSync(output, { recursive: true });
             await page.getByRole('status').filter({ hasText: '已确认成功 1 项；需核实或重试 0 项' }).waitFor();
             assert.equal(await count(), before);
             await page.screenshot({ path: path.join(output, 'course-manage.png'), fullPage: true });
+        });
+        if (builtUI) await check('course edit rejects invalid JSON inline, preserves the draft and focuses its actual editor', async () => {
+            await page.goto(base + '/edit');
+            await page.locator('.dag-visual-editor').waitFor();
+            const dialogs = [];
+            const onDialog = async (dialog) => { dialogs.push(dialog.type()); await dialog.dismiss(); };
+            page.on('dialog', onDialog);
+            try {
+                const original = await page.locator('textarea[name="dag"]').inputValue();
+                for (const [source, message] of [['{broken JSON', 'JSON 错误'], ['[]', '请至少保留一个章节']]) {
+                    const result = await page.evaluate(({ source }) => {
+                        const field = document.querySelector('textarea[name="dag"]');
+                        const $field = window.HydroExports.$(field);
+                        const instance = $field.data('vjEditorInstance');
+                        if (instance?.isValid) instance.value(source);
+                        field.value = source;
+                        $field.trigger('input');
+                        const accepted = field.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                        return { accepted, source: field.value,
+                            focused: document.activeElement === field || instance?.editor?.hasTextFocus() === true };
+                    }, { source });
+                    assert.equal(result.accepted, false);
+                    assert.equal(result.source, source);
+                    assert.equal(result.focused, true);
+                    await page.locator('.dag-status[role="alert"]').filter({ hasText: message }).waitFor();
+                }
+                assert.deepEqual(dialogs, []);
+                await page.screenshot({ path: path.join(output, 'course-edit-invalid.png'), fullPage: true });
+                const recovered = await page.evaluate((source) => {
+                    const field = document.querySelector('textarea[name="dag"]');
+                    const instance = window.HydroExports.$(field).data('vjEditorInstance');
+                    if (instance?.isValid) instance.value(source);
+                    field.value = source;
+                    return field.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                }, original);
+                assert.equal(recovered, true);
+            } finally { page.off('dialog', onDialog); }
+        });
+        if (builtUI) await check('packed lecture unwraps its body, renders Mermaid and recognizes only matched sample headings', async () => {
+            await page.goto(base + '/lecture/1');
+            await page.locator('#lecture-main .course-mermaid svg').waitFor();
+            assert.equal(await page.locator('#lecture-main h1').innerText(), '讲义核验');
+            assert.equal(await page.locator('#lecture-main .scratchpad-run-pretest-button').count(), 1);
+            assert(!(await page.locator('#lecture-main').innerText()).includes('````markdown'));
+            await page.screenshot({ path: path.join(output, 'course-lecture.png'), fullPage: true });
+        });
+        if (builtUI) await check('packed YAML worker validates input while formatting stays disabled', async () => {
+            await page.evaluate(async () => {
+                const { monaco } = await window.HydroExports.loadMonaco(['yaml']);
+                const element = document.createElement('div');
+                element.style.cssText = 'height:160px;width:600px';
+                document.querySelector('.main').append(element);
+                const model = monaco.editor.createModel('answer: [\n', 'yaml', monaco.Uri.parse('hydro://e2/validation.yaml'));
+                const editor = monaco.editor.create(element, { model });
+                window.__e2Yaml = { monaco, model, editor, element };
+            });
+            await page.waitForFunction(() => window.__e2Yaml.monaco.editor.getModelMarkers({ resource: window.__e2Yaml.model.uri })
+                .some((marker) => marker.severity === window.__e2Yaml.monaco.MarkerSeverity.Error));
+            const result = await page.evaluate(async () => {
+                const { model, editor } = window.__e2Yaml;
+                const source = 'answer:   42\n';
+                model.setValue(source);
+                await editor.getAction('editor.action.formatDocument').run();
+                const value = model.getValue();
+                return { source, value };
+            });
+            assert.equal(result.value, result.source);
+            await page.waitForFunction(() => window.__e2Yaml.monaco.editor.getModelMarkers({ resource: window.__e2Yaml.model.uri }).length === 0);
+            await page.evaluate(() => {
+                const { model, editor, element } = window.__e2Yaml;
+                editor.dispose(); model.dispose(); element.remove();
+            });
         });
         await check('native mobile layout keeps the table scroll inside the page and keyboard controls available', async () => {
             await page.setViewportSize({ width: 390, height: 844 });

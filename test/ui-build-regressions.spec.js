@@ -10,6 +10,49 @@ const webpack = require('webpack');
 require('@hydrooj/register');
 const config = require('../packages/ui-default/build/config/webpack').default;
 
+test('real YAML worker builds without missing formatter exports or bundling Prettier', async () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'hydro-yaml-worker-'));
+    try {
+        const settings = await config();
+        const compiler = webpack({
+            mode: 'development', target: 'webworker', devtool: false,
+            entry: require.resolve('monaco-yaml/yaml.worker.js'),
+            module: settings.module, resolve: settings.resolve,
+            plugins: settings.plugins.filter((plugin) => plugin instanceof webpack.NormalModuleReplacementPlugin),
+            output: { path: folder, filename: 'worker.js' },
+        });
+        const stats = await new Promise((resolve, reject) => compiler.run((error, result) => {
+            compiler.close((closeError) => error || closeError ? reject(error || closeError) : resolve(result));
+        }));
+        assert.equal(stats.hasErrors(), false, stats.toString({ all: false, errors: true }));
+        assert.equal(stats.hasWarnings(), false, stats.toString({ all: false, warnings: true }));
+        const modules = stats.toJson({ all: false, modules: true }).modules;
+        assert(modules.some((module) => module.name?.includes('disabled-format.ts')));
+        assert(!modules.some((module) => /node_modules[\\/]prettier[\\/]/.test(module.name || '')));
+    } finally {
+        fs.rmSync(folder, { recursive: true, force: true });
+    }
+});
+
+test('YAML configuration keeps formatting disabled and the optional adapter preserves source', async () => {
+    const source = fs.readFileSync(path.join(__dirname, '../packages/ui-default/components/monaco/languages/yaml.ts'), 'utf8');
+    const compiled = ts.transpileModule(source, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    let settings;
+    vm.runInThisContext('(function(require, module, exports, window) {\n' + compiled + '\n})')(
+        (name) => {
+            if (name === 'monaco-yaml') return { configureMonacoYaml: (_, value) => { settings = value; } };
+            return {};
+        }, { exports: {} }, {}, { location: { href: 'http://localhost/' } },
+    );
+    assert.equal(settings.format, false);
+    assert.equal(settings.validate, true);
+    const value = 'anchor: &item\n  a: 1\ncopy: *item\n';
+    const { format } = require('../packages/ui-default/components/monaco/disabled-format');
+    assert.equal(await format(value), value);
+});
+
 test('Node declarations stay text on both Windows and POSIX paths', async () => {
     const { module: { rules } } = await config();
     for (const resource of [

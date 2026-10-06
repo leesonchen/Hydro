@@ -51,10 +51,12 @@ async function renderLectureMermaid(target: ParentNode) {
     .filter((root) => root.querySelector('pre > code.language-mermaid'));
   if (!roots.length) return;
   const mermaid = await getMermaid();
-  for (const root of roots) await renderMermaidBlocks(root, mermaid, {
-    errorMessage: i18n('Mermaid diagram could not be rendered. Source code is shown below.'),
-    onError: (error) => console.warn('Failed to render Mermaid diagram', error),
-  });
+  for (const root of roots) {
+    await renderMermaidBlocks(root, mermaid, {
+      errorMessage: i18n('Mermaid diagram could not be rendered. Source code is shown below.'),
+      onError: (error) => console.warn('Failed to render Mermaid diagram', error),
+    });
+  }
 }
 
 function wrapLectureTables(target: ParentNode) {

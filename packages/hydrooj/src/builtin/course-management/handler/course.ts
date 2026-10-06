@@ -18,7 +18,7 @@ const TEMPLATE_ALL_KEY = 'templates::__all';
 const TEMPLATE_UNCATEGORIZED_KEY = 'templates::__uncategorized';
 
 function fillMessage(template: string, ...params: Array<string | number>) {
-    return template.replace(/\{(\d+)\}/g, (_, index) => String(params[Number(index)] ?? ''));
+    return template.replace(/\{(\d+)\}/g, (match, index) => String(params[Number(index)] ?? ''));
 }
 
 function normalizeTemplateIds(templateIds: any) {
@@ -195,7 +195,7 @@ export async function updateAllowedNodes(
     _tsdoc?: any,
 ) {
     console.log(`[updateAllowedNodes] called: domainId=${domainId}, tid=${tid}, uid=${uid}`);
-    
+
     // 重新获取最新的 tsdoc，确保 accept 数据是最新的
     const tsdoc = await ContestModel.getStatus(domainId, tid, uid);
     console.log(`[updateAllowedNodes] tsdoc:`, JSON.stringify({
@@ -204,12 +204,12 @@ export async function updateAllowedNodes(
         allow: tsdoc?.allow,
         uid: tsdoc?.uid,
     }));
-    
+
     if (!tsdoc?.attend) {
         console.log(`[updateAllowedNodes] tsdoc not found or not attended, returning`);
         return;
     }
-    
+
     const allow = tsdoc?.allow || {};
     let updated = false;
 
@@ -223,13 +223,13 @@ export async function updateAllowedNodes(
 
     for (const node of tdoc.dag) {
         console.log(`[updateAllowedNodes] checking node ${node._id}: allow=${allow[node._id]}`);
-        
+
         // 如果已经有明确设置（包括禁止），不覆盖
         if (allow[node._id] !== undefined) {
             console.log(`[updateAllowedNodes] node ${node._id} already has allow=${allow[node._id]}, skipping`);
             continue;
         }
-        
+
         // 没有前置条件的节点，默认开放
         if (!node.requireNids || !node.requireNids.length) {
             console.log(`[updateAllowedNodes] node ${node._id} has no requirements, setting to true`);
@@ -239,7 +239,7 @@ export async function updateAllowedNodes(
         }
 
         console.log(`[updateAllowedNodes] node ${node._id} has requirements: ${JSON.stringify(node.requireNids)}`);
-        
+
         const allRequirementsMet = checkPrerequisitesComplete(tsdoc || {}, node, tdoc);
 
         console.log(`[updateAllowedNodes] node ${node._id} allRequirementsMet: ${allRequirementsMet}`);
@@ -263,32 +263,32 @@ export async function updateAllowedNodes(
 function hasCycle(dag: any[]): boolean {
     const visited = new Set<number>();
     const recStack = new Set<number>();
-    
+
     function dfs(nodeId: number, requireNids: number[] = []): boolean {
         visited.add(nodeId);
         recStack.add(nodeId);
-        
+
         for (const nid of requireNids) {
             const nextNode = dag.find((n) => n._id === nid);
             if (!nextNode) continue;
-            
+
             if (!visited.has(nid)) {
                 if (dfs(nid, nextNode.requireNids)) return true;
             } else if (recStack.has(nid)) {
                 return true;
             }
         }
-        
+
         recStack.delete(nodeId);
         return false;
     }
-    
+
     for (const node of dag) {
         if (!visited.has(node._id)) {
             if (dfs(node._id, node.requireNids || [])) return true;
         }
     }
-    
+
     return false;
 }
 
@@ -303,7 +303,7 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
         const nodeIds = new Set(dag.map((n: any) => n._id));
         assert(dag.length, 'must have at least one node');
         assert(dag.length === nodeIds.size, '_id must be unique');
-        
+
         // 检测循环依赖
         if (hasCycle(dag)) {
             throw new Error('DAG contains cycle dependency');
@@ -411,7 +411,6 @@ async function getScoreboard(
 
     await bus.parallel('contest/scoreboard', tdoc, rows, udict, pdict);
     return [tdoc, rows, udict, pdict] as const;
-
 }
 
 function getLessonDurationHours(tdoc?: Partial<CourseTdoc>) {

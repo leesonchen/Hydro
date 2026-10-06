@@ -525,7 +525,6 @@ export class ClassEditHandler extends Handler {
         }
 
         let shouldUpdateCourseTimes = true;
-        let existingTdocs: any[] = [];
         let revokeClassInvitation = false;
         let expectedName: string | undefined;
         let previousName: string | undefined;
