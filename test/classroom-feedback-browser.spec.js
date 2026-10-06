@@ -5,7 +5,7 @@ const path = require('node:path');
 const { chromium } = require(process.env.HYDRO_PLAYWRIGHT_MODULE || 'playwright');
 const url = process.argv[2];
 if (!url?.includes('/feedback-preview')) throw new Error('Pass the isolated harness FEEDBACK_PREVIEW_URL.');
-const output = path.resolve('review/assets/course-feedback-2026-10-06');
+const output = path.resolve(process.env.HYDRO_FEEDBACK_BROWSER_OUTPUT || 'review/assets/course-feedback-2026-10-06');
 fs.mkdirSync(output, { recursive: true });
 
 (async () => {
@@ -15,6 +15,11 @@ fs.mkdirSync(output, { recursive: true });
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => {
         if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) errors.push(message.text());
+    });
+    page.on('response', (response) => {
+        if (response.status() >= 400 && ['script', 'stylesheet', 'font'].includes(response.request().resourceType())) {
+            errors.push('Asset ' + response.status() + ': ' + response.url());
+        }
     });
     const origin = new URL(url).origin;
     const count = async () => (await (await page.request.get(origin + '/feedback-preview-audit')).json()).events.length;
@@ -26,8 +31,25 @@ fs.mkdirSync(output, { recursive: true });
     try {
         await page.goto(url);
         await page.locator('.cf-roster').waitFor();
+        const builtUI = await page.locator('script[src*="hydro-"]').count() > 0;
+        if (builtUI) {
+            await page.waitForFunction(() => window.Hydro?.pageInstances?.length > 0);
+            const productionScript = await page.locator('script[src*="hydro-"]').getAttribute('src');
+            assert(productionScript.includes('hydro-' + require('../packages/ui-default/package.json').version + '.js'));
+            assert.equal(await page.locator('script[src="/feedback-preview.js"]').count(), 0);
+        }
         const endpoint = page.url().split('?')[0];
         const base = endpoint.replace(/\/feedback$/, '');
+        if (builtUI) await check('production Monaco loads real TypeScript declarations as text', async () => {
+            const libraries = await page.evaluate(async () => {
+                const { monaco } = await window.HydroExports.loadMonaco(['typescript']);
+                const libs = monaco.languages.typescript.javascriptDefaults.getExtraLibs();
+                return { count: Object.keys(libs).length,
+                    fs: Object.values(libs).some((lib) => lib.content.includes('declare module "fs"')) };
+            });
+            assert(libraries.count > 50, JSON.stringify(libraries));
+            assert.equal(libraries.fs, true);
+        });
         await check('A records once with an optional draft, preserves context, and rejects mismatched details', async () => {
             await page.getByLabel('课时', { exact: true }).selectOption('1');
             await page.getByLabel('题目', { exact: true }).selectOption('1');
@@ -97,7 +119,8 @@ fs.mkdirSync(output, { recursive: true });
             await page.request.post(origin + '/feedback-preview-score-change', { data: {} });
             await page.evaluate(() => { window.__feedbackOldFragment = document.querySelector('[data-fragment-id="scoreboard"]'); });
             const refreshed = page.waitForResponse((response) => response.url().includes('pjax=1'));
-            await page.evaluate(() => window.__feedbackRefresh());
+            await page.evaluate(() => window.__feedbackRefresh ? window.__feedbackRefresh()
+                : window.HydroExports.pjax.request({ url: location.pathname, push: false }));
             const response = await refreshed;
             assert.equal(response.status(), 200);
             assert(Array.isArray((await response.json()).fragments));
@@ -166,7 +189,7 @@ fs.mkdirSync(output, { recursive: true });
             await page.screenshot({ path: path.join(output, 'mobile.png'), fullPage: true });
         });
         assert.deepEqual(errors, []);
-        console.log('BROWSER_RESULT', JSON.stringify({ passed: checks.length, errors, checks }));
+        console.log('BROWSER_RESULT', JSON.stringify({ passed: checks.length, errors, checks, ui: builtUI ? 'production-webpack' : 'page-module' }));
     } catch (error) {
         await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true });
         console.error('BROWSER_FAILURE', await page.locator('.main').innerText().catch(() => 'no main'), errors);

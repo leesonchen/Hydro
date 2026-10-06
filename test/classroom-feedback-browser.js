@@ -8,15 +8,23 @@ const stylus = require('stylus');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { ObjectId } = require('mongodb');
 
+const builtUI = process.argv.includes('--built-ui');
+const packageRoot = process.env.HYDRO_FEEDBACK_PACKAGE_ROOT;
+if (packageRoot && !builtUI) throw new Error('Packed runtime requires --built-ui.');
+const core = (file) => require(packageRoot ? path.join(packageRoot, 'node_modules/hydrooj', file)
+    : path.join(__dirname, '../packages/hydrooj', file));
 process.env.CI = 'true';
-process.env.DEV = 'true';
+if (builtUI) delete process.env.DEV;
+else process.env.DEV = 'true';
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hydro-feedback-browser-'));
 const homedir = os.homedir;
 os.homedir = () => path.join(profile, 'home');
 fs.mkdirSync(os.homedir());
 process.env.HYDRO_PROFILE = profile;
 fs.writeFileSync(path.join(profile, 'config.json'), '{}');
-fs.writeFileSync(path.join(profile, 'addon.json'), JSON.stringify(['@hydrooj/ui-default']));
+fs.writeFileSync(path.join(profile, 'addon.json'), JSON.stringify([
+    packageRoot ? path.join(packageRoot, 'node_modules/@hydrooj/ui-default') : '@hydrooj/ui-default',
+]));
 const instances = [];
 const create = MongoMemoryServer.create;
 MongoMemoryServer.create = async function (...args) {
@@ -33,7 +41,7 @@ MongoMemoryServer.create = async function (...args) {
     process.argv.push(`--port=${port}`, '--host=127.0.0.1');
     await new Promise((resolve) => {
         process.send = (value) => { if (value === 'ready') resolve(); return true; };
-        require('hydrooj/bin/hydrooj');
+        core('bin/hydrooj.js');
     });
     const model = global.Hydro.model;
     const { PERM } = model.builtin;
@@ -78,15 +86,15 @@ MongoMemoryServer.create = async function (...args) {
         alias: { vj: path.resolve(__dirname, '../packages/ui-default') },
         define: { 'process.env.NODE_ENV': '"development"' },
     };
-    await esbuild.build(bundleOptions);
-    const { Handler } = require('../packages/hydrooj/src/service/server');
+    if (!builtUI) await esbuild.build(bundleOptions);
+    const { Handler } = core('src/service/server');
     const nativeCSS = fs.readFileSync(path.join(__dirname, '../review/ui-proposals-2026-10-05/hydro-native.css'), 'utf8');
-    const { ForbiddenError } = require('../packages/hydrooj/src/error');
+    const { ForbiddenError } = core('src/error');
     const ctx = await new Promise((resolve) => global.app.inject(['server'], resolve));
     let loseNextReceipt = false;
     let denyNextRead = false;
     let failNextStudentAccess = false;
-    const statusCollection = require('../packages/hydrooj/src/model/document').collStatus;
+    const statusCollection = core('src/model/document').collStatus;
     const updateStatus = statusCollection.findOneAndUpdate;
     statusCollection.findOneAndUpdate = async function (...args) {
         if (failNextStudentAccess && args[0].uid === studentUid) {
@@ -95,7 +103,7 @@ MongoMemoryServer.create = async function (...args) {
         }
         return await updateStatus.apply(this, args);
     };
-    const coll = require('../packages/hydrooj/src/model/classroomFeedback').coll;
+    const coll = core('src/model/classroomFeedback').coll;
     const find = coll.findOne;
     coll.findOne = async function (...args) {
         if (denyNextRead) {
@@ -125,6 +133,10 @@ MongoMemoryServer.create = async function (...args) {
         const html = await handler.renderHTML(handler.response.template, handler.response.body);
         handler.response.template = null;
         handler.response.type = 'text/html';
+        if (builtUI) {
+            handler.response.body = html;
+            return;
+        }
         handler.response.body = html.replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '')
             + '<style>' + nativeCSS + stylus.render(fs.readFileSync(path.join(__dirname,
                 '../packages/ui-default/components/classroom-feedback.page.styl'), 'utf8')) + '</style>'
@@ -161,6 +173,8 @@ MongoMemoryServer.create = async function (...args) {
         }
     });
     console.log(`FEEDBACK_PREVIEW_URL=http://127.0.0.1:${port}/feedback-preview`);
+    console.log(`FEEDBACK_PREVIEW_UI=${builtUI ? 'production-webpack' : 'page-module'}`);
+    if (packageRoot) console.log(`FEEDBACK_PREVIEW_PACKAGE=${packageRoot}`);
     const stop = async () => {
         await global.app.parallel('app/exit');
         await global.app.root.fiber.dispose();

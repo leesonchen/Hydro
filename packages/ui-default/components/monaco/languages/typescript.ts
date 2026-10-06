@@ -30,9 +30,7 @@ export async function loadTypes() {
     if (!key.startsWith('.')) continue;
     const m = await types(key);
     const val = m.replace('declare var require: NodeRequire;', '');
-    if (val.includes('declare module ')) {
-      modules.push(val.toString().split('declare module \'')[1].split('\'')[0]);
-    }
+    for (const match of val.matchAll(/declare module ['"]([^'"]+)['"]/g)) modules.push(match[1]);
     const uri = `ts:node/${key.split('./')[1]}`;
     monaco.languages.typescript.javascriptDefaults.addExtraLib(val, uri);
     monaco.editor.createModel(val, 'typescript', monaco.Uri.parse(uri));

@@ -193,7 +193,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         },
         {
           test: /\.ts$/,
-          include: /@types\//,
+          include: /@types[\\/]/,
           type: 'asset/inline',
           generator: {
             dataUrl: (buf) => buf.toString(),
@@ -201,13 +201,13 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         },
         {
           test: /\.[mc]?[jt]sx?$/,
-          exclude: [/@types\//, /components\/message\//, /entry\.js/],
+          exclude: [/@types[\\/]/, /components[\\/]message[\\/]/, /entry\.js/],
           type: 'javascript/auto',
           use: [esbuildLoader()],
         },
         {
           test: /\.[mc]?[jt]sx?$/,
-          include: [/components\/message\//, /entry\.js/],
+          include: [/components[\\/]message[\\/]/, /entry\.js/],
           type: 'javascript/auto',
           use: [{
             loader: 'ts-loader',
