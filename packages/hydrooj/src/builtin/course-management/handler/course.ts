@@ -1,6 +1,7 @@
 import assert from 'assert';
 import { canManageFeedback } from '../../../lib/classroomFeedbackAccess';
 import { getReferenceCodeSolutions, isReferenceCodeSolution, REFERENCE_CODE_TITLE } from '../../../lib/referenceCode';
+import { feedbackRepository } from '../../../model/classroomFeedback';
 import {
     _, BadRequestError, ContestAlreadyAttendedError, ContestModel, ContestNotFoundError, ContestScoreboardHiddenError,
     DocumentModel, ForbiddenError, Handler, moment, NotAssignedError, ObjectId, OplogModel,
@@ -11,6 +12,7 @@ import bus from '../../../service/bus';
 import { ClassModel } from '../model/class';
 import type { CourseTdoc, DagNode } from '../model/course';
 import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
+import { nextStructure, nodeHighWatermark, problemAccessNodeIds, problemNodeIds } from '../model/structure';
 
 const TEMPLATE_ALL_KEY = 'templates::__all';
 const TEMPLATE_UNCATEGORIZED_KEY = 'templates::__uncategorized';
@@ -100,28 +102,13 @@ async function getCourseStudentUids(domainId: string, tdoc: CourseTdoc) {
     return Array.from(new Set([...(group?.students || []), ...getExtraStudentUids(tdoc)].filter(Boolean)));
 }
 
-function getStatusMap(tsdocs: any[]) {
-    return new Map<number, any>(tsdocs.map((tsdoc) => [tsdoc.uid, tsdoc]));
-}
-
-function getNodeAccessPatch(tsdoc: any, field: 'allow' | 'lectureAllow', node: number, allow?: boolean, reset?: boolean) {
-    const current = tsdoc?.[field] || {};
-    if (reset) {
-        if (!Object.prototype.hasOwnProperty.call(current, node)) return null;
-        const { [node]: _, ...rest } = current;
-        return rest;
-    }
-    return { ...current, [node]: allow };
-}
-
 function canEditCourse(handler: Handler, tdoc: CourseTdoc) {
     return handler.user.own(tdoc)
         || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
         || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
 }
 
-function canViewCourseLecture(handler: Handler, tdoc: CourseTdoc, node: DagNode, tsdoc: any) {
-    if (canEditCourse(handler, tdoc) || handler.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)) return true;
+function studentCanViewCourseLecture(node: DagNode, tsdoc: any) {
     if (!tsdoc?.attend) return false;
     const nodeId = node._id;
     const lectureFlag = tsdoc.lectureAllow?.[nodeId];
@@ -131,6 +118,22 @@ function canViewCourseLecture(handler: Handler, tdoc: CourseTdoc, node: DagNode,
         return checkProblemRuleComplete(tsdoc, node.lectureRule.pids, node.lectureRule.condition);
     }
     return tsdoc.allow?.[nodeId] === true;
+}
+
+function canViewCourseLecture(handler: Handler, tdoc: CourseTdoc, node: DagNode, tsdoc: any) {
+    return canEditCourse(handler, tdoc) || handler.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
+        || studentCanViewCourseLecture(node, tsdoc);
+}
+
+export async function courseNodeHighWatermark(domainId: string, tdoc: CourseTdoc) {
+    const [statuses, max] = await Promise.all([
+        ContestModel.getMultiStatus(domainId, { docId: tdoc.docId })
+            .project({ allow: 1, lectureAllow: 1, score: 1, accept: 1 }).toArray(),
+        feedbackRepository.maxNodeId({ domainId, activityType: 'course', activityId: tdoc.docId.toString() }),
+    ]);
+    const keys = statuses.flatMap((status) => ['allow', 'lectureAllow', 'score', 'accept']
+        .flatMap((field) => Object.keys(status[field] || {}).map(Number))).filter(Number.isSafeInteger);
+    return nodeHighWatermark(tdoc, Math.max(max, ...keys));
 }
 
 // 检查前置章节完成情况（按当前节点 completeCondition 聚合判断）
@@ -1154,6 +1157,7 @@ export class CourseEditHandler extends Handler {
 
         this.response.body = {
             page_name: this.tdoc ? 'course_edit' : 'course_create',
+            nodeIdHighWatermark: this.tdoc ? await courseNodeHighWatermark(domainId, this.tdoc) : 0,
             tdoc: this.tdoc,
             beginAtText: beginAt.format('YYYY-M-D H:mm'),
             endAtText: endAt.format('YYYY-M-D H:mm'),
@@ -1191,6 +1195,7 @@ export class CourseEditHandler extends Handler {
     @param('extraStudents', Types.CommaSeperatedArray, true)
     @param('publicScoreboard', Types.Boolean, true)
     @param('enablePenalty', Types.Boolean, true)
+    @param('dagRevision', Types.UnsignedInt, true)
     async post(
         domainId: string,
         tid: ObjectId | undefined,
@@ -1208,6 +1213,7 @@ export class CourseEditHandler extends Handler {
         extraStudentsStr: string[] = [],
         publicScoreboard = true,
         enablePenalty = true,
+        dagRevision = 0,
     ) {
         if (this.args.operation) return;
         assign = Array.from(new Set((assign || []).map((s) => (s || '').trim()).filter(Boolean)));
@@ -1341,6 +1347,20 @@ export class CourseEditHandler extends Handler {
             const finalDag = copiedLecture.dag;
             const finalLecture = copiedLecture.lecture;
             const finalLectureMeta = copiedLecture.lectureMeta;
+            let structure: ReturnType<typeof nextStructure>;
+            try {
+                const current = tid && !saveAsTemplate ? this.tdoc : undefined;
+                const historicalMax = current ? await courseNodeHighWatermark(domainId, current) : 0;
+                structure = nextStructure(current, finalDag, current ? dagRevision : 0, historicalMax);
+                if (saveAsTemplate && sourceCourseForTemplate) {
+                    structure.problemNodeIds = problemNodeIds({ dag: finalDag, problemNodeIds: problemNodeIds(sourceCourseForTemplate) });
+                    structure.problemAccessNodeIds = problemAccessNodeIds({
+                        dag: finalDag, problemAccessNodeIds: problemAccessNodeIds(sourceCourseForTemplate),
+                    });
+                }
+            } catch (error) {
+                throw new BadRequestError(error.message);
+            }
 
             if (tid && !saveAsTemplate) {
                 const updated = await ContestModel.editIfAssigned(domainId, tid, lockedSourceAssign, {
@@ -1356,11 +1376,11 @@ export class CourseEditHandler extends Handler {
                     updateAt,
                     publicScoreboard,
                     enablePenalty,
-                    dag: finalDag,
+                    ...structure,
                     assign: finalAssign,
                     ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
                     ...(Object.keys(finalLectureMeta).length ? { lectureMeta: finalLectureMeta } : {}),
-                });
+                }, { dagRevision: this.tdoc.dagRevision ?? { $exists: false } });
                 if (!updated) {
                     throw new BadRequestError('Course assignment changed. Please refresh and try again.');
                 }
@@ -1377,7 +1397,7 @@ export class CourseEditHandler extends Handler {
                     pids,
                 );
                 await ContestModel.edit(domainId, tid, {
-                    dag: finalDag,
+                    ...structure,
                     assign: finalAssign,
                     editor,
                     updateAt,
@@ -1498,6 +1518,13 @@ export class CourseManageHandler extends Handler {
             (tdoc as any).editor,
         ].filter(Boolean)));
         const udict = await UserModel.getListForRender(domainId, allUids, ['displayName']);
+        const course = tdoc as CourseTdoc;
+        const students = await getCourseStudentUids(domainId, course);
+        const accessCounts = Object.fromEntries(course.dag.map((node) => [node._id, {
+            lecture: students.filter((uid) => studentCanViewCourseLecture(node, tsdict[uid])).length,
+            problems: students.filter((uid) => tsdict[uid]?.attend && tsdict[uid]?.allow?.[node._id] === true).length,
+            total: students.length,
+        }]));
 
         this.response.template = 'course_manage.html';
         this.response.body = {
@@ -1508,7 +1535,18 @@ export class CourseManageHandler extends Handler {
             udict,
             group: group || { students: [] },
             extraStudents,
+            accessCounts,
         };
+    }
+
+    private async batchResult(targets: number[], operation: (uid: number) => Promise<any>) {
+        const outcomes = await Promise.allSettled(targets.map(operation));
+        const results = outcomes.map((result, index) => ({
+            uid: targets[index], success: result.status === 'fulfilled',
+            ...(result.status === 'rejected' ? { error: '操作失败，请重试该学生。' } : {}),
+        }));
+        if (this.request.headers.accept?.includes('application/json')) this.response.body = { results };
+        else this.back();
     }
 
     @param('tid', Types.ObjectId)
@@ -1517,27 +1555,11 @@ export class CourseManageHandler extends Handler {
     @param('clear', Types.Boolean, true)
     async postUnrank(domainId: string, tid: ObjectId, uid: number, unrank?: boolean, clear?: boolean) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
-        const studentUids = await getCourseStudentUids(domainId, tdoc);
-        let targets: number[];
-        if (uid === 0) {
-            targets = studentUids;
-        } else {
-            if (!studentUids.includes(uid)) throw new BadRequestError('学生不在课程名单中');
-            targets = [uid];
-        }
-
-        if (!targets.length) {
-            this.back();
-            return;
-        }
-
-        if (clear) {
-            // Unset unrank so it falls back to default ranked behavior.
-            await Promise.all(targets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: null })));
-        } else {
-            await Promise.all(targets.map((u) => ContestModel.setStatus(domainId, tid, u, { unrank: !!unrank })));
-        }
-        this.back();
+        const students = await getCourseStudentUids(domainId, tdoc);
+        if (uid && !students.includes(uid)) throw new BadRequestError('学生不在课程名单中');
+        await this.batchResult(uid ? [uid] : students, (target) => clear
+            ? ContestModel.setStatus(domainId, tid, target, {}, { unrank: 1 })
+            : ContestModel.setStatus(domainId, tid, target, { unrank: !!unrank }));
     }
 
     @param('tid', Types.ObjectId)
@@ -1545,47 +1567,32 @@ export class CourseManageHandler extends Handler {
     @param('allow', Types.Boolean)
     async postVisit(domainId: string, tid: ObjectId, uid: number, allow = false) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
-        const group = await ClassModel.getGroupByName(domainId, tdoc.assign?.[0] || '');
+        const group = await ClassModel.getGroupByName(domainId, getAssignGroup(tdoc));
+        const students = await getCourseStudentUids(domainId, tdoc);
+        if (uid && !students.includes(uid)) throw new ForbiddenError('用户不在该课程的学生名单中');
+        const targets = uid ? [uid] : group?.students || [];
+        if (!uid && !group) throw new BadRequestError('没有找到班级');
+        await this.batchResult(targets, async (target) => {
+            const status = await ContestModel.getStatus(domainId, tid, target);
+            if (allow && !status?.attend) {
+                await ContestModel.attend(domainId, tid, target);
+                await updateAllowedNodes(domainId, tid, target, tdoc);
+            } else if (!allow && status?.attend) await ContestModel.cancelAttend(domainId, tid, target);
+        });
+    }
 
-        if (group && group.students.includes(uid)) {
-            if (allow) {
-                await ContestModel.attend(domainId, tid, uid);
-                await updateAllowedNodes(domainId, tid, uid, tdoc);
-            } else {
-                await ContestModel.cancelAttend(domainId, tid, uid);
-            }
-        } else if (tdoc.assign?.includes(uid.toString())) {
-            // 处理临时学生（UID 已作为字符串存储在 assign 中）
-            if (allow) {
-                await ContestModel.attend(domainId, tid, uid);
-                await updateAllowedNodes(domainId, tid, uid, tdoc);
-            } else {
-                await ContestModel.cancelAttend(domainId, tid, uid);
-            }
-        } else if (uid === 0) {
-            // 批量操作
-            if (!group) throw new BadRequestError('没有找到班级');
-
-            const existingStatus = await ContestModel.getMultiStatus(domainId, {
-                docId: tid,
-                uid: { $in: group.students },
-            }).toArray();
-
-            if (allow) {
-                const toAdd = group.students.filter((s) => !existingStatus.some((e) => e.uid === s && e.attend));
-                await Promise.all(toAdd.map(async (s) => {
-                    await ContestModel.attend(domainId, tid, s);
-                    await updateAllowedNodes(domainId, tid, s, tdoc);
-                }));
-            } else {
-                const toRemove = group.students.filter((s) => existingStatus.some((e) => e.uid === s));
-                await Promise.all(toRemove.map((studentUid) => ContestModel.cancelAttend(domainId, tid, studentUid)));
-            }
-        } else {
-            throw new ForbiddenError('用户不在该课程的学生名单中');
-        }
-
-        this.back();
+    private async setNodeAccess(domainId: string, tid: ObjectId, uid: number, node: number,
+        field: 'allow' | 'lectureAllow', allow?: boolean, reset?: boolean) {
+        const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
+        if (!tdoc.dag.some((item) => item._id === node)) throw new ValidationError('node', node, '节点不存在');
+        const students = await getCourseStudentUids(domainId, tdoc);
+        if (uid && !students.includes(uid)) throw new BadRequestError('学生不在课程名单中');
+        if (!students.length) throw new BadRequestError('没有找到学生');
+        if (!reset && typeof allow !== 'boolean') throw new ValidationError('allow');
+        const key = `${field}.${node}`;
+        await this.batchResult(uid ? [uid] : students, (target) => reset
+            ? ContestModel.setStatus(domainId, tid, target, {}, { [key]: 1 })
+            : ContestModel.setStatus(domainId, tid, target, { [key]: allow }));
     }
 
     @param('tid', Types.ObjectId)
@@ -1593,41 +1600,8 @@ export class CourseManageHandler extends Handler {
     @param('node', Types.Int)
     @param('allow', Types.Boolean, true)
     @param('reset', Types.Boolean, true)
-    async postAllowUser(domainId: string, tid: ObjectId, uid: number, node: number, allow?: boolean, reset?: boolean) {
-        const [tdoc, tsdocs] = await Promise.all([
-            ContestModel.get(domainId, tid) as Promise<CourseTdoc>,
-            ContestModel.getMultiStatus(domainId, { docId: tid }).toArray(),
-        ]);
-
-        if (!tdoc.dag.find((n) => n._id === node)) {
-            throw new ValidationError('node', node, '节点不存在');
-        }
-
-        if (uid === 0) {
-            // 批量操作：为所有班级学生设置权限
-            const targetUids = await getCourseStudentUids(domainId, tdoc);
-            if (!targetUids.length) throw new BadRequestError('没有找到班级');
-            const tsdict = getStatusMap(tsdocs);
-            
-            // 为所有学生设置节点权限
-            await Promise.all(targetUids.map((targetUid) => {
-                const newAllow = getNodeAccessPatch(tsdict.get(targetUid), 'allow', node, allow, reset);
-                if (!newAllow) return null;
-                return ContestModel.setStatus(domainId, tid, targetUid, { allow: newAllow });
-            }));
-        } else {
-            const targetUids = await getCourseStudentUids(domainId, tdoc);
-            if (!targetUids.includes(uid)) throw new BadRequestError('学生不在课程名单中');
-            const tsdoc = tsdocs.find((t) => t.uid === uid);
-            const newAllow = getNodeAccessPatch(tsdoc, 'allow', node, allow, reset);
-            if (!newAllow) {
-                this.back();
-                return;
-            }
-            await ContestModel.setStatus(domainId, tid, uid, { allow: newAllow });
-        }
-
-        this.back();
+    async postAllowUser(domainId: string, tid: ObjectId, uid: number, node: number, allow = false, reset?: boolean) {
+        await this.setNodeAccess(domainId, tid, uid, node, 'allow', allow, reset);
     }
 
     @param('tid', Types.ObjectId)
@@ -1635,41 +1609,8 @@ export class CourseManageHandler extends Handler {
     @param('uid', Types.Int)
     @param('allow', Types.Boolean, true)
     @param('reset', Types.Boolean, true)
-    async postAllowLecture(domainId: string, tid: ObjectId, node: number, uid: number, allow?: boolean, reset?: boolean) {
-        const [tdoc, tsdocs] = await Promise.all([
-            ContestModel.get(domainId, tid) as Promise<CourseTdoc>,
-            ContestModel.getMultiStatus(domainId, { docId: tid }).toArray(),
-        ]);
-
-        if (!tdoc.dag.find((n) => n._id === node)) {
-            throw new ValidationError('node', node, '节点不存在');
-        }
-
-        if (uid === 0) {
-            // 批量操作：为所有班级学生设置权限
-            const targetUids = await getCourseStudentUids(domainId, tdoc);
-            if (!targetUids.length) throw new BadRequestError('没有找到班级');
-            const tsdict = getStatusMap(tsdocs);
-            
-            // 为所有学生设置讲义权限
-            await Promise.all(targetUids.map((targetUid) => {
-                const newLectureAllow = getNodeAccessPatch(tsdict.get(targetUid), 'lectureAllow', node, allow, reset);
-                if (!newLectureAllow) return null;
-                return ContestModel.setStatus(domainId, tid, targetUid, { lectureAllow: newLectureAllow });
-            }));
-        } else {
-            const targetUids = await getCourseStudentUids(domainId, tdoc);
-            if (!targetUids.includes(uid)) throw new BadRequestError('学生不在课程名单中');
-            const tsdoc = tsdocs.find((t) => t.uid === uid);
-            const newLectureAllow = getNodeAccessPatch(tsdoc, 'lectureAllow', node, allow, reset);
-            if (!newLectureAllow) {
-                this.back();
-                return;
-            }
-            await ContestModel.setStatus(domainId, tid, uid, { lectureAllow: newLectureAllow });
-        }
-
-        this.back();
+    async postAllowLecture(domainId: string, tid: ObjectId, node: number, uid: number, allow = false, reset?: boolean) {
+        await this.setNodeAccess(domainId, tid, uid, node, 'lectureAllow', allow, reset);
     }
 }
 
@@ -2017,7 +1958,9 @@ export class CourseScoreboardHandler extends Handler {
         };
 
         const [, rows, udict, pdict] = await getScoreboard(this, domainId, tid, config, pids);
+        const feedbackEnabled = await canManageFeedback(this, tdoc);
 
+        this.response.pjax = 'partials/scoreboard.html';
         this.response.template = 'contest_scoreboard.html';
         this.response.body = {
             tdoc,
@@ -2026,6 +1969,10 @@ export class CourseScoreboardHandler extends Handler {
             udict,
             pdict,
             page_name: 'contest_scoreboard',
+            courseProblemAccessNodeIds: problemAccessNodeIds(tdoc),
+            feedbackUrl: feedbackEnabled ? this.url('course_feedback', { tid }) : null,
+            feedbackNodeId: id || null,
+            feedbackRoster: feedbackEnabled ? audience.studentUids : [],
         };
     }
 

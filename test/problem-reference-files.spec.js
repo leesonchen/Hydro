@@ -9,6 +9,11 @@ const filename = path.resolve(__dirname, '../packages/hydrooj/src/handler/proble
 const compiled = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, experimentalDecorators: true, esModuleInterop: true },
 }).outputText;
+const structure = {};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname,
+    '../packages/hydrooj/src/builtin/course-management/model/structure.ts'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, { exports: structure });
 
 function fixture() {
     const PERM = new Proxy({}, { get: (_, name) => name });
@@ -25,6 +30,7 @@ function fixture() {
     const boundary = new Error('Remaining page metadata is outside this test');
     const noopDecorator = () => () => {};
     const mocks = {
+        '../builtin/course-management/model/structure': structure,
         '../logger': { Logger: class {} },
         '../error': new Proxy({ PermissionError }, { get: (obj, name) => obj[name] || Error }),
         '../model/builtin': { PERM, PRIV },

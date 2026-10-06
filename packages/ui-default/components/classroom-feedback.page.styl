@@ -1,0 +1,85 @@
+.classroom-feedback
+  border: 0
+  border-radius: 0
+  box-shadow: none
+  padding: 0
+  background: transparent
+  .cf-tabs
+    display: flex
+    border-bottom: 1px solid #ddd
+    margin-bottom: 20px
+    button
+      padding: 12px 16px
+      border: 0
+      border-bottom: 3px solid transparent
+      background: transparent
+      cursor: pointer
+      &.active
+        color: #ed5f82
+        border-bottom-color: #ed5f82
+  .cf-toolbar, .cf-editor
+    display: flex
+    align-items: end
+    flex-wrap: wrap
+    gap: 12px
+    margin-bottom: 12px
+    label
+      flex: 1 1 170px
+      font-size: 13px
+    .select, .textbox
+      display: block
+      width: 100%
+      margin-top: 6px
+  .cf-notice
+    padding: 10px 12px
+    margin: 12px 0
+    border-left: 3px solid #5f9fd6
+    background: #f5f8fb
+    .button
+      margin: 0 0 0 12px
+    &--error, &--unknown
+      border-color: #d9534f
+      background: #fff5f5
+    &--success
+      border-color: #50a060
+  .cf-error
+    color: #a33
+  .cf-table-wrap
+    width: 100%
+    overflow-x: auto
+  .data-table
+    min-width: 680px
+    table-layout: auto
+    td
+      white-space: normal
+      vertical-align: middle
+  .cf-quick-actions
+    width: 340px
+    min-width: 340px
+  .cf-quick-actions, .cf-event-actions
+    .button
+      margin: 3px 6px 3px 0
+  .cf-retest
+    color: #b64e67
+  .cf-editor-row td
+    background: #f5f8fb
+  .cf-editor textarea
+    min-height: 65px
+  .cf-detail
+    margin-top: 20px
+  .cf-footer, .cf-instructions
+    line-height: 1.7
+  &--compact
+    .data-table
+      min-width: 580px
+    .cf-toolbar
+      margin-top: 10px
+
+.cf-scoreboard-entry
+  display: block
+  margin-top: 5px
+  font-size: 12px
+
+.cf-scoreboard-editor td
+  background: #f5f8fb
+  padding: 15px

@@ -1,550 +1,370 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
-import ClassroomFeedback from 'vj/components/classroom-feedback';
-import Notification from 'vj/components/notification';
+import { createRoot } from 'react-dom/client';
 import { NamedPage } from 'vj/misc/Page';
-import { i18n } from 'vj/utils';
 
-type CourseManagePayload = {
-  page_name?: string;
-  tdoc: any;
-  tsdict: Record<string, any>;
-  udict: Record<string, any>;
-  group: { students: number[] };
-  extraStudents: number[];
-  error?: { message: string };
-  feedbackUrl?: string;
-};
-
-async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
+interface Command {
+  operation: string;
+  uid: number;
+  node?: number;
+  allow?: boolean;
+  reset?: boolean;
+  unrank?: boolean;
+  clear?: boolean;
+}
+interface Failure {
+  command: Command;
+  label: string;
+}
+async function request(body?: Command) {
+  const response = await fetch(window.location.pathname, {
     credentials: 'same-origin',
-    ...init,
-    headers: {
-      accept: 'application/json',
-      ...(init?.headers || {}),
-    },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}),
   });
-  return await res.json();
+  const data = await response.json();
+  if (!response.ok || response.redirected || data.error) throw new Error(data.error?.message || '请求失败，请核实后重试。');
+  return data;
 }
 
-function getUserText(udoc: any) {
-  if (!udoc) return '';
-  const uname = udoc.uname || '';
-  const displayName = udoc.displayName || '';
-  if (displayName && displayName !== uname) return `${uname} (${displayName})`;
-  return uname || displayName;
-}
-
-function sortStudents(uids: number[], udict: Record<string, any>) {
-  return [...uids].sort((a, b) => {
-    const ua = getUserText(udict[a]);
-    const ub = getUserText(udict[b]);
-    return ua.localeCompare(ub, 'zh-Hans-CN');
-  });
-}
-
+// Hydro mounts this through NamedPage rather than a React refresh entry.
+// eslint-disable-next-line react-refresh/only-export-components
 function CourseManageApp() {
-  const [loading, setLoading] = React.useState(true);
-  const [payload, setPayload] = React.useState<CourseManagePayload | null>(null);
-  const [tab, setTab] = React.useState<'students' | 'extraStudents' | 'chapters'>('students');
-  const [selectedNodes, setSelectedNodes] = React.useState<Set<number>>(new Set());
-
+  const [data, setData] = React.useState<any>(null);
+  const [error, setError] = React.useState('');
+  const [tab, setTab] = React.useState('students');
+  const [busy, setBusy] = React.useState(false);
+  const [notice, setNotice] = React.useState('');
+  const [failures, setFailures] = React.useState<Failure[]>([]);
+  const [confirmation, setConfirmation] = React.useState<{ title: string, commands: Command[], uids: number[] } | null>(null);
   const load = React.useCallback(async () => {
-    setLoading(true);
     try {
-      const data = await requestJSON<CourseManagePayload>('', {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (data?.error) {
-        Notification.error(data.error.message);
-        setPayload(null);
-      } else {
-        setPayload(data);
-        const dag: any[] = data?.tdoc?.dag || [];
-        if (!dag.length) {
-          Notification.error('课程暂无章节');
-        }
-      }
-    } catch (e: any) {
-      Notification.error(e?.message || '加载失败');
-      setPayload(null);
-    } finally {
-      setLoading(false);
+      setData(await request());
+      setError('');
+    } catch (failure) {
+      setError(failure.message);
     }
   }, []);
-
   React.useEffect(() => {
     load();
   }, [load]);
+  const name = (uid: number) => data?.udict[uid]?.displayName || data?.udict[uid]?.uname || `UID ${uid}`;
+  const all = data ? [...new Set<number>([...data.group.students, ...data.extraStudents])] : [];
+  const run = async (commands: Command[]) => {
+    if (busy) return;
+    setBusy(true);
+    setConfirmation(null);
+    const failed: Failure[] = [];
+    let success = 0;
+    for (const command of commands) {
+      try {
+        // Collect every student result; refresh the page data once after the batch.
 
-  const post = React.useCallback(async (body: Record<string, any>) => {
-    try {
-      const data = await requestJSON<any>('', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-      if (data?.error) {
-        Notification.error(data.error.message);
-        return false;
+        const result = await request(command);
+        if (!Array.isArray(result.results)) throw new Error('未收到逐人处理结果');
+        for (const item of result.results) {
+          if (item.success) success++;
+          else {
+            failed.push({
+              command: { ...command, uid: item.uid },
+              label: name(item.uid) + (command.node ? ` · 课时编号 ${command.node}` : ''),
+            });
+          }
+        }
+      } catch (failure) {
+        failed.push({ command, label: `${command.uid ? name(command.uid) : '本批次'}：${failure.message}` });
       }
-      await load();
-      Notification.success('操作成功');
-      return true;
-    } catch (e: any) {
-      Notification.error(e?.message || '操作失败');
-      return false;
     }
-  }, [load]);
-
-  const confirmAndPost = React.useCallback(async (message: string, body: Record<string, any>) => {
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(message)) return false;
-    return await post(body);
-  }, [post]);
-
-  if (loading) {
-    return (
-      <div className="typo">
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  if (!payload) {
-    return (
-      <div className="typo">
-        <p>无法加载课程管理信息。</p>
-      </div>
-    );
-  }
-
-  const { tdoc, tsdict, udict, group, extraStudents } = payload;
-  const students = sortStudents(group?.students || [], udict);
-  const extraStudentList = sortStudents(extraStudents || [], udict);
-  const dag: any[] = tdoc?.dag || [];
-  const studentUids = Array.from(new Set([...(group?.students || []), ...(extraStudents || [])]));
-  const claimedStudentUids = studentUids.filter((uid) => !!tsdict?.[String(uid)]?.attend);
-  const basePath = window.location.pathname.replace(/\/manage$/, '');
-
-  const toggleNodeSelection = (nodeId: number) => {
-    const newSet = new Set(selectedNodes);
-    if (newSet.has(nodeId)) {
-      newSet.delete(nodeId);
-    } else {
-      newSet.add(nodeId);
-    }
-    setSelectedNodes(newSet);
+    setFailures(failed);
+    setNotice(`已确认成功 ${success} 项；需核实或重试 ${failed.length} 项。`);
+    await load();
+    setBusy(false);
   };
-
-  const selectAllNodes = () => {
-    if (selectedNodes.size === dag.length) {
-      setSelectedNodes(new Set());
-    } else {
-      setSelectedNodes(new Set(dag.map((n: any) => n._id)));
-    }
-  };
-
-  const batchAllowUser = async (allow: boolean, reset?: boolean) => {
-    for (const node of dag) {
-      await post({ operation: 'allowUser', uid: 0, node: node._id, allow, reset });
-    }
-  };
-
-  const batchAllowLecture = async (allow: boolean) => {
-    for (const node of dag) {
-      await post({ operation: 'allowLecture', uid: 0, node: node._id, allow });
-    }
-  };
-
-  const renderTabs = () => (
-    <div className="row">
-      <div className="columns">
-        <div className="course-manage-tabs">
-          <span
-            className={`course-manage-tab ${tab === 'students' ? 'active' : ''}`}
-            onClick={() => setTab('students')}
-          >
-            班级成员管理
-          </span>
-          <span
-            className={`course-manage-tab ${tab === 'extraStudents' ? 'active' : ''}`}
-            onClick={() => setTab('extraStudents')}
-          >
-            临时调课学生 ({extraStudents?.length || 0})
-          </span>
-          <span
-            className={`course-manage-tab ${tab === 'chapters' ? 'active' : ''}`}
-            onClick={() => setTab('chapters')}
-          >
-            课程节点管理
-          </span>
-        </div>
-      </div>
-    </div>
+  if (!data) return <p role="status">{error || '正在加载课程管理…'}</p>;
+  const base = window.location.pathname.replace(/\/manage$/, '');
+  const dag = data.tdoc.dag || [];
+  const confirm = (title: string, commands: Command[], uids = all) => setConfirmation({ title, commands, uids });
+  const nodeCommands = (operation: string, allow: boolean, reset = false): Command[] =>
+    dag.map((node) => ({
+      operation,
+      node: node._id,
+      uid: 0,
+      allow,
+      reset,
+    }));
+  const memberTable = (uids: number[]) => (
+    <table className="data-table">
+      <thead>
+        <tr>
+          <th>学生</th>
+          <th>课程认领</th>
+          <th>排名设置</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {uids.map((uid) => {
+          const status = data.tsdict[uid];
+          return (
+            <tr key={uid}>
+              <td>
+                <strong>{name(uid)}</strong>
+                <br />
+                <span className="supplementary">UID {uid}</span>
+              </td>
+              <td>{status?.attend ? '已认领' : '未认领'}</td>
+              <td>{status?.unrank ? '不参与排名' : '参与排名'}</td>
+              <td>
+                <button
+                  type="button"
+                  className="button compact"
+                  disabled={busy}
+                  onClick={() =>
+                    status?.attend
+                      ? confirm(`取消 ${name(uid)} 的课程认领`, [{ operation: 'visit', uid, allow: false }], [uid])
+                      : run([{ operation: 'visit', uid, allow: true }])}
+                >
+                  {status?.attend ? '取消认领' : '代认领'}
+                </button>
+                {status?.attend ? (
+                  <button
+                    type="button"
+                    className="button compact"
+                    disabled={busy}
+                    onClick={() => run([{ operation: 'unrank', uid, unrank: !status.unrank }])}
+                  >
+                    {status.unrank ? '恢复排名' : '不参与排名'}
+                  </button>
+                ) : null}
+              </td>
+            </tr>
+          );
+        })}
+        {!uids.length ? (
+          <tr>
+            <td colSpan={4}>当前没有学生。</td>
+          </tr>
+        ) : null}
+      </tbody>
+    </table>
   );
-
-  const renderStudentsTab = () => (
-    <div>
-      <div className="row">
-        <div className="columns">
+  return (
+    <div className="course-manage-app">
+      <p className="supplementary">管理课程参与、排名和访问设置。课堂观察请使用“课程反馈”。</p>
+      {error ? <p role="alert">{error}</p> : null}
+      {notice ? <p role="status">{notice}</p> : null}
+      {failures.length ? (
+        <div>
+          <ul>
+            {failures.map((failure, index) => (
+              <li key={index}>{failure.label}</li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="button primary compact"
+            disabled={busy}
+            onClick={() => run(failures.map((failure) => failure.command))}
+          >
+            只重试以上失败项
+          </button>
+        </div>
+      ) : null}
+      {confirmation ? (
+        <section className="section" aria-label="确认批量操作">
+          <div className="section__body">
+            <h2>{confirmation.title}</h2>
+            <p>课程：{data.tdoc.title}</p>
+            <p>
+              范围：
+              {confirmation.commands.some((command) => command.node !== undefined)
+                ? confirmation.commands.map((command) => dag.find((node) => node._id === command.node)?.title).join('、')
+                : '本课程'}
+            </p>
+            <p>
+              对象：{confirmation.uids.length} 人 · {confirmation.uids.map(name).join('、')}
+            </p>
+            <p className="supplementary">恢复访问规则只清除手工访问设置，保留提交、成绩和课堂观察。</p>
+            <button type="button" className="button primary" disabled={busy} onClick={() => run(confirmation.commands)}>
+              确认执行
+            </button>
+            <button type="button" className="button" onClick={() => setConfirmation(null)}>
+              取消
+            </button>
+          </div>
+        </section>
+      ) : null}
+      <div className="course-manage-tabs" role="tablist">
+        {[
+          ['students', '班级成员'],
+          ['extra', '临时调课学生'],
+          ['nodes', '课时访问设置'],
+        ].map(([value, label]) => (
+          <button
+            type="button"
+            role="tab"
+            key={value}
+            aria-selected={tab === value}
+            className={`course-manage-tab${tab === value ? ' active' : ''}`}
+            onClick={() => setTab(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'students' ? (
+        <>
           <div className="button-group">
-            <button type="button" className="rounded primary button" onClick={() => post({ operation: 'visit', uid: 0, allow: true })}>
+            <button
+              type="button"
+              className="button compact"
+              disabled={busy}
+              onClick={() => confirm('批量代认领：仅班级成员', [{ operation: 'visit', uid: 0, allow: true }], data.group.students)}
+            >
               批量代认领
             </button>
             <button
               type="button"
-              className="rounded button"
-              onClick={() => confirmAndPost('确认取消所有班级学生的课程认领状态？', { operation: 'visit', uid: 0, allow: false })}
+              className="button compact"
+              disabled={busy}
+              onClick={() => confirm('取消认领：仅班级成员', [{ operation: 'visit', uid: 0, allow: false }], data.group.students)}
             >
               批量取消认领
             </button>
             <button
               type="button"
-              className="rounded button"
-              onClick={() => confirmAndPost(i18n('Confirm to set all class students as unranked?'), { operation: 'unrank', uid: 0, unrank: true })}
+              className="button compact"
+              disabled={busy}
+              onClick={() => confirm('设为不参与排名：全课程名单（含临时学生）', [{ operation: 'unrank', uid: 0, unrank: true }])}
             >
-              {i18n('Bulk Set as Unranked')}
+              全课程不参与排名
             </button>
             <button
               type="button"
-              className="rounded button"
-              onClick={() => confirmAndPost(i18n('Confirm to clear unranked status for all class students?'), { operation: 'unrank', uid: 0, clear: true })}
+              className="button compact"
+              disabled={busy}
+              onClick={() => confirm('恢复排名：全课程名单（含临时学生）', [{ operation: 'unrank', uid: 0, clear: true }])}
             >
-              {i18n('Bulk Clear Unranked')}
+              全课程恢复排名
             </button>
           </div>
-        </div>
-      </div>
-      <div className="row">
-        <div className="columns">
-          <table className="data-table course-manage-table">
-            <thead>
-              <tr>
-                <th style={{ width: 100 }}>UID</th>
-                <th>用户</th>
-                <th style={{ width: 160 }}>{i18n('Ranking Settings')}</th>
-                <th style={{ width: 200 }}>课程认领</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((uid) => {
-                const tsdoc = tsdict?.[uid];
-                const allowed = !!tsdoc?.attend;
-                const unrank = !!tsdoc?.unrank;
-                return (
-                  <tr key={uid}>
-                    <td>{uid}</td>
-                    <td>{getUserText(udict?.[uid])}</td>
-                    <td>
-                      {allowed ? (
-                        <button
-                          type="button"
-                          className={`rounded button ${unrank ? 'primary' : ''}`}
-                          onClick={() => post({ operation: 'unrank', uid, unrank: !unrank })}
-                        >
-                          {unrank ? i18n('Restore Ranking') : i18n('Set as Unranked')}
-                        </button>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td>
-                      {allowed ? (
-                        <button
-                          type="button"
-                          className="rounded button"
-                          onClick={() => confirmAndPost('确认取消该学生的课程认领状态？', { operation: 'visit', uid, allow: false })}
-                        >
-                          取消认领
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="rounded primary button"
-                          onClick={() => post({ operation: 'visit', uid, allow: true })}
-                        >
-                          代认领
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderExtraStudentsTab = () => (
-    <div>
-      <div className="row">
-        <div className="columns">
-          <div className="button-group">
-            <a
-              href={`${basePath}/edit`}
-              className="rounded primary button"
-            >
-              {i18n('Edit Extra Students')}
+          {memberTable(data.group.students)}
+        </>
+      ) : null}
+      {tab === 'extra' ? (
+        <>
+          <p>
+            <a className="button compact" href={`${base}/edit`}>
+              编辑临时学生名单
             </a>
+          </p>
+          {memberTable(data.extraStudents)}
+        </>
+      ) : null}
+      {tab === 'nodes' ? (
+        <>
+          <p className="supplementary">可访问人数 / 当前课程名单 {all.length} 人（含临时、未认领学生）。按实际访问规则计算。</p>
+          <div className="button-group">
+            {[
+              ['allowLecture', '讲义'],
+              ['allowUser', '题目'],
+            ].flatMap(([operation, label]) =>
+              [true, false].map((allow) => (
+                <button
+                  type="button"
+                  className="button compact"
+                  key={operation + allow}
+                  disabled={busy || !all.length}
+                  onClick={() => confirm(`${allow ? '开放' : '关闭'}全部课时${label}`, nodeCommands(operation, allow))}
+                >
+                  {allow ? '开放' : '关闭'}全部{label}
+                </button>
+              )),
+            )}
             <button
               type="button"
-              className="rounded button"
-              onClick={() => confirmAndPost(i18n('Confirm to set all extra students as unranked?'), { operation: 'unrank', uid: 0, unrank: true })}
+              className="button compact"
+              disabled={busy || !all.length}
+              onClick={() => confirm('全部课时题目恢复规则', nodeCommands('allowUser', false, true))}
             >
-              {i18n('Bulk Set as Unranked')}
-            </button>
-            <button
-              type="button"
-              className="rounded button"
-              onClick={() => confirmAndPost(i18n('Confirm to clear unranked status for all extra students?'), { operation: 'unrank', uid: 0, clear: true })}
-            >
-              {i18n('Bulk Clear Unranked')}
+              全部题目恢复规则
             </button>
           </div>
-        </div>
-      </div>
-      {extraStudentList.length === 0 ? (
-        <div className="row">
-          <div className="columns">
-            <p className="typo">{i18n('No extra students.')}</p>
-          </div>
-        </div>
-      ) : (
-        <div className="row">
-          <div className="columns">
-            <table className="data-table course-manage-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 100 }}>UID</th>
-                  <th>用户</th>
-                  <th style={{ width: 160 }}>{i18n('Ranking Settings')}</th>
-                  <th style={{ width: 200 }}>课程认领</th>
-                </tr>
-              </thead>
-              <tbody>
-                {extraStudentList.map((uid) => {
-                  const tsdoc = tsdict?.[uid];
-                  const allowed = !!tsdoc?.attend;
-                  const unrank = !!tsdoc?.unrank;
-                  return (
-                    <tr key={uid}>
-                      <td>{uid}</td>
-                      <td>{getUserText(udict?.[uid])}</td>
-                      <td>
-                        {allowed ? (
-                          <button
-                            type="button"
-                            className={`rounded button ${unrank ? 'primary' : ''}`}
-                            onClick={() => post({ operation: 'unrank', uid, unrank: !unrank })}
-                          >
-                            {unrank ? i18n('Restore Ranking') : i18n('Set as Unranked')}
-                          </button>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td>
-                        {allowed ? (
-                          <button
-                            type="button"
-                            className="rounded button"
-                            onClick={() => confirmAndPost('确认取消该学生的课程认领状态？', { operation: 'visit', uid, allow: false })}
-                          >
-                            取消认领
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="rounded primary button"
-                            onClick={() => post({ operation: 'visit', uid, allow: true })}
-                          >
-                            代认领
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderNodeTab = () => {
-    const canBulk = claimedStudentUids.length > 0;
-    
-    return (
-    <div>
-      <div className="row">
-        <div className="columns">
-          <table className="data-table course-manage-table">
+          <table className="data-table">
             <thead>
               <tr>
-                <th style={{ width: 60 }}>节点</th>
-                <th>章节标题</th>
-                <th style={{ width: 220 }}>
-                  讲义
-                  {canBulk && (
-                    <span style={{ marginLeft: '8px', fontWeight: 'normal' }}>
-                      <a href="#" onClick={(e) => { e.preventDefault(); batchAllowLecture(true); }}>开放</a>
-                      {' | '}
-                      <a href="#" onClick={(e) => { e.preventDefault(); batchAllowLecture(false); }}>关闭</a>
-                    </span>
-                  )}
-                </th>
-                <th style={{ width: 120 }}>题目</th>
-                <th style={{ width: 220 }}>
-                  题目权限
-                  {canBulk && (
-                    <span style={{ marginLeft: '8px', fontWeight: 'normal' }}>
-                      <a href="#" onClick={(e) => { e.preventDefault(); batchAllowUser(true); }}>开放</a>
-                      {' | '}
-                      <a href="#" onClick={(e) => { e.preventDefault(); batchAllowUser(false); }}>关闭</a>
-                      {' | '}
-                      <a href="#" onClick={(e) => { e.preventDefault(); batchAllowUser(false, true); }}>重置</a>
-                    </span>
-                  )}
-                </th>
+                <th>课时</th>
+                <th>讲义内容 / 访问</th>
+                <th>题目访问</th>
+                <th>统一操作</th>
               </tr>
             </thead>
             <tbody>
-              {dag.map((node) => {
-                const nodeId = +node._id;
-                const hasLecture = !!(node?.lecture || tdoc?.lecture?.[nodeId]);
-                
-                const lectureAllowed = canBulk && claimedStudentUids.every((uid) => !!tsdict?.[String(uid)]?.lectureAllow?.[nodeId]);
-                const nodeAllowed = canBulk && claimedStudentUids
-                  .filter((uid) => !!tsdict?.[String(uid)])
-                  .every((uid) => !!tsdict?.[String(uid)]?.allow?.[nodeId]);
-                const hasAllowStatus = canBulk && claimedStudentUids.some((uid) => {
-                  const allow = tsdict?.[String(uid)]?.allow;
-                  return allow && Object.prototype.hasOwnProperty.call(allow, nodeId);
-                });
-                const lectureEditUrl = `${basePath}/lecture/${nodeId}?edit=1`;
+              {dag.map((node, index) => {
+                const counts = data.accessCounts[node._id];
                 return (
-                  <tr key={nodeId}>
-                    <td>{nodeId}</td>
-                    <td>{node?.title || '-'}</td>
+                  <tr key={node._id}>
                     <td>
-                      {hasLecture ? (
-                        <span>
-                          有
-                          {' '}
-                          <a href={lectureEditUrl}>编辑</a>
-                          {' | '}
-                          <a
-                            href="#"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              if (!canBulk) return;
-                              post({ operation: 'allowLecture', uid: 0, node: nodeId, allow: !lectureAllowed });
-                            }}
-                          >
-                            {lectureAllowed ? '关闭' : '开放'}
-                          </a>
-                        </span>
-                      ) : (
-                        '无'
-                      )}
+                      {index + 1}. {node.title}
                     </td>
-                    <td>{(node?.pids || []).join(',')}</td>
                     <td>
-                      {nodeAllowed ? (
-                        <span>
-                          <a
-                            href="#"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              if (!canBulk) return;
-                              post({ operation: 'allowUser', uid: 0, node: nodeId, allow: false });
-                            }}
+                      {node.lecture || data.tdoc.lecture?.[node._id] ? '有内容' : '无内容'} · {counts.lecture}/{counts.total} 人可访问
+                      <br />
+                      <a href={`${base}/lecture/${node._id}?edit=1`}>编辑讲义</a>
+                    </td>
+                    <td>
+                      {counts.problems}/{counts.total} 人可访问
+                      <br />P{node.pids.join('、P')}
+                    </td>
+                    <td>
+                      {[
+                        ['allowLecture', '讲义'],
+                        ['allowUser', '题目'],
+                      ].flatMap(([operation, label]) =>
+                        [true, false].map((allow) => (
+                          <button
+                            type="button"
+                            className="button compact"
+                            key={operation + allow}
+                            disabled={busy || !all.length}
+                            onClick={() =>
+                              confirm(`${(allow ? '开放' : '关闭') + label}：${node.title}`, [{ operation, node: node._id, uid: 0, allow }])}
                           >
-                            关闭
-                          </a>
-                          {' | '}
-                          <a
-                            href="#"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              if (!canBulk) return;
-                              post({ operation: 'allowUser', uid: 0, node: nodeId, reset: true });
-                            }}
-                          >
-                            重置
-                          </a>
-                        </span>
-                      ) : (
-                        <span>
-                          <a
-                            href="#"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              if (!canBulk) return;
-                              post({ operation: 'allowUser', uid: 0, node: nodeId, allow: true });
-                            }}
-                          >
-                            开放
-                          </a>
-                          {hasAllowStatus ? (
-                            <>
-                              {' | '}
-                              <a
-                                href="#"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  if (!canBulk) return;
-                                  post({ operation: 'allowUser', uid: 0, node: nodeId, reset: true });
-                                }}
-                              >
-                                重置
-                              </a>
-                            </>
-                          ) : null}
-                        </span>
+                            {allow ? '开放' : '关闭'}
+                            {label}
+                          </button>
+                        )),
                       )}
+                      <button
+                        type="button"
+                        className="button compact"
+                        disabled={busy || !all.length}
+                        onClick={() =>
+                          confirm(`恢复题目规则：${node.title}`, [{ operation: 'allowUser', node: node._id, uid: 0, reset: true }])}
+                      >
+                        题目恢复规则
+                      </button>
+                      <button
+                        type="button"
+                        className="button compact"
+                        disabled={busy || !all.length}
+                        onClick={() =>
+                          confirm(`恢复讲义规则：${node.title}`, [{ operation: 'allowLecture', node: node._id, uid: 0, reset: true }])}
+                      >
+                        讲义恢复规则
+                      </button>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-  return (
-    <div>
-      <div className="row">
-        <div className="columns typo">
-          <h2 className="course-manage-title" style={{ marginTop: 0 }}>{tdoc?.title || '课程管理'}</h2>
-        </div>
-      </div>
-      {renderTabs()}
-      {tab === 'students' ? renderStudentsTab() : null}
-      {tab === 'extraStudents' ? renderExtraStudentsTab() : null}
-      {tab === 'chapters' ? renderNodeTab() : null}
-      {payload.feedbackUrl ? <ClassroomFeedback url={payload.feedbackUrl} /> : null}
+        </>
+      ) : null}
     </div>
   );
 }
 
-const page = new NamedPage('course_manage', () => {
+export default new NamedPage('course_manage', () => {
   const container = document.getElementById('course');
-  if (!container) return;
-  ReactDOM.createRoot(container).render(<CourseManageApp />);
+  if (container) createRoot(container).render(<CourseManageApp />);
 });
-
-export default page;

@@ -106,15 +106,17 @@ exports.register = () => describe('Local feedback', () => {
         await post(teacher, `/d/system/course/${courseId}/feedback`, body()).expect(403);
     });
 
-    it('shows feedback entry only to authorized teachers on course and submission pages', async () => {
+    it('shows feedback entry only to authorized teachers on course, scoreboard and submission pages', async () => {
         const coursePage = `/d/${domainId}/course/${courseId}`;
         for (const agent of [teacher, peer, manager]) {
             const response = await get(agent, coursePage).expect(200);
             assert.equal(response.body.feedbackUrl, courseUrl());
+            assert.equal((await get(agent, coursePage + '/scoreboard/0').expect(200)).body.feedbackUrl, courseUrl());
         }
         for (const agent of [student, outsider]) {
             const response = await get(agent, coursePage).expect(200);
             assert.equal(response.body.feedbackUrl, null);
+            assert.equal((await get(agent, coursePage + '/scoreboard/0').expect(200)).body.feedbackUrl, null);
         }
         const recordPage = `/d/${domainId}/record/${validRid}`;
         const response = await get(teacher, recordPage).expect(200);
@@ -173,7 +175,8 @@ exports.register = () => describe('Local feedback', () => {
         await post(manager, `${courseUrl()}/${retest}/retract`, retraction).expect(200);
         const result = await get(teacher, courseUrl()).expect(200);
         const item = result.body.items.find((e) => e._id === retest);
-        assert(item.retracted && item.resolved);
+        assert(item.retracted && !item.resolved);
+        assert(item.changes.some((e) => e.eventType === 'RETEST_RESOLVED'));
         assert.equal(item.changes.length, 2);
         const pending = await get(teacher, `${courseUrl()}?pending=true`).expect(200);
         assert(!pending.body.items.some((e) => e._id === retest));
@@ -322,6 +325,247 @@ exports.register = () => describe('Local feedback', () => {
         assert(!JSON.stringify(plan.queryPlanner.winningPlan).includes('COLLSCAN'));
         const response = await get(teacher, `${courseUrl()}?studentUid=${extraUid}&pending=true`).expect(200);
         assert.equal(response.body.items.length, 50);
+        const queries = [
+            ['summary', () => repository.summary(scope, { studentUid: extraUid })],
+            ['deep-pending', () => repository.list(scope, { pending: true, studentUid: extraUid, before: first.next })],
+            ['count', () => repository.count(scope, { studentUid: extraUid })],
+        ];
+        const measurements = [];
+        for (const [name, query] of queries) {
+            let pipeline;
+            const aggregate = coll.aggregate;
+            coll.aggregate = function (stages, ...args) { pipeline = stages; return aggregate.call(this, stages, ...args); };
+            const started = performance.now();
+            try { await query(); } finally { coll.aggregate = aggregate; }
+            const ms = Math.round((performance.now() - started) * 100) / 100;
+            const explain = await coll.aggregate(pipeline).explain('executionStats');
+            const root = explain.stages?.[0]?.$cursor || explain;
+            measurements.push({ name, ms, examined: root.executionStats?.totalDocsExamined,
+                indexes: JSON.stringify(root.queryPlanner?.winningPlan).match(/feedback_[a-z]+/g) });
+        }
+        console.log('FEEDBACK_QUERY_MEASUREMENTS', JSON.stringify({
+            events: await coll.countDocuments({ ...scope }),
+            observations: await coll.countDocuments({ ...scope, eventType: 'OBSERVATION_RECORDED' }), measurements,
+        }));
+    });
+
+    it('retains recorded lesson names after edits and keeps summaries independent of the first history page', async () => {
+        const saved = await post(teacher, courseUrl(), body({ note: 'older student observation' })).expect(200);
+        const scope = { domainId, activityType: 'course', activityId: courseId.toString() };
+        for (let i = 0; i < 60; i++) {
+            await repository.record({ domainId, operatorUid: teacherUid }, body({ studentUid: extraUid }),
+                async () => ({ courseTitle: 'Feedback course', problemTitle: 'Feedback problem', lessonTitle: 'Lesson', nodeId: 0 }));
+        }
+        const first = await get(teacher, courseUrl()).expect(200);
+        assert(!first.body.items.some((e) => e._id === saved.body.eventId));
+        const summary = await get(teacher, `${courseUrl()}?view=roster&nodeId=0&pid=${pid}`).expect(200);
+        assert(summary.body.items.some((e) => e._id === saved.body.eventId));
+        await global.Hydro.model.contest.edit(domainId, courseId, { dag: [{ _id: 0, title: 'Renamed', pids: [pid] }] });
+        const detail = await get(teacher, `${courseUrl()}/${saved.body.eventId}`).expect(200);
+        assert.equal(detail.body.items[0].context.lessonTitle, 'Lesson');
+        assert.equal(detail.body.items[0].context.problemTitle, 'Feedback problem');
+        await post(teacher, courseUrl(), body({ requestId: (await coll.findOne({ _id: saved.body.eventId })).requestId,
+            note: 'older student observation' })).expect(200);
+        const page = await repository.list(scope, { pending: true, studentUid: extraUid });
+        await assert.rejects(repository.list(scope, { pending: true, before: page.next }), /before/);
+        await global.Hydro.model.contest.edit(domainId, courseId, { dag: [{ _id: 0, title: 'Lesson', pids: [pid] }] });
+    });
+
+    it('converges concurrent teacher resolutions and permits authorized undo without losing audit history', async () => {
+        const saved = await post(teacher, courseUrl(), body({ kind: 'NEEDS_RETEST' })).expect(200);
+        const path = `${courseUrl()}/${saved.body.eventId}`;
+        const commands = [{ requestId: randomUUID(), expectedVersion: 0 }, { requestId: randomUUID(), expectedVersion: 0 }];
+        const responses = await Promise.all([post(teacher, `${path}/resolve`, commands[0]), post(peer, `${path}/resolve`, commands[1])]);
+        assert.deepEqual(responses.map((r) => r.status).sort(), [200, 409]);
+        const winner = responses.findIndex((r) => r.status === 200);
+        const winnerAgent = winner === 0 ? teacher : peer;
+        const loserAgent = winner === 0 ? peer : teacher;
+        const resolutionId = responses[winner].body.eventId;
+        assert.equal(await coll.countDocuments({ targetId: saved.body.eventId, version: 1 }), 1);
+        const replay = await post(winnerAgent, `${path}/resolve`, commands[winner]).expect(200);
+        assert(replay.body.replayed);
+        const undo = { requestId: randomUUID(), expectedVersion: 1, resolutionId };
+        await post(loserAgent, `${path}/undo-resolve`, undo).expect(403);
+        await post(winnerAgent, `${path}/undo-resolve`, undo).expect(200);
+        const pending = await get(teacher, `${courseUrl()}?pending=true`).expect(200);
+        assert(pending.body.items.some((e) => e._id === saved.body.eventId));
+        await post(winnerAgent, `${path}/undo-resolve`, undo).expect(200);
+        await post(peer, `${path}/resolve`, { requestId: randomUUID(), expectedVersion: 2 }).expect(200);
+        await post(winnerAgent, `${path}/undo-resolve`, { ...undo, requestId: randomUUID() }).expect(409);
+        const detail = await get(teacher, path).expect(200);
+        assert.equal(detail.body.items[0].changes.length, 3);
+        assert.equal(detail.body.items[0].version, 3);
+        assert(detail.body.items[0].resolved);
+        await post(manager, `${path}/retract`, { requestId: randomUUID(), expectedVersion: 3 }).expect(200);
+        await post(teacher, `${path}/resolve`, { requestId: randomUUID() }).expect(409);
+    });
+
+    it('keeps retests pending after accepted submissions and unrelated checks, with exact filtered totals', async () => {
+        const saved = await post(teacher, courseUrl(), body({ kind: 'NEEDS_RETEST', rid: validRid.toString() })).expect(200);
+        await post(teacher, courseUrl(), body({ kind: 'CHECKED' })).expect(200);
+        const pending = await get(teacher, `${courseUrl()}?view=pending&studentUid=${uid}&pid=${pid}&nodeId=0`).expect(200);
+        assert(pending.body.items.some((e) => e._id === saved.body.eventId));
+        assert.equal(pending.body.filteredTotal, pending.body.items.length);
+        assert(pending.body.totalPending >= pending.body.filteredTotal);
+        assert.equal(pending.body.latest[`${uid}:${pid}`]._id, validRid.toString());
+        assert.equal(pending.body.latest[`${uid}:${pid}`].code, undefined);
+    });
+
+    it('saves stable course IDs and score owners, rejects stale edits and prevents reuse after deletion', async () => {
+        const model = global.Hydro.model;
+        // PERM_DEFAULT includes homework SELF editing, which bypasses the DAG.
+        // Exercise an actual learner subject to course access restrictions.
+        await model.domain.setUserRole(domainId, uid, 'read-only', true);
+        const id = await model.contest.add(domainId, 'Structure regression', '', teacherUid, 'course',
+            new Date('2026-01-01'), new Date('2030-01-01'), [pid], false, {
+                assign: ['feedback-class'], lecture: { 1: 'Stable lecture content' },
+                dag: [{ _id: 1, title: 'A', pids: [pid] }, { _id: 2, title: 'B', pids: [pid], requireNids: [1] }],
+            });
+        await model.contest.attend(domainId, id, uid);
+        await model.contest.setStatus(domainId, id, uid, { startAt: new Date(Date.now() - 60000),
+            allow: { 1: false, 2: true }, lectureAllow: { 1: true } });
+        const problemUrl = `/d/${domainId}/p/${pid}?tid=${id}`;
+        await get(student, problemUrl).expect(403);
+        const url = `/d/${domainId}/course/${id}/edit`;
+        const input = { title: 'Structure regression', content: 'Structure regression content', beginAt: '2026-1-1 0:00', endAt: '2030-1-1 0:00',
+            isTemplate: false, assign: 'feedback-class', dagRevision: 0,
+            dag: JSON.stringify([{ _id: 2, title: 'B', pids: [pid], requireNids: [1] }, { _id: 1, title: 'A', pids: [pid] }]) };
+        await post(teacher, url, input).expect(200);
+        const current = await model.contest.get(domainId, id);
+        assert.deepEqual(current.dag.map((n) => n._id), [2, 1]);
+        assert.equal(current.problemNodeIds[pid], 2);
+        assert.equal(current.problemAccessNodeIds[pid], 1);
+        await get(student, problemUrl).expect(403);
+        assert.equal(current.nodeIdHighWatermark, 2);
+        assert.deepEqual(current.lecture, { 1: 'Stable lecture content' });
+        assert.deepEqual(current.dag[0].requireNids, [1]);
+        const status = await model.contest.getStatus(domainId, id, uid);
+        assert.deepEqual(status.allow, { 1: false, 2: true });
+        assert.deepEqual(status.lectureAllow, { 1: true });
+        await model.contest.setStatus(domainId, id, uid, { 'allow.1': true, 'allow.2': false });
+        await get(student, problemUrl).expect(200);
+        const scoreboard = await get(student, `/d/${domainId}/course/${id}/scoreboard/0`).expect(200);
+        assert.equal(scoreboard.body.courseProblemAccessNodeIds[pid], 1);
+        await post(teacher, url, input).expect(400);
+        await post(teacher, url, { ...input, dagRevision: 1, dag: JSON.stringify([{ _id: 1, title: 'A', pids: [pid] }]) }).expect(200);
+        await post(teacher, url, { ...input, dagRevision: 2 }).expect(400);
+        await post(teacher, url, { ...input, dagRevision: 2,
+            dag: JSON.stringify([{ _id: 1, title: 'A', pids: [pid] }, { _id: 3, title: 'New', pids: [] }]) }).expect(200);
+        await model.domain.setUserRole(domainId, uid, 'default', true);
+    });
+
+    it('falls back to the previous effective observation after retracting the latest', async () => {
+        const previous = await post(teacher, courseUrl(), body({ note: 'fallback observation' })).expect(200);
+        const newest = await post(teacher, courseUrl(), body({ kind: 'CHECKED' })).expect(200);
+        await post(teacher, `${courseUrl()}/${newest.body.eventId}/retract`, { requestId: randomUUID() }).expect(200);
+        const response = await get(teacher, `${courseUrl()}?view=roster&nodeId=0&pid=${pid}&studentUid=${uid}`).expect(200);
+        assert.equal(response.body.items[0]._id, previous.body.eventId);
+    });
+
+    it('keeps legacy processing history while joining the versioned state chain once', async () => {
+        const saved = await post(teacher, courseUrl(), body({ kind: 'NEEDS_RETEST' })).expect(200);
+        await coll.updateOne({ _id: saved.body.eventId }, { $set: { schemaVersion: 1 }, $unset: { context: '' } });
+        const ids = [1, 2].map(() => `feedback:${randomUUID().replaceAll('-', '').padEnd(64, '0')}`);
+        for (const [index, _id] of ids.entries()) await coll.insertOne({ _id, schemaVersion: 1, domainId,
+            targetId: saved.body.eventId, eventType: 'RETEST_RESOLVED', operatorUid: teacherUid,
+            recordedAt: new Date(Date.now() + index), requestId: randomUUID(), requestHash: 'legacy', note: 'legacy processing' });
+        const path = `${courseUrl()}/${saved.body.eventId}`;
+        const detail = await get(teacher, path).expect(200);
+        assert.equal(detail.body.items[0].state, 'resolved');
+        assert.equal(detail.body.items[0].version, 0);
+        assert.equal(detail.body.items[0].changes.length, 2);
+        const scoped = await get(teacher, `${courseUrl()}?view=roster&nodeId=0&pid=${pid}`).expect(200);
+        assert(!scoped.body.items.some((event) => event._id === saved.body.eventId));
+        const input = { requestId: randomUUID(), expectedVersion: 0, resolutionId: ids[1] };
+        await post(teacher, `${path}/undo-resolve`, input).expect(200);
+        await post(teacher, `${path}/undo-resolve`, input).expect(200);
+        const updated = await get(teacher, path).expect(200);
+        assert.equal(updated.body.items[0].version, 1);
+        assert.equal(updated.body.items[0].changes.length, 3);
+        assert.equal(updated.body.items[0].state, 'pending');
+    });
+
+    it('arbitrates completion versus original retraction and concurrent retractions', async () => {
+        const saved = await post(teacher, courseUrl(), body({ kind: 'NEEDS_RETEST' })).expect(200);
+        const path = `${courseUrl()}/${saved.body.eventId}`;
+        const pair = await Promise.all(['resolve', 'retract'].map((action) => post(teacher, `${path}/${action}`,
+            { requestId: randomUUID(), expectedVersion: 0 })));
+        assert.deepEqual(pair.map((response) => response.status).sort(), [200, 409]);
+        let detail = (await get(teacher, path).expect(200)).body.items[0];
+        if (detail.state === 'resolved') {
+            const outcomes = await Promise.all([1, 2].map(() => post(teacher, `${path}/retract`,
+                { requestId: randomUUID(), expectedVersion: 1 })));
+            assert.deepEqual(outcomes.map((response) => response.status).sort(), [200, 409]);
+        }
+        detail = (await get(teacher, path).expect(200)).body.items[0];
+        assert.equal(detail.state, 'retracted');
+        assert(!detail.resolved);
+    });
+
+    it('reports partial management failures and changes only the requested access key', async () => {
+        const model = global.Hydro.model;
+        await model.contest.setStatus(domainId, courseId, uid, { allow: { 0: true, 9: true }, lectureAllow: { 9: false } });
+        const eventCount = await coll.countDocuments({ domainId });
+        const before = await model.contest.getStatus(domainId, courseId, uid);
+        const url = `/d/${domainId}/course/${courseId}/manage`;
+        const statusCollection = require('../packages/hydrooj/src/model/document').collStatus;
+        const original = statusCollection.findOneAndUpdate;
+        statusCollection.findOneAndUpdate = async (...args) => {
+            if (args[0].uid === extraUid) throw new Error('Injected failure');
+            return await original.apply(statusCollection, args);
+        };
+        let partial;
+        try { partial = await post(teacher, url, { operation: 'allowUser', uid: 0, node: 0, allow: false }).expect(200); }
+        finally { statusCollection.findOneAndUpdate = original; }
+        assert.deepEqual(partial.body.results.map((result) => result.success).sort(), [false, true]);
+        const failed = partial.body.results.find((result) => !result.success);
+        const retry = await post(teacher, url, { operation: 'allowUser', uid: failed.uid, node: 0, allow: false }).expect(200);
+        assert.deepEqual(retry.body.results, [{ uid: extraUid, success: true }]);
+        await post(teacher, url, { operation: 'allowUser', uid, node: 0, reset: true }).expect(200);
+        const after = await model.contest.getStatus(domainId, courseId, uid);
+        assert.equal(after.allow[0], undefined);
+        assert.equal(after.allow[9], true);
+        assert.deepEqual(after.lectureAllow, before.lectureAllow);
+        assert.deepEqual(after.detail, before.detail);
+        assert.equal(await coll.countDocuments({ domainId }), eventCount);
+        const { courseNodeHighWatermark } = require('../packages/hydrooj/src/builtin/course-management/handler/course');
+        assert.equal(await courseNodeHighWatermark(domainId, await model.contest.get(domainId, courseId)), 9);
+    });
+
+    it('audits course ID initialization without writing and explicitly initializes only compatible structures', async () => {
+        const model = global.Hydro.model;
+        const audit = require('../packages/hydrooj/src/script/course-feedback-structure');
+        const previous = await model.contest.get(domainId, courseId);
+        const reports = [];
+        await audit.run({ domainId }, (entry) => reports.push(entry.message));
+        assert.deepEqual(await model.contest.get(domainId, courseId), previous);
+        assert(reports.some((entry) => entry.includes('"high":9')));
+        await audit.run({ domainId, execute: true }, () => {});
+        const current = await model.contest.get(domainId, courseId);
+        assert.equal(current.nodeIdHighWatermark, 9);
+        assert.equal(current.dagRevision, 0);
+        assert.deepEqual(current.dag, previous.dag);
+        assert.equal(current.problemNodeIds[pid], 0);
+    });
+
+    it('lets an authorized teacher without record/code reading permissions record and follow up locally', async () => {
+        const model = global.Hydro.model;
+        const { PERM } = model.builtin;
+        const permissions = (PERM.PERM_DEFAULT | PERM.PERM_EDIT_HOMEWORK_SELF)
+            & ~PERM.PERM_VIEW_RECORD & ~PERM.PERM_READ_RECORD_CODE & ~PERM.PERM_READ_RECORD_CODE_ACCEPT;
+        await model.domain.addRole(domainId, 'feedback-only', permissions);
+        await model.domain.setUserRole(domainId, peerUid, 'feedback-only', true);
+        try {
+            const saved = await post(peer, courseUrl(), body({ kind: 'NEEDS_RETEST', rid: validRid.toString() })).expect(200);
+            const details = await get(peer, courseUrl() + '/' + saved.body.eventId).expect(200);
+            assert.deepEqual(details.body.submissions, {});
+            assert.deepEqual(details.body.latest, {});
+            assert.equal(details.body.items[0].code, undefined);
+            await get(peer, `/d/${domainId}/record/${validRid}`).expect(403);
+            await post(peer, courseUrl() + '/' + saved.body.eventId + '/resolve',
+                { requestId: randomUUID(), expectedVersion: 0 }).expect(200);
+            assert.equal((await get(peer, courseUrl() + '/' + saved.body.eventId).expect(200)).body.items[0].state, 'resolved');
+        } finally { await model.domain.setUserRole(domainId, peerUid, 'teacher', true); }
     });
 
     it('restores facts, corrections and stable retry keys from BSON into a fresh local collection', async () => {
@@ -338,7 +582,7 @@ exports.register = () => describe('Local feedback', () => {
             assert(target);
             assert.equal(await restored.countDocuments({ domainId }), await coll.countDocuments({ domainId }));
             const original = exported.find((e) => e.eventType === 'OBSERVATION_RECORDED');
-            const { _id, operatorUid, schemaVersion, source, eventType, requestHash, recordedAt, domainId: originalDomain, ...input } = original;
+            const { _id, operatorUid, schemaVersion, source, eventType, requestHash, recordedAt, context, domainId: originalDomain, ...input } = original;
             const retry = await clone.record({ domainId: originalDomain, operatorUid }, input, async () => {});
             assert.equal(retry.eventId, _id);
             assert.equal(retry.replayed, true);

@@ -11,6 +11,7 @@ import sanitize from 'sanitize-filename';
 import Schema from 'schemastery';
 import parser from '@hydrooj/utils/lib/search';
 import { randomstring, sortFiles, streamToBuffer } from '@hydrooj/utils/lib/utils';
+import { problemAccessNodeIds } from '../builtin/course-management/model/structure';
 import type { Context } from '../context';
 import { Logger } from '../logger';
 import {
@@ -60,12 +61,7 @@ function canBypassCourseDagLimit(tdoc: any, udoc: User) {
 }
 
 function getCourseNodeIdByPid(tdoc: any, pid: number) {
-    const dag = tdoc?.dag;
-    if (!dag?.length) return null;
-    for (const node of dag) {
-        if (node?.pids?.includes(pid)) return node._id;
-    }
-    return null;
+    return problemAccessNodeIds(tdoc)[pid] ?? null;
 }
 
 type ExtendedProblemSearchOptions = ProblemSearchOptions & {

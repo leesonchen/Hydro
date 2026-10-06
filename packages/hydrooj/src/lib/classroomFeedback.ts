@@ -34,11 +34,19 @@ export interface FeedbackActor {
 
 export interface FeedbackRecord extends FeedbackInput, FeedbackActor {
     _id: string;
-    schemaVersion: 1;
+    schemaVersion: 1 | 2;
     source: 'hydro';
     eventType: 'OBSERVATION_RECORDED';
     requestHash: string;
     recordedAt: Date;
+    context?: FeedbackContext;
+}
+
+export interface FeedbackContext {
+    courseTitle: string;
+    problemTitle: string;
+    lessonTitle?: string;
+    nodeId?: number;
 }
 
 export interface FeedbackStore<T = FeedbackRecord> {
@@ -59,7 +67,7 @@ export interface FeedbackReceipt {
  */
 export type FeedbackAuthorizer = (
     actor: Readonly<FeedbackActor>, input: Readonly<FeedbackInput>,
-) => Promise<void>;
+) => Promise<void | FeedbackContext>;
 
 export class FeedbackValidationError extends Error {
     constructor(field: string) {
@@ -156,13 +164,15 @@ export interface FeedbackChangeInput {
     requestId: string;
     note: string;
     rid?: string;
+    expectedVersion?: number;
+    resolutionId?: string;
 }
 
 export interface FeedbackChange extends FeedbackActor, FeedbackChangeInput {
     _id: string;
-    schemaVersion: 1;
+    schemaVersion: 1 | 2;
     source: 'hydro';
-    eventType: 'OBSERVATION_RETRACTED' | 'RETEST_RESOLVED';
+    eventType: 'OBSERVATION_RETRACTED' | 'RETEST_RESOLVED' | 'RETEST_RESOLUTION_RETRACTED';
     targetId: string;
     activityType: FeedbackInput['activityType'];
     activityId: string;
@@ -170,6 +180,8 @@ export interface FeedbackChange extends FeedbackActor, FeedbackChangeInput {
     pid: number;
     requestHash: string;
     recordedAt: Date;
+    version?: number;
+    stateAfter?: 'active' | 'pending' | 'resolved' | 'retracted';
 }
 
 export type FeedbackEvent = FeedbackRecord | FeedbackChange;
@@ -177,15 +189,24 @@ export type FeedbackEvent = FeedbackRecord | FeedbackChange;
 export function normalizeFeedbackChange(value: unknown): FeedbackChangeInput {
     const input = object(value);
     for (const key of Object.keys(input)) {
-        if (!['requestId', 'note', 'rid'].includes(key)) throw new FeedbackValidationError(key);
+        if (!['requestId', 'note', 'rid', 'expectedVersion', 'resolutionId'].includes(key)) throw new FeedbackValidationError(key);
     }
     // Reuse the observation's request key, note and submission contract.
     const normalized = normalizeFeedbackInput({
-        ...input, studentUid: 1, activityType: 'homework', activityId: '000000000000000000000001', pid: 1, kind: 'GUIDED',
+        requestId: input.requestId, note: input.note, ...(input.rid !== undefined ? { rid: input.rid } : {}),
+        studentUid: 1, activityType: 'homework', activityId: '000000000000000000000001', pid: 1, kind: 'GUIDED',
     });
+    if (input.expectedVersion !== undefined && (!Number.isSafeInteger(input.expectedVersion) || (input.expectedVersion as number) < 0)) {
+        throw new FeedbackValidationError('expectedVersion');
+    }
+    if (input.resolutionId !== undefined && (typeof input.resolutionId !== 'string' || !/^feedback:[a-f0-9]{64}$/.test(input.resolutionId))) {
+        throw new FeedbackValidationError('resolutionId');
+    }
     return {
         requestId: normalized.requestId, note: normalized.note,
         ...(normalized.rid ? { rid: normalized.rid } : {}),
+        ...(input.expectedVersion !== undefined ? { expectedVersion: input.expectedVersion as number } : {}),
+        ...(input.resolutionId !== undefined ? { resolutionId: input.resolutionId as string } : {}),
     };
 }
 
@@ -222,7 +243,7 @@ export function createLocalFeedbackWriter(store: FeedbackStore, clock: () => Dat
             const actor = Object.freeze(normalizeActor(actorValue));
             const input = Object.freeze(normalizeFeedbackInput(value));
             if (typeof authorize !== 'function') throw new TypeError('A Hydro-local authorizer is required.');
-            await authorize(actor, input);
+            const context = await authorize(actor, input);
 
             const _id = feedbackEventId(actor, input.requestId);
             const requestHash = feedbackHash(input);
@@ -234,8 +255,9 @@ export function createLocalFeedbackWriter(store: FeedbackStore, clock: () => Dat
                 throw new FeedbackValidationError('recordedAt');
             }
             const record: FeedbackRecord = {
-                ...input, ...actor, _id, schemaVersion: 1, source: 'hydro',
+                ...input, ...actor, _id, schemaVersion: 2, source: 'hydro',
                 eventType: 'OBSERVATION_RECORDED', requestHash, recordedAt,
+                ...(context ? { context, ...(context.nodeId !== undefined ? { nodeId: context.nodeId } : {}) } : {}),
             };
             try {
                 const result = await store.insertOne(record);

@@ -68,7 +68,8 @@ export async function authorizeFeedback(activity: Awaited<ReturnType<typeof feed
     const { tdoc, roster, scope } = activity;
     if (input.activityType !== scope.activityType || input.activityId !== scope.activityId) throw new ForbiddenError();
     if (!roster.includes(input.studentUid)) throw new ForbiddenError('Student is not in the activity roster');
-    if (!tdoc.pids.includes(input.pid) || !await problem.get(scope.domainId, input.pid)
+    const pdoc = await problem.get(scope.domainId, input.pid);
+    if (!tdoc.pids.includes(input.pid) || !pdoc
         || !await user.getById(scope.domainId, input.studentUid)) throw new ForbiddenError();
     if (tdoc.rule === 'course') {
         const nodes = (tdoc.dag || []).filter((node) => node.pids.includes(input.pid));
@@ -76,4 +77,8 @@ export async function authorizeFeedback(activity: Awaited<ReturnType<typeof feed
             || (input.nodeId === undefined && nodes.length > 1)) throw new FeedbackValidationError('nodeId');
     }
     await feedbackSubmission(scope.domainId, input);
+    const node = tdoc.rule === 'course' ? (tdoc.dag || []).find((n) => n.pids.includes(input.pid)
+        && (input.nodeId === undefined || n._id === input.nodeId)) : undefined;
+    return { courseTitle: tdoc.title, problemTitle: pdoc.title,
+        ...(node ? { lessonTitle: node.title, nodeId: node._id } : {}) };
 }

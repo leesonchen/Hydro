@@ -2828,7 +2828,11 @@ describe('App', () => {
                 [deleteLockedClassName, '999999'],
             );
             await agent.post(`/d/system/course/${collisionCourseId}/edit`)
-                .send({ ...reassignCoursePayload, assign: className })
+                .send({
+                    ...reassignCoursePayload,
+                    assign: className,
+                    dagRevision: (await ContestModel.get('system', collisionCourseId)).dagRevision,
+                })
                 .expect(302);
             assert.deepStrictEqual(
                 (await ContestModel.get('system', collisionCourseId)).assign,

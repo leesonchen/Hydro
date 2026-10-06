@@ -226,22 +226,11 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       .filter(Boolean) as any[];
 
     let nodes = normalizeNodes(parseDag() || []);
-
-    const remapNodeIds = (orderedNodes: any[]) => {
-      const idMap = new Map<number, number>();
-      orderedNodes.forEach((node, index) => {
-        idMap.set(+node._id, index + 1);
-      });
-      orderedNodes.forEach((node, index) => {
-        node._id = index + 1;
-        node.requireNids = Array.from(new Set((node.requireNids || [])
-          .map((id: any) => idMap.get(+id))
-          .filter((id: any) => Number.isFinite(id) && id > 0 && id !== node._id)));
-      });
-    };
+    let highWatermark = Math.max(Number($('[name="nodeIdHighWatermark"]').val()) || 0, ...nodes.map((node) => node._id));
 
     const commit = (opts: { rerender?: boolean; source?: string } = {}) => {
-      nodes = normalizeNodes(nodes).sort((a, b) => a._id - b._id);
+      nodes = normalizeNodes(nodes);
+      highWatermark = Math.max(highWatermark, ...nodes.map((node) => node._id));
       const nextJson = JSON.stringify(nodes, null, 2);
       const editorInstance = $dag.data('vjEditorInstance');
       $dag.val(nextJson);
@@ -255,15 +244,15 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
 
     const render = () => {
       $list.empty();
-      nodes = normalizeNodes(nodes).sort((a, b) => a._id - b._id);
+      nodes = normalizeNodes(nodes);
       if (!nodes.length) {
         $list.append('<div class="typo">暂无章节，点击“新增章节”。</div>');
         return;
       }
 
-      const nodeOptions = nodes.map((n) => ({
+      const nodeOptions = nodes.map((n, index) => ({
         _id: `${n._id}`,
-        name: `${n._id}. ${n.title}`,
+        name: `${index + 1}. ${n.title}`,
       }));
 
       nodes.forEach((node, nodeIndex) => {
@@ -337,13 +326,13 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         const $moveUp = $section.find('.dag-move-up');
         const $moveDown = $section.find('.dag-move-down');
 
-        $headerTitle.text(`章节 ${node._id}. ${node.title}`);
+        $headerTitle.text(`课时 ${nodeIndex + 1}. ${node.title}`);
         $moveUp.prop('disabled', nodeIndex === 0);
         $moveDown.prop('disabled', nodeIndex === nodes.length - 1);
         $title.val(node.title);
         $title.on('input', () => {
           const nextTitle = String($title.val() || '').trim();
-          $headerTitle.text(`章节 ${node._id}. ${nextTitle || ''}`);
+          $headerTitle.text(`课时 ${nodeIndex + 1}. ${nextTitle || ''}`);
         });
         const commitTitle = () => {
           node.title = String($title.val() || '').trim();
@@ -608,12 +597,11 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         });
 
         const moveNode = (direction: -1 | 1) => {
-          const orderedNodes = normalizeNodes(nodes).sort((a, b) => a._id - b._id);
+          const orderedNodes = normalizeNodes(nodes);
           const currentIndex = orderedNodes.findIndex((n) => n._id === node._id);
           const nextIndex = currentIndex + direction;
           if (currentIndex < 0 || nextIndex < 0 || nextIndex >= orderedNodes.length) return;
           [orderedNodes[currentIndex], orderedNodes[nextIndex]] = [orderedNodes[nextIndex], orderedNodes[currentIndex]];
-          remapNodeIds(orderedNodes);
           nodes = orderedNodes;
           commit({ rerender: true, source: 'move' });
         };
@@ -629,7 +617,8 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     };
 
     $addChapterBtn.on('click', () => {
-      const maxId = Math.max(0, ...nodes.map((n) => n._id));
+      const maxId = Math.max(0, highWatermark, ...nodes.map((n) => n._id));
+      highWatermark = maxId + 1;
       nodes.push({
         _id: maxId + 1,
         title: `标题 ${maxId + 1}`,

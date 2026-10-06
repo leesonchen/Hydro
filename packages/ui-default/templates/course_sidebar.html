@@ -22,11 +22,12 @@
   <div>
     <ol class="menu">
     {% if feedbackUrl %}
-      <li class="menu__item"><a class="menu__link" href="{{ feedbackUrl }}">课堂反馈</a></li>
+      <li class="menu__item"><a class="menu__link" href="{{ feedbackUrl }}">课程反馈</a></li>
+      <li class="menu__item"><a class="menu__link" href="{{ feedbackUrl }}?view=pending">待复测</a></li>
     {% endif %}
     {% if page_name != 'course_detail' %}
       <li class="menu__item"><a class="menu__link" href="{{ url('course_detail', tid=tdoc.docId) }}">
-        <span class="icon icon-homework"></span> {{ _('View Course') }}
+        <span class="icon icon-homework"></span> 课程内容
       </a></li>
     {% endif %}
     {% if not isTemplate %}
@@ -71,7 +72,7 @@
       ></span>
       {% if canViewScoreboard %}
         <li class="menu__item"><a class="menu__link" href="{{ url('course_scoreboard', tid=tdoc.docId, id=0) }}">
-          <span class="icon icon-statistics"></span> {{ _('Scoreboard') }}
+          <span class="icon icon-statistics"></span> 课程进度
         </a></li>
       {% endif %}
     {% endif %}
@@ -87,7 +88,7 @@
     {% endif %}
     {% if not isTemplate and canManageCourse %}
       <li class="menu__item"><a class="menu__link" href="{{ url('course_manage', tid=tdoc.docId) }}">
-        <span class="icon icon-settings"></span> {{ _('Manage Course') }}
+        <span class="icon icon-settings"></span> 课程管理
       </a></li>
     {% endif %}
     {% if not isTemplate and (handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE)) %}

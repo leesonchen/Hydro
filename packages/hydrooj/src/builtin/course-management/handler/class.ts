@@ -6,6 +6,7 @@ import {
 import { ClassModel } from '../model/class';
 import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
 import type { CourseTdoc } from '../model/course';
+import { nextStructure, problemAccessNodeIds, problemNodeIds } from '../model/structure';
 import { parseDag } from './course';
 
 function calcCourseTimeRange(baseBeginAt: moment.Moment, classEndAt: moment.Moment) {
@@ -823,7 +824,11 @@ export class ClassEditHandler extends Handler {
                     allPids,
                     false,
                     {
-                        dag: finalDag,
+                        ...nextStructure(undefined, finalDag, 0),
+                        ...{ problemNodeIds: Object.fromEntries(Object.entries(problemNodeIds(template))
+                            .map(([pid, node]) => [mapping.get(+pid) || +pid, node])) },
+                        ...{ problemAccessNodeIds: Object.fromEntries(Object.entries(problemAccessNodeIds(template))
+                            .map(([pid, node]) => [mapping.get(+pid) || +pid, node])) },
                         assign: [gdoc.name],
                         maintainer: gdoc.teachers,
                         lecture: newLecture,

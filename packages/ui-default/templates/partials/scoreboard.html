@@ -33,12 +33,7 @@
             {% set canViewProblemLink = true %}
             {% if tdoc.rule == 'course' and not (handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
               {% set problemDocId = pdict[column.raw].docId|default(column.raw) %}
-              {% set nodeId = none %}
-              {%- for node in tdoc.dag -%}
-                {%- for _pid in node.pids -%}
-                  {% if (_pid|string) == (problemDocId|string) %}{% set nodeId = node._id %}{% endif %}
-                {%- endfor -%}
-              {%- endfor -%}
+              {% set nodeId = courseProblemAccessNodeIds[problemDocId] %}
               {% set canViewProblemLink = nodeId and tsdoc and tsdoc.allow and tsdoc.allow[nodeId] == true %}
             {% endif %}
             {% if canViewProblemLink %}
@@ -99,6 +94,11 @@
             {%- else -%}
               <span data-tooltip="{{ column.hover }}">{{ column.value|string|nl2br|safe }}</span>
             {%- endif -%}
+            {% if feedbackUrl and tdoc.rule == 'course' and row[1].raw in feedbackRoster and rows[0][loop.index0].type == 'problem' %}
+              <a class="cf-scoreboard-entry"
+                 data-feedback-uid="{{ row[1].raw }}" data-feedback-pid="{{ rows[0][loop.index0].raw }}"
+                 href="{{ feedbackUrl }}?studentUid={{ row[1].raw }}&amp;pid={{ rows[0][loop.index0].raw }}{% if feedbackNodeId %}&amp;nodeId={{ feedbackNodeId }}{% endif %}{% if column.type == 'record' and column.raw %}&amp;rid={{ column.raw }}{% endif %}">记录反馈</a>
+            {% endif %}
             </td>
           {%- endfor -%}
         </tr>

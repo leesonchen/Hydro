@@ -4,17 +4,19 @@ const path = require('node:path');
 const os = require('node:os');
 const net = require('node:net');
 const esbuild = require('esbuild');
+const stylus = require('stylus');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { ObjectId } = require('mongodb');
 
 process.env.CI = 'true';
+process.env.DEV = 'true';
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hydro-feedback-browser-'));
 const homedir = os.homedir;
 os.homedir = () => path.join(profile, 'home');
 fs.mkdirSync(os.homedir());
 process.env.HYDRO_PROFILE = profile;
 fs.writeFileSync(path.join(profile, 'config.json'), '{}');
-fs.writeFileSync(path.join(profile, 'addon.json'), '[]');
+fs.writeFileSync(path.join(profile, 'addon.json'), JSON.stringify(['@hydrooj/ui-default']));
 const instances = [];
 const create = MongoMemoryServer.create;
 MongoMemoryServer.create = async function (...args) {
@@ -36,35 +38,63 @@ MongoMemoryServer.create = async function (...args) {
     const model = global.Hydro.model;
     const { PERM } = model.builtin;
     const teacherUid = await model.user.create('feedback-teacher@example.com', 'feedback-teacher', 'test-only-password');
-    const studentUid = await model.user.create('feedback-student@example.com', 'feedback-student', 'test-only-password');
     const domainId = 'feedback-browser';
     await model.domain.add(domainId, teacherUid, '隔离反馈测试', '');
     await model.domain.edit(domainId, { enableCourse: true, classroomFeedback: true });
-    await model.domain.setUserRole(domainId, studentUid, 'default', true);
+    await model.domain.setUserInDomain(domainId, teacherUid, { displayName: '示例教师' });
+    const students = [];
+    for (const [index, name] of ['陈同学', '何同学', '林同学', '王同学', '徐同学', '周同学'].entries()) {
+        const uname = 'feedback-student-' + index;
+        const uid = await model.user.create(uname + '@example.com', uname, 'test-only-password');
+        await model.domain.setUserRole(domainId, uid, 'default', true);
+        await model.domain.setUserInDomain(domainId, uid, { displayName: name });
+        students.push(uid);
+    }
+    const [studentUid] = students;
     await model.user.collGroup.insertOne({
-        _id: new ObjectId(), domainId, name: '试验班', class: true, teachers: [teacherUid], students: [studentUid], uids: [teacherUid, studentUid],
+        _id: new ObjectId(), domainId, name: '试验班', class: true, teachers: [teacherUid], students, uids: [teacherUid, ...students],
     });
-    const pid = await model.problem.add(domainId, '', '课堂测试题', '临时测试题', teacherUid);
-    const tid = await model.contest.add(domainId, '课堂反馈测试课程', '', teacherUid, 'course',
-        new Date(Date.now() - 60000), new Date(Date.now() + 3600000), [pid], false,
-        { assign: ['试验班'], dag: [{ _id: 0, title: '第一课', pids: [pid] }] });
+    const pid = await model.problem.add(domainId, '', '数字反转', '临时测试题', teacherUid);
+    const secondPid = await model.problem.add(domainId, '', '循环求和', '临时测试题', teacherUid);
+    const tid = await model.contest.add(domainId, 'GESP 二级 · 循环练习', '', teacherUid, 'course',
+        new Date(Date.now() - 60000), new Date(Date.now() + 3600000), [pid, secondPid], false,
+        { assign: ['试验班'], dag: [
+            { _id: 1, title: '第 3 课', pids: [pid, secondPid] },
+            { _id: 2, title: '复习巩固', pids: [pid] },
+        ] });
+    await model.contest.attend(domainId, tid, studentUid);
+    await model.contest.setStatus(domainId, tid, studentUid, { score: { 0: 35 }, detail: { [pid]: { score: 35, status: 2 } } });
+    const rid = new ObjectId();
+    await model.record.coll.insertOne({
+        _id: rid, domainId, uid: studentUid, pid: secondPid, contest: tid, code: 'int main() { return 0; }', lang: 'cc', status: 1, files: {},
+    });
     const endpoint = `/d/${domainId}/course/${tid}/feedback`;
-    const bundle = await esbuild.build({
+    const bundleOptions = {
         stdin: {
-            contents: `import page from './packages/ui-default/pages/classroom_feedback.page';
-                const name = document.documentElement.dataset.page;
-                if (!page.isNameMatch(name)) throw new Error('Feedback page initialization does not match template: ' + name);
-                page.afterLoading(name);`,
+            contents: "import feedback from './packages/ui-default/pages/classroom_feedback.page';\nimport manage from './packages/ui-default/pages/course_manage.page';\nimport scoreboard from './packages/ui-default/pages/contest_scoreboard.page';\nimport content from './packages/ui-default/pages/training_detail.page';\nimport $ from 'jquery';\nimport pjax from './packages/ui-default/utils/pjax';\nwindow.$=$;window.__feedbackRefresh=()=>pjax.request({url:location.pathname,push:false});document.querySelectorAll('.section').forEach(el=>el.classList.add('visible'));new MutationObserver(()=>document.querySelectorAll('.section').forEach(el=>el.classList.add('visible'))).observe(document.body,{childList:true,subtree:true});\nconst name = document.documentElement.dataset.page;\nfor (const page of [feedback, manage, scoreboard, content]) if (page.isNameMatch(name)) page.afterLoading(name);",
             resolveDir: path.resolve(__dirname, '..'), loader: 'tsx',
         }, bundle: true, write: false, platform: 'browser',
+        loader: { '.scss': 'empty', '.css': 'empty' },
         alias: { vj: path.resolve(__dirname, '../packages/ui-default') },
         define: { 'process.env.NODE_ENV': '"development"' },
-    });
+    };
+    await esbuild.build(bundleOptions);
     const { Handler } = require('../packages/hydrooj/src/service/server');
+    const nativeCSS = fs.readFileSync(path.join(__dirname, '../review/ui-proposals-2026-10-05/hydro-native.css'), 'utf8');
     const { ForbiddenError } = require('../packages/hydrooj/src/error');
     const ctx = await new Promise((resolve) => global.app.inject(['server'], resolve));
     let loseNextReceipt = false;
     let denyNextRead = false;
+    let failNextStudentAccess = false;
+    const statusCollection = require('../packages/hydrooj/src/model/document').collStatus;
+    const updateStatus = statusCollection.findOneAndUpdate;
+    statusCollection.findOneAndUpdate = async function (...args) {
+        if (failNextStudentAccess && args[0].uid === studentUid) {
+            failNextStudentAccess = false;
+            throw new Error('Injected single-student access failure');
+        }
+        return await updateStatus.apply(this, args);
+    };
     const coll = require('../packages/hydrooj/src/model/classroomFeedback').coll;
     const find = coll.findOne;
     coll.findOne = async function (...args) {
@@ -89,35 +119,46 @@ MongoMemoryServer.create = async function (...args) {
             this.response.redirect = endpoint;
         }
     });
-    ctx.on('handler/after/ClassroomFeedback#get', (handler) => {
-        if (handler.request.headers.accept?.includes('application/json')) return;
-        // Match the normal renderer's template-derived data-page, then load the
-        // actual page module. Directly mounting the component would miss routing bugs.
-        const pageName = handler.response.template.split('.')[0];
+    const fullTemplate = async (handler) => {
+        if (handler.request.headers.accept?.includes('application/json') || handler.request.query.pjax) return;
+        if (!handler.response.template) return;
+        const html = await handler.renderHTML(handler.response.template, handler.response.body);
         handler.response.template = null;
         handler.response.type = 'text/html';
-        handler.response.body = `<!DOCTYPE html><html lang="zh" data-page="${pageName}"><meta charset="utf-8"><title>Hydro 课堂反馈 · 隔离验证</title>
-                <style>body{font-family:system-ui;margin:24px auto;max-width:1050px;padding:0 16px;color:#17243a;background:#f3f5f8}
-                #classroom-feedback{background:white;padding:24px;border-radius:12px}label{display:block;margin:14px 0}select,textarea,input{display:block;padding:8px;min-width:260px}
-                input[type=checkbox]{display:inline;min-width:0}textarea{width:90%}button{padding:9px 16px;margin:6px;border:1px solid #b9c6d8;background:#edf3ff;border-radius:6px;cursor:pointer}
-                button:disabled{opacity:.45}table{width:100%;border-collapse:collapse}td,th{padding:12px;border-bottom:1px solid #dde4ef;text-align:left}p[role=status]{color:#245ab4}fieldset{border:1px solid #dce3ee}</style>
-                <p>隔离验证环境 · 仅含临时测试班级、教师和学生</p>
-                <button onclick="fetch('/feedback-preview-fault',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(()=>document.getElementById('fault').textContent='下一次保存将模拟回执丢失')">模拟下一次回执丢失</button><span id="fault"></span>
-                <button onclick="fetch('/feedback-preview-fault',{method:'POST',headers:{'Content-Type':'application/json'},body:'{&quot;deny&quot;:true}'}).then(()=>document.getElementById('fault').textContent='下一次重试将暂时拒绝')">模拟下一次重试被拒绝</button>
-                <div id="classroom-feedback"></div><script>window.Hydro={};</script><script src="/feedback-preview.js"></script></html>`;
-    });
+        handler.response.body = html.replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '')
+            + '<style>' + nativeCSS + stylus.render(fs.readFileSync(path.join(__dirname,
+                '../packages/ui-default/components/classroom-feedback.page.styl'), 'utf8')) + '</style>'
+            + '<script>window.Hydro={};window.UiContext=Object.assign(JSON.parse(window.UiContext),JSON.parse(window.UiContextNew));'
+            + 'window.UserContext=Object.assign(JSON.parse(window.UserContext),JSON.parse(window.UserContextNew));</script>'
+            + '<script src="/feedback-preview.js"></script>';
+    };
+    ctx.on('handler/after/ClassroomFeedback#get', fullTemplate);
+    ctx.on('handler/after/CourseScoreboard#get', fullTemplate);
+    ctx.on('handler/after/CourseManage#get', fullTemplate);
+    ctx.on('handler/after/CourseDetail#get', fullTemplate);
     ctx.Route('feedback_preview_js', '/feedback-preview.js', class FeedbackPreviewScriptHandler extends Handler {
-        async get() { this.response.type = 'application/javascript'; this.response.body = bundle.outputFiles[0].text; }
+        async get() {
+            const result = await esbuild.build(bundleOptions);
+            this.response.type = 'application/javascript';
+            this.response.body = result.outputFiles[0].text;
+        }
     });
     ctx.Route('feedback_preview_fault', '/feedback-preview-fault', class FeedbackPreviewFaultHandler extends Handler {
         async post() {
-            if (this.request.body.deny) denyNextRead = true;
+            if (this.request.body.management) failNextStudentAccess = true;
+            else if (this.request.body.deny) denyNextRead = true;
             else loseNextReceipt = true;
             this.response.body = { enabled: true };
         }
     });
     ctx.Route('feedback_preview_audit', '/feedback-preview-audit', class FeedbackPreviewAuditHandler extends Handler {
         async get() { this.response.body = { events: await coll.find({ domainId }).toArray() }; }
+    });
+    ctx.Route('feedback_preview_score_change', '/feedback-preview-score-change', class FeedbackPreviewScoreChangeHandler extends Handler {
+        async post() {
+            await model.contest.setStatus(domainId, tid, studentUid, { 'score.0': 36 });
+            this.response.body = { updated: true };
+        }
     });
     console.log(`FEEDBACK_PREVIEW_URL=http://127.0.0.1:${port}/feedback-preview`);
     const stop = async () => {
@@ -130,4 +171,14 @@ MongoMemoryServer.create = async function (...args) {
     };
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);
-})().catch((error) => { console.error(error); process.exitCode = 1; });
+})().catch(async (error) => {
+    console.error(error);
+    if (global.app?.get('db')) {
+        await global.app.parallel('app/exit');
+        await global.app.root.fiber.dispose();
+    }
+    await Promise.all(instances.map((instance) => instance.stop()));
+    os.homedir = homedir;
+    fs.rmSync(profile, { recursive: true, force: true });
+    process.exit(1);
+});
