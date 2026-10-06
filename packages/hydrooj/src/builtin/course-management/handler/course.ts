@@ -2,10 +2,11 @@ import assert from 'assert';
 import { canManageFeedback } from '../../../lib/classroomFeedbackAccess';
 import { getReferenceCodeSolutions, isReferenceCodeSolution, REFERENCE_CODE_TITLE } from '../../../lib/referenceCode';
 import { feedbackRepository } from '../../../model/classroomFeedback';
+import FeedbackModel from '../../../model/feedback';
 import {
     _, BadRequestError, ContestAlreadyAttendedError, ContestModel, ContestNotFoundError, ContestScoreboardHiddenError,
     DocumentModel, ForbiddenError, Handler, moment, NotAssignedError, ObjectId, OplogModel,
-    param, PERM, post, ProblemModel, ProblemNotFoundError, SolutionModel, sortFiles, STATUS, StorageModel, SystemModel,
+    param, PERM, post, PRIV, ProblemModel, ProblemNotFoundError, SolutionModel, sortFiles, STATUS, StorageModel, SystemModel,
     Types, UserModel, ValidationError,
 } from '../../../plugin-api';
 import bus from '../../../service/bus';
@@ -1617,7 +1618,7 @@ export class CourseLectureHandler extends Handler {
     @param('tid', Types.ObjectId)
     async prepare(domainId: string, tid: ObjectId) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
-        if (tdoc.rule !== 'course') {
+        if (!tdoc || tdoc.rule !== 'course') {
             throw new ContestNotFoundError(domainId, tid);
         }
         const isTemplate = tdoc.assign?.includes('teachers');
@@ -1633,11 +1634,7 @@ export class CourseLectureHandler extends Handler {
         }
     }
 
-    @param('tid', Types.ObjectId)
-    @param('id', Types.PositiveInt)
-    @param('edit', Types.Boolean)
-    @param('pjax', Types.Boolean)
-    async get(domainId: string, tid: ObjectId, id: number, edit = false, pjax = false) {
+    async readableLecture(domainId: string, tid: ObjectId, id: number, edit = false) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
         let tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
         const node = tdoc.dag.find((n) => n._id === id);
@@ -1654,6 +1651,15 @@ export class CourseLectureHandler extends Handler {
             if (edit) throw new ForbiddenError();
             if (!canViewCourseLecture(this, tdoc, node, tsdoc)) throw new ForbiddenError('讲义尚未开放。');
         }
+        return { tdoc, tsdoc, node };
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('id', Types.PositiveInt)
+    @param('edit', Types.Boolean)
+    @param('pjax', Types.Boolean)
+    async get(domainId: string, tid: ObjectId, id: number, edit = false, pjax = false) {
+        const { tdoc, tsdoc, node } = await this.readableLecture(domainId, tid, id, edit);
 
         const lectureContent = (tdoc.lecture?.[id] || tdoc.lecture?.[String(id)] || '')
             .replace(/\(file:\/\//g, '(../file/')
@@ -1697,6 +1703,23 @@ export class CourseLectureHandler extends Handler {
             this.response.template = 'course_lecture.html';
             this.response.body = body;
         }
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('id', Types.PositiveInt)
+    @param('content', Types.Content)
+    @param('quote', Types.String, true)
+    async postFeedback(domainId: string, tid: ObjectId, id: number, content: string, quote = '') {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const { tdoc, node } = await this.readableLecture(domainId, tid, id);
+        FeedbackModel.validateText(content);
+        FeedbackModel.validateText(quote, 'quote', true);
+        await this.limitRate('feedback_create_minute', 60, 3, '{{user}}');
+        await this.limitRate('feedback_create_hour', 3600, 20, '{{user}}');
+        this.back(await FeedbackModel.create(domainId, this.user._id, {
+            type: 'lecture', tid, nodeId: id,
+            title: `${tdoc.title} / ${node.lecture || id}`,
+        }, content, quote));
     }
 
     @param('tid', Types.ObjectId)

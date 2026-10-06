@@ -20,6 +20,7 @@ import { PERM, PRIV } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
 import domain from '../model/domain';
+import feedback from '../model/feedback';
 import message from '../model/message';
 import * as OplogModel from '../model/oplog';
 import ProblemModel from '../model/problem';
@@ -660,10 +661,17 @@ class HomeDomainCreateHandler extends Handler {
     }
 }
 
-class HomeMessagesHandler extends Handler {
-    async get() {
+export class HomeMessagesHandler extends Handler {
+    // This is a personal inbox; feedback checks the source domain independently.
+    noCheckPermView = true;
+
+    @query('feedback', Types.ObjectId, true)
+    async get({ }, selectedFeedback?: ObjectId) {
         // TODO(iceboy): projection, pagination.
-        const messages = await message.getByUser(this.user._id);
+        const [messages, feedbackThreads] = await Promise.all([
+            message.getByUser(this.user._id),
+            feedback.list(this.user._id, selectedFeedback),
+        ]);
         const uids = new Set<number>([
             ...messages.map((mdoc) => mdoc.from),
             ...messages.flatMap((mdoc) => mdoc.to),
@@ -684,7 +692,7 @@ class HomeMessagesHandler extends Handler {
             }
         }
         await user.setById(this.user._id, { unreadMsg: 0 });
-        this.response.body = { messages: parsed };
+        this.response.body = { messages: parsed, feedbackThreads, canSendMessage: this.user.hasPriv(PRIV.PRIV_SEND_MESSAGE) };
         this.response.template = 'home_messages.html';
     }
 
@@ -699,10 +707,21 @@ class HomeMessagesHandler extends Handler {
         this.back({ mdoc, udoc });
     }
 
+    @param('feedbackId', Types.ObjectId)
+    @param('content', Types.Content)
+    async postFeedbackReply({ }, feedbackId: ObjectId, content: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const thread = await feedback.get(feedbackId);
+        if (!await feedback.canAccess(thread, this.user._id)) throw new PermissionError();
+        feedback.validateText(content);
+        await this.limitRate('feedback_reply', 60, 10, '{{user}}');
+        this.back(await feedback.reply(feedbackId, this.user._id, content));
+    }
+
     @param('messageId', Types.ObjectId)
     async postDeleteMessage({ }, messageId: ObjectId) {
         const msg = await message.get(messageId);
-        if (msg.from === this.user._id) await message.del(messageId);
+        if (msg && !msg.feedbackId && msg.from === this.user._id) await message.del(messageId);
         else throw new PermissionError();
         this.back();
     }
@@ -722,17 +741,33 @@ export function apply(ctx: Context) {
 
     async function notifyMessage(uid: number[], mdoc: any, h) {
         const udoc = (await user.getById('system', mdoc.from))!;
+        let feedbackThread;
+        if (mdoc.feedbackId) {
+            const thread = await feedback.get(new ObjectId(mdoc.feedbackId));
+            const allowed = await Promise.all(uid.map(async (target) => await feedback.canAccess(thread, target) ? target : null));
+            uid = allowed.filter((target) => target !== null);
+            if (!uid.length) return null;
+            feedbackThread = await feedback.dialogue(thread, uid[0], 50);
+        }
         return {
             operation: 'event',
             channels: uid.map((u) => `message:${u}`),
-            payload: { udoc: { ...udoc.serialize(h) as any, avatarUrl: avatar(udoc.avatar, 128) }, mdoc },
+            payload: {
+                udoc: {
+                    ...(feedbackThread ? { _id: udoc._id, uname: udoc.uname } : udoc.serialize(h) as any),
+                    avatarUrl: avatar(udoc.avatar, 128),
+                },
+                mdoc,
+                ...(feedbackThread ? { feedbackThread } : {}),
+            },
         };
     }
 
     ctx.on('subscription/init', (h, privileged) => {
         if (!privileged) return;
         h.ctx.on('user/message', async (uid, mdoc) => {
-            h.send(await notifyMessage(uid, mdoc, h));
+            const event = await notifyMessage(uid, mdoc, h);
+            if (event) h.send(event);
         });
     });
 
@@ -741,7 +776,8 @@ export function apply(ctx: Context) {
         const uid = +channel.split(':')[1];
         h.ctx.on('user/message', async (uids, mdoc) => {
             if (!uids.includes(uid)) return;
-            h.send(await notifyMessage([uid], mdoc, h));
+            const event = await notifyMessage([uid], mdoc, h);
+            if (event) h.send(event);
         });
     });
 

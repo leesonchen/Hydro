@@ -3,6 +3,7 @@ import React from 'react';
 import { connect } from 'react-redux';
 import { i18n } from 'vj/utils';
 import ListItem from './DialogueListItemComponent';
+import { activateDialogue } from './helpers';
 
 const mapStateToProps = (state) => ({
   activeId: state.activeId,
@@ -11,10 +12,7 @@ const mapStateToProps = (state) => ({
 
 const mapDispatchToProps = (dispatch) => ({
   handleClick(id) {
-    dispatch({
-      type: 'DIALOGUES_SWITCH_TO',
-      payload: id,
-    });
+    activateDialogue(dispatch, id);
   },
 });
 
@@ -32,7 +30,7 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MessagePadDial
         {_.map(orderedDialogues, (dialogue) => (
           <ListItem
             key={dialogue._id}
-            userName={dialogue.udoc.uname}
+            userName={dialogue.kind === 'feedback' ? `${i18n('Problem feedback')}: ${dialogue.source.title}` : dialogue.udoc.uname}
             summary={dialogue.messages.length
               ? (_.maxBy(dialogue.messages, '_id').flag & 4)
                 ? i18n('[Richtext message]')

@@ -10,7 +10,7 @@ import {
     after, before, beforeEach, describe, it,
 } from 'node:test';
 import * as supertest from 'supertest';
-import { PERM, STATUS } from '@hydrooj/common';
+import { PERM, PRIV, STATUS } from '@hydrooj/common';
 import { getApiArgs } from '@hydrooj/framework';
 
 const Root = {
@@ -622,6 +622,132 @@ describe('App', () => {
                 RecordModel.coll.deleteOne({ _id: rid }),
             ]);
             rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    it('Allows private content feedback without allowing ordinary messages or bypassing resource access', async () => {
+        const { domain: DomainModel, user: UserModel, problem: ProblemModel, contest: ContestModel, feedback: FeedbackModel, message: MessageModel } = global.Hydro.model;
+        const suffix = Date.now().toString(36);
+        const domainId = `feedback-${suffix}`;
+        const otherDomainId = `feedback-other-${suffix}`;
+        const actors: Record<string, { uid: number, client: any }> = {};
+        const createdUids: number[] = [];
+        let pid: number;
+        let tid: ObjectId;
+        let unassignedTid: ObjectId;
+        try {
+            for (const role of ['student', 'other', 'owner', 'outside', 'sys']) {
+                const uname = `fb${role}${suffix}`;
+                const uid = await UserModel.create(`${uname}@example.com`, uname, '123456');
+                createdUids.push(uid);
+                await UserModel.setPriv(uid, PRIV.PRIV_USER_PROFILE | (role === 'sys' ? PRIV.PRIV_EDIT_SYSTEM : 0));
+                const actorClient = supertest.agent(require('hydrooj').httpServer);
+                await actorClient.post('/login').send({ uname, password: '123456' }).expect(302);
+                actors[role] = { uid, client: actorClient };
+            }
+            await DomainModel.add(domainId, actors.owner.uid, 'Feedback domain', '');
+            await DomainModel.add(otherDomainId, actors.outside.uid, 'Other feedback domain', '');
+            const studentPerm = PERM.PERM_VIEW | PERM.PERM_VIEW_PROBLEM | PERM.PERM_VIEW_HOMEWORK | PERM.PERM_ATTEND_HOMEWORK;
+            await DomainModel.edit(domainId, { roles: { student: studentPerm.toString() }, enableCourse: true });
+            await DomainModel.setUserRole(domainId, [actors.student.uid, actors.other.uid], 'student', true);
+            pid = await ProblemModel.add(domainId, '', 'Feedback source', 'Original statement', actors.owner.uid);
+            const beginAt = new Date(Date.now() - 3600000);
+            const endAt = new Date(Date.now() + 3600000);
+            const courseData = {
+                assign: [String(actors.student.uid)],
+                dag: [{ _id: 1, title: 'Chapter', lecture: 'Lecture', pids: [pid] }],
+                lecture: { 1: 'Original lecture' },
+            };
+            tid = await ContestModel.add(domainId, 'Feedback course', '', actors.owner.uid, 'course', beginAt, endAt, [pid], false, courseData);
+            unassignedTid = await ContestModel.add(domainId, 'Unassigned course', '', actors.owner.uid, 'course', beginAt, endAt, [pid], false, {
+                ...courseData, assign: [String(actors.other.uid)],
+            });
+            await ContestModel.setStatus(domainId, tid, actors.student.uid, {
+                attend: 1, startAt: beginAt, endAt, allow: { 1: true }, lectureAllow: { 1: false },
+            });
+            const submitFeedback = (url: string, content = 'This content is incorrect.', extras = {}) => actors.student.client
+                .post(url).set('Accept', 'application/json').send({ operation: 'feedback', content, ...extras });
+            const sourceUrl = `/d/${domainId}/p/${pid}`;
+            const response = await submitFeedback(sourceUrl, 'This content is incorrect.', {
+                quote: '<script>quoted text</script>', uid: actors.other.uid, to: [actors.other.uid],
+                domainId: otherDomainId, title: 'Forged title', sourceUrl: 'https://example.invalid/',
+            }).expect(200);
+            const feedbackId = new ObjectId(response.body.feedbackId);
+            const feedbackDoc = await FeedbackModel.get(feedbackId);
+            assert.equal(feedbackDoc.domainId, domainId);
+            assert.equal(feedbackDoc.source.url, sourceUrl);
+            assert.equal(feedbackDoc.source.title, `${pid}. Feedback source`);
+            const initialMessage = await MessageModel.coll.findOne({ feedbackId });
+            assert(initialMessage.to.includes(actors.owner.uid));
+            assert(initialMessage.to.includes(actors.sys.uid));
+            assert(initialMessage.to.includes(2));
+            assert(!initialMessage.to.includes(actors.other.uid));
+            assert(!initialMessage.to.includes(actors.outside.uid));
+            assert.equal((await UserModel.coll.findOne({ _id: actors.student.uid })).priv, PRIV.PRIV_USER_PROFILE);
+            await actors.student.client.post('/home/messages').set('Accept', 'application/json').send({
+                operation: 'send', uid: actors.owner.uid, content: 'Cannot use ordinary private messages.', feedbackId,
+            }).expect(403);
+            await actors.student.client.post('/home/messages').set('Accept', 'application/json').send({
+                operation: 'delete_message', messageId: initialMessage._id,
+            }).expect(403);
+
+            for (const role of ['other', 'outside']) {
+                await actors[role].client.get(`/home/messages?feedback=${feedbackId}`).set('Accept', 'application/json').expect(403);
+                await actors[role].client.post('/home/messages').set('Accept', 'application/json').send({
+                    operation: 'feedback_reply', feedbackId, content: 'Unauthorized reply', domainId,
+                }).expect(403);
+            }
+            for (const role of ['owner', 'sys', 'student']) {
+                const replied = await actors[role].client.post('/home/messages').set('Accept', 'application/json').send({
+                    operation: 'feedback_reply', feedbackId, content: `Reply from ${role}`, to: [actors.other.uid], domainId: otherDomainId,
+                }).expect(200);
+                assert.equal(replied.body.mdoc.domainId, domainId);
+                assert(!replied.body.mdoc.to.includes(actors.other.uid));
+            }
+            const inbox = await actors.student.client.get(`/home/messages?feedback=${feedbackId}`).set('Accept', 'application/json').expect(200);
+            assert.equal(inbox.body.canSendMessage, false);
+            assert.equal(Object.keys(inbox.body.messages).length, 0);
+            assert.equal(inbox.body.feedbackThreads[0].messages.length, 4);
+            assert.equal(inbox.body.feedbackThreads[0].quote, '<script>quoted text</script>');
+            assert.equal(Object.hasOwn(inbox.body.feedbackThreads[0].authors[actors.owner.uid], 'mail'), false);
+            await UserModel.setPriv(actors.sys.uid, PRIV.PRIV_USER_PROFILE);
+            await actors.sys.client.get(`/home/messages?feedback=${feedbackId}`).set('Accept', 'application/json').expect(403);
+            await actors.sys.client.post('/home/messages').set('Accept', 'application/json').send({
+                operation: 'feedback_reply', feedbackId, content: 'Reply after losing administrator privilege',
+            }).expect(403);
+
+            await ProblemModel.edit(domainId, pid, { hidden: true });
+            await submitFeedback(sourceUrl).expect(403);
+            await ProblemModel.edit(domainId, pid, { hidden: false });
+            await submitFeedback(`${sourceUrl}?tid=${unassignedTid}`).expect(403);
+            await submitFeedback(`/d/${domainId}/course/${unassignedTid}/lecture/1`).expect(403);
+            const lectureUrl = `/d/${domainId}/course/${tid}/lecture/1`;
+            await actors.student.client.get(lectureUrl).set('Accept', 'application/json').expect(403);
+            await submitFeedback(lectureUrl).expect(403);
+            await ContestModel.setStatus(domainId, tid, actors.student.uid, { lectureAllow: { 1: true } });
+            await actors.student.client.get(lectureUrl).set('Accept', 'application/json').expect(200);
+            const lectureResponse = await submitFeedback(lectureUrl).expect(200);
+            assert.notEqual(lectureResponse.body.feedbackId, response.body.feedbackId);
+            const lectureFeedback = await FeedbackModel.get(new ObjectId(lectureResponse.body.feedbackId));
+            assert.equal(lectureFeedback.source.type, 'lecture');
+            assert.equal(lectureFeedback.source.url, lectureUrl);
+            await submitFeedback(sourceUrl, 'x'.repeat(2001)).expect(403);
+            await submitFeedback(sourceUrl, 'valid', { quote: 'x'.repeat(4001) }).expect(403);
+            await submitFeedback(sourceUrl).expect(200);
+            const limited = await submitFeedback(sourceUrl).expect(403);
+            assert.equal(limited.body.error.name, 'OpcountExceededError');
+        } finally {
+            const feedbackDocs = await FeedbackModel.coll.find({ domainId: { $in: [domainId, otherDomainId] } }).toArray();
+            if (tid) await ContestModel.del(domainId, tid);
+            if (unassignedTid) await ContestModel.del(domainId, unassignedTid);
+            if (pid) await ProblemModel.del(domainId, pid);
+            await Promise.all([
+                MessageModel.coll.deleteMany({ feedbackId: { $in: feedbackDocs.map((doc) => doc._id) } }),
+                FeedbackModel.coll.deleteMany({ domainId: { $in: [domainId, otherDomainId] } }),
+                DomainModel.coll.deleteMany({ _id: { $in: [domainId, otherDomainId] } }),
+                DomainModel.collUser.deleteMany({ domainId: { $in: [domainId, otherDomainId] } }),
+                UserModel.coll.deleteMany({ _id: { $in: createdUids } }),
+            ]);
         }
     });
 

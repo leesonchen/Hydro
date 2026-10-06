@@ -1246,3 +1246,14 @@ Select exactly one default invitation role.: 請指定且僅指定一個預設�
 Role priorities must be unique positions in the role order.: 優先順序必須是角色列表中的唯一位置，不能重複。
 This invitation assigns its role to new members and upgrades members with a lower priority role.: 新成員將被分配邀請中的角色；已有成員的角色優先順序較低時也會升級為邀請中的角色。
 'If you have not joined this domain or your role has a lower priority, your role will be set to {0}.': 如果你尚未加入此域，或目前角色的優先順序較低，你的角色將設為 {0}。
+Problem feedback: 問題回饋
+Submit feedback: 提交回饋
+Feedback submitted: 回饋已提交
+View feedback: 查看回饋
+Quoted text: 引用內容
+Describe the content problem: 問題說明
+Sent to the domain owner and copied to system administrators.: 通知域建立者，並副本傳送給系統管理員。
+You can add information and read replies in this feedback conversation in Messages.: 可以在站內訊息的這條回饋中補充說明、查看回覆。
+Please select no more than 4000 characters for feedback.: 引用內容最多 4000 個字元，請縮小選取範圍。
+Please describe the content problem.: 請填寫問題說明。
+Add information about this feedback: 補充這條回饋的問題說明

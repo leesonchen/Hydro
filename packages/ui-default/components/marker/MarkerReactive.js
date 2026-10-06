@@ -38,7 +38,7 @@ export default class MarkerReactive extends DOMAttachedObject {
       return;
     }
     const range = selection.getRangeAt(0);
-    if (range.collapsed) {
+    if (range.collapsed || !this.$dom[0].contains(range.startContainer) || !this.$dom[0].contains(range.endContainer)) {
       return;
     }
     Marker.showAtPosition(this.$dom, ev.clientX, ev.clientY);
