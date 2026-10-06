@@ -60,7 +60,9 @@ const onmessage = (msg) => {
         message: msg.mdoc.content,
       },
     duration: 15000,
-    action: () => window.open(msg.mdoc.url ? msg.mdoc.url : `/home/messages?uid=${msg.udoc._id}`, '_blank'),
+    action: () => window.open(msg.mdoc.feedbackId
+      ? `/home/messages?feedback=${encodeURIComponent(msg.mdoc.feedbackId)}`
+      : msg.mdoc.url || `/home/messages?target=${msg.udoc._id}`, '_blank'),
   }).show();
   return true;
 };

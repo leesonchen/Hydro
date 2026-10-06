@@ -1,11 +1,14 @@
 import { Filter, ObjectId } from 'mongodb';
 import { MessageDoc } from '../interface';
+import { Logger } from '../logger';
 import bus from '../service/bus';
 import db from '../service/db';
 import { ArgMethod } from '../utils';
 import { PRIV } from './builtin';
 import system from './system';
 import user from './user';
+
+const logger = new Logger('message');
 
 class MessageModel {
     static FLAG_UNREAD = 1;
@@ -37,13 +40,33 @@ class MessageModel {
         bus.broadcast('user/message', [to], mdoc);
     }
 
+    static async sendFeedback(from: number, to: number[], content: string, feedbackId: ObjectId, domainId: string) {
+        const mdoc = {
+            _id: new ObjectId(), from, to, content,
+            flag: MessageModel.FLAG_UNREAD, feedbackId, domainId,
+        };
+        // Keep the conversation even when no other participant is currently active.
+        await MessageModel.coll.insertOne(mdoc);
+        // A notification failure must not make a persisted reply look like a failed send.
+        if (to.length) {
+            await user.inc(to, 'unreadMsg', 1).catch((error) => logger.error(error));
+            try {
+                bus.broadcast('user/message', to, mdoc);
+            } catch (error) {
+                logger.error(error);
+            }
+        }
+        return mdoc;
+    }
+
     static async get(_id: ObjectId) {
         return await MessageModel.coll.findOne({ _id });
     }
 
     @ArgMethod
     static async getByUser(uid: number) {
-        return await MessageModel.coll.find({ $or: [{ from: uid }, { to: uid }] }).sort('_id', -1).limit(1000).toArray();
+        return await MessageModel.coll.find({ feedbackId: { $exists: false }, $or: [{ from: uid }, { to: uid }] })
+            .sort('_id', -1).limit(1000).toArray();
     }
 
     static async getMany(query: Filter<MessageDoc>, sort: any, page: number, limit: number) {
@@ -62,7 +85,7 @@ class MessageModel {
     }
 
     static getMulti(uid: number) {
-        return MessageModel.coll.find({ $or: [{ from: uid }, { to: uid }] });
+        return MessageModel.coll.find({ feedbackId: { $exists: false }, $or: [{ from: uid }, { to: uid }] });
     }
 
     static async sendNotification(message: string, ...args: any[]) {
@@ -80,6 +103,7 @@ export async function apply() {
         MessageModel.coll,
         { key: { to: 1, _id: -1 }, name: 'to' },
         { key: { from: 1, _id: -1 }, name: 'from' },
+        { key: { feedbackId: 1, _id: -1 }, name: 'feedback' },
     );
 }
 export default MessageModel;

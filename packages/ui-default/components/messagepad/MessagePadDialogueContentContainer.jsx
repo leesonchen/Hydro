@@ -16,8 +16,11 @@ const mapStateToProps = (state) => ({
 });
 
 export default connect(mapStateToProps)(class MessagePadDialogueContentContainer extends React.PureComponent {
+  contentRef = React.createRef();
+
   componentDidUpdate(prevProps) {
-    const node = this.state.ref;
+    const node = this.contentRef.current;
+    if (!node) return;
 
     if (this.props.activeId !== prevProps.activeId) {
       this.scrollToBottom = true;
@@ -27,7 +30,6 @@ export default connect(mapStateToProps)(class MessagePadDialogueContentContainer
       this.scrollWithAnimation = true;
     } else this.scrollToBottom = false;
 
-    if (!node) return;
     if (this.scrollToBottom) {
       const targetScrollTop = node.scrollHeight - node.offsetHeight;
       if (this.scrollWithAnimation) {
@@ -39,6 +41,7 @@ export default connect(mapStateToProps)(class MessagePadDialogueContentContainer
   }
 
   renderContent(msg) {
+    if (msg.feedbackId) return msg.content;
     // TODO: FLAG_RICHTEXT
     if (msg.from === 1) {
       // Is system message
@@ -64,9 +67,8 @@ export default connect(mapStateToProps)(class MessagePadDialogueContentContainer
   }
 
   renderInner() {
-    if (this.props.activeId === null) return [];
-    const sorted = this.props.item.messages
-      .sort((msg1, msg2) => mongoId(msg1._id).timestamp - mongoId(msg2._id).timestamp);
+    if (!this.props.item) return [];
+    const sorted = [...this.props.item.messages].sort((a, b) => String(a._id).localeCompare(String(b._id)));
     return sorted.map((msg) => (
       <Message
         key={msg._id}
@@ -74,9 +76,12 @@ export default connect(mapStateToProps)(class MessagePadDialogueContentContainer
         faceUrl={
           msg.from === UserContext._id
             ? UserContext.avatarUrl
-            : this.props.item.udoc.avatarUrl
+            : this.props.item.authors?.[msg.from]?.avatarUrl || this.props.item.udoc.avatarUrl
         }
       >
+        {msg.feedbackId && <div className="messagepad__author">
+          {this.props.item.authors?.[msg.from]?.uname || (msg.from === UserContext._id ? UserContext.uname : `UID ${msg.from}`)}
+        </div>}
         <div>{this.renderContent(msg)}</div>
         <time data-tooltip={moment(mongoId(msg._id).timestamp * 1000).format('YYYY-MM-DD HH:mm:ss')}>
           <TimeAgo datetime={mongoId(msg._id).timestamp * 1000} locale={i18n('timeago_locale')} />
@@ -89,13 +94,24 @@ export default connect(mapStateToProps)(class MessagePadDialogueContentContainer
     return (
       <>
         <div className="messagepad__header">
-          {this.props.item && (
+          {this.props.item?.kind === 'feedback' ? (
+            <>
+              <div>{i18n('Problem feedback')} · {this.props.item.domainId}</div>
+              <a className="messagepad__content__header__title" href={this.props.item.source.url} target="_blank" rel="noreferrer">
+                {this.props.item.source.title}
+              </a>
+            </>
+          ) : this.props.item && (
             <a className="messagepad__content__header__title" href={`/user/${this.props.item.udoc._id}`}>
               {`${this.props.item.udoc.uname}(UID: ${this.props.item.udoc._id})`}
             </a>
           )}
         </div>
-        <ol className="messagepad__content" style={{ overscrollBehavior: 'contain' }} ref={(ref) => { this.setState({ ...this.state, ref }); }}>
+        <ol className="messagepad__content" style={{ overscrollBehavior: 'contain' }} ref={this.contentRef}>
+          {this.props.item?.kind === 'feedback' && <li className="messagepad__feedback-source">
+            <p>{i18n('Sent to the domain owner and copied to system administrators.')}</p>
+            {this.props.item.quote && <blockquote>{this.props.item.quote}</blockquote>}
+          </li>}
           {this.renderInner()}
         </ol>
       </>

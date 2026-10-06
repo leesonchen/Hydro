@@ -42,7 +42,11 @@
       {% else %}
         {%- if lecture -%}
         {{ set(UiContext, 'preventCopy', preventCopy) }}
-        <div data-heading-extract-to="#menu-item-lecture_section" id="lecture-main" class="section__body typo richmedia">
+        <div data-heading-extract-to="#menu-item-lecture_section" id="lecture-main" class="section__body typo richmedia" data-marker-enabled
+          {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+          data-feedback-url="/d/{{ tdoc.domainId }}/course/{{ tdoc.docId }}/lecture/{{ node['_id'] }}"
+          data-feedback-title="{{ tdoc.title }} / {{ node['lecture'] or node['_id'] }}"
+          {% endif %}>
           {{ lecture|lectureMarkdown|safe }}
         </div>
         <script>
@@ -74,6 +78,15 @@
   </div>
   <div class="medium-3 columns" data-sticky="large">
     {% include "course_sidebar.html" %}
+    {% if not edit and lecture and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+    <div class="section side">
+      <ol class="menu"><li class="menu__item">
+        <button type="button" class="menu__link" data-feedback-open>
+          <span class="icon icon-flag"></span> {{ _('Problem feedback') }}
+        </button>
+      </li></ol>
+    </div>
+    {% endif %}
     <div class="section side">
       <ol class="menu">
         <li class="menu__item" id="menu-item-lecture_section">

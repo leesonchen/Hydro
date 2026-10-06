@@ -97,3 +97,33 @@ $send-button-width = 50px
     font-size: rem($font-size-secondary)
     resize: none
     outline: 0
+
+.messagepad--readonly .messagepad__content
+  bottom: 0
+
+.messagepad--feedback
+  .messagepad__header
+    height: rem(55px)
+    overflow: auto
+
+  .messagepad__content
+    top: rem(55px)
+
+.messagepad__feedback-source
+  margin-bottom: rem(25px)
+  overflow-wrap: anywhere
+
+  p
+    color: $text-1-color
+    font-size: rem($font-size-small)
+
+  blockquote
+    white-space: pre-wrap
+    background: #f5f5f5
+    border-left: 3px solid #ddd
+    padding: rem(12px)
+
+.messagepad__author
+  font-weight: bold
+  font-size: rem($font-size-small)
+  margin-bottom: rem(5px)

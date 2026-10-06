@@ -30,6 +30,7 @@ import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
 import * as document from '../model/document';
 import domain from '../model/domain';
+import feedback from '../model/feedback';
 import * as oplog from '../model/oplog';
 import problem from '../model/problem';
 import record from '../model/record';
@@ -603,6 +604,22 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
                 || new Set(tdoc.assign).intersection(new Set(this.user.group)).size,
             ));
         }
+    }
+
+    @param('content', Types.Content)
+    @param('quote', Types.String, true)
+    async postFeedback(domainId: string, content: string, quote = '') {
+        // _prepare already enforces the same problem/contest/course access as GET.
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        feedback.validateText(content);
+        feedback.validateText(quote, 'quote', true);
+        await this.limitRate('feedback_create_minute', 60, 3, '{{user}}');
+        await this.limitRate('feedback_create_hour', 3600, 20, '{{user}}');
+        this.back(await feedback.create(domainId, this.user._id, {
+            type: 'problem', pid: this.pdoc.docId,
+            ...(this.tdoc ? { tid: this.tdoc.docId } : {}),
+            title: `${this.pdoc.pid || this.pdoc.docId}. ${this.pdoc.title}`,
+        }, content, quote));
     }
 
     @param('pid', Types.UnsignedInt)

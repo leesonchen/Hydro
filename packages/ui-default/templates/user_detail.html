@@ -42,9 +42,11 @@
                   <span class="icon icon-edit"></span>
                 </a>
               {% endif %}
+              {% if handler.user.hasPriv(PRIV.PRIV_SEND_MESSAGE) %}
                 <a class="profile-header__contact-item" href="{{ url('home_messages', query={target:udoc._id}) }}" target="_blank" data-tooltip="{{ _('Send Message') }}">
                   <span class="icon icon-comment--multiple"></span>
                 </a>
+              {% endif %}
               {% if udoc['mail'] %}
                 <a class="profile-header__contact-item" href="javascript:;" data-copy="{{ udoc['mail'] | base64_encode }}" data-tooltip="{{ _('Copy Email') }}">
                   <span class="icon icon-mail"></span>

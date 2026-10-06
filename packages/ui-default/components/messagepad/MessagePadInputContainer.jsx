@@ -3,15 +3,18 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import { connect } from 'react-redux';
 import Icon from 'vj/components/react/IconComponent';
-import { request } from 'vj/utils';
+import { i18n, request } from 'vj/utils';
 
 const mapStateToProps = (state) => ({
   activeId: state.activeId,
+  item: state.dialogues[state.activeId],
+  canReply: state.dialogues[state.activeId]?.kind === 'feedback'
+    ? state.dialogues[state.activeId].canReply : state.canSendMessage,
   isPosting: state.activeId !== null
     ? state.isPosting[state.activeId]
     : false,
   inputValue: state.activeId !== null
-    ? state.inputs[state.activeId]
+    ? state.inputs[state.activeId] || ''
     : '',
 });
 
@@ -26,23 +29,28 @@ const mapDispatchToProps = (dispatch) => ({
       },
     });
   },
-  postSend(uid, value) {
+  postSend(item, value) {
     const req = request.post('', {
-      operation: 'send',
-      uid,
+      ...(item.kind === 'feedback'
+        ? { operation: 'feedback_reply', feedbackId: item.feedbackId }
+        : { operation: 'send', uid: item._id }),
       content: value,
     });
-    dispatch({
+    return dispatch({
       type: 'DIALOGUES_POST_SEND',
       payload: req,
       meta: {
-        dialogueId: uid,
+        dialogueId: item._id,
       },
+    }).catch(() => {
+      // The rejected action reports the error and retains the draft for retry.
     });
   },
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(class MessagePadInputContainer extends React.PureComponent {
+  inputRef = React.createRef();
+
   static contextTypes = {
     store: PropTypes.object,
   };
@@ -54,7 +62,7 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MessagePadInpu
     );
     if (this.focusInput) {
       const { scrollX, scrollY } = window;
-      this.state.ref?.focus();
+      this.inputRef.current?.focus();
       window.scrollTo(scrollX, scrollY);
     }
   }
@@ -66,13 +74,15 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MessagePadInpu
   }
 
   submit() {
+    if (!this.props.canReply || !this.props.item || this.props.isPosting || !this.props.inputValue.trim()) return;
     this.props.postSend(
-      this.props.activeId,
+      this.props.item,
       this.props.inputValue,
     );
   }
 
   render() {
+    if (!this.props.canReply) return null;
     const cn = classNames('messagepad__input', {
       visible: this.props.activeId !== null,
     });
@@ -80,8 +90,10 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MessagePadInpu
       <div className={cn}>
         <div className="messagepad__textarea-container">
           <textarea
-            ref={(ref) => this.setState({ ...this.state, ref })}
-            data-markdown
+            ref={this.inputRef}
+            data-markdown={this.props.item?.kind === 'feedback' ? undefined : true}
+            maxLength={this.props.item?.kind === 'feedback' ? 2000 : undefined}
+            placeholder={this.props.item?.kind === 'feedback' ? i18n('Add information about this feedback') : ''}
             disabled={this.props.isPosting}
             value={this.props.inputValue}
             onKeyDown={(ev) => this.handleKeyDown(ev)}
