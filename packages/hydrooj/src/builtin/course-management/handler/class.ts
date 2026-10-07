@@ -4,8 +4,8 @@ import {
     ProblemModel, StorageModel, Types, UserModel, ValidationError,
 } from '../../../plugin-api';
 import { ClassModel } from '../model/class';
-import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
 import type { CourseTdoc } from '../model/course';
+import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
 import { nextStructure, problemAccessNodeIds, problemNodeIds } from '../model/structure';
 import { parseDag } from './course';
 
@@ -162,12 +162,18 @@ async function assertCourseCopyAllowed(sourceDomainId: string, targetDomainId: s
         .map((id) => id.trim().toLowerCase())
         .filter(Boolean);
     if (!sharedDomains.includes('*') && !sharedDomains.includes(canonicalTargetDomainId.toLowerCase())) {
-        throw new BadRequestError(fillMessage(translate('You are not allowed to copy this course from {0} to {1}.'), canonicalSourceDomainId, canonicalTargetDomainId));
+        throw new BadRequestError(fillMessage(
+            translate('You are not allowed to copy this course from {0} to {1}.'),
+            canonicalSourceDomainId, canonicalTargetDomainId,
+        ));
     }
     return ddoc;
 }
 
-async function assertProblemCopyAllowed(sourceDomainId: string, targetDomainId: string, originPid: number, translate: (value: string) => string = (value) => value) {
+async function assertProblemCopyAllowed(
+    sourceDomainId: string, targetDomainId: string, originPid: number,
+    translate: (value: string) => string = (value) => value,
+) {
     const ddoc = await DomainModel.get(sourceDomainId);
     if (!ddoc) {
         throw new BadRequestError(fillMessage(translate('Source domain {0} does not exist.'), sourceDomainId));
@@ -182,22 +188,24 @@ async function assertProblemCopyAllowed(sourceDomainId: string, targetDomainId: 
         .map((id) => id.trim().toLowerCase())
         .filter(Boolean);
     if (!sharedDomains.includes('*') && !sharedDomains.includes(canonicalTargetDomainId.toLowerCase())) {
-        throw new BadRequestError(fillMessage(translate('Problem {0} in {1} is not allowed to be copied to {2}.'), originPid, canonicalSourceDomainId, canonicalTargetDomainId));
+        throw new BadRequestError(fillMessage(
+            translate('Problem {0} in {1} is not allowed to be copied to {2}.'),
+            originPid, canonicalSourceDomainId, canonicalTargetDomainId,
+        ));
     }
     return ddoc;
 }
 
 async function resolveProblemOrigin(domainId: string, pid: number, translate: (value: string) => string = (value) => value) {
-    let current = await ProblemModel.get(domainId, pid);
-    if (!current) {
-        throw new BadRequestError(fillMessage(translate('Referenced source problem {0} in domain {1} does not exist.'), pid, domainId));
-    }
-    while (current.reference) {
-        current = await ProblemModel.get(current.reference.domainId, current.reference.pid);
+    const readOrigin = async (sourceDomainId: string, sourcePid: number): ReturnType<typeof ProblemModel.get> => {
+        const current = await ProblemModel.get(sourceDomainId, sourcePid);
         if (!current) {
             throw new BadRequestError(fillMessage(translate('Referenced source problem {0} in domain {1} does not exist.'), pid, domainId));
         }
-    }
+        if (current.reference) return readOrigin(current.reference.domainId, current.reference.pid);
+        return current;
+    };
+    const current = await readOrigin(domainId, pid);
     return {
         originDomainId: current.domainId,
         originPid: current.docId,
@@ -213,7 +221,7 @@ async function buildPidMapping(
     const mapping = new Map<number, number>();
     const missing: Array<{ pid: number, originDomainId: string, originPid: number }> = [];
 
-    for (const pid of Array.from(new Set(pids))) {
+    for await (const pid of Array.from(new Set(pids))) {
         const origin = await resolveProblemOrigin(sourceDomainId, pid, translate);
         // Dot notation: an exact-match query on the whole `reference` subdocument
         // would miss copies that carry extra sync fields (sourceUpdateAt/lastSyncAt).
@@ -252,7 +260,7 @@ async function copyMissingProblemsToTarget(
         missing.map((item) => [`${item.originDomainId}:${item.originPid}`, item]),
     ).values());
 
-    for (const item of uniqueOrigins) {
+    for await (const item of uniqueOrigins) {
         await assertProblemCopyAllowed(item.originDomainId, targetDomainId, item.originPid, translate);
         await ProblemModel.copy(item.originDomainId, item.originPid, targetDomainId);
     }
@@ -766,7 +774,7 @@ export class ClassEditHandler extends Handler {
 
             const tdocs: any[] = [];
 
-            for (const templateValue of templateIds) {
+            for await (const templateValue of templateIds) {
                 const [sourceDomainIdRaw, templateIdRaw] = String(templateValue || '').split(':');
                 const requestedSourceDomainId = (sourceDomainIdRaw || '').trim();
                 const templateId = (templateIdRaw || '').trim();
@@ -793,7 +801,11 @@ export class ClassEditHandler extends Handler {
                     ({ mapping, missing } = await buildPidMapping(sourceDomainId, domainId, sourcePids, (this as any).translate?.bind(this)));
                     if (missing.length) {
                         const missingText = missing.map((item) => `${item.pid} -> ${item.originDomainId}:${item.originPid}`).join(', ');
-                        throw new BadRequestError(fillMessage((this as any).translate?.('Missing referenced problems in target domain: {0}') || 'Missing referenced problems in target domain: {0}', missingText));
+                        throw new BadRequestError(fillMessage(
+                            (this as any).translate?.('Missing referenced problems in target domain: {0}')
+                            || 'Missing referenced problems in target domain: {0}',
+                            missingText,
+                        ));
                     }
                 }
                 const newDag = rewriteDagPids(parsedDag, mapping);
@@ -809,7 +821,6 @@ export class ClassEditHandler extends Handler {
                 const classPublicScoreboard = gdoc.publicScoreboard !== false;
                 const classEnablePenalty = gdoc.enablePenalty !== false;
 
-                // eslint-disable-next-line no-await-in-loop
                 await refreshClassEditLock(domainId, id, editToken);
                 // 创建新课程
                 const newTid = await ContestModel.add(
@@ -841,7 +852,6 @@ export class ClassEditHandler extends Handler {
 
                 // ContestModel.add may be extended by hooks; explicitly persist copied lectures and settings after creation
                 // so cross-domain course copies do not lose lecture bodies and class settings.
-                // eslint-disable-next-line no-await-in-loop
                 await ContestModel.edit(domainId, newTid, {
                     publicScoreboard: classPublicScoreboard,
                     enablePenalty: classEnablePenalty,

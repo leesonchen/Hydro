@@ -13,11 +13,10 @@ import parser from '@hydrooj/utils/lib/search';
 import { randomstring, sortFiles, streamToBuffer } from '@hydrooj/utils/lib/utils';
 import { problemAccessNodeIds } from '../builtin/course-management/model/structure';
 import type { Context } from '../context';
-import { Logger } from '../logger';
 import {
     BadRequestError, ContestNotAttendedError, ContestNotEndedError, ContestNotFoundError, ContestNotLiveError,
-    FileLimitExceededError, FileTooLargeError, HackFailedError, NoProblemError, NotFoundError,
-    ForbiddenError, PermissionError, ProblemAlreadyExistError, ProblemAlreadyUsedByContestError, ProblemConfigError,
+    FileLimitExceededError, FileTooLargeError, ForbiddenError, HackFailedError, NoProblemError, NotFoundError,
+    PermissionError, ProblemAlreadyExistError, ProblemAlreadyUsedByContestError, ProblemConfigError,
     ProblemIsReferencedError, ProblemNotAllowCopyError, ProblemNotAllowLanguageError, ProblemNotAllowPretestError,
     ProblemNotFoundError, ProblemReferencedByDomainError, RecordNotFoundError, SolutionNotFoundError, ValidationError,
 } from '../error';
@@ -25,6 +24,7 @@ import {
     ProblemDoc, ProblemSearchOptions, ProblemStatusDoc, RecordDoc, User,
 } from '../interface';
 import { REFERENCE_CODE_TITLE } from '../lib/referenceCode';
+import { Logger } from '../logger';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
@@ -195,7 +195,10 @@ export class ProblemMainHandler extends Handler {
     @param('pjax', Types.Boolean)
     @param('quick', Types.Boolean)
     @param('sort', Types.Range(['default', 'recent']), true)
-    async get(domainId: string, page = 1, q = '', tag = '', limit: number, global = false, scope: 'all' | 'title' = 'title', mode: 'sonic' | 'regex' = 'regex', pjax = false, quick = false, sortStrategy = 'default') {
+    async get(
+        domainId: string, page = 1, q = '', tag = '', limit: number, global = false, scope: 'all' | 'title' = 'title',
+        mode: 'sonic' | 'regex' = 'regex', pjax = false, quick = false, sortStrategy = 'default',
+    ) {
         this.response.template = 'problem_main.html';
         const paginationDefault = this.ctx.setting.get('pagination.problem') ?? system.get('pagination.problem') ?? 50;
         if (!Number.isSafeInteger(limit) || limit <= 0 || limit > paginationDefault || page > 1) limit = paginationDefault;

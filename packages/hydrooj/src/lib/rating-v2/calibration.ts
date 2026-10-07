@@ -47,7 +47,7 @@ export function calibratedProbability(mu: number, d: number, slope = 1): number 
  * (0, 5]. Fitting on one deterministic half of the data and evaluating on the
  * other half (caller's job) keeps the reported gain honest.
  */
-export function fitSolveCalibration(obs: CalibrationObservation[], opts: { maxSlope?: number; maxIterations?: number } = {}): CalibrationFit {
+export function fitSolveCalibration(obs: CalibrationObservation[], opts: { maxSlope?: number, maxIterations?: number } = {}): CalibrationFit {
     const maxSlope = opts.maxSlope ?? 5;
     const maxIterations = opts.maxIterations ?? 50;
     const clean = obs.filter((o) => Number.isFinite(o.mu) && Number.isFinite(o.d));
@@ -90,7 +90,7 @@ export interface CalibrationReport {
     logLoss: number;
     /** Mean absolute bucket deviation, for the buckets used by the spot check. */
     meanAbsDeviation: number;
-    buckets: { label: string; n: number; expected: number; actual: number }[];
+    buckets: { label: string, n: number, expected: number, actual: number }[];
 }
 
 const BUCKET_BOUNDS = [-400, -200, -100, 0, 100, 200, 400];

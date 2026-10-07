@@ -1,6 +1,6 @@
 export function canUsePretest(
   config?: { type?: string } | null,
-  langInfo?: { pretest?: boolean | string; validAs?: unknown; hidden?: boolean } | null,
+  langInfo?: { pretest?: boolean | string, validAs?: unknown, hidden?: boolean } | null,
 ): boolean {
   let canPretest = config?.type === 'default';
   if (config?.type === 'remote_judge' && langInfo) {

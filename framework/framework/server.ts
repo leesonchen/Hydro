@@ -549,7 +549,7 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         const h = new HandlerClass(ctx, sub.ctx);
         ctx.handler = h;
         const method = ctx.method.toLowerCase();
-        const name = ((Object.prototype.hasOwnProperty.call(HandlerClass, kHandler) && typeof HandlerClass[kHandler] === 'string')
+        const name = ((Object.hasOwn(HandlerClass, kHandler) && typeof HandlerClass[kHandler] === 'string')
             ? HandlerClass[kHandler] : HandlerClass.name).replace(/Handler$/, '');
         this.activeHandlers.set(h, { start: Date.now(), name });
         try {
@@ -744,7 +744,7 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
 
     private register(type: 'route' | 'conn', routeName: string, path: string, HandlerClass: any, ...permPrivChecker) {
         if (!HandlerClass?.[kHandler] || !isClass(HandlerClass)) throw new Error('Invalid registration.');
-        const name = ((Object.prototype.hasOwnProperty.call(HandlerClass, kHandler) && typeof HandlerClass[kHandler] === 'string')
+        const name = ((Object.hasOwn(HandlerClass, kHandler) && typeof HandlerClass[kHandler] === 'string')
             ? HandlerClass[kHandler] : HandlerClass.name).replace(/Handler$/, '');
         if (this.registrationCount[name] && this.registry[name] !== HandlerClass) {
             logger.warn('Route with name %s already exists.', name);
@@ -780,7 +780,7 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
 
         // We hope to use parent context for handler (the context that calls register)
         // So that handler can use services injected before calling register
-        const savedContext = Object.prototype.hasOwnProperty.call(this.ctx, Symbol.for('cordis.shadow'))
+        const savedContext = Object.hasOwn(this.ctx, Symbol.for('cordis.shadow'))
             ? Object.getPrototypeOf(this.ctx)
             : this.ctx;
         const checker = Checker(permPrivChecker);

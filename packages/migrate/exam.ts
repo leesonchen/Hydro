@@ -501,6 +501,7 @@ export function resolveIdentities(
     const byMail = indexBy(targetUsers, (user) => normalizeIdentityEmail(user.mailLower || user.mail) || '');
     const byStoredMail = indexBy(targetUsers, (user) => normalizeStoredEmail(user.mailLower || user.mail) || '');
     const usedTarget = new Set<number>();
+    const occupiedUids = new Set(targetUsers.map((user) => Number(user._id)));
     const existingMax = targetUsers.reduce((max, user) => Math.max(max, Number(user._id) || 0), 0);
     let nextUid = existingMax + 1;
     const decisions: IdentityDecision[] = [];
@@ -526,7 +527,7 @@ export function resolveIdentities(
         }
         const target = candidates.length === 1 && !usedTarget.has(Number(candidates[0]._id)) ? candidates[0] : undefined;
         const emailConflict = !!sourceStoredMail && (byStoredMail.has(sourceStoredMail) || plannedEmails.has(sourceStoredMail));
-        let method: IdentityMethod = target ? 'email' : 'new';
+        const method: IdentityMethod = target ? 'email' : 'new';
         let targetUid: number;
         let targetUname: string | undefined;
         let targetMail: string | undefined;
@@ -547,7 +548,7 @@ export function resolveIdentities(
                 throw new Error(`新用户用户名会发生唯一性冲突: ${targetUname}`);
             }
             plannedNames.add(targetNameKey);
-            while (targetUsers.some((user) => Number(user._id) === nextUid) || usedTarget.has(nextUid)) nextUid++;
+            while (occupiedUids.has(nextUid) || usedTarget.has(nextUid)) nextUid++;
             targetUid = nextUid++;
             targetMail = sourceStoredMail && !emailConflict
                 ? sourceStoredMail

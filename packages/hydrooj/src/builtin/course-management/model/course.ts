@@ -1,7 +1,7 @@
+import type { ContestRule, ScoreboardRow, Tdoc } from '../../../plugin-api';
 import {
     ContestModel, Counter, moment, STATUS, UserModel,
 } from '../../../plugin-api';
-import type { ContestRule, ScoreboardRow, Tdoc } from '../../../plugin-api';
 import { problemNodeIds } from './structure';
 
 export const DEFAULT_COURSE_LESSON_DURATION_HOURS = 3;

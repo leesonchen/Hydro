@@ -4,20 +4,21 @@
  * 该 Handler 会针对某个用户组汇总比赛/作业进度，并提供 HTML 页面
  * 与 CSV 导出。大部分逻辑集中在同一个文件中，方便审计与部署。
  */
+import '../course-management/model/course';
+
 import { stringify as toCSV } from 'csv-stringify/sync';
 import { escapeRegExp } from 'lodash';
-import '../course-management/model/course';
 import {
     BadRequestError,
     ContestModel,
     Context,
     Handler,
     NotAssignedError,
+    param,
     PERM,
     STATUS,
     Types,
     UserModel,
-    param,
 } from '../../plugin-api';
 
 interface StatCell {
@@ -53,7 +54,7 @@ interface TableData {
 }
 
 // Windows 文件名不可包含的字符需要提前替换，避免导出失败。
-const sanitizeFilename = (name: string) => name.replace(/[\/:*?"<>|]+/g, '_');
+const sanitizeFilename = (name: string) => name.replace(/[/:*?"<>|]+/g, '_');
 
 const buildTitleRegex = (query: string) => {
     const normalizedQuery = query.trim().toLowerCase();

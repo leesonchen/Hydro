@@ -194,7 +194,8 @@ export async function apply(ctx: Context, config: any) {
         'Selected templates': 'Selected templates',
         'Batch Set Category': 'Batch Set Category',
         'Batch Remove Category': 'Batch Remove Category',
-        'Please select at least one course template to perform this operation.': 'Please select at least one course template to perform this operation.',
+        'Please select at least one course template to perform this operation.':
+            'Please select at least one course template to perform this operation.',
         'Please input template category.': 'Please input template category.',
         'Lesson Duration (hours)': 'Lesson Duration (hours)',
         'Lesson Begin at': 'Lesson Begin at',
@@ -292,13 +293,14 @@ export async function apply(ctx: Context, config: any) {
     // 处理 Contest 页面重定向到 Course 页面
     function redirectToCourse(routeName: string) {
         return async (handler: any) => {
-            if (!handler.args.tid) return;
+            if (!handler.args.tid) return undefined;
             const { tid } = handler.args;
             const tdoc = await ContestModel.get(handler.args.domainId, new ObjectId(tid));
             if (tdoc.rule === 'course') {
                 handler.response.redirect = handler.url(routeName, { tid });
                 return 'cleanup';
             }
+            return undefined;
         };
     }
 
@@ -330,7 +332,7 @@ export async function apply(ctx: Context, config: any) {
     }
 
     ctx.on('handler/before-prepare/ContestScoreboard', async (handler) => {
-        if (!handler.args.tid) return;
+        if (!handler.args.tid) return undefined;
         const { tid } = handler.args;
         const tdoc = await ContestModel.get(handler.args.domainId, new ObjectId(tid));
         if (tdoc.rule === 'course') {
@@ -346,6 +348,7 @@ export async function apply(ctx: Context, config: any) {
             );
             return 'cleanup';
         }
+        return undefined;
     });
 
     ctx.on('problem/list', async (query: any, handler: any) => {

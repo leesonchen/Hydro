@@ -107,7 +107,7 @@ export class SettingService extends Service {
             if (['string', 'number', 'boolean'].includes(node.type)) {
                 const value = this.initialValues[path.join('.')];
                 const migrated = this.initialValues[`${path.join('.')}__migrated`];
-                if (migrated || !Object.prototype.hasOwnProperty.call(this.initialValues, path.join('.'))) return;
+                if (migrated || !Object.hasOwn(this.initialValues, path.join('.'))) return;
                 let parsed;
                 try {
                     if (node.type === 'string') parsed = value;

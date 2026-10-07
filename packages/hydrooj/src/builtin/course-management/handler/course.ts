@@ -139,7 +139,7 @@ export async function courseNodeHighWatermark(domainId: string, tdoc: CourseTdoc
 // 检查前置章节完成情况（按当前节点 completeCondition 聚合判断）
 function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc): boolean {
     if (!tsdoc) {
-        console.log(`[checkPrerequisitesComplete] tsdoc is null/undefined`);
+        console.log('[checkPrerequisitesComplete] tsdoc is null/undefined');
         return false;
     }
 
@@ -165,7 +165,8 @@ function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc)
     }
 
     const condition = node.completeCondition || { type: 'all' };
-    console.log(`[checkPrerequisitesComplete] node ${node._id}: acceptCount=${acceptCount}, totalScore=${totalScore}, totalPids=${totalPids}, condition=${JSON.stringify(condition)}`);
+    console.log(`[checkPrerequisitesComplete] node ${node._id}: acceptCount=${acceptCount}, totalScore=${totalScore},`
+        + ` totalPids=${totalPids}, condition=${JSON.stringify(condition)}`);
 
     if (condition.type === 'all') {
         const result = acceptCount >= totalPids;
@@ -198,7 +199,7 @@ export async function updateAllowedNodes(
 
     // 重新获取最新的 tsdoc，确保 accept 数据是最新的
     const tsdoc = await ContestModel.getStatus(domainId, tid, uid);
-    console.log(`[updateAllowedNodes] tsdoc:`, JSON.stringify({
+    console.log('[updateAllowedNodes] tsdoc:', JSON.stringify({
         attend: tsdoc?.attend,
         accept: tsdoc?.accept,
         allow: tsdoc?.allow,
@@ -206,7 +207,7 @@ export async function updateAllowedNodes(
     }));
 
     if (!tsdoc?.attend) {
-        console.log(`[updateAllowedNodes] tsdoc not found or not attended, returning`);
+        console.log('[updateAllowedNodes] tsdoc not found or not attended, returning');
         return;
     }
 
@@ -215,7 +216,7 @@ export async function updateAllowedNodes(
 
     // 如果没有DAG，所有章节默认开放（如果被手工禁止则需要手工允许）
     if (!tdoc.dag || tdoc.dag.length === 0) {
-        console.log(`[updateAllowedNodes] no DAG, returning`);
+        console.log('[updateAllowedNodes] no DAG, returning');
         return;
     }
 
@@ -252,10 +253,10 @@ export async function updateAllowedNodes(
     }
 
     if (updated) {
-        console.log(`[updateAllowedNodes] updating allow:`, JSON.stringify(allow));
+        console.log('[updateAllowedNodes] updating allow:', JSON.stringify(allow));
         await ContestModel.setStatus(domainId, tid, uid, { allow, attend: true });
     } else {
-        console.log(`[updateAllowedNodes] no updates needed`);
+        console.log('[updateAllowedNodes] no updates needed');
     }
 }
 
@@ -309,7 +310,7 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
             throw new Error('DAG contains cycle dependency');
         }
 
-        for (const node of dag) {
+        for await (const node of dag) {
             assert(node._id, 'each node should have a _id');
             assert(node.title, 'each node shoule have a title');
             assert(node.pids instanceof Array);
@@ -324,7 +325,7 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
 
             // 验证并转换题目 ID
             const pids: number[] = [];
-            for (const i in node.pids) {
+            for await (const i of Object.keys(node.pids)) {
                 const pdoc = await ProblemModel.get(domainId, node.pids[i]);
                 if (!pdoc) throw new ProblemNotFoundError(domainId, node.pids[i]);
                 pids.push(pdoc.docId);
@@ -337,7 +338,7 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
                 assert(node.lectureRule.pids instanceof Array, 'lectureRule pids must be an array');
                 assert(node.lectureRule.pids.length, 'lectureRule pids must not be empty');
                 const lectureRulePids: number[] = [];
-                for (const i in node.lectureRule.pids) {
+                for await (const i of Object.keys(node.lectureRule.pids)) {
                     const pdoc = await ProblemModel.get(domainId, node.lectureRule.pids[i]);
                     if (!pdoc) throw new ProblemNotFoundError(domainId, node.lectureRule.pids[i]);
                     lectureRulePids.push(pdoc.docId);
@@ -540,9 +541,9 @@ function getTemplateCategoryKey(course: any) {
 
 function groupAndSortCourses(courseList: any[], now: Date) {
     const groups = _.groupBy(courseList, 'assignGroup');
-    Object.keys(groups).forEach((key) => {
+    for (const key of Object.keys(groups)) {
         groups[key].sort((a, b) => compareCourses(a, b, now));
-    });
+    }
 
     const sortedGroups = Object.entries(groups)
         .map(([key, list]) => ({ key, tdocs: list }))
@@ -558,9 +559,9 @@ function groupAndSortCourses(courseList: any[], now: Date) {
 function groupAndSortTemplates(templateList: any[], now: Date) {
     const sortedTemplates = [...templateList].sort((a, b) => compareCourses(a, b, now));
     const groups = _.groupBy(sortedTemplates, getTemplateCategoryKey);
-    Object.keys(groups).forEach((key) => {
+    for (const key of Object.keys(groups)) {
         groups[key].sort((a, b) => compareCourses(a, b, now));
-    });
+    }
     const sortedGroups = Object.entries(groups)
         .map(([key, list]) => ({ key, tdocs: list }))
         .sort((a, b) => a.key.localeCompare(b.key, 'zh-CN'));
@@ -1027,9 +1028,7 @@ export class CourseDetailHandler extends Handler {
 
         // 更新可访问章节
         if (tsdoc?.attend) await updateAllowedNodes(domainId, tid, this.user._id, this.tdoc, tsdoc);
-        if (tsdoc) {
-            tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
-        }
+        tsdoc &&= await ContestModel.getStatus(domainId, tid, this.user._id);
         const lectureAccess: Record<number, boolean> = {};
         for (const node of this.tdoc.dag || []) {
             lectureAccess[node._id] = canViewCourseLecture(this, this.tdoc, node, tsdoc);
@@ -1987,7 +1986,9 @@ export class CourseScoreboardHandler extends Handler {
         await (this as any).limitRate('scoreboard_download', 60, 3);
 
         const exporters: Record<string, (rows: any[], tdoc: any) => Promise<string>> = {
-            csv: async (rows) => `\uFEFF${rows.map((row) => row.map((cell: any) => cell.value?.toString().replace(/\n/g, ' ')).join(',')).join('\n')}`,
+            csv: async (rows) => `\uFEFF${rows.map(
+                (row) => row.map((cell: any) => cell.value?.toString().replace(/\n/g, ' ')).join(','),
+            ).join('\n')}`,
             html: async (rows, doc) => this.renderHTML('contest_scoreboard_download_html.html', { rows, tdoc: doc }) as any as Promise<string>,
         };
 

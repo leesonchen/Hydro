@@ -247,7 +247,11 @@ http://localhost, http://127.0.0.1 {
 
 function injectCaddyBlock(content) {
     const withoutManaged = content.replace(
-        new RegExp(`${caddyMarkerBegin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${caddyMarkerEnd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?`, 'g'),
+        new RegExp(
+            `${caddyMarkerBegin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?`
+            + `${caddyMarkerEnd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?`,
+            'g',
+        ),
         '',
     );
     const targets = [
@@ -411,8 +415,11 @@ function snapshotServices() {
 
 async function waitFor(check, description, timeout = serviceTimeout) {
     const deadline = Date.now() + timeout;
-    while (Date.now() < deadline) {
-        if (await check(Math.max(0, deadline - Date.now()))) return;
+    function* checks() {
+        while (Date.now() < deadline) yield check(Math.max(0, deadline - Date.now()));
+    }
+    for await (const ready of checks()) {
+        if (ready) return;
         const remaining = deadline - Date.now();
         if (remaining > 0) await sleep(Math.min(1000, remaining));
     }
@@ -467,8 +474,10 @@ async function activate(id, message) {
 }
 
 async function reconcileScheduled() {
-    while (true) {
-        const state = await readState();
+    function* states() {
+        while (true) yield readState();
+    }
+    for await (const state of states()) {
         if (state.state !== 'scheduled') return;
         const startAt = Number(state.startAt);
         if (!Number.isFinite(startAt)) throw new Error('维护预告缺少有效的开始时间');
@@ -539,7 +548,7 @@ async function turnOff() {
         throw new Error('维护前服务快照为空或无效，保留维护状态以避免暴露未恢复的服务');
     }
     const failures = [];
-    for (const name of serviceOrder) {
+    for await (const name of serviceOrder) {
         if (!runtime.services.includes(name)) continue;
         try {
             run(pm2Path(), ['restart', name, '--update-env'], { stdio: 'inherit' });
@@ -589,10 +598,22 @@ function printHelp() {
 
 async function main() {
     const parsed = parseArgs(process.argv.slice(2));
-    if (parsed.options.help) return printHelp();
-    if (parsed.command === 'status') return status();
-    if (parsed.command === 'reconcile') return reconcileScheduled();
-    if (parsed.command === 'restore-scheduler') return restoreScheduler();
+    if (parsed.options.help) {
+        printHelp();
+        return;
+    }
+    if (parsed.command === 'status') {
+        await status();
+        return;
+    }
+    if (parsed.command === 'reconcile') {
+        await reconcileScheduled();
+        return;
+    }
+    if (parsed.command === 'restore-scheduler') {
+        await restoreScheduler();
+        return;
+    }
     if (!['setup', 'on', 'off'].includes(parsed.command)) throw new Error(`未知命令 ${parsed.command}`);
     await acquireLock();
     try {

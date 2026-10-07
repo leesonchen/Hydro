@@ -1,10 +1,9 @@
 import { randomUUID } from 'crypto';
-import {
-    ContestModel, Context, DocumentModel, ForbiddenError, Handler,
-    Logger, ObjectId, PERM, PRIV, ProblemModel, RecordModel, Schema, SettingModel, STATUS, TrainingModel, Types,
-    db, moment, param,
-} from 'hydrooj';
 import type { Tdoc, TrainingDoc } from 'hydrooj';
+import {
+    ContestModel, Context, db, DocumentModel, ForbiddenError, Handler, Logger, moment, ObjectId, param,
+    PERM, PRIV, ProblemModel, RecordModel, Schema, SettingModel, STATUS, TrainingModel, Types,
+} from 'hydrooj';
 
 export const name = 'ai-assistant';
 
@@ -333,9 +332,9 @@ function resolveRecordLang(language = '') {
 
 function commentPrefixForLang(lang: string) {
     const key = lang.toLowerCase();
-    if (/(^|\.)(py|python|sh|bash|rb|ruby|pl|perl|r|racket|yaml|yml)(\.|$)/.test(key)) return '#';
-    if (/(^|\.)(sql|lua|hs|haskell)(\.|$)/.test(key)) return '--';
-    if (/(^|\.)(pas|pascal)(\.|$)/.test(key)) return '{}';
+    if (/(?:^|\.)(?:py|python|sh|bash|rb|ruby|pl|perl|r|racket|yaml|yml)(?:\.|$)/.test(key)) return '#';
+    if (/(?:^|\.)(?:sql|lua|hs|haskell)(?:\.|$)/.test(key)) return '--';
+    if (/(?:^|\.)(?:pas|pascal)(?:\.|$)/.test(key)) return '{}';
     return '//';
 }
 
@@ -507,8 +506,11 @@ async function callProvider(provider: AiProviderConfig, prompt: string) {
 async function callLLM(prompt: string) {
     if (!runtimeConfig.providers.length) throw new Error('未配置可用 LLM provider。');
     const errors: string[] = [];
-    for (let retry = 0; retry <= runtimeConfig.retryTimes; retry++) {
-        for (const provider of runtimeConfig.providers) {
+    function* retries() {
+        for (let retry = 0; retry <= runtimeConfig.retryTimes; retry++) yield retry;
+    }
+    for await (const retry of retries()) {
+        for await (const provider of runtimeConfig.providers) {
             try {
                 const text = await callProvider(provider, prompt);
                 return { text, provider: provider.name || provider.type, retry };
@@ -522,7 +524,10 @@ async function callLLM(prompt: string) {
     throw new Error(errors.join('\n'));
 }
 
-async function saveTutoringSession(handler: Handler, request: AskRequest, context: LoadedContext, question: string, answer: string, provider: string, recordId?: ObjectId) {
+async function saveTutoringSession(
+    handler: Handler, request: AskRequest, context: LoadedContext, question: string, answer: string, provider: string,
+    recordId?: ObjectId,
+) {
     const conversationId = request.conversationId || randomUUID();
     const turnIndex = await tutoringColl.countDocuments({ conversationId }) + 1;
     const doc = {
@@ -702,10 +707,18 @@ class AiAssistantContextConfigHandler extends Handler {
 }
 
 export const Config = Schema.object({
-    providers: Schema.string().role('textarea').default(DEFAULT_PROVIDERS).description('LLM providers JSON array. Supported type: anthropic, openai-responses, openai-chat. Providers are tried in order.'),
-    anthropicApiKey: Schema.string().default('').role('secret').description('Secret API key for provider named/type anthropic. Prefer this over embedding keys in providers JSON.'),
-    openaiResponsesApiKey: Schema.string().default('').role('secret').description('Secret API key for provider named/type openai-responses. Prefer this over embedding keys in providers JSON.'),
-    openaiChatApiKey: Schema.string().default('').role('secret').description('Secret API key for provider named/type openai-chat. Prefer this over embedding keys in providers JSON.'),
+    providers: Schema.string().role('textarea').default(DEFAULT_PROVIDERS).description(
+        'LLM providers JSON array. Supported type: anthropic, openai-responses, openai-chat. Providers are tried in order.',
+    ),
+    anthropicApiKey: Schema.string().default('').role('secret').description(
+        'Secret API key for provider named/type anthropic. Prefer this over embedding keys in providers JSON.',
+    ),
+    openaiResponsesApiKey: Schema.string().default('').role('secret').description(
+        'Secret API key for provider named/type openai-responses. Prefer this over embedding keys in providers JSON.',
+    ),
+    openaiChatApiKey: Schema.string().default('').role('secret').description(
+        'Secret API key for provider named/type openai-chat. Prefer this over embedding keys in providers JSON.',
+    ),
     studentDailyQuota: Schema.number().default(DEFAULT_STUDENT_DAILY_QUOTA).min(0).description('Global daily AI quota for students.'),
     teacherDailyQuota: Schema.number().default(DEFAULT_TEACHER_DAILY_QUOTA).min(0).description('Global daily AI quota for teachers.'),
     retryTimes: Schema.number().default(2).min(0).description('Provider-chain retry times after the first failed round. Default 2.'),
@@ -734,7 +747,10 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
 
     ctx.inject(['setting'], (c) => {
         c.setting.DomainSetting(
-            SettingModel.Setting('setting_ai_assistant', 'aieduAiEnabled', false, 'boolean', 'AI assistant enabled', 'Enable AI tutoring for this domain.'),
+            SettingModel.Setting(
+                'setting_ai_assistant', 'aieduAiEnabled',
+                false, 'boolean', 'AI assistant enabled', 'Enable AI tutoring for this domain.',
+            ),
         );
     });
 
@@ -783,7 +799,10 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
 
     ctx.Route('ai_assistant_status', '/ai-assistant/status', AiAssistantStatusHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ai_assistant_ask', '/ai-assistant/ask', AiAssistantAskHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('ai_assistant_context_config', '/ai-assistant/context/:contextType/:contextId', AiAssistantContextConfigHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route(
+        'ai_assistant_context_config', '/ai-assistant/context/:contextType/:contextId',
+        AiAssistantContextConfigHandler, PRIV.PRIV_USER_PROFILE,
+    );
 
     const injectAiAssistantToolbar = async (handler) => {
         if (!handler.user.hasPriv(PRIV.PRIV_USER_PROFILE)) return;

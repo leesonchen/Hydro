@@ -141,7 +141,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         'react-dom/client': require.resolve('react-dom/client'),
         'react-dom/server': join(dirname(require.resolve('react-dom/package.json')), 'server.browser.js'),
         'react-dom': require.resolve('react-dom'),
-        'rupture': require.resolve('rupture'),
+        rupture: require.resolve('rupture'),
       },
     },
     module: {
