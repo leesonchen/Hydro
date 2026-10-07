@@ -6,6 +6,9 @@
 {% endif %}
 <div class="row responsive-sidebar-layout">
   <div class="medium-9 columns collapsed">
+    {% if rdoc.practiceContest %}
+      <div class="section"><div class="section__body typo"><blockquote class="note">{{ _('Post-contest practice is personal and does not affect contest scores, problem statistics, or RP/Rating.') }}</blockquote></div></div>
+    {% endif %}
     {% if typeof(rdoc['status']) === 'number' %}
       {% include 'record_detail_status.html' %}
     {% endif %}
@@ -59,7 +62,7 @@
         </ol>
       </div>
     {% endif %}
-    {% if handler.user.hasPerm(perm.PERM_SUBMIT_PROBLEM) and pdoc.config.hackable and rdoc.status === STATUS.STATUS_ACCEPTED and rdoc.uid !== handler.user._id %}
+    {% if not rdoc.practiceContest and handler.user.hasPerm(perm.PERM_SUBMIT_PROBLEM) and pdoc.config.hackable and rdoc.status === STATUS.STATUS_ACCEPTED and rdoc.uid !== handler.user._id %}
       <div class="section__body no-padding">
         <ol class="menu">
           <li class="menu__item">

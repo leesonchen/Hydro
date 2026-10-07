@@ -114,6 +114,7 @@ export async function resolveVisibleProblemStatuses(
     if (visibleContestIds.size) sourceFilters.push({ contest: { $in: Array.from(visibleContestIds.values()) } });
     const candidates = await db.collection('record').find({
         domainId,
+        practiceContest: { $exists: false },
         uid: { $in: hiddenUids },
         pid: { $in: hiddenPids },
         status: {

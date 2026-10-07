@@ -16,6 +16,9 @@ import {
     ValidationError,
 } from '../error';
 import { ContestStatusDoc, FileInfo, ScoreboardConfig, Tdoc } from '../interface';
+import {
+    canManagePractice, canReadPractice, canSubmitPractice, getPracticeResults, grantPracticeAccess, isPracticeOpen, supportsPractice,
+} from '../lib/contest-practice';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
@@ -84,6 +87,7 @@ export class ContestDetailBaseHandler extends Handler {
     tdoc?: Tdoc;
     tsdoc?: ContestStatusDoc;
     team?: number;
+    practiceReady = false;
 
     @param('tid', Types.ObjectId, true)
     async __prepare(domainId: string, tid: ObjectId) {
@@ -103,6 +107,7 @@ export class ContestDetailBaseHandler extends Handler {
                 ...(this.tsdoc.endAt ? [moment(this.tsdoc.endAt)] : []),
             ]).toDate();
         }
+        if (isPracticeOpen(this.tdoc)) this.practiceReady = await canSubmitPractice(this.user, this.tdoc);
     }
 
     tsdocAsPublic() {
@@ -118,6 +123,15 @@ export class ContestDetailBaseHandler extends Handler {
     async after(domainId: string, tid: ObjectId) {
         if (!tid || this.tdoc.rule === 'homework') return;
         if (this.request.json || !this.response.template) return;
+        const practiceHistory = supportsPractice(this.tdoc) && !!await record.coll.findOne({
+            domainId, practiceContest: tid, uid: this.user._id,
+        }, { projection: { _id: 1 } });
+        Object.assign(this.response.body, {
+            practiceOpen: isPracticeOpen(this.tdoc),
+            practiceReady: this.practiceReady,
+            practiceHistory,
+            practiceManager: supportsPractice(this.tdoc) && canManagePractice(this.user, this.tdoc),
+        });
         const pdoc = 'pdoc' in this ? (this as any).pdoc : {};
         this.response.body.overrideNav = [
             {
@@ -158,6 +172,15 @@ export class ContestDetailBaseHandler extends Handler {
 }
 
 export class ContestDetailHandler extends ContestDetailBaseHandler {
+    @param('tid', Types.ObjectId)
+    @param('code', Types.String, true)
+    async postPractice(domainId: string, tid: ObjectId, code = '') {
+        await this.limitRate('contest_practice_access', 60, 10, '{{user}}');
+        const tdoc = await contest.get(domainId, tid);
+        await grantPracticeAccess(this.user, tdoc, code);
+        this.response.redirect = this.url('contest_problemlist', { tid });
+    }
+
     @param('tid', Types.ObjectId)
     async prepare(domainId: string, tid: ObjectId) {
         if (contest.RULES[this.tdoc.rule].hidden) throw new ContestNotFoundError(domainId, tid);
@@ -331,6 +354,13 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
         };
         this.response.template = 'contest_problemlist.html';
         this.response.body.showScore = Object.values(this.tdoc.score || {}).some((i) => i && i !== 100);
+        const practice = canReadPractice(this.user, this.tdoc, this.user._id)
+            ? await getPracticeResults(domainId, tid, this.user._id, this.tdoc.pids) : {};
+        if (supportsPractice(this.tdoc) && (isPracticeOpen(this.tdoc) || Object.keys(practice).length)) {
+            this.response.body.correction = practice;
+            this.response.body.showPractice = true;
+            this.response.body.rdict = await record.getList(domainId, Object.values(practice).map((i) => i.rid));
+        }
         if (!this.tsdoc) return;
         if (this.tsdoc.attend && !this.tsdoc.startAt && contest.isOngoing(this.tdoc)) {
             await contest.setStatus(domainId, tid, this.team ?? this.user._id, { startAt: new Date() });
@@ -345,7 +375,7 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
             : Object.fromEntries(Object.keys(rawPsdict).map((pid) => [pid, { submitted: true }]));
         const psdocs: any[] = canViewRecord ? Object.values(rawPsdict) : [];
         const rids = psdocs.map((i) => i.rid);
-        if (contest.isDone(this.tdoc) && canViewRecord) {
+        if (contest.isDone(this.tdoc) && canViewRecord && !this.response.body.showPractice) {
             const correction = await problem.getVisibleListStatus(
                 domainId, this.user._id, this.tdoc.pids,
                 (tdoc, uid) => contest.canShowProblemStatus(this.user, uid, tdoc),
@@ -356,6 +386,7 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
             rids.push(...Object.values(correction).map((i) => i.rid));
             this.response.body.correction = correction;
         }
+        if (this.response.body.showPractice) rids.push(...Object.values(practice).map((i) => i.rid));
         const uidFilter = this.team && this.tsdoc?.members?.length
             ? { $in: this.tsdoc.members } : this.user._id;
         [this.response.body.rdict, this.response.body.rdocs] = canViewRecord
@@ -365,10 +396,15 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
                     .sort({ _id: -1 }).toArray(),
             ])
             : [{}, []];
+        if (this.response.body.showPractice) {
+            Object.assign(this.response.body.rdict, await record.getList(domainId, Object.values(practice).map((i) => i.rid)));
+        }
         if (canViewRecord && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
             this.response.body.rdocs = this.response.body.rdocs.map((rdoc) => contest.applyProjection(this.tdoc, rdoc, this.user));
             for (const key in this.response.body.rdict) {
-                this.response.body.rdict[key] = contest.applyProjection(this.tdoc, this.response.body.rdict[key], this.user);
+                if (!this.response.body.rdict[key].practiceContest) {
+                    this.response.body.rdict[key] = contest.applyProjection(this.tdoc, this.response.body.rdict[key], this.user);
+                }
             }
             for (const key in this.response.body.psdict) {
                 this.response.body.psdict[key] = contest.applyProjection(this.tdoc, this.response.body.psdict[key], this.user);
@@ -453,17 +489,21 @@ export class ContestEditHandler extends Handler {
     @param('keepScoreboardHidden', Types.Boolean)
     @param('allowTeam', Types.Boolean)
     @param('langs', Types.CommaSeperatedArray, true)
+    @param('allowPractice', Types.Boolean, true)
     async postUpdate(
         domainId: string, tid: ObjectId, beginAtDate: string, beginAtTime: string, duration: number,
         title: string, content: string, rule: string, _pids: string, rated = false,
         _code = '', autoHide = false, assign: string[] = [], lock: number = null,
         contestDuration: number = null, maintainer: number[] = [], allowViewCode = false, allowPrint = false,
         keepScoreboardHidden = false, allowTeam = false, langs: string[] = [],
+        allowPractice?: boolean,
     ) {
         if (!Object.keys(contest.RULES).includes(rule) || contest.RULES[rule].hidden) throw new ValidationError('rule');
         if (autoHide) this.checkPerm(PERM.PERM_EDIT_PROBLEM);
         const allowTeamProvided = Object.hasOwn(this.request.body || {}, 'allowTeam');
         if (this.tdoc?.allowTeam && !allowTeamProvided) allowTeam = true;
+        const allowPracticeProvided = Object.hasOwn(this.request.body || {}, 'allowPractice')
+            || Object.hasOwn(this.request.query || {}, 'allowPractice');
         const pids = _pids.replace(/，/g, ',').split(',').map((i) => +i).filter((i) => i);
         const beginAtMoment = moment.tz(`${beginAtDate} ${beginAtTime}`, this.user.timeZone);
         if (!beginAtMoment.isValid()) throw new ValidationError('beginAtDate', 'beginAtTime');
@@ -477,6 +517,7 @@ export class ContestEditHandler extends Handler {
             title, content, rule, beginAt, endAt, pids, rated, duration: contestDuration,
             assign, _code, autoHide, lockAt, maintainer, allowViewCode, allowPrint,
             keepScoreboardHidden, allowTeam, langs,
+            allowPractice: allowPracticeProvided ? !!allowPractice : this.tdoc?.allowPractice ?? false,
         };
         const needsRecalc = !!tid && (
             this.tdoc.beginAt.getTime() !== beginAt.getTime()

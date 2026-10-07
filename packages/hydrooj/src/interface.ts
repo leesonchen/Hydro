@@ -235,6 +235,7 @@ export type RecordDoc = {
 } & {
     _id: ObjectId;
     notify?: boolean;
+    practiceContest?: ObjectId;
 };
 
 export interface RecordHistoryDoc extends RecordJudgeInfo {
@@ -300,6 +301,7 @@ export interface Tdoc extends Document {
     score?: Record<number, number>;
     langs?: string[];
     allowTeam?: boolean;
+    allowPractice?: boolean;
 
     /**
      * In hours
