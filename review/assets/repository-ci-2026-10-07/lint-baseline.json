@@ -1,0 +1,1439 @@
+{
+  "files": 537,
+  "errors": 58,
+  "warnings": 121,
+  "diagnostics": [
+    {
+      "file": "framework/framework/server.ts",
+      "line": 552,
+      "column": 24,
+      "severity": 2,
+      "rule": "e18e/prefer-object-has-own",
+      "message": "Use Object.hasOwn() instead of hasOwnProperty"
+    },
+    {
+      "file": "framework/framework/server.ts",
+      "line": 747,
+      "column": 24,
+      "severity": 2,
+      "rule": "e18e/prefer-object-has-own",
+      "message": "Use Object.hasOwn() instead of hasOwnProperty"
+    },
+    {
+      "file": "framework/framework/server.ts",
+      "line": 783,
+      "column": 30,
+      "severity": 2,
+      "rule": "e18e/prefer-object-has-own",
+      "message": "Use Object.hasOwn() instead of hasOwnProperty"
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 336,
+      "column": 10,
+      "severity": 2,
+      "rule": "regexp/no-unused-capturing-group",
+      "message": "Capturing group number 1 is defined but never used."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 336,
+      "column": 16,
+      "severity": 2,
+      "rule": "regexp/no-unused-capturing-group",
+      "message": "Capturing group number 2 is defined but never used."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 336,
+      "column": 69,
+      "severity": 2,
+      "rule": "regexp/no-unused-capturing-group",
+      "message": "Capturing group number 3 is defined but never used."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 337,
+      "column": 10,
+      "severity": 2,
+      "rule": "regexp/no-unused-capturing-group",
+      "message": "Capturing group number 1 is defined but never used."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 337,
+      "column": 16,
+      "severity": 2,
+      "rule": "regexp/no-unused-capturing-group",
+      "message": "Capturing group number 2 is defined but never used."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 337,
+      "column": 36,
+      "severity": 2,
+      "rule": "regexp/no-unused-capturing-group",
+      "message": "Capturing group number 3 is defined but never used."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 338,
+      "column": 10,
+      "severity": 2,
+      "rule": "regexp/no-unused-capturing-group",
+      "message": "Capturing group number 1 is defined but never used."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 338,
+      "column": 16,
+      "severity": 2,
+      "rule": "regexp/no-unused-capturing-group",
+      "message": "Capturing group number 2 is defined but never used."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 338,
+      "column": 28,
+      "severity": 2,
+      "rule": "regexp/no-unused-capturing-group",
+      "message": "Capturing group number 3 is defined but never used."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 513,
+      "column": 30,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 525,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 172. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 705,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 204. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 706,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 180. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 707,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 193. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 708,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 183. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 737,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 156. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/ai-assistant/index.ts",
+      "line": 786,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 151. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 250,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 156. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 415,
+      "column": 13,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 417,
+      "column": 28,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 471,
+      "column": 23,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 477,
+      "column": 13,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 483,
+      "column": 13,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 485,
+      "column": 29,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 487,
+      "column": 13,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 491,
+      "column": 13,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 493,
+      "column": 27,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 546,
+      "column": 13,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 547,
+      "column": 37,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/bin/hydro-maintenance.js",
+      "line": 590,
+      "column": 16,
+      "severity": 1,
+      "rule": "consistent-return",
+      "message": "Expected to return a value at the end of async function 'main'."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/contest-homework-stats/index.ts",
+      "line": 7,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/contest-homework-stats/index.ts",
+      "line": 56,
+      "column": 59,
+      "severity": 2,
+      "rule": "regexp/no-useless-escape",
+      "message": "Unnecessary escape character: \\/."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 165,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 168. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 170,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 165. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 185,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 177. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 196,
+      "column": 19,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 217,
+      "column": 24,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 220,
+      "column": 23,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 226,
+      "column": 23,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 256,
+      "column": 9,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 257,
+      "column": 9,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 775,
+      "column": 41,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 782,
+      "column": 34,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 786,
+      "column": 17,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 788,
+      "column": 35,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 790,
+      "column": 44,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 792,
+      "column": 21,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 793,
+      "column": 45,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 796,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 211. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 815,
+      "column": 32,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 856,
+      "column": 21,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/class.ts",
+      "line": 862,
+      "column": 33,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 142,
+      "column": 21,
+      "severity": 1,
+      "rule": "style/quotes",
+      "message": "Strings must use singlequote."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 168,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 183. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 201,
+      "column": 17,
+      "severity": 1,
+      "rule": "style/quotes",
+      "message": "Strings must use singlequote."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 209,
+      "column": 21,
+      "severity": 1,
+      "rule": "style/quotes",
+      "message": "Strings must use singlequote."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 218,
+      "column": 21,
+      "severity": 1,
+      "rule": "style/quotes",
+      "message": "Strings must use singlequote."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 255,
+      "column": 21,
+      "severity": 1,
+      "rule": "style/quotes",
+      "message": "Strings must use singlequote."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 258,
+      "column": 21,
+      "severity": 1,
+      "rule": "style/quotes",
+      "message": "Strings must use singlequote."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 328,
+      "column": 30,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 341,
+      "column": 34,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 543,
+      "column": 5,
+      "severity": 1,
+      "rule": "github/array-foreach",
+      "message": "Prefer for...of instead of Array.forEach"
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 561,
+      "column": 5,
+      "severity": 1,
+      "rule": "github/array-foreach",
+      "message": "Prefer for...of instead of Array.forEach"
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 1030,
+      "column": 9,
+      "severity": 1,
+      "rule": "logical-assignment-operators",
+      "message": "'if' statement can be replaced with a logical operator assignment with operator &&=."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/handler/course.ts",
+      "line": 1990,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 151. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/index.ts",
+      "line": 197,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 153. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/index.ts",
+      "line": 300,
+      "column": 17,
+      "severity": 1,
+      "rule": "consistent-return",
+      "message": "Async arrow function expected no return value."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/index.ts",
+      "line": 347,
+      "column": 13,
+      "severity": 1,
+      "rule": "consistent-return",
+      "message": "Async arrow function expected no return value."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/course-management/model/course.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 2,
+      "column": 34,
+      "severity": 2,
+      "rule": "unused-imports/no-unused-imports",
+      "message": "'PERM' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 2,
+      "column": 34,
+      "severity": 2,
+      "rule": "ts/no-unused-vars",
+      "message": "'PERM' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 35,
+      "column": 34,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 36,
+      "column": 28,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 37,
+      "column": 28,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 87,
+      "column": 21,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 103,
+      "column": 21,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 141,
+      "column": 34,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 142,
+      "column": 28,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 143,
+      "column": 28,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/bulkimport.ts",
+      "line": 149,
+      "column": 25,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 2,
+      "column": 35,
+      "severity": 2,
+      "rule": "unused-imports/no-unused-imports",
+      "message": "'Handler' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 2,
+      "column": 35,
+      "severity": 2,
+      "rule": "ts/no-unused-vars",
+      "message": "'Handler' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 2,
+      "column": 65,
+      "severity": 2,
+      "rule": "unused-imports/no-unused-imports",
+      "message": "'PRIV' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 2,
+      "column": 65,
+      "severity": 2,
+      "rule": "ts/no-unused-vars",
+      "message": "'PRIV' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 5,
+      "column": 27,
+      "severity": 2,
+      "rule": "unused-imports/no-unused-imports",
+      "message": "'setHasStore' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 5,
+      "column": 27,
+      "severity": 2,
+      "rule": "ts/no-unused-vars",
+      "message": "'setHasStore' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 31,
+      "column": 25,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 33,
+      "column": 13,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 37,
+      "column": 17,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 44,
+      "column": 17,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 47,
+      "column": 44,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 48,
+      "column": 13,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 67,
+      "column": 17,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 86,
+      "column": 31,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 149,
+      "column": 68,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 151,
+      "column": 74,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/import.ts",
+      "line": 203,
+      "column": 21,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 2,
+      "column": 8,
+      "severity": 2,
+      "rule": "unused-imports/no-unused-imports",
+      "message": "'BadRequestError' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 2,
+      "column": 8,
+      "severity": 2,
+      "rule": "ts/no-unused-vars",
+      "message": "'BadRequestError' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 22,
+      "column": 41,
+      "severity": 1,
+      "rule": "consistent-return",
+      "message": "Function 'parseSetting' expected no return value."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 25,
+      "column": 13,
+      "severity": 1,
+      "rule": "consistent-return",
+      "message": "Function 'parseSetting' expected no return value."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 27,
+      "column": 9,
+      "severity": 1,
+      "rule": "consistent-return",
+      "message": "Function 'parseSetting' expected no return value."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 353,
+      "column": 40,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 477,
+      "column": 13,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 485,
+      "column": 13,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 494,
+      "column": 30,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 496,
+      "column": 21,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 501,
+      "column": 17,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 511,
+      "column": 30,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 513,
+      "column": 21,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/handler/user.ts",
+      "line": 518,
+      "column": 17,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/index.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/index.ts",
+      "line": 9,
+      "column": 10,
+      "severity": 2,
+      "rule": "unused-imports/no-unused-imports",
+      "message": "'BulkImportHandler' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/index.ts",
+      "line": 9,
+      "column": 10,
+      "severity": 2,
+      "rule": "ts/no-unused-vars",
+      "message": "'BulkImportHandler' is defined but never used."
+    },
+    {
+      "file": "packages/hydrooj/src/builtin/userlist/index.ts",
+      "line": 98,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 194. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/handler/course-management.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/hydrooj/src/handler/problem.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/hydrooj/src/handler/problem.ts",
+      "line": 198,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 216. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/handler/userlist.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/hydrooj/src/lib/rating-v2/calibration.ts",
+      "line": 50,
+      "column": 94,
+      "severity": 2,
+      "rule": "style/member-delimiter-style",
+      "message": "Expected a comma."
+    },
+    {
+      "file": "packages/hydrooj/src/lib/rating-v2/calibration.ts",
+      "line": 93,
+      "column": 30,
+      "severity": 2,
+      "rule": "style/member-delimiter-style",
+      "message": "Expected a comma."
+    },
+    {
+      "file": "packages/hydrooj/src/lib/rating-v2/calibration.ts",
+      "line": 93,
+      "column": 41,
+      "severity": 2,
+      "rule": "style/member-delimiter-style",
+      "message": "Expected a comma."
+    },
+    {
+      "file": "packages/hydrooj/src/lib/rating-v2/calibration.ts",
+      "line": 93,
+      "column": 59,
+      "severity": 2,
+      "rule": "style/member-delimiter-style",
+      "message": "Expected a comma."
+    },
+    {
+      "file": "packages/hydrooj/src/script/rating-v2-audit.ts",
+      "line": 138,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 273. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/script/rating-v2-audit.ts",
+      "line": 139,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 178. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/script/rating-v2-audit.ts",
+      "line": 203,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 252. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/script/rating-v2-audit.ts",
+      "line": 219,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 170. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/script/rating-v2-audit.ts",
+      "line": 226,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 168. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/hydrooj/src/service/server.ts",
+      "line": 347,
+      "column": 13,
+      "severity": 1,
+      "rule": "consistent-return",
+      "message": "Async arrow function expected no return value."
+    },
+    {
+      "file": "packages/hydrooj/src/settings.ts",
+      "line": 110,
+      "column": 34,
+      "severity": 2,
+      "rule": "e18e/prefer-object-has-own",
+      "message": "Use Object.hasOwn() instead of hasOwnProperty"
+    },
+    {
+      "file": "packages/migrate/exam.ts",
+      "line": 529,
+      "column": 13,
+      "severity": 2,
+      "rule": "prefer-const",
+      "message": "'method' is never reassigned. Use 'const' instead."
+    },
+    {
+      "file": "packages/migrate/exam.ts",
+      "line": 550,
+      "column": 37,
+      "severity": 2,
+      "rule": "ts/no-loop-func",
+      "message": "Function declared in a loop contains unsafe references to variable(s) 'nextUid'."
+    },
+    {
+      "file": "packages/migrate/index.ts",
+      "line": 14,
+      "column": 5,
+      "severity": 2,
+      "rule": "perfectionist/sort-named-exports",
+      "message": "Expected \"CONFIRMED_TEST_EMAIL_SOURCE_UIDS\" to come before \"CONFIRMED_USER_MAP\"."
+    },
+    {
+      "file": "packages/sonic/index.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/sonic/index.ts",
+      "line": 20,
+      "column": 26,
+      "severity": 2,
+      "rule": "unicorn/escape-case",
+      "message": "Use uppercase characters for the value of the escape sequence."
+    },
+    {
+      "file": "packages/ui-default/build/config/webpack.ts",
+      "line": 144,
+      "column": 9,
+      "severity": 1,
+      "rule": "style/quote-props",
+      "message": "Unnecessarily quoted property 'rupture' found."
+    },
+    {
+      "file": "packages/ui-default/components/scratchpad/ScratchpadToolbarContainer.jsx",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/ui-default/components/scratchpad/capabilities.ts",
+      "line": 3,
+      "column": 43,
+      "severity": 2,
+      "rule": "style/member-delimiter-style",
+      "message": "Expected a comma."
+    },
+    {
+      "file": "packages/ui-default/components/scratchpad/capabilities.ts",
+      "line": 3,
+      "column": 62,
+      "severity": 2,
+      "rule": "style/member-delimiter-style",
+      "message": "Expected a comma."
+    },
+    {
+      "file": "packages/url-audit/index.ts",
+      "line": 98,
+      "column": 11,
+      "severity": 2,
+      "rule": "ts/no-shadow",
+      "message": "'name' is already declared in the upper scope on line 5 column 14."
+    },
+    {
+      "file": "packages/url-audit/index.ts",
+      "line": 238,
+      "column": 83,
+      "severity": 2,
+      "rule": "no-unsafe-finally",
+      "message": "Unsafe usage of ReturnStatement."
+    },
+    {
+      "file": "packages/url-audit/index.ts",
+      "line": 241,
+      "column": 45,
+      "severity": 2,
+      "rule": "no-unsafe-finally",
+      "message": "Unsafe usage of ReturnStatement."
+    },
+    {
+      "file": "packages/url-audit/index.ts",
+      "line": 244,
+      "column": 47,
+      "severity": 2,
+      "rule": "no-unsafe-finally",
+      "message": "Unsafe usage of ReturnStatement."
+    },
+    {
+      "file": "packages/url-audit/index.ts",
+      "line": 247,
+      "column": 83,
+      "severity": 2,
+      "rule": "no-unsafe-finally",
+      "message": "Unsafe usage of ReturnStatement."
+    },
+    {
+      "file": "packages/url-audit/index.ts",
+      "line": 251,
+      "column": 59,
+      "severity": 2,
+      "rule": "no-unsafe-finally",
+      "message": "Unsafe usage of ReturnStatement."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 1,
+      "column": 1,
+      "severity": 1,
+      "rule": "simple-import-sort/imports",
+      "message": "Run autofix to sort these imports!"
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 31,
+      "column": 6,
+      "severity": 2,
+      "rule": "ts/consistent-type-definitions",
+      "message": "Use an `interface` instead of a `type`."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 42,
+      "column": 6,
+      "severity": 2,
+      "rule": "ts/consistent-type-definitions",
+      "message": "Use an `interface` instead of a `type`."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 57,
+      "column": 6,
+      "severity": 2,
+      "rule": "ts/consistent-type-definitions",
+      "message": "Use an `interface` instead of a `type`."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 75,
+      "column": 14,
+      "severity": 2,
+      "rule": "ts/no-use-before-define",
+      "message": "'resolveDataDir' was used before it was defined."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 142,
+      "column": 12,
+      "severity": 2,
+      "rule": "ts/no-use-before-define",
+      "message": "'replaceRawStatusStrings' was used before it was defined."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 152,
+      "column": 22,
+      "severity": 2,
+      "rule": "ts/no-use-before-define",
+      "message": "'buildStatusParts' was used before it was defined."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 153,
+      "column": 24,
+      "severity": 2,
+      "rule": "ts/no-use-before-define",
+      "message": "'summarizeReportString' was used before it was defined."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 210,
+      "column": 19,
+      "severity": 2,
+      "rule": "ts/no-use-before-define",
+      "message": "'buildStatusParts' was used before it was defined."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 248,
+      "column": 26,
+      "severity": 2,
+      "rule": "regexp/no-super-linear-backtracking",
+      "message": "The quantifier '\\s*' can exchange characters with '\\s*'. Using any string accepted by /\\s+/i, this can be exploited to cause at least polynomial backtracking."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 248,
+      "column": 46,
+      "severity": 2,
+      "rule": "regexp/no-dupe-characters-character-class",
+      "message": "Unexpected duplicate '.' (U+002e)."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 249,
+      "column": 38,
+      "severity": 2,
+      "rule": "regexp/no-dupe-characters-character-class",
+      "message": "Unexpected duplicate '.' (U+002e)."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 250,
+      "column": 31,
+      "severity": 2,
+      "rule": "regexp/no-dupe-characters-character-class",
+      "message": "Unexpected duplicate '.' (U+002e)."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 360,
+      "column": 18,
+      "severity": 2,
+      "rule": "regexp/no-dupe-characters-character-class",
+      "message": "Unexpected duplicate. 'a-z' (U+0061 - U+007a) is a duplicate of 'A-Z' (U+0041 - U+005a)."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 378,
+      "column": 42,
+      "severity": 2,
+      "rule": "style/member-delimiter-style",
+      "message": "Expected a comma."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 380,
+      "column": 28,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 402,
+      "column": 53,
+      "severity": 2,
+      "rule": "regexp/no-unused-capturing-group",
+      "message": "Capturing group number 1 is defined but never used."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 408,
+      "column": 28,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 427,
+      "column": 40,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 449,
+      "column": 24,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 480,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 201. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 481,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 160. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 506,
+      "column": 62,
+      "severity": 2,
+      "rule": "style/max-statements-per-line",
+      "message": "This line has 3 statements. Maximum allowed is 2."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 571,
+      "column": 47,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 571,
+      "column": 81,
+      "severity": 1,
+      "rule": "no-await-in-loop",
+      "message": "Unexpected `await` inside a loop."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 598,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 203. Maximum allowed is 150."
+    },
+    {
+      "file": "packages/xxwl-review/index.ts",
+      "line": 755,
+      "column": 1,
+      "severity": 1,
+      "rule": "max-len",
+      "message": "This line has a length of 185. Maximum allowed is 150."
+    }
+  ]
+}

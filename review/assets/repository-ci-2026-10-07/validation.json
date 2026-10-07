@@ -1,0 +1,425 @@
+{
+  "date": "2026-10-07",
+  "baseCommit": "f8eb9da8ae3fad9c1dd569d9219dc796abe9471f",
+  "validatedSourceCommit": "4df5a215f9a465daedac09a6f1d4dee37f69d3f0",
+  "commits": {
+    "workflow": "2098a67d4",
+    "auditParsing": "b9a32c650",
+    "strictLint": "2748acb33",
+    "rateFixtures": "4df5a215f"
+  },
+  "lint": {
+    "files": 537,
+    "previousErrors": 58,
+    "previousWarnings": 121,
+    "errors": 0,
+    "warnings": 0,
+    "command": "corepack yarn lint:ci",
+    "exitCode": 0,
+    "seconds": 91.6,
+    "evidence": "local gates project gate 1 + GitHub Lint step",
+    "changedRules": false
+  },
+  "typescript": {
+    "version": "6.0.3",
+    "command": "corepack yarn build",
+    "errors": 0,
+    "exitCode": 0,
+    "seconds": 34.8
+  },
+  "fullTests": {
+    "tests": 250,
+    "pass": 250,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "preservedTests": 232,
+    "newRepositoryTests": 17,
+    "newGlobalRateTest": 1,
+    "seconds": 96.2,
+    "command": "corepack yarn test",
+    "exitCode": 0,
+    "applicationStartupMilliseconds": 14971,
+    "unchangedStartupTimeout": 30000
+  },
+  "coldLocalFailure": {
+    "tests": 249,
+    "pass": 188,
+    "fail": 0,
+    "cancelled": 61,
+    "skipped": 0,
+    "suiteFailure": "App before hook",
+    "unchangedStartupTimeout": 30000
+  },
+  "warmedApp": {
+    "tests": 61,
+    "passed": 61,
+    "startupMilliseconds": 12340,
+    "unchangedStartupTimeout": 30000
+  },
+  "rateFixtureTests": {
+    "tests": 62,
+    "passed": 62,
+    "failed": 0,
+    "resetFilter": {
+      "op": "global"
+    },
+    "resetScope": "isolated test database before each case",
+    "productionLimitChanges": false,
+    "assertionsKept": {
+      "global": "100/5s",
+      "classroomFeedback": "120/60s",
+      "changePassword": "5/60s"
+    }
+  },
+  "historicalRegression": {
+    "baseline": "f8eb9da8a",
+    "tests": 17,
+    "passed": 7,
+    "failed": 10,
+    "cancelled": 0,
+    "maximumWorkerMilliseconds": 2000,
+    "reproducer": "test/reproduce-repository-ci-regressions.cjs"
+  },
+  "productionBuild": {
+    "command": "node packages/ui-default/build --production --detail",
+    "webpack": "5.111.1",
+    "errors": 0,
+    "warnings": 2,
+    "childWarningsDetected": 0,
+    "warningNames": [
+      "asset size limit",
+      "entrypoint size limit"
+    ],
+    "seconds": 202.1,
+    "sentryTokenProvided": false,
+    "sentryReleaseCreated": false,
+    "sourceMapsUploaded": false
+  },
+  "migrationPureTests": {
+    "groups": 6,
+    "passed": true,
+    "migrationRun": false
+  },
+  "promptEquivalence": {
+    "promptIdentical": true,
+    "characters": 1280,
+    "sha256": "4ecf97170aceb889de3516cfcdcfef43efeb29c2a8b3f3137592a6a58c761c61"
+  },
+  "browser": {
+    "passed": 11,
+    "errors": [],
+    "checks": [
+      "production Monaco loads real TypeScript declarations as text",
+      "A records once with an optional draft, preserves context, and rejects mismatched details",
+      "pending retests complete and undo the exact resolution while retaining history",
+      "lost receipt and a denied replay retain the original request without duplicating the observation",
+      "a confirmed save survives read failure and does not offer a new write retry",
+      "B remembers lesson and draft across real PJAX, filters, collapse and re-opening",
+      "management names exact batch scope, reports individual results and preserves feedback",
+      "course edit rejects invalid JSON inline, preserves the draft and focuses its actual editor",
+      "packed lecture unwraps its body, renders Mermaid and recognizes only matched sample headings",
+      "packed YAML worker validates input while formatting stays disabled",
+      "native mobile layout keeps the table scroll inside the page and keyboard controls available"
+    ],
+    "ui": "production-webpack",
+    "screenshots": [
+      {
+        "file": "a-roster.png",
+        "bytes": 155675,
+        "sha256": "4e5b14c60373494fd94bb261ec9943a63061c86ff473512443450683e5f9ede9"
+      },
+      {
+        "file": "b-progress.png",
+        "bytes": 129126,
+        "sha256": "e44bfbe40124a1534f34fdf8c5362c28d53c33f98f5ba77675daa09cb06c0bed"
+      },
+      {
+        "file": "course-edit-invalid.png",
+        "bytes": 175363,
+        "sha256": "a82642f276b78979b881363a1caf1efac8967fada57f9d41cdd732d2b0b94e10"
+      },
+      {
+        "file": "course-lecture.png",
+        "bytes": 98570,
+        "sha256": "1a63f69202474750133cab13423d0698c8b68708995f47692f245b1a2d940120"
+      },
+      {
+        "file": "course-manage.png",
+        "bytes": 105999,
+        "sha256": "6e087fe6ba42861144c3e643a09604c5ba750fa42e719d89f1d0be35aac7e732"
+      },
+      {
+        "file": "mobile.png",
+        "bytes": 66843,
+        "sha256": "5f9c7cb37f4f7097eb4a2b6cce9bbd5d49d80c174cbc1766429168246b904107"
+      },
+      {
+        "file": "pending-retest.png",
+        "bytes": 119864,
+        "sha256": "a56faf8c379af01d6ae2125583c03e9ab5a830b5e022a65aef10f28ec7937dca"
+      }
+    ],
+    "backendFooterGitVersion": "2748acb-dirty",
+    "manualScreenshotCheck": "course-edit-invalid.png"
+  },
+  "packages": {
+    "packages": [
+      {
+        "name": "hydrooj",
+        "version": "5.0.7",
+        "files": 141,
+        "locales": 4,
+        "size": 363945,
+        "sha256": "2c9cbbeccd9e7b8aca4ebcc4d976a837c7fdefd25224a79d8eb7159af8188207",
+        "required": [
+          "bin/hydrooj.js",
+          "src/model/classroomFeedback.ts",
+          "src/handler/classroom-feedback.ts",
+          "src/builtin/course-management/model/structure.ts",
+          "src/script/course-feedback-structure.ts"
+        ]
+      },
+      {
+        "name": "@hydrooj/ui-default",
+        "version": "4.58.5",
+        "files": 818,
+        "locales": 4,
+        "size": 14936954,
+        "sha256": "ca75ebe8dc1b2d80eddaefb0716c15fdaa9c66eef166afcb91b7116acb44ba83",
+        "required": [
+          "templates/classroom_feedback.html",
+          "templates/partials/scoreboard.html",
+          "templates/course_manage.html",
+          "public/manifest.json",
+          "public/hydro-4.58.5.js",
+          "public/theme-4.58.5.css"
+        ]
+      }
+    ],
+    "published": false,
+    "installed": false
+  },
+  "liveContainer": {
+    "wslDistribution": "Ubuntu-22.04",
+    "container": "hydro",
+    "status": "running",
+    "health": "healthy",
+    "node": "v22.16.0",
+    "httpPort": 8082,
+    "httpStatus": 200,
+    "startedAt": "2026-10-04T13:08:26.782816363Z",
+    "readOnly": true
+  },
+  "isolation": {
+    "temporaryBrowserAppStopped": true,
+    "temporaryBrowserMongoInstancesStopped": 2,
+    "liveContainerRestarted": false
+  },
+  "boundaries": {
+    "draft": true,
+    "merged": false,
+    "published": false,
+    "deployed": false,
+    "dependencyChanges": false,
+    "schemaChanges": false
+  },
+  "github": {
+    "sourceCommit": "4df5a215f9a465daedac09a6f1d4dee37f69d3f0",
+    "pullRequest": {
+      "runId": 37555177130,
+      "jobId": 112579646675,
+      "url": "https://github.com/leesonchen/hydromod/actions/runs/37555177130",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Check out",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Set up Node",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Enable repository Yarn version",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Get yarn cache directory path",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Config And Install",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Generate icon types",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Lint",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9
+        },
+        {
+          "name": "Build types",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10
+        },
+        {
+          "name": "Build production UI",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11
+        },
+        {
+          "name": "Prepare isolated test database",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12
+        },
+        {
+          "name": "Test",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        },
+        {
+          "name": "Post Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24
+        },
+        {
+          "name": "Post Set up Node",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25
+        },
+        {
+          "name": "Post Check out",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 27
+        }
+      ]
+    },
+    "push": {
+      "runId": 37555173117,
+      "jobId": 112579632934,
+      "url": "https://github.com/leesonchen/hydromod/actions/runs/37555173117",
+      "conclusion": "success"
+    },
+    "testCounts": {
+      "tests": 250,
+      "pass": 250,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "startupMilliseconds": 1958,
+    "priorFailures": [
+      {
+        "commit": "f8eb9da8a",
+        "runId": 37483275906,
+        "jobId": 112336712841,
+        "step": "Check out",
+        "cause": "Missing contents:read"
+      },
+      {
+        "commit": "2098a67d4",
+        "runId": 37546368803,
+        "jobId": 112551228649,
+        "step": "Lint",
+        "errors": 58,
+        "warnings": 121
+      },
+      {
+        "commit": "2748acb33",
+        "runId": 37554048481,
+        "jobId": 112576019300,
+        "step": "Test",
+        "application": {
+          "tests": 61,
+          "passed": 39,
+          "failed": 22
+        },
+        "cause": "Cross-case global HTTP quota accumulation"
+      }
+    ],
+    "skippedExistingWorkflowRun": {
+      "id": 37555175033,
+      "event": "pull_request_target",
+      "conclusion": "skipped"
+    }
+  },
+  "logHashes": [
+    {
+      "name": "coldLocalGates",
+      "file": ".cache/ci-repair-local-gates.log",
+      "sha256": "a2a81f196f0b3b288286a9434061b7247a0ef235d4670b473072df489bf01711"
+    },
+    {
+      "name": "finalFullTests",
+      "file": ".cache/ci-repair-delivery-gates.log",
+      "sha256": "942188b8cd977134b20312cb7918a392c9457db14ba90703385a7c5435e0613d"
+    },
+    {
+      "name": "baselineRegression",
+      "file": ".cache/ci-repair-baseline-regressions.log",
+      "sha256": "e69fd7fa391a07a3711312b6593b78fdac5017a84dbeb07152df78858d22d28d"
+    },
+    {
+      "name": "fixtureTests",
+      "file": ".cache/ci-repair-rate-fixtures.log",
+      "sha256": "2825de550fee3a730da76269f0ce9500da5859e1843ba62da661d86138d92180"
+    },
+    {
+      "name": "migrationTests",
+      "file": ".cache/ci-repair-migration-tests.log",
+      "sha256": "49ca69d43508819a7e39ce9cb9532c0a35ce9bfd93848d7acc683d3d88b868f2"
+    },
+    {
+      "name": "browser",
+      "file": ".cache/ci-repair-browser-results.log",
+      "sha256": "2d8278ec229f04274f50ccfce0d36ceb8674f29e1b303f767c97beda929132df"
+    },
+    {
+      "name": "reproducibleBaseline",
+      "file": ".cache/ci-repair-reproducible-baseline.log",
+      "sha256": "daddfd816022127c6e53c7aead3d9d3512655222744d293b70d5b775df2d043d"
+    }
+  ]
+}
