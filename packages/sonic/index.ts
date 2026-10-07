@@ -1,8 +1,8 @@
+import * as nodejieba from 'nodejieba';
 import {
     Ingest, PushOptions, QueryOptions,
     Search, SuggestOptions,
 } from 'sonic-channel';
-import * as nodejieba from 'nodejieba';
 import {
     Context, iterateAllProblem, iterateAllProblemInDomain,
     Logger, ProblemModel, Schema, Service, SystemModel,
@@ -17,7 +17,7 @@ declare module 'cordis' {
 }
 
 const logger = new Logger('sonic');
-const chineseCharRegex = /[\u4e00-\u9fff]/;
+const chineseCharRegex = /[\u4E00-\u9FFF]/;
 
 function segmentTokens(text: string) {
     if (!text || !chineseCharRegex.test(text)) return null;

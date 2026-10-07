@@ -336,13 +336,13 @@ export async function apply(ctx: Context) {
             if (h.context.pendingError) throw h.context.pendingError;
         });
         on('handler/before', async (h) => {
-            if (!h.user?._id || !h.user.requirePasswordChange) return;
+            if (!h.user?._id || !h.user.requirePasswordChange) return undefined;
             const normalizePath = (path: string) => path.replace(/^\/d\/[^/]+(?=\/)/, '');
             const allowedPaths = new Set([
                 h.url('home_password'),
                 h.url('user_logout'),
             ].map(normalizePath));
-            if (allowedPaths.has(normalizePath(h.request.path))) return;
+            if (allowedPaths.has(normalizePath(h.request.path))) return undefined;
             h.response.redirect = h.url('home_password');
             return 'cleanup';
         });

@@ -1,5 +1,5 @@
-import path from 'path';
 import { promises as fsp } from 'fs';
+import path from 'path';
 import {
     Context, Handler, Logger, param, PRIV, Schema, Types,
 } from 'hydrooj';
@@ -28,7 +28,7 @@ const SYSTEM_PROMPT = `你是一位信息学竞赛教练，为参加编程竞赛
 只输出一份完整代码点评，不要重复标题、“强项”、“可改进项”、“题目要点总结”或“总体评价”章节。
 如果源码未提交或信息不足，要明确说明证据不足，并给出可执行的下一步建议。`;
 
-type StudentRecord = {
+interface StudentRecord {
     id: string;
     region: string;
     total: number;
@@ -37,9 +37,9 @@ type StudentRecord = {
     region_rank: number;
     percentile: number;
     report_string?: Record<string, string>;
-};
+}
 
-type AnalysisData = {
+interface AnalysisData {
     global: {
         n_students: number;
         total_mean: number;
@@ -52,9 +52,9 @@ type AnalysisData = {
     regions?: Record<string, any>;
     problems?: Record<string, any>;
     students: StudentRecord[];
-};
+}
 
-type RuntimeConfig = {
+interface RuntimeConfig {
     dataDir: string;
     title: string;
     baseUrl: string;
@@ -69,7 +69,12 @@ type RuntimeConfig = {
     solutionMaxChars: number;
     timeoutMs: number;
     adminUids: string;
-};
+}
+
+function resolveDataDir(dataDir = DEFAULT_DATA_DIR) {
+    const trimmed = (dataDir || DEFAULT_DATA_DIR).trim() || DEFAULT_DATA_DIR;
+    return path.isAbsolute(trimmed) ? trimmed : path.resolve(__dirname, trimmed);
+}
 
 let runtimeConfig: RuntimeConfig = {
     dataDir: resolveDataDir(process.env.XXWL_REVIEW_DATA_DIR || DEFAULT_DATA_DIR),
@@ -94,11 +99,6 @@ const REVIEW_TITLE_PATTERN = '代码(?:点评|审核|评审|审查|审阅)';
 
 function normalizeExamId(id = '') {
     return id.trim().toUpperCase();
-}
-
-function resolveDataDir(dataDir = DEFAULT_DATA_DIR) {
-    const trimmed = (dataDir || DEFAULT_DATA_DIR).trim() || DEFAULT_DATA_DIR;
-    return path.isAbsolute(trimmed) ? trimmed : path.resolve(__dirname, trimmed);
 }
 
 function requireDataDir() {
@@ -136,6 +136,53 @@ async function writeReview(id: string, content: string) {
     const tmp = `${target}.tmp`;
     await fsp.writeFile(tmp, content, 'utf-8');
     await fsp.rename(tmp, target);
+}
+
+function buildStatusParts(status = '') {
+    const labels: Record<string, string> = {
+        '*': 'AC',
+        x: 'WA',
+        r: 'RE',
+        t: 'TLE',
+        c: 'CE',
+        o: '输出超限',
+        '.': '未提交',
+    };
+    const order = ['*', 'x', 'r', 't', 'c', 'o', '.'];
+    const counts = new Map<string, number>();
+    for (const ch of status) counts.set(ch, (counts.get(ch) || 0) + 1);
+    return order
+        .filter((ch) => counts.has(ch))
+        .map((ch) => ({
+            ch,
+            label: labels[ch] || ch,
+            count: counts.get(ch) || 0,
+            className: ch === '*' ? 'ac' : ch === '.' ? 'missing' : 'bad',
+        }));
+}
+
+function summarizeReportString(status = '') {
+    const parts = buildStatusParts(status);
+    return parts.map((part) => `${part.label} ${part.count}`).join('，') || '无评测串';
+}
+
+function summarizeRawStatus(status = '') {
+    const parts = buildStatusParts(status);
+    if (!parts.length) return '无评测串';
+    if (parts.length === 1) return parts[0].ch === '*' ? `全 ${parts[0].label}` : `${parts[0].label} ${parts[0].count}`;
+    return parts.map((part) => `${part.label} ${part.count}`).join('，');
+}
+
+function replaceRawStatusStrings(text: string) {
+    return text.split(/(```[\s\S]*?```)/g).map((part) => {
+        if (part.startsWith('```')) return part;
+        return part
+            .replace(/评测串\s*(?:[:：]\s*)?([*xrtc.o]{3,})/gi, (_all, raw) => `评测结果：${summarizeRawStatus(raw.toLowerCase())}`)
+            .replace(/([（(])([*xrtc.o]{3,})([）)])/gi, (_all, left, raw, right) => {
+                if (!/[xrtc*.o]/i.test(raw)) return `${left}${raw}${right}`;
+                return `${left}${summarizeRawStatus(raw.toLowerCase())}${right}`;
+            });
+    }).join('');
 }
 
 function displayReviewText(text: string) {
@@ -204,53 +251,6 @@ function buildStatsView(data: AnalysisData) {
         problemRows,
         leaderboardRows: students,
     };
-}
-
-function summarizeReportString(status = '') {
-    const parts = buildStatusParts(status);
-    return parts.map((part) => `${part.label} ${part.count}`).join('，') || '无评测串';
-}
-
-function buildStatusParts(status = '') {
-    const labels: Record<string, string> = {
-        '*': 'AC',
-        x: 'WA',
-        r: 'RE',
-        t: 'TLE',
-        c: 'CE',
-        o: '输出超限',
-        '.': '未提交',
-    };
-    const order = ['*', 'x', 'r', 't', 'c', 'o', '.'];
-    const counts = new Map<string, number>();
-    for (const ch of status) counts.set(ch, (counts.get(ch) || 0) + 1);
-    return order
-        .filter((ch) => counts.has(ch))
-        .map((ch) => ({
-            ch,
-            label: labels[ch] || ch,
-            count: counts.get(ch) || 0,
-            className: ch === '*' ? 'ac' : ch === '.' ? 'missing' : 'bad',
-        }));
-}
-
-function summarizeRawStatus(status = '') {
-    const parts = buildStatusParts(status);
-    if (!parts.length) return '无评测串';
-    if (parts.length === 1) return parts[0].ch === '*' ? `全 ${parts[0].label}` : `${parts[0].label} ${parts[0].count}`;
-    return parts.map((part) => `${part.label} ${part.count}`).join('，');
-}
-
-function replaceRawStatusStrings(text: string) {
-    return text.split(/(```[\s\S]*?```)/g).map((part) => {
-        if (part.startsWith('```')) return part;
-        return part
-            .replace(/评测串\s*[:：]?\s*([*xrtc.o.]{3,})/gi, (_all, raw) => `评测结果：${summarizeRawStatus(raw.toLowerCase())}`)
-            .replace(/([（(])([*xrtc.o.]{3,})([）)])/gi, (_all, left, raw, right) => {
-                if (!/[xrtc*.o.]/i.test(raw)) return `${left}${raw}${right}`;
-                return `${left}${summarizeRawStatus(raw.toLowerCase())}${right}`;
-            });
-    }).join('');
 }
 
 function buildDiagnosisHint(student: StudentRecord) {
@@ -357,7 +357,7 @@ async function readProblemStatementFull(pid: string) {
 
 function safeAnimationFilename(filename = '') {
     const base = path.basename(filename);
-    return /^[A-Za-z0-9._-]+\.html$/i.test(base) ? base : '';
+    return /^[A-Z0-9._-]+\.html$/i.test(base) ? base : '';
 }
 
 function extractHtmlTitle(source: string, fallback: string) {
@@ -375,8 +375,8 @@ async function readSolutionAnimations(pid: string) {
             .filter((entry) => entry.isFile() && safeAnimationFilename(entry.name) === entry.name)
             .map((entry) => entry.name)
             .sort((a, b) => a.localeCompare(b));
-        const animations: { file: string; title: string }[] = [];
-        for (const file of files) {
+        const animations: { file: string, title: string }[] = [];
+        for await (const file of files) {
             const source = await fsp.readFile(path.join(solutionDir, file), 'utf-8');
             animations.push({ file, title: extractHtmlTitle(source, file) });
         }
@@ -399,11 +399,11 @@ async function readReferenceSolutions(pid: string) {
     try {
         const entries = await fsp.readdir(solutionDir, { withFileTypes: true });
         const files = entries
-            .filter((entry) => entry.isFile() && /\.(c|cc|cpp|cxx|md|txt)$/i.test(entry.name))
+            .filter((entry) => entry.isFile() && /\.(?:c|cc|cpp|cxx|md|txt)$/i.test(entry.name))
             .map((entry) => entry.name)
             .sort((a, b) => a.localeCompare(b));
         const blocks: string[] = [];
-        for (const file of files) {
+        for await (const file of files) {
             const filePath = path.join(solutionDir, file);
             const source = await fsp.readFile(filePath, 'utf-8');
             const ext = path.extname(file).slice(1).toLowerCase() || 'txt';
@@ -423,7 +423,7 @@ async function readReferenceSolutions(pid: string) {
 
 async function buildProblemContext() {
     const chunks: string[] = [];
-    for (const p of PROBLEMS) {
+    for await (const p of PROBLEMS) {
         const [statement, solutions] = await Promise.all([
             readProblemStatement(p.id),
             readReferenceSolutions(p.id),
@@ -445,10 +445,14 @@ async function buildReviewPrompt(student: StudentRecord, data: AnalysisData) {
         .map((p) => `    ${p.id}: ${student.report_string?.[p.id] || '无'}`)
         .join('\n');
     const codeBlocks: string[] = [];
-    for (const problem of PROBLEMS) {
+    for await (const problem of PROBLEMS) {
         const source = await readSource(student.id, problem.id);
         codeBlocks.push(`### ${problem.id}.cpp\n\`\`\`cpp\n${source}\n\`\`\``);
     }
+    const instruction5 = '5. `可改进项`：只展开 1-3 个最值得讲的失分题。每项的小标题只写“题号 + 题名 + 得分/评测结果摘要”，例如“p5 旅行计划 0/100，全 RE”；'
+        + '正文用自然语言依次说明得分现象、学生代码行号/片段、错误根因和改法；不要把原始评测串字符、以及“现象 / 代码证据 / 根因 / 正确思路”这些词或箭头原样写出来。引用代码用 ```cpp 代码块，且不要引用参考解法作为学生代码。';
+    const instruction6 = '6. `题目要点总结`：必须按 p1-p6 顺序逐题覆盖，每题 1 句。满分题写清核心做法；'
+        + '非满分且已提交的 WA/RE/TLE/CE/输出超限题写清“得分/评测结果摘要 + 主要问题 + 正确要点”，即使未在“可改进项”展开也不能省略；未提交题只写“未提交，无法进行源码层面的代码点评”，不要补正确算法或总结评价。';
     return `请为学生 ${student.id} 撰写代码点评。
 
 ## 比赛信息
@@ -477,8 +481,8 @@ ${codeBlocks.join('\n')}
 2. 第一行用粗体写成绩摘要：总分/满分、百分位、全体排名、考区排名。
 3. 只使用以下四个二级标题，且顺序固定：\`## 强项\`、\`## 可改进项\`、\`## 题目要点总结\`、\`## 总体评价\`。
 4. \`强项\`：选择 1-2 个最值得表扬的题或代码习惯，必须引用学生实际代码片段或行号说明为什么有效；没有明显强项时写“暂无明显强项”，不要硬夸。
-5. \`可改进项\`：只展开 1-3 个最值得讲的失分题。每项的小标题只写“题号 + 题名 + 得分/评测结果摘要”，例如“p5 旅行计划 0/100，全 RE”；正文用自然语言依次说明得分现象、学生代码行号/片段、错误根因和改法；不要把原始评测串字符、以及“现象 / 代码证据 / 根因 / 正确思路”这些词或箭头原样写出来。引用代码用 \`\`\`cpp 代码块，且不要引用参考解法作为学生代码。
-6. \`题目要点总结\`：必须按 p1-p6 顺序逐题覆盖，每题 1 句。满分题写清核心做法；非满分且已提交的 WA/RE/TLE/CE/输出超限题写清“得分/评测结果摘要 + 主要问题 + 正确要点”，即使未在“可改进项”展开也不能省略；未提交题只写“未提交，无法进行源码层面的代码点评”，不要补正确算法或总结评价。
+${instruction5}
+${instruction6}
 7. \`总体评价\`：用 1 段总结能力画像和下一步训练重点，必须点名最需要补的 1-2 个已提交题型/能力；未提交题只能作为“需要先完成提交”的事实，不评价其代码质量或算法水平。
 8. 全文 450-900 字（中文），表达精炼、言之有物；如果某题证据不足，明确写“证据不足”，不要猜测。
 `;
@@ -503,7 +507,11 @@ async function requestJson(url: string, payload: any) {
         });
         const text = await response.text();
         let data: any;
-        try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+        try {
+            data = text ? JSON.parse(text) : {};
+        } catch {
+            data = { raw: text };
+        }
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${text.slice(0, 1000)}`);
         return data;
     } finally {
@@ -566,7 +574,7 @@ async function callChat(userPrompt: string) {
 async function callLLM(userPrompt: string) {
     const endpoints = runtimeConfig.endpoint === 'auto' ? ['responses', 'chat'] : [runtimeConfig.endpoint];
     const errors: string[] = [];
-    for (const endpoint of endpoints) {
+    for await (const endpoint of endpoints) {
         try {
             return endpoint === 'responses' ? await callResponses(userPrompt) : await callChat(userPrompt);
         } catch (err: any) {
@@ -595,7 +603,8 @@ function normalizeReview(text: string, student: StudentRecord) {
     }
     trimmed = displayReviewText(trimmed);
     if (new RegExp(`^#\\s*代码点评\\s*-\\s*${student.id}\\b`).test(trimmed)) return `${trimmed}\n`;
-    return `# 代码点评 - ${student.id}\n\n**成绩：${student.total}/500 (P${student.percentile}) | 全体#${student.global_rank} | 考区${student.region}第${student.region_rank}**\n\n${trimmed.replace(/^#+\s*/, '')}\n`;
+    return `# 代码点评 - ${student.id}\n\n**成绩：${student.total}/500 (P${student.percentile})`
+        + ` | 全体#${student.global_rank} | 考区${student.region}第${student.region_rank}**\n\n${trimmed.replace(/^#+\s*/, '')}\n`;
 }
 
 async function generateReview(student: StudentRecord, data: AnalysisData, force = false) {
@@ -752,7 +761,9 @@ class XxwlReviewGenerateHandler extends Handler {
 }
 
 export const Config = Schema.object({
-    dataDir: Schema.string().default(process.env.XXWL_REVIEW_DATA_DIR || DEFAULT_DATA_DIR).description('数据目录，默认 data，即本插件目录下的 data；需包含 cache/analysis.json、reviews/、code/；相对路径按本插件目录解析'),
+    dataDir: Schema.string().default(process.env.XXWL_REVIEW_DATA_DIR || DEFAULT_DATA_DIR).description(
+        '数据目录，默认 data，即本插件目录下的 data；需包含 cache/analysis.json、reviews/、code/；相对路径按本插件目录解析',
+    ),
     title: Schema.string().default('信息与未来 2026 个人代码分析').description('查询页标题'),
     baseUrl: Schema.string().default('https://api.openai.com/v1').description('OpenAI-compatible API base URL，例如 https://api.openai.com/v1'),
     apiKey: Schema.string().role('secret').default('').description('OpenAI-compatible API Key，用于缺失 review 时实时生成'),

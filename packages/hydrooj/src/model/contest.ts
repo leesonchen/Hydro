@@ -895,6 +895,7 @@ export async function editIfAssigned(
     tid: ObjectId,
     assignGroup: string | string[],
     $set: Partial<Tdoc>,
+    expected: Filter<Tdoc> = {},
 ) {
     if ($set.rule && !RULES[$set.rule]) throw new ValidationError('rule');
     const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
@@ -912,6 +913,7 @@ export async function editIfAssigned(
     }
     const res = await document.coll.findOneAndUpdate(
         {
+            ...expected,
             ...configurationCondition,
             domainId,
             docType: document.TYPE_CONTEST,

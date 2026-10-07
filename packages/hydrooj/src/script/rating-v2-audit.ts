@@ -135,8 +135,15 @@ export async function run(options: AuditOptions, report: Report) {
     const qualifyingTrailing = qualifying.filter((c) => c.endAt >= windowStart);
     const strict = candidates.filter(strictPasses);
     const strictTrailing = strict.filter((c) => c.endAt >= windowStart);
-    report({ message: `[3] Qualifying (minParticipants=${minParticipants}, duration=${includeDuration ? 'included' : 'excluded'}, assign=${includeAssign ? 'included' : 'excluded'}): all-time ${qualifying.length}, trailing ${windowMonths}mo ${qualifyingTrailing.length}` });
-    report({ message: `[3] Strict-plan comparator (sync acm/oi, no-assign, >=10 participants): all-time ${strict.length}, trailing ${windowMonths}mo ${strictTrailing.length}` });
+    report({
+        message: `[3] Qualifying (minParticipants=${minParticipants}, duration=${includeDuration ? 'included' : 'excluded'},`
+            + ` assign=${includeAssign ? 'included' : 'excluded'}): all-time ${qualifying.length},`
+            + ` trailing ${windowMonths}mo ${qualifyingTrailing.length}`,
+    });
+    report({
+        message: `[3] Strict-plan comparator (sync acm/oi, no-assign, >=10 participants): all-time ${strict.length},`
+            + ` trailing ${windowMonths}mo ${strictTrailing.length}`,
+    });
     const byDomain: Record<string, number> = {};
     for (const c of qualifying) byDomain[c.domainId] = (byDomain[c.domainId] || 0) + 1;
     report({ message: `[3] Qualifying by domain: ${JSON.stringify(byDomain)}` });
@@ -200,7 +207,11 @@ export async function run(options: AuditOptions, report: Report) {
     }
     if (spreads.length) {
         spreads.sort((a, b) => a - b);
-        report({ message: `[7] Personal-duration start spread (sampled ${spreads.length}/${durationContests.length}): min=${hr(spreads[0])}, median=${hr(median(spreads))}, p90=${hr(percentile(spreads, 0.9))}, max=${hr(spreads[spreads.length - 1])}` });
+        report({
+            message: `[7] Personal-duration start spread (sampled ${spreads.length}/${durationContests.length}):`
+                + ` min=${hr(spreads[0])}, median=${hr(median(spreads))},`
+                + ` p90=${hr(percentile(spreads, 0.9))}, max=${hr(spreads[spreads.length - 1])}`,
+        });
         report({ message: `[7] De-facto synchronized contests (spread <= 1h): ${spreads.filter((s) => s <= 1).length}/${spreads.length}` });
     } else {
         report({ message: '[7] No personal-duration contests sampled' });
@@ -216,14 +227,20 @@ export async function run(options: AuditOptions, report: Report) {
     const aSizes = achievement.map((a) => a.n);
     report({ message: `[8] Users with >=1 full-score problem status: ${aSizes.length}` });
     report({ message: `[8] Full-score (A proxy) buckets: ${JSON.stringify(bucketize(aSizes, [10, 50, 100, 200, 400]))}` });
-    report({ message: `[8] Top10 A proxy: ${aSizes.slice(0, 10).join(',')} -> P values: ${aSizes.slice(0, 10).map((a) => (600 * a / (a + 200)).toFixed(1)).join(',')}` });
+    report({
+        message: `[8] Top10 A proxy: ${aSizes.slice(0, 10).join(',')} -> P values: `
+            + `${aSizes.slice(0, 10).map((a) => (600 * a / (a + 200)).toFixed(1)).join(',')}`,
+    });
 
     // -- 8. record split -------------------------------------------------------
     const [inContest, practice] = await Promise.all([
         RecordModel.coll.countDocuments({ contest: { $ne: null } }),
         RecordModel.coll.countDocuments({ contest: null }),
     ]);
-    report({ message: `[9] Records: in-contest/homework ${inContest} vs practice ${practice} (${(100 * inContest / (inContest + practice)).toFixed(1)}% in-contest)` });
+    report({
+        message: `[9] Records: in-contest/homework ${inContest} vs practice ${practice}`
+            + ` (${(100 * inContest / (inContest + practice)).toFixed(1)}% in-contest)`,
+    });
 
     report({
         message: `Audit finished. Summary: ${

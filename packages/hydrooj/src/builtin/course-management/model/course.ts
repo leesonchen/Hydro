@@ -1,7 +1,8 @@
+import type { ContestRule, ScoreboardRow, Tdoc } from '../../../plugin-api';
 import {
     ContestModel, Counter, moment, STATUS, UserModel,
 } from '../../../plugin-api';
-import type { ContestRule, ScoreboardRow, Tdoc } from '../../../plugin-api';
+import { problemNodeIds } from './structure';
 
 export const DEFAULT_COURSE_LESSON_DURATION_HOURS = 3;
 
@@ -28,6 +29,10 @@ export interface DagNode {
 export interface CourseTdoc extends Tdoc {
     rule: 'course';
     dag: DagNode[];
+    dagRevision?: number;
+    nodeIdHighWatermark?: number;
+    problemNodeIds?: Record<number, number>;
+    problemAccessNodeIds?: Record<number, number>;
     assign?: string[];
     lecture?: Record<number, string>;
     editor?: number;
@@ -63,7 +68,7 @@ interface CourseDetail extends CourseJournal {
     naccept?: number;
 }
 
-async function ranked<T extends { score?: Record<number, number>; accept?: Record<number, number> }>(
+async function ranked<T extends { score?: Record<number, number>, accept?: Record<number, number> }>(
     tsdocs: T[],
     comparator: (a: T, b: T) => boolean,
 ) {
@@ -100,18 +105,13 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
         const detail: Record<number, CourseDetail> = {};
 
         // 建立题目到章节的映射
-        const pidToNode: Record<number, number> = {};
-        for (const node of tdoc.dag) {
-            for (const pid of node.pids) {
-                pidToNode[pid] = node._id;
-            }
-        }
+        const pidToNode = problemNodeIds(tdoc);
 
         const score: Record<number, number> = { 0: 0 };
         const accept: Record<number, number> = { 0: 0 };
 
         // 统计每道题的提交情况
-        for (const j of journal.filter((j) => tdoc.pids.includes(j.pid))) {
+        for (const j of journal.filter((entry) => tdoc.pids.includes(entry.pid))) {
             if (![STATUS.STATUS_ACCEPTED, STATUS.STATUS_COMPILE_ERROR, STATUS.STATUS_FORMAT_ERROR].includes(j.status)) {
                 naccept[j.pid]++;
             }
@@ -347,14 +347,6 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
                 total += (v as any)?.naccept || 0;
             }
             return total;
-        };
-        const calcLastSubmitTime = (tsdoc: any) => {
-            let last = 0;
-            for (const j of tsdoc.journal || []) {
-                const t = j.rid?.getTimestamp?.().getTime?.() || 0;
-                if (t > last) last = t;
-            }
-            return last || Number.POSITIVE_INFINITY;
         };
         return await ranked(tsdocs, (a: any, b: any) => {
             const as = (a as any).score?.[config.id] || 0;

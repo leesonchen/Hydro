@@ -1,8 +1,8 @@
 import {
-    BadRequestError, DomainModel, Handler, MessageModel, param, PRIV,
+    BadRequestError, DomainModel, MessageModel, param,
     Types, UserModel, ValidationError,
 } from '../../../plugin-api';
-import { UserBaseHandler, setHasStore } from './user';
+import { UserBaseHandler } from './user';
 
 let hasStore = false;
 
@@ -26,7 +26,7 @@ async function bulkCreateUsers(
         errors.push(`Group ${group} conflicts with an existing class.`);
     }
 
-    for (const u of users) {
+    for await (const u of users) {
         try {
             const uid = await UserModel.create(u.email, u.username, u.password);
             uidByEmail[u.email] = uid;
@@ -53,7 +53,7 @@ async function bulkCreateUsers(
 
     // 设置用户组
     const allGroups = await UserModel.listGroup(domainId);
-    for (const group in groupMap) {
+    for await (const group of Object.keys(groupMap)) {
         if (conflictingGroups.has(group)) continue;
         const uids = groupMap[group].map((email) => uidByEmail[email]).filter((uid) => uid);
         const existingGroup = allGroups.find((g: any) => g.name === group);
@@ -73,7 +73,7 @@ async function bulkCreateUsers(
     }
 
     const classes = await UserModel.listGroup(domainId);
-    for (const className in classMap) {
+    for await (const className of Object.keys(classMap)) {
         const classGroup = classes.find((group: any) => group.class && group.name === className
             && !group.archive && group.name !== 'teachers');
         if (!classGroup) {
@@ -81,7 +81,7 @@ async function bulkCreateUsers(
             continue;
         }
         const uids = classMap[className].map((email) => uidByEmail[email]).filter((uid) => uid);
-        for (const uid of uids) {
+        for await (const uid of uids) {
             try {
                 const added = await UserModel.addUserToGroup(domainId, classGroup._id, uid);
                 if (!added) errors.push(`Failed to add user ${uid} to class ${className}.`);
@@ -127,7 +127,7 @@ export class UserlistSystemUserImportHandler extends UserBaseHandler {
         );
         let hasClassError = false;
 
-        for (const idx in lines) {
+        for await (const idx of Object.keys(lines)) {
             const line = lines[idx];
             if (!line.trim()) continue;
 

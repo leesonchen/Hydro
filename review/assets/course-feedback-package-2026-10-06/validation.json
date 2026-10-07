@@ -1,0 +1,215 @@
+{
+  "date": "2026-10-06",
+  "baseCommit": "53fa6990fb66493777b5c63365fe8b6d5e973a20",
+  "validatedSourceCommit": "98d8c0f159cedabcdaf2b7b46bbc15a42e6e9163",
+  "fullTests": {
+    "tests": 224,
+    "passed": 224,
+    "failed": 0,
+    "skipped": 0,
+    "command": "corepack yarn test",
+    "seconds": 81.8,
+    "newBuildRegressions": 4
+  },
+  "typescript": {
+    "version": "6.0.3",
+    "command": "node node_modules/typescript/bin/tsc -b --pretty false",
+    "passed": true,
+    "errors": 0,
+    "seconds": 211.7
+  },
+  "productionBuild": {
+    "webpack": "5.111.1",
+    "command": "node packages/ui-default/build --production --detail",
+    "passed": true,
+    "errors": 0,
+    "warnings": 3,
+    "seconds": 134.282,
+    "warningFollowup": "existing asset/entry size warnings and child-compilation diagnostic detail"
+  },
+  "browser": {
+    "passed": 8,
+    "errors": [],
+    "checks": [
+      "production Monaco loads real TypeScript declarations as text",
+      "A records once with an optional draft, preserves context, and rejects mismatched details",
+      "pending retests complete and undo the exact resolution while retaining history",
+      "lost receipt and a denied replay retain the original request without duplicating the observation",
+      "a confirmed save survives read failure and does not offer a new write retry",
+      "B remembers lesson and draft across real PJAX, filters, collapse and re-opening",
+      "management names exact batch scope, reports individual results and preserves feedback",
+      "native mobile layout keeps the table scroll inside the page and keyboard controls available"
+    ],
+    "ui": "production-webpack"
+  },
+  "packages": {
+    "packages": [
+      {
+        "name": "hydrooj",
+        "version": "5.0.7",
+        "files": 141,
+        "locales": 4,
+        "size": 363725,
+        "sha256": "b2b2d80cbd44ac187fca82384acd370e09c737129ff349ce0a9eb5993566df2c",
+        "required": [
+          "bin/hydrooj.js",
+          "src/model/classroomFeedback.ts",
+          "src/handler/classroom-feedback.ts",
+          "src/builtin/course-management/model/structure.ts",
+          "src/script/course-feedback-structure.ts"
+        ]
+      },
+      {
+        "name": "@hydrooj/ui-default",
+        "version": "4.58.5",
+        "files": 816,
+        "locales": 4,
+        "size": 14938099,
+        "sha256": "76dfd92b9a4d475cd02b50ea72fd132df4ff98b505c3b4e05e83f88c63893f93",
+        "required": [
+          "templates/classroom_feedback.html",
+          "templates/partials/scoreboard.html",
+          "templates/course_manage.html",
+          "public/manifest.json",
+          "public/hydro-4.58.5.js",
+          "public/theme-4.58.5.css"
+        ]
+      }
+    ],
+    "published": false,
+    "installed": false
+  },
+  "lint": {
+    "files": 535,
+    "errors": 103,
+    "warnings": 122,
+    "introducedDiagnostics": 0,
+    "comparison": "multiset of relative path, severity, rule and message; diagnostic line references normalized"
+  },
+  "sourceHashes": {
+    "package.json": {
+      "gitBlobSha256": "9a28612b4d1780aaf035a53f63744fbea5a42eb90efcaa972103307edafd5557",
+      "checkoutSha256": "9a28612b4d1780aaf035a53f63744fbea5a42eb90efcaa972103307edafd5557"
+    },
+    "packages/ui-default/build/config/webpack.ts": {
+      "gitBlobSha256": "f207706c8474f1d415f47e7df76bafaaafe4ab7d02be815894e1178fdce2f456",
+      "checkoutSha256": "f207706c8474f1d415f47e7df76bafaaafe4ab7d02be815894e1178fdce2f456"
+    },
+    "packages/ui-default/components/monaco/languages/typescript.ts": {
+      "gitBlobSha256": "10fd7f6ac844b2de8a52db74e352f284a12aba338f417a1388c7387b67319091",
+      "checkoutSha256": "10fd7f6ac844b2de8a52db74e352f284a12aba338f417a1388c7387b67319091"
+    },
+    "packages/ui-default/components/problemconfig/ProblemConfigEditor.tsx": {
+      "gitBlobSha256": "292c1868240b540fc4d86ef474ac3d428195785c20fe9a4158c8f044d67077e1",
+      "checkoutSha256": "292c1868240b540fc4d86ef474ac3d428195785c20fe9a4158c8f044d67077e1"
+    },
+    "test/classroom-feedback-browser.js": {
+      "gitBlobSha256": "387e6cb438c0822746e756c5398f464866f3b781d665d3bce884fb05bd065f36",
+      "checkoutSha256": "387e6cb438c0822746e756c5398f464866f3b781d665d3bce884fb05bd065f36"
+    },
+    "test/classroom-feedback-browser.spec.js": {
+      "gitBlobSha256": "80d7bdd63c147746ff436d92527c0a004f4eebc7c100f5d4cf81161a9e921bc5",
+      "checkoutSha256": "80d7bdd63c147746ff436d92527c0a004f4eebc7c100f5d4cf81161a9e921bc5"
+    },
+    "test/prepare-feedback-package-check.cjs": {
+      "gitBlobSha256": "d65d38fdc467926e16384afe933443a02ce18f5c67c43ff7200f0ecf58992152",
+      "checkoutSha256": "d65d38fdc467926e16384afe933443a02ce18f5c67c43ff7200f0ecf58992152"
+    },
+    "test/ui-build-regressions.spec.js": {
+      "gitBlobSha256": "00bdb0ff225e3c2f781fc35705cdd71e533fd484af58967479c66e5a0c01fa8c",
+      "checkoutSha256": "00bdb0ff225e3c2f781fc35705cdd71e533fd484af58967479c66e5a0c01fa8c"
+    }
+  },
+  "screenshots": {
+    "a-roster.png": {
+      "bytes": 155940,
+      "sha256": "dbc40ee87b74134063ded755aceb9d3d0c1fe71deda7ea634fac0d176c586e08"
+    },
+    "b-progress.png": {
+      "bytes": 129763,
+      "sha256": "ff859f8b19bb808a55aeefef1ec5a0939456564c1636bfe2d35c15f1ecd315ad"
+    },
+    "pending-retest.png": {
+      "bytes": 121157,
+      "sha256": "cd0557f79b233652525c793993094ab70723611b39d8ab1a0639f6519eb042ce"
+    },
+    "course-manage.png": {
+      "bytes": 106160,
+      "sha256": "d9683ae688156b6500dd7bc4395db9b651257b113a464635802722228265c77a"
+    },
+    "mobile.png": {
+      "bytes": 66716,
+      "sha256": "999b352fb4e796cf6c2ee3c8feda657c09d09591955ff7bb3bd57e51fe15dfe9"
+    }
+  },
+  "localLogs": {
+    ".cache/feedback-next-tests-final.log": {
+      "sha256": "53e2ef1c508aebff5325f6f47df214b6fcc821b2f219cb94eb13bab0345b04b0"
+    },
+    ".cache/feedback-next-gates-final.log": {
+      "sha256": "7084a3a4d81f96fcbeadfcd07dd6fc0ec2b36fa82f3e4765515c6118fbcecb5d"
+    },
+    ".cache/feedback-next-webpack-final.log": {
+      "sha256": "080712e0cbf702e4645d2cd32c6c81c1e8b085357c99962dde47cddc4b81ce8e"
+    },
+    ".cache/feedback-next-package-browser.log": {
+      "sha256": "89e5e031d63353924c6ff8ea3ffb236e73cc8ee6b4055d9ee555b421cde8d4e2"
+    },
+    ".cache/feedback-next-pack-final.log": {
+      "sha256": "10aff32b8bdff512bd1a7c1e2906f20ea5cb82393ae0cb2ef1fa5c604a647c9e"
+    },
+    ".cache/feedback-next-lint.json": {
+      "sha256": "a23c04c45c12678967151d65ba961afb8d78393793e89a973f3f3ee4664bf970"
+    },
+    ".cache/feedback-lint-delivery2.json": {
+      "sha256": "e5a3fba183bb988fe4882e6b64b77de35ab6411e2f45daaec25c3aaa1500b279"
+    },
+    ".cache/feedback-next-app-system-temp.log": {
+      "sha256": "f7219345f9bdd6bea7696edf900ac92f9e4822bc0d6f064084ab5e13a340831b"
+    }
+  },
+  "testEnvironment": {
+    "temporaryDirectory": "C:/Users/13813/AppData/Local/Temp",
+    "earlierFailedFullRuns": 2,
+    "failure": "existing App bootstrap exceeded 30 seconds using D-drive temporary databases, including one serial run",
+    "systemTempAppCheck": {
+      "tests": 61,
+      "passed": 61,
+      "failed": 0,
+      "bootstrapSeconds": 8.55
+    },
+    "timeoutChanged": false,
+    "testsSkipped": false
+  },
+  "runningContainerReadOnlyCheck": {
+    "distribution": "Ubuntu-22.04",
+    "container": "hydro",
+    "state": "running",
+    "health": "healthy",
+    "startedAt": "2026-10-04T13:08:26.782816363Z",
+    "node": "v22.16.0",
+    "nodeExecutable": "/root/.nix-profile/bin/node",
+    "installationChanged": false,
+    "restarted": false,
+    "prior61ContainerTestsRerunThisPhase": false
+  },
+  "boundaries": {
+    "hydroLocalStorageAndQuery": true,
+    "aiEduRequired": false,
+    "published": false,
+    "installed": false,
+    "deployed": false,
+    "merged": false,
+    "targetContainerUpgrade": false,
+    "realClassDataTested": false,
+    "existingWorkspaceDependenciesReused": true,
+    "cleanRegistryInstallationTested": false,
+    "temporaryValidationProcessesStopped": true,
+    "manifestSourceMapsExcludedBecauseProductionBuildRemovesThem": true
+  },
+  "remaining": [
+    "E2 existing lint and child compilation warning followup",
+    "E3 Hydro-local material availability conditions",
+    "E4 authorized target installation and real-class pilot"
+  ]
+}

@@ -4,12 +4,12 @@ import React from 'react';
 import { connect } from 'react-redux';
 import Icon from 'vj/components/react/IconComponent';
 import { getAvailableLangs, i18n, request } from 'vj/utils';
+import { canUsePretest } from './capabilities';
 import Toolbar, {
   ToolbarButtonComponent as ToolbarButton,
   ToolbarItemComponent as ToolbarItem,
   ToolbarSplitComponent as ToolbarSplit,
 } from './ToolbarComponent';
-import { canUsePretest } from './capabilities';
 
 const mapStateToProps = (state) => ({
   pretestVisible: state.ui.pretest.visible,

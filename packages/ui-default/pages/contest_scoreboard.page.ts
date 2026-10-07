@@ -1,4 +1,5 @@
 import $ from 'jquery';
+import { bindFeedbackScoreboard } from 'vj/components/classroom-feedback-scoreboard';
 import { NamedPage } from 'vj/misc/Page';
 import { pjax } from 'vj/utils';
 import { openDB } from 'vj/utils/db';
@@ -6,6 +7,8 @@ import { openDB } from 'vj/utils/db';
 const page = new NamedPage(['contest_scoreboard', 'homework_scoreboard'], async () => {
   const db = await openDB;
   const { tdoc } = UiContext;
+  const syncFeedback = tdoc.rule === 'course' ? bindFeedbackScoreboard() : () => {};
+  if (tdoc.rule === 'course') $(document).on('vjContentNew', () => queueMicrotask(syncFeedback));
   const id = `${tdoc.domainId}/${tdoc.docId}`;
   const read = async () => (await db.get('scoreboard-star', id))?.data || [];
   const write = (data) => db.put('scoreboard-star', { id, data });
@@ -57,6 +60,7 @@ const page = new NamedPage(['contest_scoreboard', 'homework_scoreboard'], async 
 
   $('.select.filter').on('change', async () => {
     await update();
+    syncFeedback();
     const val = $('.select.filter').val();
     history.replaceState(null, '', `#filter=${val}`);
   });
@@ -68,6 +72,7 @@ const page = new NamedPage(['contest_scoreboard', 'homework_scoreboard'], async 
     if (beginAt <= now && now <= endAt) {
       await pjax.request({ url: UiContext.scoreboardUrl || '', push: false });
       await update();
+      syncFeedback();
     }
   }
 
@@ -77,6 +82,7 @@ const page = new NamedPage(['contest_scoreboard', 'homework_scoreboard'], async 
     if (filter) {
       $('.select.filter').val(filter);
       await update();
+      syncFeedback();
     }
   });
 });

@@ -42,7 +42,7 @@
         {% if _shouldShow %}
         <div data-heading-extract-to="#menu-item-course_detail" class="training__section expanded">
           <div class="section__header clearfix">
-            <h1 data-heading id="node-{{ node._id }}" class="section__title">{{ _('Section') }} {{ node['_id'] }}. {{ node['title'].split('\n')[0] }}</h1>
+            <h1 data-heading id="node-{{ node._id }}" class="section__title">课时 {{ loop.index }}. {{ node['title'].split('\n')[0] }}</h1>
             {% if node['title'].split('\n')[1] %}<h4>{{ node['title'].split('\n')[1] }}</h4>{% endif %}
           </div>
           <div class="section__body">
@@ -117,6 +117,9 @@
                             {{ problem.render_problem_title(pdoc, tdoc=tdoc, show_tags=false) }}
                           {% else %}
                             {{ problem.render_problem_title(pdoc, show_tags=false) }}
+                          {% endif %}
+                          {% if feedbackUrl %}
+                            <a class="cf-scoreboard-entry" href="{{ feedbackUrl }}?pid={{ pid }}&amp;nodeId={{ node._id }}">记录课堂反馈</a>
                           {% endif %}
                         </td>
                       </tr>

@@ -67,17 +67,21 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
 
   // Local datetime picker to avoid touching ui-default
   const flatpickr = (window as any).flatpickr;
-  if (flatpickr) $('[data-pick-datetime]').each(function () {
-    const $input = $(this);
-    if ($input.data('fp-initialized')) return;
-    flatpickr(this, {
-      allowInput: true,
-      enableTime: true,
-      time_24hr: true,
-      dateFormat: 'Y-m-d H:i',
+  if (flatpickr) {
+    $('[data-pick-datetime]').each(function () {
+      const $input = $(this);
+      if ($input.data('fp-initialized')) {
+        return;
+      }
+      flatpickr(this, {
+        allowInput: true,
+        enableTime: true,
+        time_24hr: true,
+        dateFormat: 'Y-m-d H:i',
+      });
+      $input.data('fp-initialized', true);
     });
-    $input.data('fp-initialized', true);
-  });
+  }
 
   const parseLocalDateTime = (value: any) => {
     const match = String(value || '').trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
@@ -144,7 +148,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           + '</div></div>'
           + '<div class="dag-visual-list"></div>'
         + '</div>'
-      + '</div>'
+      + '</div>',
     );
     const $actions = $visual.find('.dag-editor-actions');
     const $list = $visual.find('.dag-visual-list');
@@ -170,7 +174,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     };
 
     const updateStatus = (message: string, ok = true) => {
-      $status.text(message).css('color', ok ? 'green' : 'red');
+      $status.attr('role', ok ? 'status' : 'alert').text(message).css('color', ok ? 'green' : 'red');
     };
 
     const updateStatusFromRaw = () => {
@@ -226,22 +230,12 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       .filter(Boolean) as any[];
 
     let nodes = normalizeNodes(parseDag() || []);
+    let highWatermark = Math.max(Number($('[name="nodeIdHighWatermark"]').val()) || 0, ...nodes.map((node) => node._id));
 
-    const remapNodeIds = (orderedNodes: any[]) => {
-      const idMap = new Map<number, number>();
-      orderedNodes.forEach((node, index) => {
-        idMap.set(+node._id, index + 1);
-      });
-      orderedNodes.forEach((node, index) => {
-        node._id = index + 1;
-        node.requireNids = Array.from(new Set((node.requireNids || [])
-          .map((id: any) => idMap.get(+id))
-          .filter((id: any) => Number.isFinite(id) && id > 0 && id !== node._id)));
-      });
-    };
-
-    const commit = (opts: { rerender?: boolean; source?: string } = {}) => {
-      nodes = normalizeNodes(nodes).sort((a, b) => a._id - b._id);
+    let render: () => void;
+    const commit = (opts: { rerender?: boolean, source?: string } = {}) => {
+      nodes = normalizeNodes(nodes);
+      highWatermark = Math.max(highWatermark, ...nodes.map((node) => node._id));
       const nextJson = JSON.stringify(nodes, null, 2);
       const editorInstance = $dag.data('vjEditorInstance');
       $dag.val(nextJson);
@@ -253,17 +247,17 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       if (opts.rerender) render();
     };
 
-    const render = () => {
+    render = () => {
       $list.empty();
-      nodes = normalizeNodes(nodes).sort((a, b) => a._id - b._id);
+      nodes = normalizeNodes(nodes);
       if (!nodes.length) {
         $list.append('<div class="typo">暂无章节，点击“新增章节”。</div>');
         return;
       }
 
-      const nodeOptions = nodes.map((n) => ({
+      const nodeOptions = nodes.map((n, index) => ({
         _id: `${n._id}`,
-        name: `${n._id}. ${n.title}`,
+        name: `${index + 1}. ${n.title}`,
       }));
 
       nodes.forEach((node, nodeIndex) => {
@@ -318,7 +312,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
                 + '</label>'
               + '</div></div>'
             + '</div>'
-          + '</div>'
+          + '</div>',
         );
 
         const $title = $section.find('.dag-title');
@@ -337,13 +331,13 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         const $moveUp = $section.find('.dag-move-up');
         const $moveDown = $section.find('.dag-move-down');
 
-        $headerTitle.text(`章节 ${node._id}. ${node.title}`);
+        $headerTitle.text(`课时 ${nodeIndex + 1}. ${node.title}`);
         $moveUp.prop('disabled', nodeIndex === 0);
         $moveDown.prop('disabled', nodeIndex === nodes.length - 1);
         $title.val(node.title);
         $title.on('input', () => {
           const nextTitle = String($title.val() || '').trim();
-          $headerTitle.text(`章节 ${node._id}. ${nextTitle || ''}`);
+          $headerTitle.text(`课时 ${nodeIndex + 1}. ${nextTitle || ''}`);
         });
         const commitTitle = () => {
           node.title = String($title.val() || '').trim();
@@ -526,10 +520,6 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         $completeValue.on('change', commitCompleteValue);
 
         let lastProblemQuery = '';
-        const clearProblemQuery = () => {
-          lastProblemQuery = '';
-          problemSelect?.ref?.setQuery?.('');
-        };
         $problemInput.val((node.pids || []).join(','));
         const problemSelect = ProblemSelectAutoComplete.getOrConstruct<ProblemSelectAutoComplete>($problemInput, {
           multi: true,
@@ -537,6 +527,10 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           freeSolo: false,
         });
         ensureAutocompleteMounted(problemSelect);
+        const clearProblemQuery = () => {
+          lastProblemQuery = '';
+          problemSelect?.ref?.setQuery?.('');
+        };
 
         // Track the real visible input inside AutoComplete React component.
         const bindQueryTracker = () => {
@@ -608,12 +602,11 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         });
 
         const moveNode = (direction: -1 | 1) => {
-          const orderedNodes = normalizeNodes(nodes).sort((a, b) => a._id - b._id);
+          const orderedNodes = normalizeNodes(nodes);
           const currentIndex = orderedNodes.findIndex((n) => n._id === node._id);
           const nextIndex = currentIndex + direction;
           if (currentIndex < 0 || nextIndex < 0 || nextIndex >= orderedNodes.length) return;
           [orderedNodes[currentIndex], orderedNodes[nextIndex]] = [orderedNodes[nextIndex], orderedNodes[currentIndex]];
-          remapNodeIds(orderedNodes);
           nodes = orderedNodes;
           commit({ rerender: true, source: 'move' });
         };
@@ -624,12 +617,12 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           nodes = nodes.filter((n) => n._id !== node._id);
           commit({ rerender: true });
         });
-
       });
     };
 
     $addChapterBtn.on('click', () => {
-      const maxId = Math.max(0, ...nodes.map((n) => n._id));
+      const maxId = Math.max(0, highWatermark, ...nodes.map((n) => n._id));
+      highWatermark = maxId + 1;
       nodes.push({
         _id: maxId + 1,
         title: `标题 ${maxId + 1}`,
@@ -658,13 +651,19 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       const currentParsed = parseDag();
       if (!currentParsed) {
         ev.preventDefault();
-        window.alert('JSON 格式错误，请检查');
+        setJsonVisible(true);
+        const editorInstance = $dag.data('vjEditorInstance');
+        if (editorInstance?.isValid) editorInstance.focus();
+        else $dag.trigger('focus');
         return;
       }
       if (!currentParsed.length) {
         ev.preventDefault();
         updateStatus('请至少保留一个章节', false);
-        window.alert('请至少保留一个章节');
+        setJsonVisible(true);
+        const editorInstance = $dag.data('vjEditorInstance');
+        if (editorInstance?.isValid) editorInstance.focus();
+        else $dag.trigger('focus');
         return;
       }
       // 同步到内存中的 nodes（但不写回 textarea）

@@ -1,0 +1,16 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row responsive-sidebar-layout">
+  <div class="medium-9 columns"><div class="section">
+    <div class="section__header"><h1 class="section__title">{{ activity.title }} · 课程反馈</h1></div>
+    <div class="section__body" id="classroom-feedback"></div>
+  </div></div>
+  <div class="medium-3 columns">
+    {% if activity.activityType == 'course' %}{% include "course_sidebar.html" %}{% endif %}
+    <div class="section side"><div class="section__header"><h2 class="section__title">本课程待复测</h2></div>
+      <div class="section__body"><a href="{{ feedbackUrl }}?view=pending"><span data-feedback-pending-count>{{ totalPending }}</span> 条待跟进</a>
+      <p class="supplementary">Accepted 不自动完成跟进。</p></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -2,12 +2,11 @@ import Schema from 'schemastery';
 import {
     Context, PERM, PRIV, SettingModel, SystemModel,
 } from '../../plugin-api';
+import { registerStorePurchaseHandler, setImportHasStore, UserlistSystemUserImportHandler } from './handler/import';
 import {
     DisplayNameSetHandler, setBanMode, setHasStore, setHasYsr, UserBatchOperationHandler,
     UserEditHandler, UserListHandler,
 } from './handler/user';
-import { BulkImportHandler } from './handler/bulkimport';
-import { registerStorePurchaseHandler, setImportHasStore, UserlistSystemUserImportHandler } from './handler/import';
 
 export const name = 'userlist';
 export const Config = Schema.object({
@@ -95,7 +94,10 @@ export async function apply(ctx: Context, config: any) {
     // 注册设置项
     ctx.inject(['setting'], (c) => {
         c.setting.SystemSetting(
-            SettingModel.Setting('setting_system', 'user-list.defaultFields', '_id,uname,mail,displayName,school,studentId,phone,domains', 'text', 'user-list.defaultFields', '用户列表默认显示字段（逗号分隔）'),
+            SettingModel.Setting(
+                'setting_system', 'user-list.defaultFields',
+                '_id,uname,mail,displayName,school,studentId,phone,domains', 'text', 'user-list.defaultFields', '用户列表默认显示字段（逗号分隔）',
+            ),
             SettingModel.Setting('setting_system', 'user-list.admin', '', 'text', 'user-list.admin', '用户列表管理员 UID（逗号分隔）'),
         );
         c.setting.AccountSetting(

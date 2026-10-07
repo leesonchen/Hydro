@@ -1,7 +1,6 @@
 import {
-    _, BadRequestError, DomainModel, ForbiddenError, Handler, PERM, PRIV,
-    PrivilegeError, param, requireSudo, SettingModel, SystemModel,
-    TokenModel, Types, UserModel, UserNotFoundError, ValidationError, RecordModel,
+    _, DomainModel, ForbiddenError, Handler, param, PERM, PRIV, PrivilegeError, RecordModel,
+    requireSudo, SettingModel, SystemModel, TokenModel, Types, UserModel, UserNotFoundError, ValidationError,
 } from '../../../plugin-api';
 
 let hasStore = false;
@@ -18,7 +17,7 @@ export function setBanMode(v: 'allPrivilege' | 'noLogin') { banMode = v; }
 
 function parseSetting(setting: any, key: string, value: any) {
     if (setting) {
-        if (setting.flag & SettingModel.FLAG_DISABLED || (setting.flag & SettingModel.FLAG_SECRET && !value)) return;
+        if (setting.flag & SettingModel.FLAG_DISABLED || (setting.flag & SettingModel.FLAG_SECRET && !value)) return undefined;
         if (setting.type === 'boolean') return value === 'on';
         if (setting.type === 'number') {
             if (!Number.isSafeInteger(+value)) throw new ValidationError(key);
@@ -26,6 +25,7 @@ function parseSetting(setting: any, key: string, value: any) {
         }
         return value;
     }
+    return undefined;
 }
 
 // 基类：检查权限
@@ -348,7 +348,7 @@ export class UserEditHandler extends UserBaseHandler {
             const filteredDdocs: any[] = [];
             const groupsMap: Record<string, string[]> = {};
 
-            for (const ddoc of ddocs) {
+            for await (const ddoc of ddocs) {
                 const du = dudict[ddoc._id];
                 groupsMap[ddoc._id] = (await UserModel.listGroup(ddoc._id, this.current._id))
                     .map((g: any) => g.name)
@@ -473,7 +473,7 @@ export class UserBatchOperationHandler extends Handler {
     @param('uids', Types.NumericArray)
     @param('password', Types.String)
     async postResetPassword(domainId: string, uids: number[], password: string) {
-        for (const uid of uids) {
+        for await (const uid of uids) {
             await UserModel.resetPassword(uid, password, true);
         }
         this.response.body = { ok: 1 };
@@ -481,7 +481,7 @@ export class UserBatchOperationHandler extends Handler {
 
     @param('uids', Types.NumericArray)
     async postLogout(domainId: string, uids: number[]) {
-        for (const uid of uids) {
+        for await (const uid of uids) {
             await TokenModel.delByUid(uid);
         }
         this.response.body = { ok: 1 };
@@ -490,14 +490,14 @@ export class UserBatchOperationHandler extends Handler {
     @param('uids', Types.NumericArray)
     async postBan(domainId: string, uids: number[]) {
         if (banMode === 'noLogin') {
-            for (const uid of uids) {
+            for await (const uid of uids) {
                 const user = await UserModel.getById('system', uid);
                 if (user.priv & PRIV.PRIV_USER_PROFILE) {
                     await UserModel.setPriv(uid, user.priv - PRIV.PRIV_USER_PROFILE);
                 }
             }
         } else {
-            for (const uid of uids) {
+            for await (const uid of uids) {
                 await UserModel.ban(uid);
             }
         }
@@ -507,14 +507,14 @@ export class UserBatchOperationHandler extends Handler {
     @param('uids', Types.NumericArray)
     async postUnban(domainId: string, uids: number[]) {
         if (banMode === 'noLogin') {
-            for (const uid of uids) {
+            for await (const uid of uids) {
                 const user = await UserModel.getById('system', uid);
                 if (!(user.priv & PRIV.PRIV_USER_PROFILE)) {
                     await UserModel.setPriv(uid, user.priv + PRIV.PRIV_USER_PROFILE);
                 }
             }
         } else {
-            for (const uid of uids) {
+            for await (const uid of uids) {
                 await UserModel.setPriv(uid, SystemModel.get('default.priv'));
             }
         }

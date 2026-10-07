@@ -120,7 +120,7 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MonacoEditor e
   }
 
   async componentDidMount() {
-    const initialValue = yaml.dump(configYamlFormat(this.props.config), { noArrayIndent: true });
+    const initialValue = yaml.dump(configYamlFormat(this.props.config), { seqNoIndent: true });
     let loadedMonaco;
     try {
       loadedMonaco = await load(['yaml']);
@@ -149,8 +149,8 @@ export default connect(mapStateToProps, mapDispatchToProps)(class MonacoEditor e
   componentDidUpdate(prevProps) {
     if (this.plainTextarea) {
       if (this.__preventUpdate || !this.props.config.__valid) return;
-      if (yaml.dump(prevProps.config, { noArrayIndent: true }) === yaml.dump(this.props.config, { noArrayIndent: true })) return;
-      const nextValue = yaml.dump(configYamlFormat(this.props.config), { noArrayIndent: true });
+      if (yaml.dump(prevProps.config, { seqNoIndent: true }) === yaml.dump(this.props.config, { seqNoIndent: true })) return;
+      const nextValue = yaml.dump(configYamlFormat(this.props.config), { seqNoIndent: true });
       if (this.plainTextarea.value !== nextValue) this.plainTextarea.value = nextValue;
       return;
     }

@@ -1,5 +1,5 @@
 import {
-    DomainModel, Handler, param, PERM, PRIV, Types, UserModel, ValidationError,
+    DomainModel, Handler, param, PRIV, Types, UserModel, ValidationError,
 } from '../../../plugin-api';
 
 // 批量设置用户权限（域内）
@@ -17,7 +17,7 @@ export class BulkImportHandler extends Handler {
         const groupMap: Record<string, number[]> = {};
         const roleMap: Record<string, number[]> = {};
 
-        for (const idx in lines) {
+        for await (const idx of Object.keys(lines)) {
             const line = lines[idx];
             if (!line.trim()) continue;
 
@@ -82,8 +82,8 @@ export class BulkImportHandler extends Handler {
         const completes: string[] = [];
         if (!draft) {
             // 设置角色
-            for (const role of Object.keys(roleMap)) {
-                for (const uid of roleMap[role]) {
+            for await (const role of Object.keys(roleMap)) {
+                for await (const uid of roleMap[role]) {
                     await DomainModel.setUserRole(domainId, uid, role);
                 }
                 completes.push(`Roles:${domainId}/${role}`);
@@ -91,7 +91,7 @@ export class BulkImportHandler extends Handler {
 
             // 设置用户组
             const currentGroups = await UserModel.listGroup(domainId);
-            for (const group of Object.keys(groupMap)) {
+            for await (const group of Object.keys(groupMap)) {
                 const existingGroup = currentGroups.find((g: any) => g.name === group);
                 if (existingGroup?.class) {
                     messages.push(`Domain ${domainId}: Group ${group} conflicts with an existing class.`);
@@ -123,7 +123,7 @@ export class BulkImportHandler extends Handler {
         const messages: string[] = [];
         const completes: string[] = [];
 
-        for (const idx in lines) {
+        for await (const idx of Object.keys(lines)) {
             const line = lines[idx];
             if (!line.trim()) continue;
 

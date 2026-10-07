@@ -141,7 +141,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         'react-dom/client': require.resolve('react-dom/client'),
         'react-dom/server': join(dirname(require.resolve('react-dom/package.json')), 'server.browser.js'),
         'react-dom': require.resolve('react-dom'),
-        'rupture': require.resolve('rupture'),
+        rupture: require.resolve('rupture'),
       },
     },
     module: {
@@ -193,7 +193,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         },
         {
           test: /\.ts$/,
-          include: /@types\//,
+          include: /@types[\\/]/,
           type: 'asset/inline',
           generator: {
             dataUrl: (buf) => buf.toString(),
@@ -201,13 +201,13 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         },
         {
           test: /\.[mc]?[jt]sx?$/,
-          exclude: [/@types\//, /components\/message\//, /entry\.js/],
+          exclude: [/@types[\\/]/, /components[\\/]message[\\/]/, /entry\.js/],
           type: 'javascript/auto',
           use: [esbuildLoader()],
         },
         {
           test: /\.[mc]?[jt]sx?$/,
-          include: [/components\/message\//, /entry\.js/],
+          include: [/components[\\/]message[\\/]/, /entry\.js/],
           type: 'javascript/auto',
           use: [{
             loader: 'ts-loader',
@@ -326,7 +326,10 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         minChunkSize: 128000,
       }),
       new webpack.NormalModuleReplacementPlugin(/\/(vscode-)?nls\.js/, require.resolve('../../components/monaco/nls')),
-      new webpack.NormalModuleReplacementPlugin(/^prettier[$/]/, root('../../modules/nop.ts')),
+      new webpack.NormalModuleReplacementPlugin(/^prettier[$/]/, (resource) => {
+        resource.request = resource.request === 'prettier/standalone'
+          ? root('components/monaco/disabled-format.ts') : root('../../modules/nop.ts');
+      }),
       new webpack.NormalModuleReplacementPlugin(/^highlightjs[$/]/, root('../../modules/nop.ts')),
       new webpack.NormalModuleReplacementPlugin(/core-js\/stable/, root('__core-js.js')),
       new MonacoWebpackPlugin({

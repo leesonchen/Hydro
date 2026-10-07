@@ -1,0 +1,106 @@
+{
+  "date": "2026-10-06",
+  "implementationBase": "cba27f794f8d60c1c1ebd5a40f7009712d6a2c17",
+  "validatedWorkingTree": true,
+  "validatedSourceCommit": "245bbd581c4406e62ef2cb08800d0d5733e280f9",
+  "completeTests": {
+    "tests": 220,
+    "pass": 220,
+    "fail": 0
+  },
+  "feedbackIntegrationTests": 27,
+  "coreTests": 61,
+  "container": {
+    "distribution": "Ubuntu-22.04",
+    "name": "hydro",
+    "node": "22.16.0",
+    "coreTests": {
+      "tests": 61,
+      "pass": 61,
+      "fail": 0
+    },
+    "healthy": true,
+    "installedPackages": {
+      "hydrooj": "5.0.7-dev.1",
+      "@hydrooj/ui-default": "4.58.4-dev.41"
+    },
+    "installationChanged": false
+  },
+  "browser": {
+    "passed": 7,
+    "errors": [],
+    "checks": [
+      "A records once with an optional draft, preserves context, and rejects mismatched details",
+      "pending retests complete and undo the exact resolution while retaining history",
+      "lost receipt and a denied replay retain the original request without duplicating the observation",
+      "a confirmed save survives read failure and does not offer a new write retry",
+      "B remembers lesson and draft across real PJAX, filters, collapse and re-opening",
+      "management names exact batch scope, reports individual results and preserves feedback",
+      "native mobile layout keeps the table scroll inside the page and keyboard controls available"
+    ]
+  },
+  "serverTypeScriptErrors": 0,
+  "fullTypeScriptErrors": 4,
+  "fullWebpack": {
+    "errors": 37,
+    "warnings": 1,
+    "baselineFailures": true
+  },
+  "lint": {
+    "baseline": {
+      "files": 531,
+      "errors": 113,
+      "warnings": 127
+    },
+    "current": {
+      "files": 535,
+      "errors": 103,
+      "warnings": 122
+    },
+    "introducedDiagnostics": []
+  },
+  "querySample": {
+    "events": 182,
+    "observations": 122,
+    "measurements": [
+      {
+        "name": "summary",
+        "ms": 98.07,
+        "examined": 122,
+        "indexes": [
+          "feedback_activity"
+        ]
+      },
+      {
+        "name": "deep-pending",
+        "ms": 12.43,
+        "examined": 6,
+        "indexes": [
+          "feedback_activity",
+          "feedback_student"
+        ]
+      },
+      {
+        "name": "count",
+        "ms": 96.62,
+        "examined": 122,
+        "indexes": [
+          "feedback_activity"
+        ]
+      }
+    ]
+  },
+  "sourceSha256": {
+    "packages/hydrooj/src/model/classroomFeedback.ts": "b0fd62c08753521ff41bc6cfe99925ee84bb0b45a33b0cd56591b2ab6a0510a7",
+    "packages/hydrooj/src/handler/classroom-feedback.ts": "c57a199b9eadca44abae97ba7ce9273dfefa1c8d1d4614fdd4dd22d895ad2db6",
+    "packages/hydrooj/src/handler/problem.ts": "f77b82b90eff8da2c04f71d606140c52fff11f519d7cb93480fd74d8a70ec73a",
+    "packages/hydrooj/src/builtin/course-management/model/structure.ts": "5ae8cd8b10eb01eac8426eb3cdc8592f8e6c835ee1556f6f540127af57205ba0",
+    "packages/ui-default/components/classroom-feedback.tsx": "dd5cfa87e25e1d2132955e37849d36d06cfbed111eeaf55d4d12ce3149265e0d",
+    "packages/ui-default/components/classroom-feedback-state.ts": "c6859c58832db85a5e04ccd4d94aa37c7150b57145927fac6f2b07775a490351",
+    "packages/ui-default/components/classroom-feedback-scoreboard.tsx": "ff925c1c4ac2f27aa9cc9cc9ba9d138e17992e023bb38ccc74170ae04936adb8",
+    "packages/ui-default/pages/course_manage.page.tsx": "9061bc49880011bf995588132e067efab018c18f5f1e4cf9e02f49f570f6cb29"
+  },
+  "merged": false,
+  "published": false,
+  "deployed": false
+}
