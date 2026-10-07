@@ -827,7 +827,10 @@ export const RULES: ContestRules = {
     acm, oi, homework, ioi, ledo, strictioi,
 };
 
-export function validateContestConfiguration(tdoc: Pick<Tdoc, 'allowTeam' | 'rated' | 'rule'>) {
+export function validateContestConfiguration(tdoc: Pick<Tdoc, 'allowTeam' | 'allowPractice' | 'rated' | 'rule'>) {
+    if (tdoc.allowPractice && (['course', 'homework'].includes(tdoc.rule) || RULES[tdoc.rule]?.hidden)) {
+        throw new BadRequestError('Post-contest practice is not supported for courses or homework.');
+    }
     if (!tdoc.allowTeam) return;
     if (tdoc.rated) throw new BadRequestError('Rated contests cannot allow team participation.');
     if (['course', 'homework'].includes(tdoc.rule)) {
@@ -962,6 +965,7 @@ export async function replaceAssignGroup(
 
 export async function del(domainId: string, tid: ObjectId) {
     await Promise.all([
+        db.collection('contest.practiceAccess').deleteMany({ domainId, tid }),
         bus.parallel('contest/del', domainId, tid),
         document.deleteOne(domainId, document.TYPE_CONTEST, tid),
         document.deleteMultiStatus(domainId, document.TYPE_CONTEST, { docId: tid }),

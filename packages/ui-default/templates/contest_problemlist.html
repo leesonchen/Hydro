@@ -5,7 +5,7 @@
 {% block content %}
 {{ set(UiContext, 'tdoc', tdoc) }}
 {{ set(UiContext, 'tsdoc', tsdoc) }}
-{% set hasCorrection = correction and Object.keys(correction).length %}
+{% set hasCorrection = showPractice or (correction and Object.keys(correction).length) %}
 <div class="row responsive-sidebar-layout" data-sticky-parent>
   <div class="medium-9 columns">
     <div class="section">
@@ -29,7 +29,7 @@
             {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
               <th class="col--status record-status--border">{{ _('Status') }}</th>
               {% if hasCorrection %}
-                <th class="col--correction">{{ _('Correction') }}</th>
+                <th class="col--correction">{{ _('Post-contest Practice') if showPractice else _('Correction') }}</th>
               {% else %}
                 <th class="col--submit-at">{{ _('Last Submit At') }}</th>
               {% endif %}
@@ -83,8 +83,8 @@
                   <span class="problem__tag-item icon icon-stopwatch" style="font-size: .75rem;margin: 0;padding: 0 5px!important;">{{ pdict[pid].config.timeMax if pdict[pid].config.timeMax == pdict[pid].config.timeMin else pdict[pid].config.timeMin+'~'+pdict[pid].config.timeMax }}ms</span>
                   <span class="problem__tag-item icon icon-comparison" style="font-size: .75rem;margin: 0;padding: 0 5px!important;">{{ pdict[pid].config.memoryMax if pdict[pid].config.memoryMax == pdict[pid].config.memoryMin else pdict[pid].config.memoryMin+'~'+pdict[pid].config.memoryMax }}MiB</span>
                 {% endif %}
-                {% if pdict[pid].config.type != 'objective' %}
-                  <a href="{{ url('problem_submit', pid=pid, query={tid:tdoc.docId}) }}" target="_blank" class="typo-a" style="float: right;"><span class="icon icon-send">{{ _('Submit') }}</span></a>
+                {% if pdict[pid].config.type != 'objective' and (practiceReady or not model.contest.isDone(tdoc)) %}
+                  <a href="{{ url('problem_submit', pid=pid, query={tid:tdoc.docId}) }}" target="_blank" class="typo-a" style="float: right;"><span class="icon icon-send">{{ _('Post-contest Practice') if practiceReady else _('Submit') }}</span></a>
                 {% endif %}
               </td>
             </tr>

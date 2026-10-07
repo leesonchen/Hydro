@@ -23,6 +23,7 @@ import {
 import {
     ProblemDoc, ProblemSearchOptions, ProblemStatusDoc, RecordDoc, User,
 } from '../interface';
+import { canSubmitPractice, isPracticeOpen } from '../lib/contest-practice';
 import { REFERENCE_CODE_TITLE } from '../lib/referenceCode';
 import { Logger } from '../logger';
 import { PERM, PRIV, STATUS } from '../model/builtin';
@@ -453,6 +454,9 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
         if (!this.pdoc) throw new ProblemNotFoundError(domainId, pid);
         if (tid) {
             if (!this.tdoc?.pids?.includes(this.pdoc.docId)) throw new ContestNotFoundError(domainId, tid);
+            if (isPracticeOpen(this.tdoc) && !this.practiceReady && !problem.canViewBy(this.pdoc, this.user)) {
+                throw new PermissionError(PERM.PERM_SUBMIT_PROBLEM);
+            }
             const canBypassTimeLimit = canBypassCourseTimeLimit(this.tdoc, this.user);
             if (contest.isNotStarted(this.tdoc) && !canBypassTimeLimit) {
                 if (this.tdoc.rule === 'course') throw new ForbiddenError((this as any).translate('This course is not live.'));
@@ -544,9 +548,10 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             tdoc: this.tdoc,
             owner_udoc: (tid && this.tdoc.owner !== this.pdoc.owner) ? await user.getById(domainId, this.tdoc.owner) : null,
             mode: !tid ? 'normal'
-                : !this.tsdoc?.attend ? 'view'
-                    : !contest.isDone(this.tdoc) ? 'contest'
-                        : problem.canViewBy(this.pdoc, this.user) ? 'correction' : 'none',
+                : this.practiceReady ? 'practice'
+                    : !this.tsdoc?.attend ? 'view'
+                        : !contest.isDone(this.tdoc) ? 'contest'
+                            : problem.canViewBy(this.pdoc, this.user) ? 'correction' : 'none',
         };
         if (this.tdoc && this.tsdoc) {
             const fields = ['attend', 'startAt', 'endAt'];
@@ -663,7 +668,7 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
     @param('tid', Types.ObjectId, true)
     async prepare(domainId: string, tid?: ObjectId) {
         if (tid && !contest.isOngoing(this.tdoc, this.tsdoc)) {
-            if (!canBypassCourseTimeLimit(this.tdoc, this.user)) {
+            if (!this.practiceReady && !canBypassCourseTimeLimit(this.tdoc, this.user)) {
                 if (this.tdoc?.rule === 'course') throw new ForbiddenError((this as any).translate('This course is not live.'));
                 throw new ContestNotLiveError(this.tdoc.docId);
             }
@@ -730,11 +735,24 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
             code = code.replace(/\r\n/g, '\n');
             if (code.length > lengthLimit) throw new ValidationError('code');
         }
+        let practice = false;
+        if (tid) {
+            const tdoc = await contest.get(domainId, tid);
+            if (!tdoc.pids.includes(this.pdoc.docId) || !contest.canAccessAssignedContest(this.user, tdoc)) {
+                throw new ContestNotFoundError(domainId, tid);
+            }
+            this.tdoc = tdoc;
+            practice = await canSubmitPractice(this.user, tdoc);
+            if (!practice && !contest.isOngoing(tdoc, this.tsdoc) && !canBypassCourseTimeLimit(tdoc, this.user)) {
+                throw new ContestNotLiveError(tid);
+            }
+        }
         const rid = await record.add(
             domainId, this.pdoc.docId, this.user._id, lang, code, true,
-            pretest ? { input, type: 'pretest' } : { contest: tid, files, type: 'judge' },
+            pretest ? { input, type: 'pretest' }
+                : practice ? { practiceContest: tid, files, type: 'judge' } : { contest: tid, files, type: 'judge' },
         );
-        if (!pretest) {
+        if (!pretest && !practice) {
             if (tid) await contest.updateStatus(domainId, tid, this.team ?? this.user._id, rid, this.pdoc.docId);
             else {
                 await Promise.all([
@@ -743,7 +761,7 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
                 ]);
             }
         }
-        if (tid && !pretest && !contest.canShowSelfRecord.call(this, this.tdoc)) {
+        if (tid && !practice && !pretest && !contest.canShowSelfRecord.call(this, this.tdoc)) {
             this.response.body = { tid };
             this.response.redirect = this.url(this.tdoc.rule === 'homework' ? 'homework_detail' : 'contest_problemlist', { tid });
         } else {
@@ -761,6 +779,7 @@ export class ProblemHackHandler extends ProblemDetailHandler {
     async prepare(domainId: string, rid: ObjectId, tid?: ObjectId) {
         if (typeof this.pdoc.config !== 'object' || !this.pdoc.config.hackable) throw new HackFailedError('This problem is not hackable.');
         this.rdoc = await record.get(domainId, rid);
+        if (this.rdoc?.practiceContest) throw new RecordNotFoundError(domainId, rid);
         if (!this.rdoc || this.rdoc.pid !== this.pdoc.docId
             || this.rdoc.contest?.toString() !== tid?.toString()) throw new RecordNotFoundError(domainId, rid);
         if (tid) {

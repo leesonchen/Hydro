@@ -119,6 +119,7 @@ export class JudgeResultCallbackContext {
     }
 
     static async postJudge(rdoc: RecordDoc, context?: JudgeResultCallbackContext) {
+        if (rdoc.practiceContest) return;
         if (rdoc.contest?.toString().startsWith('0'.repeat(23))) return;
         const accept = rdoc.status === builtin.STATUS.STATUS_ACCEPTED;
         const updated = await problem.updateStatus(rdoc.domainId, rdoc.pid, rdoc.uid, rdoc._id, rdoc.status, rdoc.score);

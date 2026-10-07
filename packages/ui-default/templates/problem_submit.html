@@ -8,6 +8,9 @@
         <h1 class="section__title">{{ _('Submit to Judge') }}</h1>
       </div>
       <div class="section__body typo" name="submit_section">
+        {% if mode == 'practice' %}
+          <blockquote class="note">{{ _('Post-contest practice is personal and does not affect contest scores, problem statistics, or RP/Rating.') }}</blockquote>
+        {% endif %}
         <form method="post" enctype="multipart/form-data">
           <div class="hasjs--hide">
             {{ form.form_select({

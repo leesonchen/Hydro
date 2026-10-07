@@ -1263,3 +1263,12 @@ You can add information and read replies in this feedback conversation in Messag
 Please select no more than 4000 characters for feedback.: 引用内容最多 4000 个字符，请缩小选区。
 Please describe the content problem.: 请填写问题说明。
 Add information about this feedback: 补充这条反馈的问题说明
+
+Allow post-contest practice: 允许赛后补题
+No Permission to Practice: 没有补题权限
+Post-contest Practice: 赛后补题
+Start Practice: 开始补题
+My Practice Submissions: 我的补题记录
+All Practice Submissions: 所有补题记录
+Post-contest practice is personal and does not affect contest scores, problem statistics, or RP/Rating.: 赛后补题按个人记录，不计入正式比赛成绩、题库统计或 RP/Rating。
+Post-contest practice is not supported for courses or homework.: 课程和作业不支持比赛的赛后补题设置。

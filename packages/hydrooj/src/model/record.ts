@@ -6,7 +6,7 @@ import {
 } from 'mongodb';
 import { ProblemConfigFile, STATUS_TEXTS } from '@hydrooj/common';
 import { Context } from '../context';
-import { ProblemNotFoundError } from '../error';
+import { ProblemNotFoundError, ValidationError } from '../error';
 import { JudgeMeta, RecordDoc, RecordStatDoc } from '../interface';
 import db from '../service/db';
 import { MaybeArray, NumberKeys } from '../typeutils';
@@ -26,7 +26,7 @@ export default class RecordModel {
         '_id', 'score', 'time', 'memory', 'lang',
         'uid', 'pid', 'rejudged', 'progress', 'domainId',
         'contest', 'judger', 'judgeAt', 'status', 'source',
-        'files', 'hackTarget',
+        'files', 'hackTarget', 'practiceContest',
     ];
 
     static STAT_QUERY = {
@@ -131,6 +131,7 @@ export default class RecordModel {
         lang: string, code: string, addTask: boolean,
         args: {
             contest?: ObjectId;
+            practiceContest?: ObjectId;
             input?: string[];
             files?: Record<string, string>;
             hackTarget?: ObjectId;
@@ -138,6 +139,9 @@ export default class RecordModel {
             notify?: boolean;
         } = { type: 'judge' },
     ) {
+        if (args.practiceContest && (args.contest || !['judge', 'rejudge'].includes(args.type))) {
+            throw new ValidationError('practiceContest');
+        }
         const data: RecordDoc = {
             status: STATUS.STATUS_WAITING,
             _id: new ObjectId(),
@@ -158,6 +162,7 @@ export default class RecordModel {
         };
         let isContest = !!args.contest;
         if (args.contest) data.contest = args.contest;
+        if (args.practiceContest) data.practiceContest = args.practiceContest;
         if (args.files) data.files = args.files;
         if (args.hackTarget) data.hackTarget = args.hackTarget;
         if (args.notify) data.notify = true;
@@ -314,8 +319,12 @@ export async function apply(ctx: Context) {
         RecordModel.coll.deleteMany({ domainId, pid: docId }),
         RecordModel.collStat.deleteMany({ domainId, pid: docId }),
     ]));
-    ctx.on('domain/delete', (domainId) => RecordModel.coll.deleteMany({ domainId }));
+    ctx.on('domain/delete', (domainId) => Promise.all([
+        RecordModel.coll.deleteMany({ domainId }),
+        db.collection('contest.practiceAccess').deleteMany({ domainId }),
+    ]));
     ctx.on('record/judge', async (rdoc, updated) => {
+        if (rdoc.practiceContest) return;
         if (rdoc.contest?.toHexString().startsWith('0'.repeat(23))) return;
         if (rdoc.notify) {
             const pdoc = await Hydro.model.problem.get(rdoc.domainId, rdoc.pid);
@@ -351,8 +360,12 @@ export async function apply(ctx: Context) {
         }
     });
     await Promise.all([
+        db.ensureIndexes(db.collection('contest.practiceAccess'), {
+            key: { domainId: 1, tid: 1, uid: 1 }, name: 'practiceAccess', unique: true,
+        }),
         db.ensureIndexes(
             RecordModel.coll,
+            { key: { domainId: 1, practiceContest: 1, uid: 1, pid: 1, _id: -1 }, name: 'practice' },
             { key: { domainId: 1, pid: 1 }, name: 'delete' },
             { key: { domainId: 1, contest: 1, _id: -1 }, name: 'basic' },
             { key: { domainId: 1, contest: 1, uid: 1, _id: -1 }, name: 'withUser' },
