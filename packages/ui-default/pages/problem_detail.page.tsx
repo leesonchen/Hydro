@@ -181,10 +181,37 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
     sock.onmessage = (message) => {
       const msg = JSON.parse(message.data);
       store.dispatch({
-        type: 'SCRATCHPAD_RECORDS_PUSH',
+        type: UiContext.practiceConnUrl ? 'SCRATCHPAD_PRETEST_RECORD_PUSH' : 'SCRATCHPAD_RECORDS_PUSH',
         payload: msg,
       });
     };
+    if (UiContext.practiceConnUrl) {
+      const practiceSock = new WebSocket(UiContext.ws_prefix + UiContext.practiceConnUrl);
+      let reload = 0;
+      let updates: Map<string, any> = null;
+      practiceSock.onmessage = (message) => {
+        const msg = JSON.parse(message.data);
+        if (!msg.rdoc) return;
+        updates?.set(msg.rdoc._id, msg.rdoc);
+        store.dispatch({ type: 'SCRATCHPAD_RECORDS_PUSH', payload: msg });
+      };
+      practiceSock.onopen = () => {
+        const currentReload = ++reload;
+        updates = new Map();
+        Promise.resolve(store.dispatch({
+          type: 'SCRATCHPAD_RECORDS_LOAD_SUBMISSIONS',
+          payload: request.get(UiContext.getSubmissionsUrl).then((response) => {
+            if (currentReload !== reload) {
+              const { rows, items } = store.getState().records;
+              return { rdocs: rows.map((rid) => items[rid]) };
+            }
+            return { ...response, rdocs: _.uniqBy([...updates.values(), ...response.rdocs], '_id') };
+          }),
+        })).finally(() => {
+          if (currentReload === reload) updates = null;
+        }).catch(() => {});
+      };
+    }
 
     renderReact = () => {
       const root = createRoot($('#scratchpad').get(0));

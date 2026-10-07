@@ -31,6 +31,7 @@ function fixture() {
     const noopDecorator = () => () => {};
     const mocks = {
         '../builtin/course-management/model/structure': structure,
+        '../lib/contest-practice': { isPracticeOpen: () => false },
         '../logger': { Logger: class {} },
         '../error': new Proxy({ PermissionError }, { get: (obj, name) => obj[name] || Error }),
         '../model/builtin': { PERM, PRIV },

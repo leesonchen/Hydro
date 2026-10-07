@@ -18,6 +18,9 @@
   {{ set(UiContext, 'getSubmissionsUrl', url('record_main', query={fullStatus:'true', pid:pdoc.docId, tid:tdoc.docId, practice:mode == 'practice'})) }}
   {{ set(UiContext, 'getRecordDetailUrl', url('record_detail', rid='{rid}', query={tid:tdoc.docId})) }}
   {{ set(UiContext, 'pretestConnUrl', "record-conn?pretest=1&uidOrName=" + handler.user._id + "&pid=" + pdoc.docId + "&domainId=" + handler.args.domainId + "&tid=" + tdoc.docId) }}
+  {% if mode == 'practice' %}
+    {{ set(UiContext, 'practiceConnUrl', "record-conn?practice=1&noTemplate=1&uidOrName=" + handler.user._id + "&pid=" + pdoc.docId + "&domainId=" + handler.args.domainId + "&tid=" + tdoc.docId) }}
+  {% endif %}
 {% else %}
   {{ set(UiContext, 'canViewRecord', true) }}
   {{ set(UiContext, 'postSubmitUrl', url('problem_submit', pid=pdoc.docId)) }}

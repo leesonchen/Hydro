@@ -7,11 +7,12 @@ import {
     PermissionError, PretestRejudgeFailedError, ProblemConfigError,
     ProblemNotFoundError, RecordNotFoundError, UserNotFoundError,
 } from '../error';
-import { ContestStatusDoc, RecordDoc, Tdoc } from '../interface';
+import { ContestStatusDoc, RecordDoc, Tdoc, User } from '../interface';
 import { canManageFeedback } from '../lib/classroomFeedbackAccess';
 import { canManagePractice, canReadPractice, canSubmitPractice } from '../lib/contest-practice';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
+import domain from '../model/domain';
 import problem, { ProblemDoc } from '../model/problem';
 import record from '../model/record';
 import { langs } from '../model/setting';
@@ -329,6 +330,40 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
     }
 }
 
+async function checkPracticeAccess(
+    handler: RecordMainConnectionHandler | RecordDetailConnectionHandler, rdoc: RecordDoc, requireManager = false,
+) {
+    if (handler.practiceStopped) return false;
+    try {
+        const [udoc, tdoc] = await Promise.all([
+            user.coll.findOne({ _id: handler.user._id }),
+            contest.get(rdoc.domainId, rdoc.practiceContest),
+        ]);
+        let viewer: User;
+        if (udoc && (udoc.priv & PRIV.PRIV_USER_PROFILE)) {
+            const [dudoc, groups] = await Promise.all([
+                domain.getDomainUser(rdoc.domainId, udoc),
+                user.listGroup(rdoc.domainId, udoc._id),
+            ]);
+            dudoc.group = groups.map((group) => group.name);
+            // getById caches User instances and can discard the connection's scope.
+            viewer = await new user.User(udoc, dudoc, handler.user.scope).init();
+        }
+        if (handler.practiceStopped) return false;
+        if (viewer && canReadPractice(viewer, tdoc, rdoc.uid)
+            && (!requireManager || canManagePractice(viewer, tdoc))) return true;
+    } catch (error) {
+        if (!handler.practiceStopped) {
+            handler.cleanup();
+            await handler.onerror(error);
+        }
+        return false;
+    }
+    handler.cleanup();
+    handler.close(4003, 'Permission revoked');
+    return false;
+}
+
 export class RecordMainConnectionHandler extends ConnectionHandler {
     all = false;
     allDomain = false;
@@ -343,7 +378,8 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
     applyProjection = false;
     noTemplate = false;
     queue: Map<string, () => Promise<any>> = new Map();
-    throttleQueueClear: () => void;
+    throttleQueueClear: ReturnType<typeof throttle>;
+    practiceStopped = false;
 
     @param('tid', Types.ObjectId, true)
     @param('pid', Types.ProblemId, true)
@@ -432,10 +468,9 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
 
     @subscribe('record/change')
     async onRecordChange(rdoc: RecordDoc) {
+        if (this.practiceStopped) return;
         if (rdoc.practiceContest) {
             if (!this.practice || rdoc.domainId !== this.args.domainId || rdoc.practiceContest.toHexString() !== this.tid) return;
-            const tdoc = await contest.get(rdoc.domainId, rdoc.practiceContest);
-            if (!canReadPractice(this.user, tdoc, rdoc.uid)) return;
         } else if (this.practice) return;
         if (!this.allDomain) {
             if (rdoc.domainId !== this.args.domainId) return;
@@ -454,6 +489,7 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         if (this.teamMembers) {
             if (!this.teamMembers.includes(rdoc.uid)) return;
         } else if (typeof this.uid === 'number' && rdoc.uid !== this.uid) return;
+        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return;
 
         let [udoc, pdoc] = await Promise.all([
             user.getById(this.args.domainId, rdoc.uid),
@@ -466,25 +502,41 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         }
         if (this.applyProjection && rdoc.contest?.toString() !== '0'.repeat(24)) rdoc = contest.applyProjection(tdoc, rdoc, this.user);
         if (this.pretest) {
-            this.queueSend(rdoc._id.toHexString(), async () => ({ rdoc: omit(rdoc, ['code', 'input']) }));
+            this.queueSend(rdoc._id.toHexString(), async () => ({ rdoc: omit(rdoc, ['code', 'input']) }), rdoc);
         } else if (this.noTemplate) {
-            this.queueSend(rdoc._id.toHexString(), async () => ({ rdoc }));
+            this.queueSend(rdoc._id.toHexString(), async () => ({ rdoc }), rdoc);
         } else {
             this.queueSend(rdoc._id.toHexString(), async () => ({
                 html: await this.renderHTML('record_main_tr.html', {
                     rdoc, udoc, pdoc, tdoc, allDomain: this.allDomain,
                 }),
-            }));
+            }), rdoc);
         }
     }
 
-    queueSend(rid: string, fn: () => Promise<any>) {
-        this.queue.set(rid, fn);
+    queueSend(rid: string, fn: () => Promise<any>, rdoc?: RecordDoc) {
+        if (this.practiceStopped) return;
+        this.queue.set(rid, async () => {
+            if (rdoc?.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
+            const payload = await fn();
+            if (rdoc?.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
+            return payload;
+        });
         this.throttleQueueClear();
     }
 
     async queueClear() {
-        await Promise.all([...this.queue.values()].map(async (fn) => this.send(await fn())));
+        const pending = [...this.queue.values()];
+        this.queue.clear();
+        await Promise.all(pending.map(async (fn) => {
+            const payload = await fn();
+            if (payload && !this.practiceStopped) this.send(payload);
+        }));
+    }
+
+    cleanup() {
+        this.practiceStopped = true;
+        this.throttleQueueClear?.cancel();
         this.queue.clear();
     }
 }
@@ -499,6 +551,7 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
     applyProjection = false;
     noTemplate = false;
     canViewCode = false;
+    practiceStopped = false;
 
     @param('rid', Types.ObjectId)
     @param('noTemplate', Types.Boolean, true)
@@ -548,28 +601,27 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
     }
 
     async sendUpdate(rdoc: RecordDoc) {
+        if (this.practiceStopped) return;
+        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
         if (this.noTemplate) {
             this.send({ rdoc });
         } else {
-            this.send({
+            const payload = {
                 status: rdoc.status,
                 status_html: await this.renderHTML('record_detail_status.html', { rdoc, pdoc: this.pdoc }),
                 summary_html: await this.renderHTML('record_detail_summary.html', { rdoc, pdoc: this.pdoc }),
-            });
+            };
+            if (this.practiceStopped) return;
+            if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
+            this.send(payload);
         }
     }
 
     @subscribe('record/change')
     // eslint-disable-next-line
     async onRecordChange(rdoc: RecordDoc, $set?: any, $push?: any) {
-        if (rdoc._id.toString() !== this.rid) return;
-        if (rdoc.practiceContest) {
-            const tdoc = await contest.get(rdoc.domainId, rdoc.practiceContest);
-            if (!canReadPractice(this.user, tdoc, rdoc.uid)) {
-                this.close(4003, 'Permission revoked');
-                return;
-            }
-        }
+        if (this.practiceStopped || rdoc.domainId !== this.args.domainId || rdoc._id.toString() !== this.rid) return;
+        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
         if (this.disconnectTimeout) {
             clearTimeout(this.disconnectTimeout);
             this.disconnectTimeout = null;
@@ -588,6 +640,13 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
             this.disconnectTimeout = setTimeout(() => this.close(4001, 'Ended'), 30000);
         }
         this.throttleSend(rdoc);
+    }
+
+    cleanup() {
+        this.practiceStopped = true;
+        this.throttleSend?.cancel();
+        if (this.disconnectTimeout) clearTimeout(this.disconnectTimeout);
+        this.disconnectTimeout = null;
     }
 }
 

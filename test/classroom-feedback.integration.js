@@ -263,6 +263,50 @@ exports.register = () => describe('Local feedback', () => {
         await post(teacher, `${url}/${saved.body.eventId}/retract`, { requestId: randomUUID() }).expect(200);
     });
 
+    it('includes boolean and positive numeric claims in unassigned homework, excluding cancellations and other scopes', async () => {
+        const model = global.Hydro.model;
+        const begin = new Date(Date.now() - 60000);
+        const end = new Date(Date.now() + 3600000);
+        const id = await model.contest.add(domainId, 'Unassigned homework', '', teacherUid, 'homework', begin, end,
+            [pid], false, { assign: [], penaltySince: end });
+        const url = `/d/${domainId}/homework/${id}/feedback`;
+        const claimed = [];
+        const excluded = [];
+        try {
+            for (const [index, attend] of [true, 1, 2, false, 0, undefined].entries()) {
+                const uname = `${domainId}-claim-${index}`;
+                const studentUid = await model.user.create(`${uname}@example.com`, uname, 'feedback-test-password');
+                users.push(studentUid);
+                await model.domain.setUserRole(domainId, studentUid, 'default', true);
+                if (attend === 1) await model.contest.attend(domainId, id, studentUid);
+                else await model.contest.setStatus(domainId, id, studentUid, attend === undefined ? { startAt: begin } : { attend });
+                (attend ? claimed : excluded).push(studentUid);
+            }
+            await model.contest.setStatus(domainId, id, teacherUid, { attend: true });
+            await model.contest.setStatus(domainId, id, -1, { attend: 1 });
+            await model.contest.setStatus(domainId, id, 0, { attend: 1 });
+            await model.contest.setStatus(domainId, homeworkId, extraUid, { attend: 1 });
+            await model.contest.setStatus('system', id, extraUid, { attend: 1 });
+            const roster = (await get(teacher, url).expect(200)).body.roster;
+            assert.deepEqual([...roster].sort((a, b) => a - b), claimed);
+            const feedbackBody = (studentUid) => {
+                const input = body({ activityType: 'homework', activityId: id.toString(), studentUid });
+                delete input.nodeId;
+                return input;
+            };
+            for (const studentUid of claimed) await post(teacher, url, feedbackBody(studentUid)).expect(200);
+            for (const studentUid of [...excluded, extraUid, teacherUid]) await post(teacher, url, feedbackBody(studentUid)).expect(403);
+            const numericUid = claimed[1];
+            assert.equal((await model.contest.getStatus(domainId, id, numericUid)).attend, 1);
+            await model.contest.cancelAttend(domainId, id, numericUid);
+            assert(!(await get(teacher, url).expect(200)).body.roster.includes(numericUid));
+            await post(teacher, url, feedbackBody(numericUid)).expect(403);
+        } finally {
+            await model.contest.del(domainId, id);
+            await model.document.collStatus.deleteMany({ domainId: 'system', docId: id });
+        }
+    });
+
     it('enforces the feedback limit even for privileged users without preventing local queries', async () => {
         const model = global.Hydro.model;
         const uname = `${domainId}-limited`;

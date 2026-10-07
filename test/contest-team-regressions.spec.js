@@ -151,7 +151,7 @@ test('practice opens only after the whole contest and keeps invitations and reco
             getStatus: async (_domainId, _tid, uid) => ({ attend: registered.has(uid) ? 1 : 0 }),
             getTeamVid: async () => undefined,
         },
-        '../service/db': { default: {
+        '../service/db': { __esModule: true, default: {
             collection: () => ({
                 findOne: async (query) => grants.find((grant) => Object.entries(query).every(([key, value]) => grant[key] === value)),
                 updateOne: async (query, update) => {
