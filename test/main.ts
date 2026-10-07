@@ -7,7 +7,7 @@ import { dirname, join } from 'path';
 import autocannon from 'autocannon';
 import { Binary, ObjectId } from 'mongodb';
 import {
-    after, before, describe, it,
+    after, before, beforeEach, describe, it,
 } from 'node:test';
 import * as supertest from 'supertest';
 import { PERM, STATUS } from '@hydrooj/common';
@@ -35,6 +35,34 @@ describe('App', () => {
         });
         console.log('Application inited in %d ms', Date.now() - init);
     }, { timeout: 30000 });
+
+    beforeEach(async () => {
+        // Keep unrelated HTTP cases from sharing the five-second transport quota.
+        // Feature-specific limits remain active, including classroom_feedback.
+        await global.app.get('db').db.collection('opcount').deleteMany({ op: 'global' });
+    });
+
+    it('enforces the global HTTP quota within a case and recovers after its counter is cleared', async () => {
+        const guest = supertest.agent(require('hydrooj').httpServer);
+        const counters = global.app.get('db').db.collection('opcount');
+        await guest.get('/').expect(200);
+        const counter = await counters.findOne({ op: 'global' });
+        assert(counter);
+        const now = Date.now();
+        const windowEnd = now - now % 5000 + 5000;
+        // Cover a possible clock boundary without sleeps or relaxed production limits.
+        for (const expireAt of [new Date(windowEnd), new Date(windowEnd + 5000)]) {
+            await counters.updateOne(
+                { op: 'global', ident: counter.ident, expireAt },
+                { $set: { opcount: 100 } }, { upsert: true },
+            );
+        }
+        const denied = await guest.get('/').set('Accept', 'application/json').expect(403);
+        assert.equal(denied.body.error.name, 'OpcountExceededError');
+        assert.equal(denied.body.error.params[0], 'global');
+        await counters.deleteMany({ op: 'global' });
+        await guest.get('/').expect(200);
+    });
 
     const routes = ['/', '/p', '/contest', '/homework', '/user/1', '/training'];
     for (const route of routes) {

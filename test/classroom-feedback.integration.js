@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { before, after, describe, it } = require('node:test');
+const { before, after, beforeEach, describe, it } = require('node:test');
 const { randomUUID } = require('node:crypto');
 const { ObjectId, BSON } = require('mongodb');
 const supertest = require('supertest');
@@ -79,6 +79,11 @@ exports.register = () => describe('Local feedback', () => {
         await repository.ensureIndexes();
         validRid = new ObjectId();
         await model.record.coll.insertOne({ _id: validRid, domainId, uid, pid, contest: courseId, code: 'int main(){}', status: 1, files: {} });
+    });
+
+    beforeEach(async () => {
+        // This suite can also run standalone. Reset only cross-case HTTP counters.
+        await global.app.get('db').db.collection('opcount').deleteMany({ op: 'global' });
     });
 
     it('records all three observations and temporary students without submissions or AI-EDU configuration', async () => {
