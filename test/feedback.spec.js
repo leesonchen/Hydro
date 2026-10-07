@@ -171,7 +171,10 @@ describe('Private content feedback', () => {
             isNotStarted: (doc) => doc.beginAt > new Date(),
             isDone: () => false,
         };
+        const courseStructure = loadSource('packages/hydrooj/src/builtin/course-management/model/structure.ts');
         ProblemDetail = loadSource('packages/hydrooj/src/handler/problem.ts', {
+            '../builtin/course-management/model/structure': courseStructure,
+            '../lib/contest-practice': { isPracticeOpen: () => false, canSubmitPractice: async () => false },
             '@hydrooj/utils/lib/search': {}, '@hydrooj/utils/lib/utils': {},
             '../context': {}, '../logger': { Logger }, '../error': errors,
             '../lib/referenceCode': {}, '../model/builtin': { PERM, PRIV, STATUS: {} },
@@ -197,6 +200,8 @@ describe('Private content feedback', () => {
         }, { get: (target, name) => Object.hasOwn(target, name) ? target[name] : errors[name] });
         CourseLecture = loadSource('packages/hydrooj/src/builtin/course-management/handler/course.ts', {
             '../../../lib/referenceCode': {}, '../../../model/feedback': Feedback,
+            '../../../lib/classroomFeedbackAccess': {}, '../../../model/classroomFeedback': {},
+            '../model/structure': courseStructure,
             '../../../plugin-api': pluginApi, '../../../service/bus': {},
             '../model/class': {}, '../model/course': { DEFAULT_COURSE_LESSON_DURATION_HOURS: 3 },
         }, { console: { ...console, log() {} } }).CourseLectureHandler;
