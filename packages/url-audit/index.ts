@@ -95,8 +95,8 @@ function getStatus(c: any) {
 }
 
 function getRoute(c: any) {
-    const name = c.handler?.constructor?.name || '';
-    return name.replace(/Handler$/, '');
+    const handlerName = c.handler?.constructor?.name || '';
+    return handlerName.replace(/Handler$/, '');
 }
 
 function parsePage(value: any) {
@@ -229,47 +229,51 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         const ignoreExtensions = parseLowerSet(config.ignoreExtensions);
         const maskQueryKeys = parseLowerSet(config.maskQueryKeys);
 
+        const recordRequest = async (c: any, start: number) => {
+            if (!config.enabled || c.nolog || c.response?.headers?.nolog) return;
+
+            const request = c.HydroContext?.request;
+            if (request?.websocket) return;
+
+            const method = (c.request?.method || request?.method || '').toUpperCase();
+            if (!methods.has(method)) return;
+
+            const path = getPath(c);
+            if (shouldIgnorePath(path, ignorePrefixes, ignoreExtensions)) return;
+
+            const user = getUser(c);
+            const uid = Number(user?._id || 0);
+            if (!config.includeAnonymous && !uid) return;
+
+            const querystring = maskQueryString(getQueryString(c), maskQueryKeys);
+            const now = new Date();
+            await coll.insertOne({
+                time: now,
+                expireAt: new Date(now.getTime() + config.retentionDays * 24 * 60 * 60 * 1000),
+                uid,
+                uname: (user?.uname || 'Guest').toString(),
+                domainId: c.HydroContext?.domain?._id || c.HydroContext?.args?.domainId || 'system',
+                method,
+                path,
+                querystring,
+                url: `${path}${querystring ? `?${querystring}` : ''}`,
+                status: getStatus(c),
+                ms: Date.now() - start,
+                ip: request?.ip || c.request?.ip || '',
+                ua: (request?.headers?.['user-agent'] || c.request?.headers?.['user-agent'] || '').toString(),
+                referer: (request?.referer || c.request?.headers?.referer || '').toString(),
+                route: getRoute(c),
+                json: !!request?.json,
+            });
+        };
+
         server.addHandlerLayer('url-audit', async (c, next) => {
             const start = Date.now();
             try {
-                await next();
+                return await next();
             } finally {
                 try {
-                    if (!config.enabled || c.nolog || c.response?.headers?.nolog) return;
-
-                    const request = c.HydroContext?.request;
-                    if (request?.websocket) return;
-
-                    const method = (c.request?.method || request?.method || '').toUpperCase();
-                    if (!methods.has(method)) return;
-
-                    const path = getPath(c);
-                    if (shouldIgnorePath(path, ignorePrefixes, ignoreExtensions)) return;
-
-                    const user = getUser(c);
-                    const uid = Number(user?._id || 0);
-                    if (!config.includeAnonymous && !uid) return;
-
-                    const querystring = maskQueryString(getQueryString(c), maskQueryKeys);
-                    const now = new Date();
-                    await coll.insertOne({
-                        time: now,
-                        expireAt: new Date(now.getTime() + config.retentionDays * 24 * 60 * 60 * 1000),
-                        uid,
-                        uname: (user?.uname || 'Guest').toString(),
-                        domainId: c.HydroContext?.domain?._id || c.HydroContext?.args?.domainId || 'system',
-                        method,
-                        path,
-                        querystring,
-                        url: `${path}${querystring ? `?${querystring}` : ''}`,
-                        status: getStatus(c),
-                        ms: Date.now() - start,
-                        ip: request?.ip || c.request?.ip || '',
-                        ua: (request?.headers?.['user-agent'] || c.request?.headers?.['user-agent'] || '').toString(),
-                        referer: (request?.referer || c.request?.headers?.referer || '').toString(),
-                        route: getRoute(c),
-                        json: !!request?.json,
-                    });
+                    await recordRequest(c, start);
                 } catch (error) {
                     logger.warn('Failed to write URL audit log: %s', error?.message || error);
                 }
