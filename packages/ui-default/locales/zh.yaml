@@ -252,6 +252,8 @@ Contest resumed.: 比赛已恢复。
 Contest scoreboard is not visible.: 当前比赛成绩表隐藏，暂不可显示。
 Contest Scoreboard: 比赛成绩表
 Contest Settings: 比赛设置
+Hide from top banners: 隐藏顶部展示
+The contest will still appear in the All Contests list: 比赛仍显示在全部比赛列表中
 contest_create: 创建比赛
 contest_detail_problem_submit: 递交比赛题目
 contest_edit: 编辑比赛

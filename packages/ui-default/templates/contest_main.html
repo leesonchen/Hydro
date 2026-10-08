@@ -48,9 +48,9 @@
 <div class="row responsive-sidebar-layout">
   <div class="medium-9 columns">
   {%- for tdoc in tdocs -%}
-    {% if model.contest.isOngoing(tdoc, tsdoc) %}
+    {% if not tdoc.hideInBanner and model.contest.isOngoing(tdoc, tsdoc) %}
       {{ render_important_contest('live', 'Live...', tdoc) }}
-    {% elif model.contest.isUpcoming(tdoc) %}
+    {% elif not tdoc.hideInBanner and model.contest.isUpcoming(tdoc) %}
       {{ render_important_contest('ready', 'Ready (☆▽☆)', tdoc) }}
     {% endif %}
   {%- endfor -%}

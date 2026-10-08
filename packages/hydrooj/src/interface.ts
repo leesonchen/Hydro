@@ -292,6 +292,7 @@ export interface Tdoc extends Document {
     allowViewCode?: boolean;
     allowPrint?: boolean;
     keepScoreboardHidden?: boolean;
+    hideInBanner?: boolean;
 
     // For contest
     lockAt?: Date;
