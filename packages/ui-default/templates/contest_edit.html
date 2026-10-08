@@ -150,6 +150,17 @@
           }) }}
           <div class="row">
             {{ form.form_checkbox({
+              columns:12,
+              label:'Hide from top banners',
+              name:'hideInBanner',
+              placeholder:_('Hide from top banners'),
+              help_text:_('The contest will still appear in the All Contests list'),
+              value:tdoc.hideInBanner|default(false),
+              row:false
+            }) }}
+          </div>
+          <div class="row">
+            {{ form.form_checkbox({
               columns:2,
               label:'Rated',
               name:'rated',

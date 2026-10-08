@@ -248,6 +248,8 @@ Contest Maintainer: 比賽管理員
 Contest scoreboard is not visible.: 當前比賽成績表隱藏，暫不可顯示。
 Contest Scoreboard: 比賽成績表
 Contest Settings: 比賽設定
+Hide from top banners: 隱藏頂部展示
+The contest will still appear in the All Contests list: 比賽仍顯示在全部比賽列表中
 contest_create: 建立比賽
 contest_detail_problem_submit: 遞交比賽程式碼
 contest_edit: 編輯比賽

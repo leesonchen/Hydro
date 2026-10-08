@@ -490,6 +490,7 @@ export class ContestEditHandler extends Handler {
     @param('allowTeam', Types.Boolean)
     @param('langs', Types.CommaSeperatedArray, true)
     @param('allowPractice', Types.Boolean, true)
+    @param('hideInBanner', Types.Boolean, true)
     async postUpdate(
         domainId: string, tid: ObjectId, beginAtDate: string, beginAtTime: string, duration: number,
         title: string, content: string, rule: string, _pids: string, rated = false,
@@ -497,6 +498,7 @@ export class ContestEditHandler extends Handler {
         contestDuration: number = null, maintainer: number[] = [], allowViewCode = false, allowPrint = false,
         keepScoreboardHidden = false, allowTeam = false, langs: string[] = [],
         allowPractice?: boolean,
+        hideInBanner = false,
     ) {
         if (!Object.keys(contest.RULES).includes(rule) || contest.RULES[rule].hidden) throw new ValidationError('rule');
         if (autoHide) this.checkPerm(PERM.PERM_EDIT_PROBLEM);
@@ -518,6 +520,7 @@ export class ContestEditHandler extends Handler {
             assign, _code, autoHide, lockAt, maintainer, allowViewCode, allowPrint,
             keepScoreboardHidden, allowTeam, langs,
             allowPractice: allowPracticeProvided ? !!allowPractice : this.tdoc?.allowPractice ?? false,
+            hideInBanner,
         };
         const needsRecalc = !!tid && (
             this.tdoc.beginAt.getTime() !== beginAt.getTime()
