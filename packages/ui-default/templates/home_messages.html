@@ -1,5 +1,6 @@
 {% extends "layout/home_base.html" %}
 {% block home_content %}
+{{ set(UiContext, 'canSendMessage', canSendMessage) }}
 <div class="section">
   <div id="messagePad">
     {{ noscript_note.render() }}

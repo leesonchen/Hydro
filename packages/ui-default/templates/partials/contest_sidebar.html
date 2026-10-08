@@ -17,6 +17,29 @@
 {% endif %}
   <div>
     <ol class="menu">
+    {% if practiceOpen %}
+      <li class="menu__item">
+        {% if practiceReady %}
+          <a class="menu__link highlight" href="{{ url('contest_problemlist', tid=tdoc.docId) }}"><span class="icon icon-send"></span> {{ _('Start Practice') }}</a>
+        {% elif handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) and handler.user.hasPerm(perm.PERM_SUBMIT_PROBLEM) %}
+          <form action="{{ url('contest_detail', tid=tdoc.docId) }}" method="POST">
+            <input type="hidden" name="operation" value="practice">
+            <label>{{ _('Invitation Code') }} <input class="textbox" name="code" type="password" autocomplete="off" required></label>
+            <button class="menu__link" type="submit"><span class="icon icon-send"></span> {{ _('Start Practice') }}</button>
+          </form>
+        {% elif not handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+          <a class="menu__link" href="javascript:showSignInDialog();">{{ _('Sign In') }}</a>
+        {% else %}
+          <span class="menu__link disabled">{{ _('No Permission to Practice') }}</span>
+        {% endif %}
+      </li>
+    {% endif %}
+    {% if practiceOpen or practiceHistory %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={tid:tdoc.docId, practice:true, uidOrName:handler.user._id}) }}"><span class="icon icon-flag"></span> {{ _('My Practice Submissions') }}</a></li>
+    {% endif %}
+    {% if practiceManager and model.contest.isDone(tdoc) %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={tid:tdoc.docId, practice:true}) }}"><span class="icon icon-flag"></span> {{ _('All Practice Submissions') }}</a></li>
+    {% endif %}
     {% if page_name == 'discussion_node' or page_name == 'discussion_detail' %}
     {% if handler.user.hasPerm(perm.PERM_CREATE_DISCUSSION) %}
       <li class="menu__item"><a class="menu__link highlight" href="{{ url('discussion_create', type='contest', name=tdoc.docId) }}">

@@ -1,5 +1,6 @@
 import $ from 'jquery';
 import _ from 'lodash';
+import { getFeedbackSource, openFeedback } from 'vj/components/feedback';
 import Tooltip from 'vj/components/tooltip/Tooltip';
 import { delay, i18n } from 'vj/utils';
 
@@ -33,6 +34,9 @@ class Marker {
         <div class="marker__action" data-color="#47ff6f" data-tooltip="${i18n('Mark Green')}"><span class="marker__icon icon-green"></span></div>
         <div class="marker__action" data-color="#ff3b30" data-tooltip="${i18n('Mark Red')}"><span class="marker__icon icon-red"></span></div>
         <div class="marker__action" data-color="transparent" data-tooltip="${i18n('Clear Marks')}"><span class="icon icon-erase"></span></div>
+        <button type="button" class="marker__action marker__action--feedback" data-action="feedback" style="display:none">
+          <span class="icon icon-flag"></span> ${_.escape(i18n('Problem feedback'))}
+        </button>
       </div></div>
     `)
       .appendTo('body');
@@ -68,14 +72,21 @@ class Marker {
 
   showAtPosition($container, x, y) {
     this.$container = $container;
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const start = range?.startContainer;
+    const sourceElement = (start?.nodeType === 1 ? start : start?.parentElement)?.closest('[data-feedback-url]');
+    this.feedbackSource = sourceElement?.contains(range.endContainer) ? getFeedbackSource(sourceElement) : null;
+    this.feedbackQuote = this.feedbackSource ? selection.toString() : '';
+    this.$dom.find('[data-action="feedback"]').toggle(!!this.feedbackSource);
     this.$dom.css({
       display: 'block',
       opacity: 0,
     });
     const rect = this.$dom[0].getBoundingClientRect();
     this.$dom.css({
-      left: x + MARKER_OFFSET,
-      top: y - (rect.bottom - rect.top) - MARKER_OFFSET,
+      left: Math.max(4, Math.min(x + MARKER_OFFSET, window.innerWidth - rect.width - 4)),
+      top: Math.max(4, Math.min(y - rect.height - MARKER_OFFSET, window.innerHeight - rect.height - 4)),
     });
     this.isOpen = true;
     this.$dom.addClass('open');
@@ -133,6 +144,12 @@ class Marker {
   }
 
   onMarkerActionClick(ev) {
+    if ($(ev.currentTarget).attr('data-action') === 'feedback') {
+      const { feedbackSource, feedbackQuote } = this;
+      this.close();
+      if (feedbackSource) openFeedback(feedbackSource, feedbackQuote);
+      return;
+    }
     const color = $(ev.currentTarget).attr('data-color');
     this.markSelection(color);
     this.close();

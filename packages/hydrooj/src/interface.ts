@@ -235,6 +235,7 @@ export type RecordDoc = {
 } & {
     _id: ObjectId;
     notify?: boolean;
+    practiceContest?: ObjectId;
 };
 
 export interface RecordHistoryDoc extends RecordJudgeInfo {
@@ -291,6 +292,7 @@ export interface Tdoc extends Document {
     allowViewCode?: boolean;
     allowPrint?: boolean;
     keepScoreboardHidden?: boolean;
+    hideInBanner?: boolean;
 
     // For contest
     lockAt?: Date;
@@ -300,6 +302,7 @@ export interface Tdoc extends Document {
     score?: Record<number, number>;
     langs?: string[];
     allowTeam?: boolean;
+    allowPractice?: boolean;
 
     /**
      * In hours
@@ -359,6 +362,9 @@ export interface MessageDoc {
     to: number | number[];
     content: string;
     flag: number;
+    /** Feedback messages are read through the feedback model, never as private messages. */
+    feedbackId?: ObjectId;
+    domainId?: string;
 }
 
 // Blacklist
@@ -672,6 +678,7 @@ declare module './service/db' {
         'user.group': GDoc;
         check: System;
         message: MessageDoc;
+        feedback: import('./model/feedback').FeedbackDoc;
         token: TokenDoc;
         status: any;
         oauth: OauthMap;
@@ -695,6 +702,7 @@ export interface Model {
     document: Omit<typeof import('./model/document'), 'apply'>;
     domain: typeof import('./model/domain').default;
     message: typeof import('./model/message').default;
+    feedback: typeof import('./model/feedback').default;
     opcount: typeof import('./model/opcount');
     problem: typeof import('./model/problem').default;
     record: typeof import('./model/record').default;

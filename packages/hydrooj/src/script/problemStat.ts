@@ -32,6 +32,7 @@ export async function udoc(report) {
         {
             $match: {
                 contest: { $exists: false },
+                practiceContest: { $exists: false },
                 status: { $ne: STATUS.STATUS_CANCELED },
                 uid: { $gte: 0 },
             },
@@ -83,6 +84,7 @@ export async function pdoc(report) {
         {
             $match: {
                 contest: { $exists: false },
+                practiceContest: { $exists: false },
                 status: { $ne: STATUS.STATUS_CANCELED },
             },
         },

@@ -45,7 +45,9 @@ export async function feedbackActivity(handler: Handler, activityType: 'course' 
     const explicit = (tdoc.assign || []).filter((g) => /^\d+$/.test(g)).map(Number);
     const students = groups.flatMap((g) => g.class ? g.students || [] : g.uids || []);
     if (!tdoc.assign?.length) {
-        const statuses = await contest.getMultiStatus(domainId, { docId: tdoc.docId, attend: true }).project({ uid: 1 }).toArray();
+        const statuses = await contest.getMultiStatus(domainId, {
+            docId: tdoc.docId, $or: [{ attend: true }, { attend: { $gt: 0 } }],
+        }).project({ uid: 1 }).toArray();
         students.push(...statuses.map((s) => s.uid));
     }
     const roster = [...new Set([...students, ...explicit])].filter((uid) => uid > 0 && !teachers.has(uid));

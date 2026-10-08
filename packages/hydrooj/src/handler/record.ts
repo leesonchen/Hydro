@@ -7,10 +7,12 @@ import {
     PermissionError, PretestRejudgeFailedError, ProblemConfigError,
     ProblemNotFoundError, RecordNotFoundError, UserNotFoundError,
 } from '../error';
-import { ContestStatusDoc, RecordDoc, Tdoc } from '../interface';
+import { ContestStatusDoc, RecordDoc, Tdoc, User } from '../interface';
 import { canManageFeedback } from '../lib/classroomFeedbackAccess';
+import { canManagePractice, canReadPractice, canSubmitPractice } from '../lib/contest-practice';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
+import domain from '../model/domain';
 import problem, { ProblemDoc } from '../model/problem';
 import record from '../model/record';
 import { langs } from '../model/setting';
@@ -36,16 +38,20 @@ export class RecordListHandler extends ContestDetailBaseHandler {
     @param('all', Types.Boolean)
     @param('allDomain', Types.Boolean)
     @param('stat', Types.Boolean)
+    @param('practice', Types.Boolean)
     async get(
         domainId: string, page = 1, pid?: string | number, tid?: ObjectId,
         uidOrName?: string, lang?: string, status?: number, full = false,
         all = false, allDomain = false, stat = false,
+        practice = false,
     ) {
         const notification = [];
         let tdoc = null;
         let invalid = false;
         this.response.template = 'record_main.html';
-        const q: Filter<RecordDoc> = { contest: tid };
+        if (practice && (!tid || all || allDomain)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+        const q: Filter<RecordDoc> = practice
+            ? { practiceContest: tid } : { contest: tid, practiceContest: { $exists: false } };
         if (full) uidOrName = this.user._id.toString();
         if (uidOrName) {
             const udoc = await user.getById(domainId, +uidOrName)
@@ -56,23 +62,32 @@ export class RecordListHandler extends ContestDetailBaseHandler {
         }
         // Team: a member viewing the contest record list sees the whole team's submissions.
         let teamMembers: number[] | null = null;
-        if (tid && this.team && (q.uid === undefined || q.uid === this.user._id)) {
+        if (!practice && tid && this.team && (q.uid === undefined || q.uid === this.user._id)) {
             // this.tsdoc is already the team vuser's tsdoc (swapped in __prepare); no extra DB fetch needed
             teamMembers = this.tsdoc?.members?.length ? this.tsdoc.members : null;
         }
         const viewingTeammate = !!(tid && this.team && typeof q.uid === 'number'
             && this.tsdoc?.members?.includes(q.uid));
-        if (q.uid !== this.user._id && !teamMembers && !viewingTeammate) this.checkPerm(PERM.PERM_VIEW_RECORD);
+        if (!practice && q.uid !== this.user._id && !teamMembers && !viewingTeammate) this.checkPerm(PERM.PERM_VIEW_RECORD);
         if (tid) {
             tdoc = await contest.get(domainId, tid);
             this.tdoc = tdoc;
             if (!tdoc) throw new ContestNotFoundError(domainId, pid);
-            if (!contest.canShowScoreboard.call(this, tdoc, true)) throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
+            if (practice) {
+                if (!canManagePractice(this.user, tdoc) && q.uid === undefined) {
+                    q.uid = this.user._id;
+                    uidOrName = this.user._id.toString();
+                }
+                if (!canReadPractice(this.user, tdoc, typeof q.uid === 'number' ? q.uid : this.user._id)) {
+                    throw new PermissionError(PERM.PERM_VIEW_RECORD);
+                }
+            }
+            if (!practice && !contest.canShowScoreboard.call(this, tdoc, true)) throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             const viewingSelf = q.uid === this.user._id || !!teamMembers || viewingTeammate;
-            if (!contest[viewingSelf ? 'canShowSelfRecord' : 'canShowRecord'].call(this, tdoc, true)) {
+            if (!practice && !contest[viewingSelf ? 'canShowSelfRecord' : 'canShowRecord'].call(this, tdoc, true)) {
                 throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             }
-            if (!this.team && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) {
+            if (!practice && !this.team && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) {
                 const name = tdoc.rule === 'homework'
                     ? "You haven't claimed this homework yet."
                     : "You haven't attended this contest yet.";
@@ -116,7 +131,7 @@ export class RecordListHandler extends ContestDetailBaseHandler {
                         ? problem.getList(domainId, rdocs.map((rdoc) => rdoc.pid), canViewHiddenProblem, false, problem.PROJECTION_LIST)
                         : Object.fromEntries(uniqBy(rdocs, 'pid').map((rdoc) => [rdoc.pid, { ...problem.default, pid: rdoc.pid }])),
             ]);
-        if (this.tdoc && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+        if (!practice && this.tdoc && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
             rdocs = rdocs.map((i) => contest.applyProjection(tdoc, i, this.user));
         }
         this.response.body = {
@@ -127,6 +142,7 @@ export class RecordListHandler extends ContestDetailBaseHandler {
             udict,
             all,
             allDomain,
+            practice,
             filterPid: pid,
             filterTid: tid,
             filterUidOrName: uidOrName,
@@ -147,6 +163,13 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
     async prepare(domainId: string, rid: ObjectId) {
         this.rdoc = await record.get(domainId, rid);
         if (!this.rdoc) throw new RecordNotFoundError(rid);
+        if (this.rdoc.practiceContest) {
+            this.tdoc = await contest.get(domainId, this.rdoc.practiceContest);
+            if (!canReadPractice(this.user, this.tdoc, this.rdoc.uid)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            this.args.tid = this.tdoc.docId;
+            this.practiceReady = await canSubmitPractice(this.user, this.tdoc);
+            return;
+        }
         if (!(await contest.isOwnOrTeammateRecord(domainId, this.rdoc, this.user._id))) this.checkPerm(PERM.PERM_VIEW_RECORD);
     }
 
@@ -178,7 +201,9 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
         }
         const isOwnOrTeammate = await contest.isOwnOrTeammateRecord(domainId, rdoc, this.user._id);
         let canViewDetail = true;
-        if (rdoc.contest?.toString().startsWith('0'.repeat(23))) {
+        if (rdoc.practiceContest) {
+            if (!canReadPractice(this.user, this.tdoc, rdoc.uid)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+        } else if (rdoc.contest?.toString().startsWith('0'.repeat(23))) {
             if (rdoc.uid !== this.user._id) throw new PermissionError(PERM.PERM_READ_RECORD_CODE);
         } else if (rdoc.contest) {
             this.tdoc = await contest.get(domainId, rdoc.contest);
@@ -211,10 +236,13 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             const teamVid = this.tdoc.allowTeam ? await contest.getTeamVid(domainId, this.tdoc.docId, this.user._id) : null;
             this.tsdoc = await contest.getStatus(domainId, this.tdoc.docId, teamVid ?? this.user._id);
             canViewCode ||= this.user.own(this.tdoc);
+            if (rdoc.practiceContest) canViewCode ||= canManagePractice(this.user, this.tdoc);
             if (this.tdoc.allowViewCode && contest.isDone(this.tdoc)) {
                 canViewCode ||= !!this.tsdoc?.attend;
             }
-            if (!this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
+            if (!rdoc.practiceContest && !this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) {
+                throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
+            }
         } else if (pdoc && !problem.canViewBy(pdoc, this.user)) throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
         if (!canViewCode) {
             rdoc.code = '';
@@ -224,6 +252,7 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
         let submissionHistory: RecordDoc[] = [];
         let submissionHistoryCount = 0;
         const isActiveContest = this.tdoc
+            && !rdoc.practiceContest
             && !['homework', 'course'].includes(this.tdoc.rule)
             && !contest.isDone(this.tdoc);
         const canShowSubmissionHistory = canViewDetail && !isActiveContest;
@@ -233,6 +262,7 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
                 pid: rdoc.pid,
                 'files.hack': { $exists: false },
                 contest: rdoc.contest || { $exists: false },
+                practiceContest: rdoc.practiceContest || { $exists: false },
             };
             [submissionHistory, submissionHistoryCount] = await Promise.all([
                 record.getMulti(domainId, submissionHistoryFilter)
@@ -300,6 +330,40 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
     }
 }
 
+async function checkPracticeAccess(
+    handler: RecordMainConnectionHandler | RecordDetailConnectionHandler, rdoc: RecordDoc, requireManager = false,
+) {
+    if (handler.practiceStopped) return false;
+    try {
+        const [udoc, tdoc] = await Promise.all([
+            user.coll.findOne({ _id: handler.user._id }),
+            contest.get(rdoc.domainId, rdoc.practiceContest),
+        ]);
+        let viewer: User;
+        if (udoc && (udoc.priv & PRIV.PRIV_USER_PROFILE)) {
+            const [dudoc, groups] = await Promise.all([
+                domain.getDomainUser(rdoc.domainId, udoc),
+                user.listGroup(rdoc.domainId, udoc._id),
+            ]);
+            dudoc.group = groups.map((group) => group.name);
+            // getById caches User instances and can discard the connection's scope.
+            viewer = await new user.User(udoc, dudoc, handler.user.scope).init();
+        }
+        if (handler.practiceStopped) return false;
+        if (viewer && canReadPractice(viewer, tdoc, rdoc.uid)
+            && (!requireManager || canManagePractice(viewer, tdoc))) return true;
+    } catch (error) {
+        if (!handler.practiceStopped) {
+            handler.cleanup();
+            await handler.onerror(error);
+        }
+        return false;
+    }
+    handler.cleanup();
+    handler.close(4003, 'Permission revoked');
+    return false;
+}
+
 export class RecordMainConnectionHandler extends ConnectionHandler {
     all = false;
     allDomain = false;
@@ -308,12 +372,14 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
     pid: number;
     status: number;
     pretest = false;
+    practice = false;
     tdoc: Tdoc;
     teamMembers?: number[];
     applyProjection = false;
     noTemplate = false;
     queue: Map<string, () => Promise<any>> = new Map();
-    throttleQueueClear: () => void;
+    throttleQueueClear: ReturnType<typeof throttle>;
+    practiceStopped = false;
 
     @param('tid', Types.ObjectId, true)
     @param('pid', Types.ProblemId, true)
@@ -323,21 +389,25 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
     @param('all', Types.Boolean)
     @param('allDomain', Types.Boolean)
     @param('noTemplate', Types.Boolean, true)
+    @param('practice', Types.Boolean)
     async prepare(
         domainId: string, tid?: ObjectId, pid?: string | number, uidOrName?: string,
         status?: number, pretest = false, all = false, allDomain = false, noTemplate = false,
+        practice = false,
     ) {
+        if (practice && (!tid || pretest || all || allDomain)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+        this.practice = practice;
         if (tid) {
             this.tdoc = await contest.get(domainId, tid);
             if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
-            if (pretest || contest.canShowScoreboard.call(this, this.tdoc, true)) this.tid = tid.toHexString();
+            if (practice || pretest || contest.canShowScoreboard.call(this, this.tdoc, true)) this.tid = tid.toHexString();
             else throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
-            if (!pretest
+            if (!practice && !pretest
                 && !contest.canShowRecord.call(this, this.tdoc, true)
                 && !contest.canShowSelfRecord.call(this, this.tdoc, true)) {
                 throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             }
-            if (!this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+            if (!practice && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
                 this.applyProjection = true;
             }
         }
@@ -353,14 +423,18 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
                 else throw new UserNotFoundError(uidOrName);
             }
         }
-        if (this.tdoc?.allowTeam && !pretest && !all && !allDomain && (this.uid === undefined || this.uid === this.user._id)) {
+        if (!practice && this.tdoc?.allowTeam && !pretest && !all && !allDomain && (this.uid === undefined || this.uid === this.user._id)) {
             const teamVid = await contest.getTeamVid(domainId, this.tdoc.docId, this.user._id);
             if (teamVid) {
                 const tsdoc = await contest.getStatus(domainId, this.tdoc.docId, teamVid);
                 this.teamMembers = tsdoc?.members?.length ? tsdoc.members : undefined;
             }
         }
-        if (this.uid !== this.user._id && !this.teamMembers) {
+        if (practice) {
+            if (!canManagePractice(this.user, this.tdoc) && this.uid === undefined) this.uid = this.user._id;
+            if (!canReadPractice(this.user, this.tdoc, this.uid ?? this.user._id)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+        }
+        if (!practice && this.uid !== this.user._id && !this.teamMembers) {
             const sameTeam = this.tdoc?.allowTeam && typeof this.uid === 'number'
                 && await contest.isSameTeam(domainId, this.tdoc.docId, this.uid, this.user._id);
             if (!sameTeam) this.checkPerm(PERM.PERM_VIEW_RECORD);
@@ -394,10 +468,14 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
 
     @subscribe('record/change')
     async onRecordChange(rdoc: RecordDoc) {
+        if (this.practiceStopped) return;
+        if (rdoc.practiceContest) {
+            if (!this.practice || rdoc.domainId !== this.args.domainId || rdoc.practiceContest.toHexString() !== this.tid) return;
+        } else if (this.practice) return;
         if (!this.allDomain) {
             if (rdoc.domainId !== this.args.domainId) return;
             if (!this.pretest && typeof rdoc.input === 'string') return;
-            if (!this.all) {
+            if (!this.all && !this.practice) {
                 if (!rdoc.contest && this.tid) return;
                 if (rdoc.contest && ![this.tid, '000000000000000000000000'].includes(rdoc.contest.toString())) return;
                 if (this.tid && rdoc.contest?.toString() !== '0'.repeat(24)) {
@@ -411,37 +489,54 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         if (this.teamMembers) {
             if (!this.teamMembers.includes(rdoc.uid)) return;
         } else if (typeof this.uid === 'number' && rdoc.uid !== this.uid) return;
+        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return;
 
         let [udoc, pdoc] = await Promise.all([
             user.getById(this.args.domainId, rdoc.uid),
             problem.get(rdoc.domainId, rdoc.pid),
         ]);
         const tdoc = this.tid ? this.tdoc : null;
-        if (pdoc && !rdoc.contest) {
+        if (pdoc && !rdoc.contest && !rdoc.practiceContest) {
             if (!problem.canViewBy(pdoc, this.user)) pdoc = null;
             if (!this.user.hasPerm(PERM.PERM_VIEW_PROBLEM)) pdoc = null;
         }
         if (this.applyProjection && rdoc.contest?.toString() !== '0'.repeat(24)) rdoc = contest.applyProjection(tdoc, rdoc, this.user);
         if (this.pretest) {
-            this.queueSend(rdoc._id.toHexString(), async () => ({ rdoc: omit(rdoc, ['code', 'input']) }));
+            this.queueSend(rdoc._id.toHexString(), async () => ({ rdoc: omit(rdoc, ['code', 'input']) }), rdoc);
         } else if (this.noTemplate) {
-            this.queueSend(rdoc._id.toHexString(), async () => ({ rdoc }));
+            this.queueSend(rdoc._id.toHexString(), async () => ({ rdoc }), rdoc);
         } else {
             this.queueSend(rdoc._id.toHexString(), async () => ({
                 html: await this.renderHTML('record_main_tr.html', {
                     rdoc, udoc, pdoc, tdoc, allDomain: this.allDomain,
                 }),
-            }));
+            }), rdoc);
         }
     }
 
-    queueSend(rid: string, fn: () => Promise<any>) {
-        this.queue.set(rid, fn);
+    queueSend(rid: string, fn: () => Promise<any>, rdoc?: RecordDoc) {
+        if (this.practiceStopped) return;
+        this.queue.set(rid, async () => {
+            if (rdoc?.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
+            const payload = await fn();
+            if (rdoc?.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
+            return payload;
+        });
         this.throttleQueueClear();
     }
 
     async queueClear() {
-        await Promise.all([...this.queue.values()].map(async (fn) => this.send(await fn())));
+        const pending = [...this.queue.values()];
+        this.queue.clear();
+        await Promise.all(pending.map(async (fn) => {
+            const payload = await fn();
+            if (payload && !this.practiceStopped) this.send(payload);
+        }));
+    }
+
+    cleanup() {
+        this.practiceStopped = true;
+        this.throttleQueueClear?.cancel();
         this.queue.clear();
     }
 }
@@ -456,6 +551,7 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
     applyProjection = false;
     noTemplate = false;
     canViewCode = false;
+    practiceStopped = false;
 
     @param('rid', Types.ObjectId)
     @param('noTemplate', Types.Boolean, true)
@@ -463,6 +559,10 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
         const rdoc = await record.get(domainId, rid);
         if (!rdoc) return;
         const isOwnOrTeammate = await contest.isOwnOrTeammateRecord(domainId, rdoc, this.user._id);
+        if (rdoc.practiceContest) {
+            this.tdoc = await contest.get(domainId, rdoc.practiceContest);
+            if (!canReadPractice(this.user, this.tdoc, rdoc.uid)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+        }
         if (rdoc.contest && ![record.RECORD_GENERATE, record.RECORD_PRETEST].some((i) => i.toHexString() === rdoc.contest.toHexString())) {
             this.tdoc = await contest.get(domainId, rdoc.contest);
             let canView = this.user.own(this.tdoc);
@@ -484,11 +584,14 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
         ]);
 
         this.canViewCode = isOwnOrTeammate;
+        if (rdoc.practiceContest) this.canViewCode ||= canManagePractice(this.user, this.tdoc);
         this.canViewCode ||= this.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE);
         this.canViewCode ||= this.user.hasPerm(PERM.PERM_READ_RECORD_CODE);
         this.canViewCode ||= this.user.hasPerm(PERM.PERM_READ_RECORD_CODE_ACCEPT) && self?.status === STATUS.STATUS_ACCEPTED;
 
-        if (!this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
+        if (!rdoc.practiceContest && !this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) {
+            throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
+        }
 
         this.pdoc = pdoc;
         this.noTemplate = noTemplate;
@@ -498,21 +601,27 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
     }
 
     async sendUpdate(rdoc: RecordDoc) {
+        if (this.practiceStopped) return;
+        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
         if (this.noTemplate) {
             this.send({ rdoc });
         } else {
-            this.send({
+            const payload = {
                 status: rdoc.status,
                 status_html: await this.renderHTML('record_detail_status.html', { rdoc, pdoc: this.pdoc }),
                 summary_html: await this.renderHTML('record_detail_summary.html', { rdoc, pdoc: this.pdoc }),
-            });
+            };
+            if (this.practiceStopped) return;
+            if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
+            this.send(payload);
         }
     }
 
     @subscribe('record/change')
     // eslint-disable-next-line
     async onRecordChange(rdoc: RecordDoc, $set?: any, $push?: any) {
-        if (rdoc._id.toString() !== this.rid) return;
+        if (this.practiceStopped || rdoc.domainId !== this.args.domainId || rdoc._id.toString() !== this.rid) return;
+        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
         if (this.disconnectTimeout) {
             clearTimeout(this.disconnectTimeout);
             this.disconnectTimeout = null;
@@ -531,6 +640,13 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
             this.disconnectTimeout = setTimeout(() => this.close(4001, 'Ended'), 30000);
         }
         this.throttleSend(rdoc);
+    }
+
+    cleanup() {
+        this.practiceStopped = true;
+        this.throttleSend?.cancel();
+        if (this.disconnectTimeout) clearTimeout(this.disconnectTimeout);
+        this.disconnectTimeout = null;
     }
 }
 

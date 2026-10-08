@@ -12,12 +12,15 @@
   {{ set(UiContext, 'tdoc', tdoc) }}
   {{ set(UiContext, 'tsdoc', tsdoc) }}
 {% endif %}
-{% if tdoc and mode == 'contest' %}
-  {{ set(UiContext, 'canViewRecord', model.contest.canShowSelfRecord.call(handler, tdoc)) }}
+{% if tdoc and (mode == 'contest' or mode == 'practice') %}
+  {{ set(UiContext, 'canViewRecord', mode == 'practice' or model.contest.canShowSelfRecord.call(handler, tdoc)) }}
   {{ set(UiContext, 'postSubmitUrl', url('problem_submit', pid=pdoc.docId, query={tid:tdoc.docId})) }}
-  {{ set(UiContext, 'getSubmissionsUrl', url('record_main', query={fullStatus:'true', pid:pdoc.docId, tid:tdoc.docId})) }}
+  {{ set(UiContext, 'getSubmissionsUrl', url('record_main', query={fullStatus:'true', pid:pdoc.docId, tid:tdoc.docId, practice:mode == 'practice'})) }}
   {{ set(UiContext, 'getRecordDetailUrl', url('record_detail', rid='{rid}', query={tid:tdoc.docId})) }}
   {{ set(UiContext, 'pretestConnUrl', "record-conn?pretest=1&uidOrName=" + handler.user._id + "&pid=" + pdoc.docId + "&domainId=" + handler.args.domainId + "&tid=" + tdoc.docId) }}
+  {% if mode == 'practice' %}
+    {{ set(UiContext, 'practiceConnUrl', "record-conn?practice=1&noTemplate=1&uidOrName=" + handler.user._id + "&pid=" + pdoc.docId + "&domainId=" + handler.args.domainId + "&tid=" + tdoc.docId) }}
+  {% endif %}
 {% else %}
   {{ set(UiContext, 'canViewRecord', true) }}
   {{ set(UiContext, 'postSubmitUrl', url('problem_submit', pid=pdoc.docId)) }}
@@ -45,6 +48,9 @@
 <div class="row responsive-sidebar-layout" data-sticky-parent>
   <div class="medium-9 columns">
     <div class="section">
+      {% if mode == 'practice' %}
+        <div class="section__body"><blockquote class="note">{{ _('Post-contest practice is personal and does not affect contest scores, problem statistics, or RP/Rating.') }}</blockquote></div>
+      {% endif %}
       <div class="section__header">
         <h1 class="section__title">
           {% if rdoc %}

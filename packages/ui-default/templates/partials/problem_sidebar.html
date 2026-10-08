@@ -1,6 +1,15 @@
 {% if not owner_udoc %}
   {% set owner_udoc = udoc %}
 {% endif %}
+{% if page_name in ['problem_detail', 'contest_detail_problem', 'homework_detail_problem'] and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+<div class="section side">
+  <ol class="menu"><li class="menu__item">
+    <button type="button" class="menu__link" data-feedback-open>
+      <span class="icon icon-flag"></span> {{ _('Problem feedback') }}
+    </button>
+  </li></ol>
+</div>
+{% endif %}
 {% if tdoc %}
   {% if tdoc.rule == 'homework' %}
     {% include "partials/problem_sidebar_homework.html" %}

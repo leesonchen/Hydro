@@ -10,7 +10,7 @@ import {
     after, before, beforeEach, describe, it,
 } from 'node:test';
 import * as supertest from 'supertest';
-import { PERM, STATUS } from '@hydrooj/common';
+import { PERM, PRIV, STATUS } from '@hydrooj/common';
 import { getApiArgs } from '@hydrooj/framework';
 
 const Root = {
@@ -625,6 +625,132 @@ describe('App', () => {
         }
     });
 
+    it('Allows private content feedback without allowing ordinary messages or bypassing resource access', async () => {
+        const { domain: DomainModel, user: UserModel, problem: ProblemModel, contest: ContestModel, feedback: FeedbackModel, message: MessageModel } = global.Hydro.model;
+        const suffix = Date.now().toString(36);
+        const domainId = `feedback-${suffix}`;
+        const otherDomainId = `feedback-other-${suffix}`;
+        const actors: Record<string, { uid: number, client: any }> = {};
+        const createdUids: number[] = [];
+        let pid: number;
+        let tid: ObjectId;
+        let unassignedTid: ObjectId;
+        try {
+            for (const role of ['student', 'other', 'owner', 'outside', 'sys']) {
+                const uname = `fb${role}${suffix}`;
+                const uid = await UserModel.create(`${uname}@example.com`, uname, '123456');
+                createdUids.push(uid);
+                await UserModel.setPriv(uid, PRIV.PRIV_USER_PROFILE | (role === 'sys' ? PRIV.PRIV_EDIT_SYSTEM : 0));
+                const actorClient = supertest.agent(require('hydrooj').httpServer);
+                await actorClient.post('/login').send({ uname, password: '123456' }).expect(302);
+                actors[role] = { uid, client: actorClient };
+            }
+            await DomainModel.add(domainId, actors.owner.uid, 'Feedback domain', '');
+            await DomainModel.add(otherDomainId, actors.outside.uid, 'Other feedback domain', '');
+            const studentPerm = PERM.PERM_VIEW | PERM.PERM_VIEW_PROBLEM | PERM.PERM_VIEW_HOMEWORK | PERM.PERM_ATTEND_HOMEWORK;
+            await DomainModel.edit(domainId, { roles: { student: studentPerm.toString() }, enableCourse: true });
+            await DomainModel.setUserRole(domainId, [actors.student.uid, actors.other.uid], 'student', true);
+            pid = await ProblemModel.add(domainId, '', 'Feedback source', 'Original statement', actors.owner.uid);
+            const beginAt = new Date(Date.now() - 3600000);
+            const endAt = new Date(Date.now() + 3600000);
+            const courseData = {
+                assign: [String(actors.student.uid)],
+                dag: [{ _id: 1, title: 'Chapter', lecture: 'Lecture', pids: [pid] }],
+                lecture: { 1: 'Original lecture' },
+            };
+            tid = await ContestModel.add(domainId, 'Feedback course', '', actors.owner.uid, 'course', beginAt, endAt, [pid], false, courseData);
+            unassignedTid = await ContestModel.add(domainId, 'Unassigned course', '', actors.owner.uid, 'course', beginAt, endAt, [pid], false, {
+                ...courseData, assign: [String(actors.other.uid)],
+            });
+            await ContestModel.setStatus(domainId, tid, actors.student.uid, {
+                attend: 1, startAt: beginAt, endAt, allow: { 1: true }, lectureAllow: { 1: false },
+            });
+            const submitFeedback = (url: string, content = 'This content is incorrect.', extras = {}) => actors.student.client
+                .post(url).set('Accept', 'application/json').send({ operation: 'feedback', content, ...extras });
+            const sourceUrl = `/d/${domainId}/p/${pid}`;
+            const response = await submitFeedback(sourceUrl, 'This content is incorrect.', {
+                quote: '<script>quoted text</script>', uid: actors.other.uid, to: [actors.other.uid],
+                domainId: otherDomainId, title: 'Forged title', sourceUrl: 'https://example.invalid/',
+            }).expect(200);
+            const feedbackId = new ObjectId(response.body.feedbackId);
+            const feedbackDoc = await FeedbackModel.get(feedbackId);
+            assert.equal(feedbackDoc.domainId, domainId);
+            assert.equal(feedbackDoc.source.url, sourceUrl);
+            assert.equal(feedbackDoc.source.title, `${pid}. Feedback source`);
+            const initialMessage = await MessageModel.coll.findOne({ feedbackId });
+            assert(initialMessage.to.includes(actors.owner.uid));
+            assert(initialMessage.to.includes(actors.sys.uid));
+            assert(initialMessage.to.includes(2));
+            assert(!initialMessage.to.includes(actors.other.uid));
+            assert(!initialMessage.to.includes(actors.outside.uid));
+            assert.equal((await UserModel.coll.findOne({ _id: actors.student.uid })).priv, PRIV.PRIV_USER_PROFILE);
+            await actors.student.client.post('/home/messages').set('Accept', 'application/json').send({
+                operation: 'send', uid: actors.owner.uid, content: 'Cannot use ordinary private messages.', feedbackId,
+            }).expect(403);
+            await actors.student.client.post('/home/messages').set('Accept', 'application/json').send({
+                operation: 'delete_message', messageId: initialMessage._id,
+            }).expect(403);
+
+            for (const role of ['other', 'outside']) {
+                await actors[role].client.get(`/home/messages?feedback=${feedbackId}`).set('Accept', 'application/json').expect(403);
+                await actors[role].client.post('/home/messages').set('Accept', 'application/json').send({
+                    operation: 'feedback_reply', feedbackId, content: 'Unauthorized reply', domainId,
+                }).expect(403);
+            }
+            for (const role of ['owner', 'sys', 'student']) {
+                const replied = await actors[role].client.post('/home/messages').set('Accept', 'application/json').send({
+                    operation: 'feedback_reply', feedbackId, content: `Reply from ${role}`, to: [actors.other.uid], domainId: otherDomainId,
+                }).expect(200);
+                assert.equal(replied.body.mdoc.domainId, domainId);
+                assert(!replied.body.mdoc.to.includes(actors.other.uid));
+            }
+            const inbox = await actors.student.client.get(`/home/messages?feedback=${feedbackId}`).set('Accept', 'application/json').expect(200);
+            assert.equal(inbox.body.canSendMessage, false);
+            assert.equal(Object.keys(inbox.body.messages).length, 0);
+            assert.equal(inbox.body.feedbackThreads[0].messages.length, 4);
+            assert.equal(inbox.body.feedbackThreads[0].quote, '<script>quoted text</script>');
+            assert.equal(Object.hasOwn(inbox.body.feedbackThreads[0].authors[actors.owner.uid], 'mail'), false);
+            await UserModel.setPriv(actors.sys.uid, PRIV.PRIV_USER_PROFILE);
+            await actors.sys.client.get(`/home/messages?feedback=${feedbackId}`).set('Accept', 'application/json').expect(403);
+            await actors.sys.client.post('/home/messages').set('Accept', 'application/json').send({
+                operation: 'feedback_reply', feedbackId, content: 'Reply after losing administrator privilege',
+            }).expect(403);
+
+            await ProblemModel.edit(domainId, pid, { hidden: true });
+            await submitFeedback(sourceUrl).expect(403);
+            await ProblemModel.edit(domainId, pid, { hidden: false });
+            await submitFeedback(`${sourceUrl}?tid=${unassignedTid}`).expect(403);
+            await submitFeedback(`/d/${domainId}/course/${unassignedTid}/lecture/1`).expect(403);
+            const lectureUrl = `/d/${domainId}/course/${tid}/lecture/1`;
+            await actors.student.client.get(lectureUrl).set('Accept', 'application/json').expect(403);
+            await submitFeedback(lectureUrl).expect(403);
+            await ContestModel.setStatus(domainId, tid, actors.student.uid, { lectureAllow: { 1: true } });
+            await actors.student.client.get(lectureUrl).set('Accept', 'application/json').expect(200);
+            const lectureResponse = await submitFeedback(lectureUrl).expect(200);
+            assert.notEqual(lectureResponse.body.feedbackId, response.body.feedbackId);
+            const lectureFeedback = await FeedbackModel.get(new ObjectId(lectureResponse.body.feedbackId));
+            assert.equal(lectureFeedback.source.type, 'lecture');
+            assert.equal(lectureFeedback.source.url, lectureUrl);
+            await submitFeedback(sourceUrl, 'x'.repeat(2001)).expect(403);
+            await submitFeedback(sourceUrl, 'valid', { quote: 'x'.repeat(4001) }).expect(403);
+            await submitFeedback(sourceUrl).expect(200);
+            const limited = await submitFeedback(sourceUrl).expect(403);
+            assert.equal(limited.body.error.name, 'OpcountExceededError');
+        } finally {
+            const feedbackDocs = await FeedbackModel.coll.find({ domainId: { $in: [domainId, otherDomainId] } }).toArray();
+            if (tid) await ContestModel.del(domainId, tid);
+            if (unassignedTid) await ContestModel.del(domainId, unassignedTid);
+            if (pid) await ProblemModel.del(domainId, pid);
+            await Promise.all([
+                MessageModel.coll.deleteMany({ feedbackId: { $in: feedbackDocs.map((doc) => doc._id) } }),
+                FeedbackModel.coll.deleteMany({ domainId: { $in: [domainId, otherDomainId] } }),
+                DomainModel.coll.deleteMany({ _id: { $in: [domainId, otherDomainId] } }),
+                DomainModel.collUser.deleteMany({ domainId: { $in: [domainId, otherDomainId] } }),
+                UserModel.coll.deleteMany({ _id: { $in: createdUids } }),
+            ]);
+        }
+    });
+
     it('Does not persist lecture rules without a lecture', async () => {
         const ContestModel = global.Hydro.model.contest;
         const ProblemModel = global.Hydro.model.problem;
@@ -1205,6 +1331,195 @@ describe('App', () => {
             await DomainModel.del(domainId);
             await Promise.all([
                 RecordModel.coll.deleteMany({ domainId }),
+                UserModel.coll.deleteMany({ _id: { $in: users.map((user) => user.uid) } }),
+                require('../packages/hydrooj/src/model/user').collV.deleteMany({ _id: teamUid }),
+            ]);
+        }
+    });
+
+    it('isolates post-contest practice, invitations, personal records, and rejudging', async () => {
+        const { domain: DomainModel, contest: ContestModel, problem: ProblemModel, record: RecordModel, user: UserModel } = global.Hydro.model;
+        const practice = require('../packages/hydrooj/src/lib/contest-practice');
+        const { postJudge } = require('../packages/hydrooj/src/handler/judge');
+        const { RecordMainConnectionHandler, RecordDetailConnectionHandler } = require('../packages/hydrooj/src/handler/record');
+        const suffix = Date.now().toString(36);
+        const domainId = `contest-practice-${suffix}`;
+        const users = [];
+        let teamUid;
+        let renderer;
+        const previousUiAddon = global.addons['ui-default'];
+        try {
+            await DomainModel.add(domainId, 2, 'Contest practice', '');
+            for (const prefix of ['practice', 'mate', 'newcomer']) {
+                const uname = `${prefix}${suffix}`;
+                // eslint-disable-next-line no-await-in-loop
+                const uid = await UserModel.create(`${uname}@example.com`, uname, '123456');
+                // eslint-disable-next-line no-await-in-loop
+                await DomainModel.setUserRole(domainId, uid, 'default', true);
+                const client = supertest.agent(require('hydrooj').httpServer);
+                // eslint-disable-next-line no-await-in-loop
+                await client.post('/login').send({ uname, password: '123456' }).expect(302);
+                users.push({ uid, client });
+            }
+            const [student, mate, newcomer] = users;
+            const pid = await ProblemModel.add(domainId, '', 'Hidden practice problem', 'Practice statement', 2);
+            await ProblemModel.edit(domainId, pid, { hidden: true });
+            const now = Date.now();
+            const tid = await ContestModel.add(
+                domainId, 'Practice contest', '', 2, 'oi',
+                new Date(now - 7200000), new Date(now - 3600000), [pid], true,
+                { allowPractice: true, _code: 'practice-code', keepScoreboardHidden: true },
+            );
+            const prefix = `/d/${domainId}`;
+            const editBody = {
+                operation: 'update', title: 'Practice contest', content: 'Practice contest rules', rule: 'oi', pids: `${pid}`,
+                beginAtDate: '2020-01-01', beginAtTime: '12:00', duration: 1,
+                rated: true, code: 'practice-code', keepScoreboardHidden: true,
+            };
+            await agent.post(`${prefix}/contest/${tid}/edit`).send({ ...editBody, allowPractice: false }).expect(302);
+            assert.equal((await ContestModel.get(domainId, tid)).allowPractice, false);
+            await agent.post(`${prefix}/contest/${tid}/edit`).send({ ...editBody, allowPractice: true }).expect(302);
+            await agent.post(`${prefix}/contest/${tid}/edit`).send(editBody).expect(302);
+            assert.equal((await ContestModel.get(domainId, tid)).allowPractice, true);
+            const submit = (client) => client.post(`${prefix}/p/${pid}/submit?tid=${tid}`)
+                .send({ lang: 'cc', code: 'int main() { return 0; }', practice: false, practiceContest: new ObjectId().toHexString() })
+                .accept('json');
+            const getActor = (uid) => UserModel.getById(domainId, uid);
+            const originalContest = await ContestModel.get(domainId, tid);
+            const originalProblem = await ProblemModel.get(domainId, pid);
+            const originalUser = await DomainModel.getDomainUser(domainId, await getActor(student.uid));
+            await submit(newcomer.client).expect(403);
+            await newcomer.client.post(`${prefix}/contest/${tid}`).send({ operation: 'practice', code: 'wrong' }).expect(403);
+            await newcomer.client.post(`${prefix}/contest/${tid}`).send({ operation: 'practice', code: 'practice-code' }).expect(302);
+            await newcomer.client.post(`${prefix}/contest/${tid}`).send({ operation: 'practice', code: 'practice-code' }).expect(302);
+            assert.equal(await global.app.get('db').collection('contest.practiceAccess').countDocuments({ domainId }), 1);
+            await ContestModel.edit(domainId, tid, { _code: 'changed-code' });
+            await submit(newcomer.client).expect(403);
+            await newcomer.client.post(`${prefix}/contest/${tid}`).send({ operation: 'practice', code: 'changed-code' }).expect(302);
+            const newcomerSubmission = await submit(newcomer.client).expect(200);
+            assert(newcomerSubmission.body.rid);
+            assert.equal((await ContestModel.get(domainId, tid)).attend, originalContest.attend);
+            assert.equal(await ContestModel.getStatus(domainId, tid, newcomer.uid), null);
+
+            // Original team members need no new invitation, but practice remains personal.
+            await ContestModel.edit(domainId, tid, { rated: false, allowTeam: true });
+            teamUid = await UserModel.createVuser(`practice-team-${suffix}`, { members: [student.uid, mate.uid] });
+            await ContestModel.attend(domainId, tid, teamUid, { members: [student.uid, mate.uid] });
+            const teamStatusBefore = await ContestModel.getStatus(domainId, tid, teamUid);
+            const studentSubmission = await submit(student.client).expect(200);
+            const rid = new ObjectId(studentSubmission.body.rid);
+            let rdoc = await RecordModel.get(domainId, rid);
+            assert(rdoc.practiceContest.equals(tid));
+            assert.equal(rdoc.contest, undefined);
+            await assert.rejects(() => RecordModel.add(domainId, pid, student.uid, 'cc', 'invalid', false, {
+                contest: tid, practiceContest: tid, type: 'judge',
+            }));
+            await student.client.get(`${prefix}/p/${pid}`).accept('json').expect(403);
+            const detail = await student.client.get(`${prefix}/p/${pid}?tid=${tid}`).accept('json').expect(200);
+            assert.equal(detail.body.mode, 'practice');
+            global.addons['ui-default'] = dirname(require.resolve('@hydrooj/ui-default/package.json'));
+            renderer = global.app.plugin(require('@hydrooj/ui-default/backendlib/template').TemplateService);
+            await renderer;
+            await student.client.get(`${prefix}/p/${pid}?tid=${tid}`).accept('html').expect(200)
+                .then((res) => assert.match(res.text, /practice=true/));
+            await student.client.get(`${prefix}/p/${pid}/submit?tid=${tid}`).accept('html').expect(200);
+            await agent.get(`${prefix}/contest/${tid}/edit`).accept('html').expect(200)
+                .then((res) => assert.match(res.text, /name="allowPractice"/));
+            await student.client.get(`${prefix}/record/${rid}`).accept('json').expect(200);
+            await student.client.get(`${prefix}/record/${rid}`).accept('html').expect(200);
+            await student.client.get(`${prefix}/record/${rid}?download=true`).expect(200);
+            await mate.client.get(`${prefix}/record/${rid}`).accept('json').expect(403);
+            await mate.client.get(`${prefix}/record/${rid}?download=true`).expect(403);
+            await agent.get(`${prefix}/record/${rid}`).accept('json').expect(200);
+            await mate.client.get(`${prefix}/record?tid=${tid}&practice=true&uidOrName=${student.uid}`).accept('json').expect(403);
+            const ownRecords = await student.client.get(`${prefix}/record?tid=${tid}&practice=true`).accept('json').expect(200);
+            assert.deepEqual(ownRecords.body.rdocs.map((row) => row._id), [rid.toHexString()]);
+            await student.client.get(`${prefix}/record?tid=${tid}&practice=true`).accept('html').expect(200)
+                .then((res) => assert.match(res.text, /practice=1/));
+            const managerRecords = await agent.get(`${prefix}/record?tid=${tid}&practice=true`).accept('json').expect(200);
+            assert.equal(managerRecords.body.rdocs.length, 2);
+            const ordinaryRecords = await agent.get(`${prefix}/record?all=true`).accept('json').expect(200);
+            assert(ordinaryRecords.body.rdocs.every((row) => !row.practiceContest));
+
+            // Exercise the same HTTP/live ACL, including the noTemplate payload used by the editor.
+            const wsArgs = [domainId, tid, pid, `${student.uid}`, undefined, false, false, false, true, true];
+            const ws = Object.assign(Object.create(RecordMainConnectionHandler.prototype), {
+                user: await getActor(student.uid), args: { domainId }, queue: new Map(),
+            });
+            await ws.prepare(...wsArgs);
+            let pushed = 0;
+            ws.queueSend = () => { pushed++; };
+            await ws.onRecordChange(rdoc);
+            assert.equal(pushed, 1);
+            const outsiderWs = Object.assign(Object.create(RecordMainConnectionHandler.prototype), {
+                user: await getActor(mate.uid), args: { domainId }, queue: new Map(),
+            });
+            await assert.rejects(() => outsiderWs.prepare(...wsArgs));
+            await outsiderWs.prepare(domainId, tid, pid, `${mate.uid}`, undefined, false, false, false, true, true);
+            outsiderWs.queueSend = () => { pushed++; };
+            await outsiderWs.onRecordChange(rdoc);
+            assert.equal(pushed, 1);
+            const detailWs = Object.assign(Object.create(RecordDetailConnectionHandler.prototype), {
+                user: await getActor(student.uid), args: { domainId }, onRecordChange: () => {},
+            });
+            await detailWs.prepare(domainId, rid, true);
+            assert.equal(detailWs.canViewCode, true);
+            detailWs.user = await getActor(mate.uid);
+            await assert.rejects(() => detailWs.prepare(domainId, rid, true));
+
+            rdoc = await RecordModel.update(domainId, rid, { status: STATUS.STATUS_ACCEPTED, score: 100 });
+            await postJudge(rdoc);
+            assert.equal(await ProblemModel.getStatus(domainId, pid, student.uid), null);
+            assert.deepEqual(await ContestModel.getStatus(domainId, tid, teamUid), teamStatusBefore);
+            assert.equal(await RecordModel.collStat.countDocuments({ _id: rid }), 0);
+            const finalProblem = await ProblemModel.get(domainId, pid);
+            assert.equal(finalProblem.nSubmit, originalProblem.nSubmit);
+            assert.equal(finalProblem.nAccept, originalProblem.nAccept);
+            const finalUser = await DomainModel.getDomainUser(domainId, await getActor(student.uid));
+            assert.equal(finalUser.nSubmit, originalUser.nSubmit);
+            assert.equal(finalUser.nAccept, originalUser.nAccept);
+            assert.equal(finalUser.rp, originalUser.rp);
+            const results = await practice.getPracticeResults(domainId, tid, student.uid, [pid]);
+            assert.equal(results[pid].status, STATUS.STATUS_ACCEPTED);
+            const pendingRid = await RecordModel.add(domainId, pid, student.uid, 'cc', 'pending', false, { practiceContest: tid, type: 'judge' });
+            assert((await practice.getPracticeResults(domainId, tid, student.uid, [pid]))[pid].rid.equals(rid));
+            rdoc = await RecordModel.update(domainId, rid, { status: STATUS.STATUS_WRONG_ANSWER, score: 40 });
+            await postJudge(rdoc);
+            assert.equal((await practice.getPracticeResults(domainId, tid, student.uid, [pid]))[pid].score, 40);
+            const pending = await RecordModel.update(domainId, pendingRid, { status: STATUS.STATUS_WRONG_ANSWER, score: 50 });
+            await postJudge(pending);
+            assert((await practice.getPracticeResults(domainId, tid, student.uid, [pid]))[pid].rid.equals(pendingRid));
+            const rejudgedRid = await RecordModel.add(domainId, pid, student.uid, 'cc', 'rejudge', false, {
+                practiceContest: tid, type: 'rejudge',
+            });
+            assert((await RecordModel.get(domainId, rejudgedRid)).practiceContest.equals(tid));
+            const problems = await student.client.get(`${prefix}/contest/${tid}/problems`).accept('json').expect(200);
+            assert.equal(problems.body.correction[pid].score, 50);
+            assert.equal(problems.body.canViewRecord, false);
+            assert.equal(problems.body.rdict[pendingRid.toHexString()].score, 50);
+            await student.client.get(`${prefix}/contest/${tid}/problems`).accept('html').expect(200);
+
+            // Closing practice retains history; reopening the formal contest does not reclassify old records.
+            await ContestModel.edit(domainId, tid, { allowPractice: false });
+            await submit(student.client).expect(403);
+            await student.client.get(`${prefix}/record/${rid}`).accept('json').expect(200);
+            await ContestModel.edit(domainId, tid, { allowPractice: true, endAt: new Date(Date.now() + 3600000), duration: 0.01 });
+            await ContestModel.setStatus(domainId, tid, teamUid, { startAt: new Date(now - 3600000), endAt: new Date(now - 1000) });
+            assert.equal(await practice.canSubmitPractice(await getActor(student.uid), await ContestModel.get(domainId, tid)), false);
+            await submit(student.client).expect(403);
+            await ContestModel.edit(domainId, tid, { endAt: new Date(now - 3600000), assign: [`${newcomer.uid}`] });
+            await student.client.get(`${prefix}/record/${rid}`).accept('json').expect(403);
+            await student.client.get(`${prefix}/record?tid=${tid}&practice=true`).accept('json').expect(403);
+            assert.equal(await practice.canSubmitPractice(await getActor(student.uid), await ContestModel.get(domainId, tid)), false);
+        } finally {
+            if (renderer) await renderer.dispose();
+            if (previousUiAddon === undefined) delete global.addons['ui-default'];
+            else global.addons['ui-default'] = previousUiAddon;
+            await DomainModel.del(domainId);
+            await Promise.all([
+                RecordModel.coll.deleteMany({ domainId }),
+                global.app.get('db').collection('contest.practiceAccess').deleteMany({ domainId }),
+                global.Hydro.model.task.deleteMany({ domainId }),
                 UserModel.coll.deleteMany({ _id: { $in: users.map((user) => user.uid) } }),
                 require('../packages/hydrooj/src/model/user').collV.deleteMany({ _id: teamUid }),
             ]);

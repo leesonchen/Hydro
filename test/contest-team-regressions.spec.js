@@ -127,3 +127,68 @@ test('JSON responses omit participantUids without modifying internal status', ()
     assert.deepEqual(output.tsdoc.members, [42]);
     assert.deepEqual(status.participantUids, [42]);
 });
+
+test('practice opens only after the whole contest and keeps invitations and records personal', async () => {
+    const { ObjectId } = require('mongodb');
+    const { createHash } = require('node:crypto');
+    const perms = { PERM_VIEW_CONTEST: 1, PERM_VIEW_PROBLEM: 2, PERM_SUBMIT_PROBLEM: 3, PERM_EDIT_CONTEST: 4 };
+    const grants = [];
+    const registered = new Set();
+    const actor = (uid, manager = false) => ({
+        _id: uid, own: () => manager,
+        hasPerm: (perm) => perm !== perms.PERM_EDIT_CONTEST || manager,
+    });
+    const codeError = class extends Error {};
+    const practice = loadSource(path.resolve(__dirname, '../packages/hydrooj/src/lib/contest-practice.ts'), {
+        crypto: { createHash },
+        mongodb: { ObjectId },
+        '../error': { ContestNotLiveError: codeError, InvalidTokenError: codeError, PermissionError: codeError },
+        '../model/builtin': { PERM: perms },
+        '../model/contest': {
+            RULES: { oi: {}, course: { hidden: true }, homework: { hidden: true } },
+            isDone: (tdoc) => tdoc.endAt <= new Date(),
+            canAccessAssignedContest: (user, tdoc) => !tdoc.assign?.length || tdoc.assign.includes(`${user._id}`),
+            getStatus: async (_domainId, _tid, uid) => ({ attend: registered.has(uid) ? 1 : 0 }),
+            getTeamVid: async () => undefined,
+        },
+        '../service/db': { __esModule: true, default: {
+            collection: () => ({
+                findOne: async (query) => grants.find((grant) => Object.entries(query).every(([key, value]) => grant[key] === value)),
+                updateOne: async (query, update) => {
+                    let grant = grants.find((row) => row.uid === query.uid);
+                    if (!grant) grants.push(grant = { ...query });
+                    Object.assign(grant, update.$set);
+                },
+            }),
+        } },
+    });
+    const tdoc = { domainId: 'domain', docId: new ObjectId(), rule: 'oi', endAt: new Date(Date.now() - 1000) };
+    assert.equal(practice.isPracticeOpen(tdoc), false);
+    tdoc.allowPractice = true;
+    assert.equal(await practice.canSubmitPractice(actor(1), tdoc), true);
+    assert.equal(practice.canReadPractice(actor(2), tdoc, 1), false);
+    assert.equal(practice.canReadPractice(actor(3, true), tdoc, 1), true);
+    assert.equal(practice.canReadPractice(actor(0), tdoc, 0), false);
+    tdoc.endAt = new Date(Date.now() + 3600000);
+    assert.equal(await practice.canSubmitPractice(actor(1), tdoc), false);
+    tdoc.endAt = new Date(Date.now() - 1000);
+    tdoc._code = 'first-code';
+    assert.equal(await practice.canSubmitPractice(actor(1), tdoc), false);
+    await assert.rejects(() => practice.grantPracticeAccess(actor(1), tdoc, 'wrong'));
+    await practice.grantPracticeAccess(actor(1), tdoc, 'first-code');
+    await practice.grantPracticeAccess(actor(1), tdoc, 'first-code');
+    assert.equal(grants.length, 1);
+    assert.notEqual(grants[0].codeHash, tdoc._code);
+    assert.equal(await practice.canSubmitPractice(actor(1), tdoc), true);
+    tdoc._code = 'new-code';
+    assert.equal(await practice.canSubmitPractice(actor(1), tdoc), false);
+    registered.add(2);
+    assert.equal(await practice.canSubmitPractice(actor(2), tdoc), true);
+    tdoc.allowPractice = false;
+    assert.equal(await practice.canSubmitPractice(actor(2), tdoc), false);
+    assert.equal(practice.canReadPractice(actor(2), tdoc, 2), true);
+    tdoc.assign = ['3'];
+    assert.equal(practice.canReadPractice(actor(2), tdoc, 2), false);
+    assert.equal(practice.isPracticeOpen({ ...tdoc, rule: 'course', allowPractice: true }), false);
+    assert.equal(practice.isPracticeOpen({ ...tdoc, rule: 'homework', allowPractice: true }), false);
+});

@@ -248,6 +248,8 @@ Contest Maintainer: 比賽管理員
 Contest scoreboard is not visible.: 當前比賽成績表隱藏，暫不可顯示。
 Contest Scoreboard: 比賽成績表
 Contest Settings: 比賽設定
+Hide from top banners: 隱藏頂部展示
+The contest will still appear in the All Contests list: 比賽仍顯示在全部比賽列表中
 contest_create: 建立比賽
 contest_detail_problem_submit: 遞交比賽程式碼
 contest_edit: 編輯比賽
@@ -1246,3 +1248,23 @@ Select exactly one default invitation role.: 請指定且僅指定一個預設�
 Role priorities must be unique positions in the role order.: 優先順序必須是角色列表中的唯一位置，不能重複。
 This invitation assigns its role to new members and upgrades members with a lower priority role.: 新成員將被分配邀請中的角色；已有成員的角色優先順序較低時也會升級為邀請中的角色。
 'If you have not joined this domain or your role has a lower priority, your role will be set to {0}.': 如果你尚未加入此域，或目前角色的優先順序較低，你的角色將設為 {0}。
+Problem feedback: 問題回饋
+Submit feedback: 提交回饋
+Feedback submitted: 回饋已提交
+View feedback: 查看回饋
+Quoted text: 引用內容
+Describe the content problem: 問題說明
+Sent to the domain owner and copied to system administrators.: 通知域建立者，並副本傳送給系統管理員。
+You can add information and read replies in this feedback conversation in Messages.: 可以在站內訊息的這條回饋中補充說明、查看回覆。
+Please select no more than 4000 characters for feedback.: 引用內容最多 4000 個字元，請縮小選取範圍。
+Please describe the content problem.: 請填寫問題說明。
+Add information about this feedback: 補充這條回饋的問題說明
+
+Allow post-contest practice: 允許賽後補題
+No Permission to Practice: 沒有補題權限
+Post-contest Practice: 賽後補題
+Start Practice: 開始補題
+My Practice Submissions: 我的補題紀錄
+All Practice Submissions: 所有補題紀錄
+Post-contest practice is personal and does not affect contest scores, problem statistics, or RP/Rating.: 賽後補題按個人記錄，不計入正式比賽成績、題庫統計或 RP/Rating。
+Post-contest practice is not supported for courses or homework.: 課程和作業不支援比賽的賽後補題設定。

@@ -12,7 +12,7 @@ export default function reducer(state = {
       [type]: value,
     };
   }
-  if (action.type === 'SCRATCHPAD_RECORDS_PUSH') {
+  if (['SCRATCHPAD_RECORDS_PUSH', 'SCRATCHPAD_PRETEST_RECORD_PUSH'].includes(action.type)) {
     const { rdoc } = action.payload;
     if (rdoc._id === state.rid) {
       const output = [`${STATUS_TEXTS[rdoc.status]} ${rdoc.time}ms ${rdoc.memory}KiB`];

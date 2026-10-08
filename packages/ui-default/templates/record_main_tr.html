@@ -17,7 +17,7 @@
       </button> |
     </form>
   {% endif %}
-  {% if pdoc and rdoc.contest %}
+  {% if pdoc and (rdoc.contest or rdoc.practiceContest) %}
     {{ problem.render_problem_title(pdoc, tdoc=tdoc, show_tags=false, show_invisible_flag=false) }}
   {% elif pdoc and (not pdoc.hidden or handler.user.hasPerm(perm.PERM_VIEW_PROBLEM_HIDDEN) or handler.user.own(pdoc)) %}
     {{ problem.render_problem_title(pdoc, show_tags=false) }}
@@ -26,6 +26,7 @@
   {% endif %}
   {% if rdoc.files.hack %}<span class="text-orange">({{ _('Hack') }})</span>{% endif %}
   {% if _isPretest %}<span class="text-orange">({{ _('Pretest') }})</span>{% endif %}
+  {% if rdoc.practiceContest %}<span class="text-orange">({{ _('Post-contest Practice') }})</span>{% endif %}
   </td>
   <td class="col--submit-by">{{ user.render_inline(udoc, avatar=false, badge=false) }}</td>
   <td class="col--time">{% if rdoc['time'] %}{% if [STATUS.STATUS_TIME_LIMIT_EXCEEDED, STATUS.STATUS_MEMORY_LIMIT_EXCEEDED, STATUS.STATUS_OUTPUT_LIMIT_EXCEEDED].includes(rdoc['status']) %}&ge;{% endif %}{{ rdoc.time|round|int }}ms{% else %}-{% endif %}</td>

@@ -252,6 +252,8 @@ Contest resumed.: 比赛已恢复。
 Contest scoreboard is not visible.: 当前比赛成绩表隐藏，暂不可显示。
 Contest Scoreboard: 比赛成绩表
 Contest Settings: 比赛设置
+Hide from top banners: 隐藏顶部展示
+The contest will still appear in the All Contests list: 比赛仍显示在全部比赛列表中
 contest_create: 创建比赛
 contest_detail_problem_submit: 递交比赛题目
 contest_edit: 编辑比赛
@@ -1252,3 +1254,23 @@ Select exactly one default invitation role.: 请指定且仅指定一个默认�
 Role priorities must be unique positions in the role order.: 优先级必须是角色列表中的唯一位置，不能重复。
 This invitation assigns its role to new members and upgrades members with a lower priority role.: 新成员将被分配邀请中的角色；已有成员的角色优先级较低时也会升级为邀请中的角色。
 'If you have not joined this domain or your role has a lower priority, your role will be set to {0}.': 如果你尚未加入此域，或当前角色的优先级较低，你的角色将设为 {0}。
+Problem feedback: 问题反馈
+Submit feedback: 提交反馈
+Feedback submitted: 反馈已提交
+View feedback: 查看反馈
+Quoted text: 引用内容
+Describe the content problem: 问题说明
+Sent to the domain owner and copied to system administrators.: 通知域创建者，并抄送系统管理员。
+You can add information and read replies in this feedback conversation in Messages.: 可以在站内消息的这条反馈中补充说明、查看回复。
+Please select no more than 4000 characters for feedback.: 引用内容最多 4000 个字符，请缩小选区。
+Please describe the content problem.: 请填写问题说明。
+Add information about this feedback: 补充这条反馈的问题说明
+
+Allow post-contest practice: 允许赛后补题
+No Permission to Practice: 没有补题权限
+Post-contest Practice: 赛后补题
+Start Practice: 开始补题
+My Practice Submissions: 我的补题记录
+All Practice Submissions: 所有补题记录
+Post-contest practice is personal and does not affect contest scores, problem statistics, or RP/Rating.: 赛后补题按个人记录，不计入正式比赛成绩、题库统计或 RP/Rating。
+Post-contest practice is not supported for courses or homework.: 课程和作业不支持比赛的赛后补题设置。

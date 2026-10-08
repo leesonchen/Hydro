@@ -6,6 +6,7 @@ function scrollToViewport() {
   const BOUND_TOP = 60;
   const BOUND_BOTTOM = 20;
   const node = $('.messagepad')[0];
+  if (!node) return;
   if (node.offsetHeight + BOUND_TOP + BOUND_BOTTOM < window.innerHeight) {
     const rect = node.getBoundingClientRect();
     const rectBody = document.body.getBoundingClientRect();

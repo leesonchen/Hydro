@@ -1,10 +1,21 @@
 import _ from 'lodash';
+import { mergeMessages, messageDialogueId } from '../helpers';
 
 export default function reducer(state = {}, action = {}) {
   switch (action.type) {
     case 'DIALOGUES_LOAD_DIALOGUES_FULFILLED': {
-      const { messages } = action.payload;
-      return { ...state, ..._.keyBy(messages, 'udoc._id') };
+      const { messages, feedbackThreads = [] } = action.payload;
+      // Reconcile the request's snapshot, preserving feedback pushed while it was loading.
+      const feedbackIds = new Set(action.meta?.feedbackIds ?? Object.keys(state));
+      const next = _.omitBy(state, (dialogue, id) => dialogue.kind === 'feedback' && feedbackIds.has(id));
+      for (const item of [...Object.values(messages || {}), ...feedbackThreads]) {
+        next[item._id] = {
+          ...state[item._id], ...item,
+          authors: { ...state[item._id]?.authors, ...item.authors },
+          messages: mergeMessages(state[item._id]?.messages, item.messages),
+        };
+      }
+      return next;
     }
     case 'DIALOGUES_CREATE': {
       const { user } = action.payload;
@@ -25,25 +36,23 @@ export default function reducer(state = {}, action = {}) {
         ...state,
         [id]: {
           ...state[id],
-          messages: [
-            ...state[id].messages,
-            mdoc,
-          ],
+          messages: mergeMessages(state[id]?.messages, [mdoc]),
         },
       };
     }
     case 'DIALOGUES_MESSAGE_PUSH': {
-      const { mdoc, udoc } = action.payload;
-      const to = mdoc.from === UserContext._id ? mdoc.to : mdoc.from;
+      const { mdoc, udoc, feedbackThread } = action.payload;
+      const to = messageDialogueId(mdoc, UserContext._id);
+      if (mdoc.feedbackId && !feedbackThread && !state[to]) return state;
       return {
         ...state,
         [to]: {
           ...state[to],
-          udoc,
-          messages: [
-            ...state[to]?.messages || [],
-            mdoc,
-          ],
+          ...feedbackThread,
+          udoc: feedbackThread?.udoc || (mdoc.feedbackId ? state[to]?.udoc : udoc),
+          _id: to,
+          ...(mdoc.feedbackId ? { authors: { ...state[to]?.authors, ...feedbackThread?.authors, [udoc._id]: udoc } } : {}),
+          messages: mergeMessages(state[to]?.messages, feedbackThread?.messages, [mdoc]),
         },
       };
     }
