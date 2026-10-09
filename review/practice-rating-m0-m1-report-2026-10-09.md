@@ -36,6 +36,6 @@ M0 旧机制夹具保留零提交、全失败、全通过的 `difficultyAlgorith
 | `yarn build` | 基线失败；移除本轮提取器后仍是相同的 5 个既有依赖类型错误（md-editor、login-with-oidc 3 处、vjudge） |
 | `yarn test`（沙箱） | 临时 MongoDB 启动受限，3 个既有集成文件失败；未修改环境外重跑 73 项相关子测试通过 |
 | `yarn test`（允许临时 MongoDB） | 65 项中 64 项通过；既有 `Allows private content feedback...` 在 `test/main.ts:683` 的 DomainModel.add 断言失败，日志显示与本轮文件无关 |
-| `git diff --check` | 待提交前执行 |
+| `git diff --check` | PR-A 提交前已通过；提交 `3811fe72` |
 
 本报告不把构建基线错误、环境/既有集成失败写成新功能通过，也不把单元测试当成 M2/M3 的数值稳定性、原子指针、权限隔离或未来效果验证。生产数据库、发布、部署和公开入口均未访问。
