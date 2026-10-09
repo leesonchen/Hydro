@@ -3,7 +3,8 @@ import Schema from 'schemastery';
 import { Context } from '../context';
 import { RatingDatabase } from '../lib/practice-rating/adapter';
 import { runPracticeRating } from '../lib/practice-rating/runner';
-import { ActiveScope, COLLECTIONS, PracticeRatingStore } from '../lib/practice-rating/store';
+import { ActiveScope, checksum, COLLECTIONS, PracticeRatingStore } from '../lib/practice-rating/store';
+import { evaluatePracticePredictions, freezePracticePredictions, MAX_PREDICTION_PAIRS } from '../lib/practice-rating/validation';
 import { Logger } from '../logger';
 import db from '../service/db';
 
@@ -35,22 +36,42 @@ export async function apply(ctx: Context) {
     ctx.addScript('practice-rating-configure', 'Explicitly enable/disable daily shadow fits for one domain', Schema.object({
         domainId,
         enabled: Schema.boolean().required(),
+        teacherTrial: Schema.boolean().default(false).description('Enable authorized course/homework teachers to read practice estimates'),
         excludedUids,
     }), async (options, report) => {
         if (!await database.collection('domain').findOne({ _id: options.domainId as any }, { projection: { _id: 1 } })) {
             throw new Error('Unknown domain');
         }
+        const effective = [...new Set<number>(options.excludedUids)].sort((a, b) => a - b);
         await database.collection<ActiveScope>(COLLECTIONS.active).updateOne({ _id: options.domainId }, {
-            $set: { enabled: options.enabled, excludedUids: options.excludedUids },
+            $set: { enabled: options.enabled, teacherTrial: options.teacherTrial,
+                excludedUids: effective, exclusionConfigVersion: checksum(effective) },
         }, { upsert: true });
         report({ message: `Daily practice rating ${options.enabled ? 'enabled' : 'disabled'} for ${options.domainId}` });
+        return true;
+    });
+    ctx.addScript('practice-rating-freeze', 'Freeze an explicit future cohort before its first eligible attempts', Schema.object({
+        domainId,
+        pairs: Schema.array(Schema.object({ uid: Schema.number().min(1).step(1).required(),
+            pid: Schema.number().min(1).step(1).required() })).min(1).max(MAX_PREDICTION_PAIRS).required(),
+    }), async (options, report) => {
+        const pairs = options.pairs.map((p) => ({ uid: p.uid, pid: p.pid }));
+        report({ message: JSON.stringify(await freezePracticePredictions(database, options.domainId, pairs)) });
+        return true;
+    });
+    ctx.addScript('practice-rating-evaluate', 'Read future 7-day completion calibration; never modifies frozen predictions', Schema.object({
+        domainId,
+        predictionId: Schema.string().required(),
+        asOf: Schema.number().min(0).step(1),
+    }), async (options, report) => {
+        report({ message: JSON.stringify(await evaluatePracticePredictions(database, options.domainId, options.predictionId, options.asOf)) });
         return true;
     });
     ctx.on('task/daily', async () => {
         const scopes = await database.collection<ActiveScope>(COLLECTIONS.active).find({ enabled: true }).sort({ _id: 1 }).toArray();
         for (const scope of scopes) {
             try {
-                const summary = await runPracticeRating(database, { domainId: scope._id, excludedUids: scope.excludedUids ?? [], write: true });
+                const summary = await runPracticeRating(database, { domainId: scope._id, write: true });
                 logger.info('Daily shadow run: %o', summary);
             } catch (error) {
                 logger.error('Daily shadow fit failed for %s; previous active run preserved: %s', scope._id, error.message);

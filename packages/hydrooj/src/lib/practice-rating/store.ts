@@ -1,9 +1,9 @@
 /* eslint-disable no-await-in-loop */
 import { createHash, randomUUID } from 'node:crypto';
-import { BSON } from 'mongodb';
-import { RatingDatabase } from './adapter';
-import { EPISODE_WINDOW_MS, PracticeEpisode, PracticeSubmission, RECENT_WINDOW_MS, TrainingObservation } from './episodes';
-import { completionProbability, JointFit, ProblemEstimate, problemKey, UserEstimate } from './model';
+import { setImmediate } from 'node:timers/promises';
+import { ExclusionPolicy, RatingDatabase, RECORD_INDEX } from './adapter';
+import { EPISODE_WINDOW_MS, PracticeEpisode, RECENT_WINDOW_MS, TrainingObservation } from './episodes';
+import { completionProbability, JointFit, ProblemEstimate, UserEstimate } from './model';
 
 export const COLLECTIONS = Object.freeze({
     runs: 'practice_rating_runs', episodes: 'practice_rating_episodes', users: 'practice_rating_users',
@@ -12,9 +12,8 @@ export const COLLECTIONS = Object.freeze({
 const LEASE_MS = 30 * 60 * 1000;
 
 export interface EpisodeSnapshot {
-    episode: PracticeEpisode;
-    observation: TrainingObservation | null;
-    evidence: PracticeSubmission[];
+    episode: Pick<PracticeEpisode, 'key' | 'uid' | 'pid' | 'revision' | 't0' | 'windowEnd' | 'y'>;
+    observation: TrainingObservation;
 }
 
 export interface RunSnapshot {
@@ -25,6 +24,7 @@ export interface RunSnapshot {
     fit: JointFit;
     episodes: EpisodeSnapshot[];
     diagnostics: Record<string, unknown>;
+    exclusionPolicy?: ExclusionPolicy;
 }
 
 export interface ActiveScope {
@@ -32,7 +32,9 @@ export interface ActiveScope {
     runId?: string;
     asOf?: number;
     enabled?: boolean;
+    teacherTrial?: boolean;
     excludedUids?: number[];
+    exclusionConfigVersion?: string;
     lock?: { token: string, expiresAt: number };
 }
 
@@ -56,7 +58,11 @@ export class PracticeRatingStore {
 
     async ensureIndexes() {
         await this.database.collection(COLLECTIONS.runs).createIndex({ scope: 1, asOf: -1 });
-        for (const name of [COLLECTIONS.episodes, COLLECTIONS.users, COLLECTIONS.problems]) {
+        await this.database.collection(COLLECTIONS.runs).createIndex({ scope: 1, capturedAt: -1, _id: -1 });
+        await this.database.collection('record').createIndex(RECORD_INDEX, { name: 'practiceRatingScan' });
+        await this.database.collection(COLLECTIONS.users).createIndex({ scope: 1, runId: 1, uid: 1 });
+        await this.database.collection(COLLECTIONS.problems).createIndex({ scope: 1, runId: 1, pid: 1, revision: 1 });
+        for (const name of [COLLECTIONS.users, COLLECTIONS.problems]) {
             await this.database.collection(name).createIndex({ scope: 1, runId: 1 });
         }
     }
@@ -90,49 +96,63 @@ export class PracticeRatingStore {
     async save(snapshot: RunSnapshot, lease: { token: string, previousRunId: string | null }) {
         const { scope, runId, episodes, fit, asOf } = snapshot;
         if (fit.scope !== scope || fit.status === 'numerical_failure') throw new Error('Invalid fit cannot replace an active run');
-        const inputHash = checksum(episodes);
-        const outputHash = checksum({ users: fit.users, problems: fit.problems });
+        const inputChunks: string[] = [];
+        const outputChunks: string[] = [];
+        // Bounded serialization/hashing and readback; unchanged training chunks are reused.
+        // Only actual training rows are persisted, never all historical/open processes.
+        const chunkSize = 256;
         const run = {
             _id: runId, scope, asOf, capturedAt: snapshot.capturedAt, modelVersion: fit.modelVersion, sampleVersion: 'practice-episodes-7d-v1',
             parameters: { ...fit.parameters, episodeWindowMs: EPISODE_WINDOW_MS, recentWindowMs: RECENT_WINDOW_MS },
-            status: 'writing', inputHash, outputHash, counts: { episodes: episodes.length, users: fit.users.length, problems: fit.problems.length },
+            status: 'writing', snapshotVersion: 2, counts: { episodes: episodes.length, users: fit.users.length, problems: fit.problems.length },
             fitStatus: fit.status, iterations: fit.iterations, objective: fit.objective, components: fit.components,
             diagnostics: snapshot.diagnostics,
+            exclusionPolicy: snapshot.exclusionPolicy ?? null,
+            exclusionPolicyVersion: checksum(snapshot.exclusionPolicy ?? null),
         };
         const runs = this.database.collection<any>(COLLECTIONS.runs);
         await runs.insertOne(run);
         try {
-            const batches = [
-                [COLLECTIONS.episodes, episodes.map((s) => ({
-                    _id: JSON.stringify([runId, s.episode.key]), scope, runId, key: s.episode.key, ...s,
-                }))],
-                [COLLECTIONS.users, fit.users.map((u) => ({ _id: JSON.stringify([runId, u.uid]), scope, runId, ...u }))],
-                [COLLECTIONS.problems, fit.problems.map((p) => ({ _id: JSON.stringify([runId, p.pid, p.revision]), scope, runId, ...p }))],
-            ] as const;
-            for (const [name, docs] of batches) {
-                for (let i = 0; i < docs.length; i += 500) {
+            for (let i = 0; i < episodes.length; i += chunkSize) {
+                await setImmediate();
+                await this.renew(scope, lease.token);
+                const rows = episodes.slice(i, i + chunkSize);
+                const id = checksum({ scope, rows });
+                await this.database.collection<any>(COLLECTIONS.episodes).updateOne({ _id: id }, {
+                    $setOnInsert: { scope, rows },
+                }, { upsert: true });
+                const saved = await this.database.collection<any>(COLLECTIONS.episodes).findOne({ _id: id, scope });
+                if (!saved || checksum({ scope, rows: saved.rows }) !== id) throw new Error('Input chunk checksum validation failed');
+                inputChunks.push(id);
+            }
+            for (const [name, estimates] of [[COLLECTIONS.users, fit.users], [COLLECTIONS.problems, fit.problems]] as const) {
+                for (let i = 0; i < estimates.length; i += chunkSize) {
+                    await setImmediate();
                     await this.renew(scope, lease.token);
-                    const batch = docs.slice(i, i + 500);
-                    if (batch.some((doc) => BSON.calculateObjectSize(doc) > 12 * 1024 * 1024)) {
-                        throw new Error('Episode snapshot exceeds safe MongoDB document size');
-                    }
+                    const batch = estimates.slice(i, i + chunkSize).map((e, index) => ({
+                        _id: JSON.stringify([runId, i + index]), scope, runId, ...e,
+                    }));
                     await this.database.collection<any>(name).insertMany(batch);
+                    const saved = await this.database.collection<any>(name).find({
+                        scope, runId, _id: { $in: batch.map((d) => d._id) },
+                    }).toArray();
+                    const byId = new Map(saved.map((d) => [d._id, d]));
+                    const hash = checksum(batch);
+                    if (saved.length !== batch.length || checksum(batch.map((d) => byId.get(d._id))) !== hash) {
+                        throw new Error('Estimate count or checksum validation failed');
+                    }
+                    // Hash estimates without runId so identical fits have identical outputHash.
+                    outputChunks.push(checksum(estimates.slice(i, i + chunkSize)));
                 }
             }
-            const savedEpisodes = await this.database.collection(COLLECTIONS.episodes).find({ scope, runId }).sort({ key: 1 }).toArray();
-            const savedUsers = await this.database.collection(COLLECTIONS.users).find({ scope, runId }).sort({ uid: 1 }).toArray();
-            const savedProblems = await this.database.collection(COLLECTIONS.problems).find({ scope, runId }).toArray();
-            savedEpisodes.sort((a, b) => (a.key < b.key ? -1 : Number(a.key > b.key)));
-            savedProblems.sort((a, b) => (problemKey(a.pid, a.revision) < problemKey(b.pid, b.revision) ? -1 : 1));
-            const restoredEpisodes = savedEpisodes.map(({ episode, observation, evidence }) => ({ episode, observation, evidence }));
-            const restoreEstimate = ({ _id, scope: _, runId: __, ...estimate }) => estimate;
-            if (savedEpisodes.length !== episodes.length || savedUsers.length !== fit.users.length || savedProblems.length !== fit.problems.length
-                || checksum(restoredEpisodes) !== inputHash
-                || checksum({ users: savedUsers.map(restoreEstimate), problems: savedProblems.map(restoreEstimate) }) !== outputHash) {
-                throw new Error('Snapshot count or checksum validation failed');
-            }
+            const inputHash = checksum(inputChunks);
+            const outputHash = checksum(outputChunks);
             await this.renew(scope, lease.token);
-            await runs.updateOne({ _id: runId, status: 'writing' }, { $set: { status: 'complete', completedAt: Date.now() } });
+            await runs.updateOne({ _id: runId, status: 'writing' }, { $set: {
+                status: fit.status === 'insufficient' ? 'insufficient' : 'complete',
+                completedAt: Date.now(), inputChunks, inputHash, outputHash,
+            } });
+            if (fit.status === 'insufficient') return { runId, inputHash, outputHash, activated: false };
             const switched = await this.database.collection<ActiveScope>(COLLECTIONS.active).updateOne({
                 _id: scope, 'lock.token': lease.token, 'lock.expiresAt': { $gt: Date.now() },
                 runId: lease.previousRunId, $or: [{ asOf: { $exists: false } }, { asOf: { $lte: asOf } }],
@@ -143,11 +163,29 @@ export class PracticeRatingStore {
             // lost the response. Reconcile the pointer before marking a run
             // failed, otherwise a valid active snapshot becomes unreadable.
             const active = await this.database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: scope, runId });
-            if (active?.runId === runId) return { runId, inputHash, outputHash };
+            if (active?.runId === runId) return { runId, activated: true };
             await runs.updateOne({ _id: runId }, { $set: { status: 'failed', error: error.message } });
             throw error;
         }
-        return { runId, inputHash, outputHash };
+        return { runId, activated: true };
+    }
+
+    async trainingInput(runId: string, scope: string): Promise<EpisodeSnapshot[]> {
+        const run = await this.database.collection<any>(COLLECTIONS.runs).findOne({ _id: runId, scope, status: 'complete' });
+        if (!run) throw new Error('Unknown complete run');
+        if (run.snapshotVersion !== 2) {
+            // Read existing v1 snapshots without migrating or rewriting them.
+            const rows = await this.database.collection<any>(COLLECTIONS.episodes).find({ scope, runId }).toArray();
+            return rows.filter((row) => row.observation).map(({ episode, observation }) => ({ episode, observation }));
+        }
+        if (checksum(run.inputChunks) !== run.inputHash) throw new Error('Input manifest checksum validation failed');
+        const rows: EpisodeSnapshot[] = [];
+        for (const id of run.inputChunks) {
+            const chunk = await this.database.collection<any>(COLLECTIONS.episodes).findOne({ _id: id, scope });
+            if (!chunk || checksum({ scope, rows: chunk.rows }) !== id) throw new Error('Input chunk checksum validation failed');
+            rows.push(...chunk.rows);
+        }
+        return rows;
     }
 
     async activeRun(scope: string) {
@@ -160,7 +198,9 @@ export class PracticeRatingStore {
 
     async read(scope: string, uid?: number, pid?: number, revision: string | null = null) {
         const run = await this.activeRun(scope);
-        if (!run) return { scope, status: 'insufficient', runId: null, user: null, problem: null, probability: null };
+        const attempt = await this.database.collection<any>(COLLECTIONS.runs).find({ scope }).sort({ capturedAt: -1, _id: -1 }).limit(1).next();
+        const latestAttempt = attempt ? { runId: attempt._id, asOf: attempt.asOf, status: attempt.status } : null;
+        if (!run) return { scope, status: 'insufficient', runId: null, latestAttempt, user: null, problem: null, probability: null };
         const [user, problem] = await Promise.all([
             uid === undefined ? null : this.database.collection<StoredUser>(COLLECTIONS.users).findOne({ scope, runId: run._id, uid }),
             pid === undefined ? null : this.database.collection<StoredProblem>(COLLECTIONS.problems).findOne({
@@ -171,7 +211,7 @@ export class PracticeRatingStore {
         // Deliberately omit source evidence/record IDs from the administrator report.
         const publicEstimate = (e: EstimateLike) => e && ({ value: e.value, status: e.status, samples: e.samples,
             successes: e.successes, conditionalSe: e.conditionalSe, component: e.component });
-        return { scope, status: run.fitStatus, runId: run._id, asOf: run.asOf, modelVersion: run.modelVersion,
+        return { scope, status: run.fitStatus, latestAttempt, runId: run._id, asOf: run.asOf, modelVersion: run.modelVersion,
             user: publicEstimate(user), problem: publicEstimate(problem), probability };
     }
 }

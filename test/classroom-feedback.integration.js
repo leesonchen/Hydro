@@ -86,6 +86,80 @@ exports.register = () => describe('Local feedback', () => {
         await global.app.get('db').db.collection('opcount').deleteMany({ op: 'global' });
     });
 
+    it('practice rating trial is opt-in, read-only and restricted to teaching roster and visible problems', async () => {
+        const database = global.app.get('db').db;
+        const { runPracticeRating } = require('../packages/hydrooj/src/lib/practice-rating/runner');
+        const { COLLECTIONS } = require('../packages/hydrooj/src/lib/practice-rating/store');
+        const url = `/d/${domainId}/course/${courseId}/practice-rating`;
+        const hwUrl = `/d/${domainId}/homework/${homeworkId}/practice-rating`;
+        await get(teacher, url).expect(403);
+        await database.collection(COLLECTIONS.active).updateOne({ _id: domainId }, { $set: { teacherTrial: true } }, { upsert: true });
+        const old = Date.now() - 8 * 86400000;
+        const ids = [101, 102].map((n) => new ObjectId(ObjectId.createFromTime(Math.floor(old / 1000)).toHexString().slice(0, 8)
+            + n.toString(16).padStart(16, '0')));
+        await database.collection('record').insertMany([uid, extraUid].map((studentUid, i) => ({
+            _id: ids[i], domainId, uid: studentUid, pid, status: i ? 2 : 1, judgeAt: new Date(old + 1000),
+        })));
+        try {
+            const run = await runPracticeRating(database, { domainId, write: true });
+            const response = await get(teacher, `${url}?uid=${uid}&pid=${pid}`).expect(200);
+            assert.equal(response.body.report.runId, run.runId);
+            assert.equal(typeof response.body.report.probability, 'number');
+            assert(response.headers['cache-control'].includes('no-store'));
+            assert(!JSON.stringify(response.body).includes('recordIds'));
+            assert(!JSON.stringify(response.body).includes('evidence'));
+            const previousUiAddon = global.addons['ui-default'];
+            global.addons['ui-default'] = require('node:path').dirname(require.resolve('@hydrooj/ui-default/package.json'));
+            const renderer = global.app.plugin(require('@hydrooj/ui-default/backendlib/template').TemplateService);
+            try {
+                await renderer;
+                const html = await teacher.get(`${url}?uid=${uid}&pid=${pid}`).accept('html').expect(200);
+                assert(html.text.includes('教师只读试用'));
+                assert(html.text.includes('不等于独立考试能力'));
+                assert(!html.text.includes('DATETIME_SPAN_ERROR'));
+                const page = await teacher.get(`/d/${domainId}/course/${courseId}`).accept('html').expect(200);
+                assert(page.text.includes('/practice-rating'));
+            } finally {
+                await renderer.dispose();
+                if (previousUiAddon === undefined) delete global.addons['ui-default'];
+                else global.addons['ui-default'] = previousUiAddon;
+            }
+            await get(peer, url).expect(200);
+            await get(teacher, hwUrl).expect(200);
+            await get(teacher, `${url}?uid=&pid=`).expect(200);
+            await get(student, url).expect(403);
+            await get(outsider, url).expect(403);
+            await get(teacher, `${url}?uid=${teacherUid}&pid=${pid}`).expect(403);
+            await get(teacher, `${url}?uid=${uid}&pid=999999`).expect(403);
+            await get(teacher, `${url}?uid=not-a-user`).expect(400);
+            const spoof = await get(teacher, `${url}?domainId=system&uid=${uid}&pid=${pid}`).expect(200);
+            assert.equal(spoof.body.report.scope, domainId);
+            const cross = await get(teacher, `/d/system/course/${courseId}/practice-rating`);
+            assert.notEqual(cross.status, 200);
+            const postResult = await teacher.post(url).set('Accept', 'application/json').send({ uid, pid });
+            assert.notEqual(postResult.status, 200);
+            await global.Hydro.model.problem.edit(domainId, pid, { hidden: true });
+            await get(teacher, `${url}?uid=${uid}&pid=${pid}`).expect(403);
+            const hidden = await get(teacher, url).expect(200);
+            assert.equal(hidden.body.problems.length, 0);
+            await get(manager, `${url}?uid=${uid}&pid=${pid}`).expect(200);
+            await global.Hydro.model.problem.edit(domainId, pid, { hidden: false });
+            await global.Hydro.model.domain.setUserRole(domainId, teacherUid, 'read-only', true);
+            await get(teacher, url).expect(403);
+            await global.Hydro.model.domain.setUserRole(domainId, teacherUid, 'teacher', true);
+            assert.equal(await database.collection(COLLECTIONS.runs).countDocuments({ scope: domainId }), 1);
+            await database.collection(COLLECTIONS.active).updateOne({ _id: domainId }, { $set: { teacherTrial: false } });
+            await get(teacher, url).expect(403);
+        } finally {
+            await global.Hydro.model.problem.edit(domainId, pid, { hidden: false });
+            await global.Hydro.model.domain.setUserRole(domainId, teacherUid, 'teacher', true);
+            await database.collection('record').deleteMany({ _id: { $in: ids } });
+            await Promise.all(Object.values(COLLECTIONS).map((name) => database.collection(name).deleteMany(
+                name === COLLECTIONS.active ? { _id: domainId } : { scope: domainId },
+            )));
+        }
+    });
+
     it('records all three observations and temporary students without submissions or AI-EDU configuration', async () => {
         for (const kind of ['GUIDED', 'CHECKED', 'NEEDS_RETEST']) {
             const response = await post(teacher, courseUrl(), body({ kind, note: '<script>window.feedbackXss=1</script>' })).expect(200);

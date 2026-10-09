@@ -17,6 +17,9 @@
 {% endif %}
   <div>
     <ol class="menu">
+    {% if practiceRatingUrl %}
+      <li class="menu__item"><a class="menu__link" href="{{ practiceRatingUrl }}">练习评分（只读试用）</a></li>
+    {% endif %}
     {% if page_name != 'homework_detail' %}
       <li class="menu__item"><a class="menu__link" href="{{ url('homework_detail', tid=tdoc.docId) }}">
         <span class="icon icon-homework"></span> {{ _('View Homework') }}

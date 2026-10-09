@@ -25,6 +25,8 @@ export interface PracticeSubmission {
     contest?: string | null;
     practiceContest?: string | null;
     metadata?: SubmissionMetadata;
+    /** Policy selected for this run, not a claim about facts known at submittedAt. */
+    policyExclusion?: ExclusionReason;
 }
 
 export interface ActivityMetadata {
@@ -142,6 +144,10 @@ export function extractPracticeEpisodes(
         }
         if (SPECIAL_IDS.has(record.id) || SPECIAL_IDS.has(record.contest) || SPECIAL_IDS.has(record.practiceContest)) {
             exclude('special_record');
+            continue;
+        }
+        if (record.policyExclusion) {
+            exclude(record.policyExclusion);
             continue;
         }
         const metadata = record.metadata && validTime(record.metadata.knownAt) && record.metadata.knownAt <= asOf

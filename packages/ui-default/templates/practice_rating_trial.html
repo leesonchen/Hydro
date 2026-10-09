@@ -1,0 +1,35 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row"><div class="columns"><section class="section">
+  <div class="section__header"><h1 class="section__title">练习评分 · 教师只读试用</h1></div>
+  <div class="section__body typo">
+    <p><a href="{{ backUrl }}">{{ title }}</a></p>
+    <p>根据本站正常练习记录估计；分数相等时，7 天内完成的模型概率约为 50%。允许参考资料的记录也包含在内，不等于独立考试能力。</p>
+    <p>仅比较同一评估日期、同一域及相互连接的样本。未来预测效果尚无结论。</p>
+    <form method="get">
+      <label>学生 <select name="uid"><option value="">请选择</option>
+        {% for item in students %}<option value="{{ item.uid }}"{% if uid == item.uid %} selected{% endif %}>{{ item.name }}</option>{% endfor %}
+      </select></label>
+      <label>题目 <select name="pid"><option value="">请选择</option>
+        {% for item in problems %}<option value="{{ item.pid }}"{% if pid == item.pid %} selected{% endif %}>{{ item.pid }}. {{ item.title }}</option>{% endfor %}
+      </select></label>
+      <button class="button primary" type="submit">查看</button>
+    </form>
+    {% if report.runId %}
+      <p>评估日期：{{ datetimeSpan(report.asOf)|safe }}</p>
+      {% if report.latestAttempt and report.latestAttempt.status == 'insufficient' %}
+        <p>最近一次运行样本不足，当前保留上次有效估计。请注意评估日期。</p>
+      {% endif %}
+    {% else %}<p>样本不足，尚未估计。</p>{% endif %}
+    <table class="data-table"><thead><tr><th>统计量</th><th>分数</th><th>状态</th><th>训练样本数</th></tr></thead><tbody>
+      {% for label, estimate in [['用户练习水平 R', report.user], ['题目统计难度 D', report.problem]] %}
+      <tr><td>{{ label }}</td><td>{% if estimate and estimate.value != null %}{{ estimate.value|round }}{% else %}—{% endif %}</td>
+        <td>{% if not estimate %}样本不足{% elif estimate.status == 'estimated' %}已估计{% else %}暂定{% endif %}</td>
+        <td>{% if estimate %}{{ estimate.samples }}{% else %}—{% endif %}</td></tr>
+      {% endfor %}
+    </tbody></table>
+    {% if report.probability != null %}<p>首次有效提交后 7 天内完成的模型概率：{{ (report.probability * 100)|round }}%</p>
+    {% elif uid and pid %}<p>样本缺失或不在同一连接范围，暂无配对概率。</p>{% endif %}
+  </div>
+</section></div></div>
+{% endblock %}

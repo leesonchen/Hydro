@@ -1,7 +1,7 @@
 # Hydro 练习解题水平与题目统计难度实施方案
 
-- 日期：2026-10-08 / v3；修订：2026-10-09。
-- 状态：用户已确认按简化 MVP 执行；PR-A（M0/M1）与 PR-B（M2）已实现；M3 尚未实施，真实效果尚无结论。
+- 日期：2026-10-08 / v3；修订：2026-10-10。
+- 状态：用户已确认按简化 MVP 执行；PR-A（M0/M1）与 PR-B（M2）已实现；M2 加固及 M3 工具/教师只读页已实现，真实未来效果尚无结论。
 - 仓库：`leesonchen/hydromod`；目标分支：`course-v2.2`；开发分支：`work/rating-all-data-shadow`。
 - 源码基线：`a955add4`；v1 计划提交：`a45f1f4c`；本地已取得的方案修订：`origin/course-v2.2@580f114f`。远端再次核对超时，不宣称已验证实时最新 HEAD。
 
@@ -42,7 +42,7 @@ v1 完整内容保存在 `a45f1f4c` 的同路径，原 R0–R6 和 A01–F08 留
 
 本轮入口是纯函数 `extractPracticeEpisodes(records, asOf, activityMetadata?)`，实现于 [episodes.ts](../../packages/hydrooj/src/lib/practice-rating/episodes.ts)。它只接受最小字段，不读取数据库或状态缓存。调用者须提供截止时完整可用历史，不能先按近 90 天截取提交；记录 ID 须为完整小写 ObjectId 字符串且唯一，时间为 UTC 毫秒。
 
-键为 `domainId + numeric pid + confirmed revision/null + uid` 的确定性元组；`revision=null`、`revisionStatus=unknown` 表示未知历史版本。明确版本分开，同号跨域分开，不把当前题面/数据哈希当历史证据。版本与排除元数据必须带真实 `knownAt`；截止后才知道的事实不应用于该次抽取，也不追溯猜测未知版本。
+键为 `domainId + numeric pid + confirmed revision/null + uid` 的确定性元组；`revision=null`、`revisionStatus=unknown` 表示未知历史版本。明确版本分开，同号跨域分开，不把当前题面/数据哈希当历史证据。历史版本与事实排除元数据必须带真实 `knownAt`；截止后才知道的事实不应用于该次抽取，也不追溯猜测未知版本。管理员为本次运行选择的明确账户排除属于独立运行策略（policyExclusion），即使 asOf 在过去也必须生效，并随快照版本化；它不声称历史当时已知。
 
 源码字段、状态、来源、夹具和不可恢复信息见 M0/M1 报告。M2 的 [DB 适配器](../../packages/hydrooj/src/lib/practice-rating/adapter.ts)从 `_id.getTimestamp()` 获取提交时间，从当前 `judgeAt` 获取有效结果可知时间；限定单域最小投影扫描，不承诺完整历史重建。
 
@@ -77,12 +77,14 @@ M3 冻结训练、参数与预测，观察之后首次合格实际作答的 7 �
 | M0 / PR-A | 本地基线、字段/状态/来源字典、合成夹具和必要旧机制回归、数据缺口 | 已实现，验证见报告 |
 | M1 / PR-A | 纯 episode 提取器、T01–T10、边界/缺失/版本/时间/确定性测试 | 已实现，验证见报告 |
 | M2 / PR-B | 联合 1PL、独立快照、每日影子运行、失败保护、管理员只读报告 | 已实现，本地验收见 M2 报告 |
-| M3 / PR-C | 冻结预测、未来完成率/Brier/基线报告、教师只读试用 | 未实施；效果尚无结论 |
+| M3 / PR-C | 冻结预测、未来完成率/Brier/基线报告、教师只读试用 | 工具与教师 HTTP/模板验收完成；真实未来与独立模拟待采集 |
 
-[T01–T18 映射与实际检查](../../review/WORK-HYDRO-RATING.md)区分 PR-A 单元证明、M2 数据库证明及 M3 权限/真实效果证明。T11–T14、影子链路的 T16/T17 已有本地单元/隔离库证明；T15、真实效果与教师访问的 T18 仍待 M3。
+[T01–T18 映射与实际检查](../../review/WORK-HYDRO-RATING.md)区分 PR-A 单元证明、M2 数据库证明及 M3 权限/真实效果证明。T11–T14、影子链路的 T16/T17 已有本地单元/隔离库证明；T15、教师访问 T18 已有隔离库/HTTP 证据；真实前向效果仍待采集。
 
-提取器与模型的入口是 `yarn test:practice-rating`，数据库链路是 `yarn test:practice-rating:integration`，均纳入根 `yarn test`。另显式运行已有 Rating V2 单测、课程/赛后/团队回归及 `yarn build`、`yarn lint:ci`。实际结果和任何基线失败写入报告，不运行 UI/浏览器/发布检查。
+提取器与模型的入口是 `yarn test:practice-rating`，数据库链路是 `yarn test:practice-rating:integration`，均纳入根 `yarn test`。另显式运行已有 Rating V2 单测、课程/赛后/团队回归及 `yarn build`、`yarn lint:ci`。实际结果和任何基线失败写入报告，新增 UI 运行本地真实模板/HTTP 回归与生产 UI 构建，不发布部署。
 
-PR-B 已提供真实记录适配、独立线程拟合、受租约保护的影子快照和每日 hook，以及现有管理员脚本入口的只读报告；无教师/学生页面或公开 API。测试仅使用临时 MongoDB。保留既有判题、比赛、难度/RP/等级/榜单行为；生产访问、合并到目标分支、发布和部署需另行授权。
+M2 的 v2 快照仅冻结实际训练观测与 t0/窗口/标签，通过不可变内容块和分批校验避免每天复制全部历史过程；空训练只记录 insufficient，不切换有效结果。排除策略版本和未知题目版本比例随 run 保存。当前仍有 200,000 记录上限；本机 cpptrain 的 295,913 条超过上限，新索引和满负载共存尚未在安装实例验证。
 
-操作入口、固定参数、扫描/内存限制和实际验证见 [M2 运行与验收报告](../../review/practice-rating-m2-report-2026-10-09.md)。下一批是 M3 的冻结未来预测、基线评估与教师授权试用。
+M3 已提供显式候选对预测冻结、7 天未来完成率/固定分桶/Brier/基线报告，以及按既有课程/作业教学权限、名单和题目可见性限制的教师只读页。管理员需显式开启 teacherTrial；classroomFeedback 既有授权前提保持生效。最多每次冻结 1,000 对，不为未训练的新用户/新题伪造估计。真实未来样本和独立模拟参考仍未采集。
+
+最新实际检查与操作见[2026-10-10 进展报告](../../review/practice-rating-current-progress-2026-10-10.md)及[M2 加固容量报告](../../review/practice-rating-m2-hardening-2026-10-10.md)。本轮只读盘点本机 hydro，各项写入测试仅使用临时 MongoDB；未合并、发布或部署。

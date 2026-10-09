@@ -1,5 +1,7 @@
 # Hydro 练习评分最小 MVP 当前进展
 
+> 后续进展已更新：[2026-10-10 报告](practice-rating-current-progress-2026-10-10.md)（M2 加固与 M3 工具/教师只读页）。本文件保留 10 月 9 日的历史状态。
+
 - 更新日期：2026-10-09。
 - 开发分支：`work/rating-all-data-shadow`；本地实现范围：M0–M2。
 - 进度基于代码提交：`4803b38d`。

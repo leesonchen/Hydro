@@ -21,6 +21,9 @@
 {% endif %}
   <div>
     <ol class="menu">
+    {% if practiceRatingUrl %}
+      <li class="menu__item"><a class="menu__link" href="{{ practiceRatingUrl }}">练习评分（只读试用）</a></li>
+    {% endif %}
     {% if feedbackUrl %}
       <li class="menu__item"><a class="menu__link" href="{{ feedbackUrl }}">课程反馈</a></li>
       <li class="menu__item"><a class="menu__link" href="{{ feedbackUrl }}?view=pending">待复测</a></li>

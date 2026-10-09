@@ -4,6 +4,14 @@ import { ActivityMetadata, PracticeSubmission } from './episodes';
 export interface RatingDatabase { collection<T extends Document = Document>(name: string): Collection<T> }
 export const MAX_RECORDS = 200000;
 export const RECORD_PROJECTION = Object.freeze({ _id: 1, domainId: 1, pid: 1, uid: 1, status: 1, judgeAt: 1, contest: 1, practiceContest: 1 });
+export const RECORD_INDEX = Object.freeze({ domainId: 1, _id: 1 } as const);
+
+export interface ExclusionPolicy {
+    rulesVersion: 'practice-exclusions-v1';
+    excludedUids: number[];
+    virtualUids: number[];
+    serviceUids: number[];
+}
 
 export interface CapturedInput {
     scope: string;
@@ -11,6 +19,7 @@ export interface CapturedInput {
     capturedAt: number;
     records: PracticeSubmission[];
     activities: ActivityMetadata[];
+    exclusionPolicy: ExclusionPolicy;
 }
 
 /** Reads individual records, never contest journals/status caches or source code. */
@@ -49,10 +58,7 @@ export async function capturePracticeInput(
     const excluded = new Set(excludedUids);
     for (const record of records) {
         if (virtualUids.has(record.uid) || excluded.has(record.uid) || record.uid === 1) {
-            record.metadata = {
-                knownAt: capturedAt,
-                exclusion: virtualUids.has(record.uid) ? 'team_aggregate' : record.uid === 1 ? 'service_account' : 'test_account',
-            };
+            record.policyExclusion = virtualUids.has(record.uid) ? 'team_aggregate' : record.uid === 1 ? 'service_account' : 'test_account';
         }
     }
     const ids = [...new Set(records.flatMap((r) => [r.contest, r.practiceContest]).filter(Boolean))].map((id) => new ObjectId(id));
@@ -60,5 +66,8 @@ export async function capturePracticeInput(
     const activities = (await database.collection('document').find(
         { domainId: scope, docType: 30, docId: { $in: ids } }, { projection: { docId: 1, rule: 1 } },
     ).toArray()).map((doc) => ({ domainId: scope, id: doc.docId.toHexString(), rule: doc.rule, knownAt: capturedAt }));
-    return { scope, asOf, capturedAt, records, activities };
+    return { scope, asOf, capturedAt, records, activities, exclusionPolicy: {
+        rulesVersion: 'practice-exclusions-v1', excludedUids: [...excluded].sort((a, b) => a - b),
+        virtualUids: [...virtualUids].sort((a, b) => a - b), serviceUids: [1],
+    } };
 }

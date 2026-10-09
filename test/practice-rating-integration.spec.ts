@@ -61,14 +61,57 @@ describe('practice rating isolated MongoDB integration', () => {
         assert.equal(input.records.length, 8);
         assert.ok(input.records.every((r) => r.domainId === scope && !('code' in r) && !('compilerTexts' in r)));
         assert.deepEqual(Object.keys(RECORD_PROJECTION).sort(), ['_id', 'contest', 'domainId', 'judgeAt', 'pid', 'practiceContest', 'status', 'uid']);
-        assert.equal(input.records.find((r) => r.uid === 99).metadata.exclusion, 'team_aggregate');
-        assert.equal(input.records.find((r) => r.uid === 4).metadata.exclusion, 'test_account');
+        assert.equal(input.records.find((r) => r.uid === 99).policyExclusion, 'team_aggregate');
+        assert.equal(input.records.find((r) => r.uid === 4).policyExclusion, 'test_account');
         const summary = await runPracticeRating(database, { domainId: scope, excludedUids: [4] });
         assert.equal(summary.users, 2);
         assert.equal(summary.diagnostics.excludedByReason.team_aggregate, 1);
         assert.equal(summary.diagnostics.excludedByReason.service_account, 1);
         assert.equal(summary.diagnostics.excludedByReason.special_record, 1);
         assert.equal(await database.collection(COLLECTIONS.active).countDocuments(), 0);
+    });
+
+    it('applies explicit and built-in exclusions at a historical cutoff and records the effective policy', async () => {
+        await database.collection('record').insertMany([record(5, 4, 10), record(6, 1, 10), record(7, 99, 10)]);
+        await database.collection<any>('vuser').insertOne({ _id: 99 });
+        await database.collection<ActiveScope>(COLLECTIONS.active).insertOne({ _id: scope, excludedUids: [3] });
+        const result = await runPracticeRating(database, { domainId: scope, asOf: t0 + 7 * DAY, excludedUids: [4], write: true });
+        assert.equal(result.users, 1);
+        assert.equal(result.diagnostics.excludedByReason.test_account, 3);
+        assert.equal(result.diagnostics.excludedByReason.service_account, 1);
+        assert.equal(result.diagnostics.excludedByReason.team_aggregate, 1);
+        const run = await store.activeRun(scope);
+        assert.deepEqual(run.exclusionPolicy.excludedUids, [3, 4]);
+        assert.deepEqual(run.exclusionPolicy.virtualUids, [99]);
+        assert.equal(typeof run.exclusionPolicyVersion, 'string');
+        assert.equal(run.diagnostics.unknownRevisionTrainingRatio, 1);
+        await database.collection<ActiveScope>(COLLECTIONS.active).updateOne({ _id: scope }, { $set: { excludedUids: [] } });
+        assert.deepEqual((await store.activeRun(scope)).exclusionPolicy.excludedUids, [3, 4]);
+    });
+
+    it('empty automatic fits keep the previous estimate; an initially empty scope remains unactivated', async () => {
+        const empty = await runPracticeRating(database, { domainId: 'other-domain', write: true });
+        assert.equal(empty.status, 'insufficient');
+        assert.equal(empty.activated, false);
+        assert.equal(await store.activeRun('other-domain'), null);
+        const first = await runPracticeRating(database, { domainId: scope, write: true });
+        const next = await runPracticeRating(database, { domainId: scope, excludedUids: [2, 3], write: true });
+        assert.equal(next.status, 'insufficient');
+        assert.equal(next.activated, false);
+        assert.equal((await store.activeRun(scope))._id, first.runId);
+        assert.equal((await database.collection(COLLECTIONS.runs).findOne({ _id: next.runId as any })).status, 'insufficient');
+        assert.equal((await store.read(scope, 2, 10)).latestAttempt.status, 'insufficient');
+    });
+
+    it('reuses immutable training chunks and never copies expired history into a daily snapshot', async () => {
+        await database.collection('record').insertOne({ ...record(55, 5, 10), _id: rid(55, t0 - 200 * DAY), judgeAt: new Date(t0 - 199 * DAY) });
+        const first = await runPracticeRating(database, { domainId: scope, write: true });
+        const count = await database.collection(COLLECTIONS.episodes).countDocuments();
+        await runPracticeRating(database, { domainId: scope, write: true });
+        assert.equal(await database.collection(COLLECTIONS.episodes).countDocuments(), count);
+        const rows = await store.trainingInput(first.runId, scope);
+        assert.equal(rows.length, 4);
+        assert.ok(rows.every((s) => s.observation && s.episode.uid !== 5));
     });
 
     it('T12/T17: dry run is read-only and repeated writes do not accumulate or alter legacy data', async () => {
@@ -100,15 +143,13 @@ describe('practice rating isolated MongoDB integration', () => {
 
     it('T10: freezes actual input and labels across a later rejudge', async () => {
         const first = await runPracticeRating(database, { domainId: scope, write: true });
-        const frozen = await database.collection(COLLECTIONS.episodes).find({ runId: first.runId }).sort({ key: 1 }).toArray();
+        const frozen = await store.trainingInput(first.runId, scope);
         assert.equal(frozen.find((s) => s.episode.uid === 2 && s.episode.pid === 10).observation.y, 1);
         await database.collection('record').updateOne({ _id: rid(1) }, { $set: { status: STATUS.STATUS_WRONG_ANSWER, judgeAt: new Date() } });
         const next = await runPracticeRating(database, { domainId: scope, write: true });
-        const changed = await database.collection(COLLECTIONS.episodes).findOne({ runId: next.runId, 'episode.uid': 2, 'episode.pid': 10 });
+        const changed = (await store.trainingInput(next.runId, scope)).find((s) => s.episode.uid === 2 && s.episode.pid === 10);
         assert.equal(changed.observation.y, 0);
-        assert.deepEqual(await database.collection(COLLECTIONS.episodes).find({ runId: first.runId }).sort({ key: 1 }).toArray(), frozen);
-        assert.equal(changed.evidence[0].status, STATUS.STATUS_WRONG_ANSWER);
-        assert.equal(frozen.find((s) => s.episode.uid === 2 && s.episode.pid === 10).evidence[0].status, STATUS.STATUS_ACCEPTED);
+        assert.deepEqual(await store.trainingInput(first.runId, scope), frozen);
     });
 
     it('T13: half-write failure keeps the previous complete run and releases its lease', async () => {
@@ -164,6 +205,27 @@ describe('practice rating isolated MongoDB integration', () => {
         } as RatingDatabase;
         await assert.rejects(runPracticeRating(corrupting, { domainId: scope, write: true }), /checksum/);
         assert.equal((await store.activeRun(scope))._id, first.runId);
+    });
+
+    it('rejects a damaged reused input chunk and preserves the current estimates', async () => {
+        const first = await runPracticeRating(database, { domainId: scope, write: true });
+        const run = await store.activeRun(scope);
+        await database.collection<any>(COLLECTIONS.episodes).updateOne({ _id: run.inputChunks[0] }, {
+            $set: { 'rows.0.observation.y': 99 },
+        });
+        await assert.rejects(runPracticeRating(database, { domainId: scope, write: true }), /checksum/);
+        assert.equal((await store.activeRun(scope))._id, first.runId);
+        await assert.rejects(store.trainingInput(first.runId, scope), /checksum/);
+    });
+
+    it('reads legacy v1 training snapshots without rewriting them', async () => {
+        const first = await runPracticeRating(database, { domainId: scope, write: true });
+        const rows = await store.trainingInput(first.runId, scope);
+        await database.collection<any>(COLLECTIONS.runs).insertOne({ _id: 'legacy-run', scope, status: 'complete' });
+        await database.collection<any>(COLLECTIONS.episodes).insertMany(rows.map((r, i) => ({
+            _id: `legacy-${i}`, scope, runId: 'legacy-run', ...r, evidence: [],
+        })));
+        assert.deepEqual(await store.trainingInput('legacy-run', scope), rows);
     });
 
     it('keeps a validated active run complete if the pointer write succeeds but its response is lost', async () => {
@@ -235,7 +297,7 @@ describe('practice rating isolated MongoDB integration', () => {
             await assert.rejects(store.save({ runId: 'bad-fit', scope, asOf: Date.now(), capturedAt: Date.now(),
                 fit: fitPracticeRating([], 'other-domain'), episodes: [], diagnostics: {} }, lease), /Invalid fit/);
             await assert.rejects(store.save({ runId: 'old-cutoff', scope, asOf: t0, capturedAt: Date.now(),
-                fit: fitPracticeRating([], scope), episodes: [], diagnostics: {} }, lease), /older/);
+                fit: { ...fitPracticeRating([], scope), status: 'ok' }, episodes: [], diagnostics: {} }, lease), /older/);
             assert.equal((await store.activeRun(scope))._id, first.runId);
         } finally {
             await store.release(scope, lease.token);

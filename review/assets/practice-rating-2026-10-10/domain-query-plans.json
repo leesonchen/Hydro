@@ -1,0 +1,1714 @@
+[
+  {
+    "environment": "local docker hydro",
+    "at": "2026-10-09T15:24:47.581Z",
+    "indexes": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "domainId": 1,
+          "contest": 1,
+          "pid": 1,
+          "_id": -1
+        },
+        "name": "withProblem",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "domainId": 1,
+          "contest": 1,
+          "pid": 1,
+          "uid": 1,
+          "_id": -1
+        },
+        "name": "withUserAndProblem",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "domainId": 1,
+          "pid": 1
+        },
+        "name": "delete",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "domainId": 1,
+          "contest": 1,
+          "status": 1,
+          "_id": -1
+        },
+        "name": "withStatus",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "domainId": 1,
+          "contest": 1,
+          "_id": -1
+        },
+        "name": "basic",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "domainId": 1,
+          "contest": 1,
+          "uid": 1,
+          "_id": -1
+        },
+        "name": "withUser",
+        "background": true
+      }
+    ]
+  },
+  {
+    "scope": "Contest",
+    "total": 16136,
+    "recent97d": 12,
+    "overLimit": false,
+    "wallMs": 3084,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 16136,
+      "executionTimeMillis": 3067,
+      "totalKeysExamined": 16137,
+      "totalDocsExamined": 16136
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"Contest\", \"Contest\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "Cpp2023",
+    "total": 28923,
+    "recent97d": 26,
+    "overLimit": false,
+    "wallMs": 4707,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 28923,
+      "executionTimeMillis": 4700,
+      "totalKeysExamined": 700028,
+      "totalDocsExamined": 700028
+    },
+    "plan": {
+      "stage": "LIMIT",
+      "limitAmount": 200001,
+      "inputStage": {
+        "stage": "PROJECTION_SIMPLE",
+        "transformBy": {
+          "_id": 1,
+          "domainId": 1,
+          "pid": 1,
+          "uid": 1,
+          "status": 1,
+          "judgeAt": 1,
+          "contest": 1,
+          "practiceContest": 1
+        },
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "domainId": {
+              "$eq": "Cpp2023"
+            }
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "_id": 1
+            },
+            "indexName": "_id_",
+            "isMultiKey": false,
+            "isUnique": true,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "_id": [
+                "[ObjectId('000000000000000000000000'), ObjectId('6ac907400000000000000000'))"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "Cpp2023Q2",
+    "total": 12810,
+    "recent97d": 0,
+    "overLimit": false,
+    "wallMs": 226,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 12810,
+      "executionTimeMillis": 212,
+      "totalKeysExamined": 12811,
+      "totalDocsExamined": 12810
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"Cpp2023Q2\", \"Cpp2023Q2\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "PythonGrade1",
+    "total": 50066,
+    "recent97d": 987,
+    "overLimit": false,
+    "wallMs": 514,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 50066,
+      "executionTimeMillis": 511,
+      "totalKeysExamined": 700028,
+      "totalDocsExamined": 700028
+    },
+    "plan": {
+      "stage": "LIMIT",
+      "limitAmount": 200001,
+      "inputStage": {
+        "stage": "PROJECTION_SIMPLE",
+        "transformBy": {
+          "_id": 1,
+          "domainId": 1,
+          "pid": 1,
+          "uid": 1,
+          "status": 1,
+          "judgeAt": 1,
+          "contest": 1,
+          "practiceContest": 1
+        },
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "domainId": {
+              "$eq": "PythonGrade1"
+            }
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "_id": 1
+            },
+            "indexName": "_id_",
+            "isMultiKey": false,
+            "isUnique": true,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "_id": [
+                "[ObjectId('000000000000000000000000'), ObjectId('6ac907400000000000000000'))"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "PythonGrade2",
+    "total": 77634,
+    "recent97d": 1525,
+    "overLimit": false,
+    "wallMs": 535,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 77634,
+      "executionTimeMillis": 533,
+      "totalKeysExamined": 700028,
+      "totalDocsExamined": 700028
+    },
+    "plan": {
+      "stage": "LIMIT",
+      "limitAmount": 200001,
+      "inputStage": {
+        "stage": "PROJECTION_SIMPLE",
+        "transformBy": {
+          "_id": 1,
+          "domainId": 1,
+          "pid": 1,
+          "uid": 1,
+          "status": 1,
+          "judgeAt": 1,
+          "contest": 1,
+          "practiceContest": 1
+        },
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "domainId": {
+              "$eq": "PythonGrade2"
+            }
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "_id": 1
+            },
+            "indexName": "_id_",
+            "isMultiKey": false,
+            "isUnique": true,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "_id": [
+                "[ObjectId('000000000000000000000000'), ObjectId('6ac907400000000000000000'))"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "PythonGrade3",
+    "total": 59234,
+    "recent97d": 2632,
+    "overLimit": false,
+    "wallMs": 499,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 59234,
+      "executionTimeMillis": 497,
+      "totalKeysExamined": 700028,
+      "totalDocsExamined": 700028
+    },
+    "plan": {
+      "stage": "LIMIT",
+      "limitAmount": 200001,
+      "inputStage": {
+        "stage": "PROJECTION_SIMPLE",
+        "transformBy": {
+          "_id": 1,
+          "domainId": 1,
+          "pid": 1,
+          "uid": 1,
+          "status": 1,
+          "judgeAt": 1,
+          "contest": 1,
+          "practiceContest": 1
+        },
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "domainId": {
+              "$eq": "PythonGrade3"
+            }
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "_id": 1
+            },
+            "indexName": "_id_",
+            "isMultiKey": false,
+            "isUnique": true,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "_id": [
+                "[ObjectId('000000000000000000000000'), ObjectId('6ac907400000000000000000'))"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "aiedu",
+    "total": 319,
+    "recent97d": 318,
+    "overLimit": false,
+    "wallMs": 6,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 319,
+      "executionTimeMillis": 4,
+      "totalKeysExamined": 320,
+      "totalDocsExamined": 319
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"aiedu\", \"aiedu\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "contests",
+    "total": 3,
+    "recent97d": 2,
+    "overLimit": false,
+    "wallMs": 1,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 3,
+      "executionTimeMillis": 0,
+      "totalKeysExamined": 4,
+      "totalDocsExamined": 3
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"contests\", \"contests\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "cpp2025",
+    "total": 1512,
+    "recent97d": 0,
+    "overLimit": false,
+    "wallMs": 21,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 1512,
+      "executionTimeMillis": 18,
+      "totalKeysExamined": 1513,
+      "totalDocsExamined": 1512
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"cpp2025\", \"cpp2025\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "cpp2026",
+    "total": 1769,
+    "recent97d": 0,
+    "overLimit": false,
+    "wallMs": 22,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 1769,
+      "executionTimeMillis": 18,
+      "totalKeysExamined": 1770,
+      "totalDocsExamined": 1769
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"cpp2026\", \"cpp2026\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "cpp_pj",
+    "total": 839,
+    "recent97d": 50,
+    "overLimit": false,
+    "wallMs": 10,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 839,
+      "executionTimeMillis": 9,
+      "totalKeysExamined": 840,
+      "totalDocsExamined": 839
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"cpp_pj\", \"cpp_pj\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "cpp_tg",
+    "total": 565,
+    "recent97d": 5,
+    "overLimit": false,
+    "wallMs": 10,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 565,
+      "executionTimeMillis": 8,
+      "totalKeysExamined": 566,
+      "totalDocsExamined": 565
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"cpp_tg\", \"cpp_tg\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "cppbasics",
+    "total": 29477,
+    "recent97d": 29477,
+    "overLimit": false,
+    "wallMs": 400,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 29477,
+      "executionTimeMillis": 377,
+      "totalKeysExamined": 29478,
+      "totalDocsExamined": 29477
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"cppbasics\", \"cppbasics\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "cpptrain",
+    "total": 295913,
+    "recent97d": 64141,
+    "overLimit": true,
+    "wallMs": 1455,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 200001,
+      "executionTimeMillis": 1384,
+      "totalKeysExamined": 510543,
+      "totalDocsExamined": 510543
+    },
+    "plan": {
+      "stage": "LIMIT",
+      "limitAmount": 200001,
+      "inputStage": {
+        "stage": "PROJECTION_SIMPLE",
+        "transformBy": {
+          "_id": 1,
+          "domainId": 1,
+          "pid": 1,
+          "uid": 1,
+          "status": 1,
+          "judgeAt": 1,
+          "contest": 1,
+          "practiceContest": 1
+        },
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "domainId": {
+              "$eq": "cpptrain"
+            }
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "_id": 1
+            },
+            "indexName": "_id_",
+            "isMultiKey": false,
+            "isUnique": true,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "_id": [
+                "[ObjectId('000000000000000000000000'), ObjectId('6ac907400000000000000000'))"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "cspjs",
+    "total": 43296,
+    "recent97d": 20311,
+    "overLimit": false,
+    "wallMs": 1154,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 43296,
+      "executionTimeMillis": 1115,
+      "totalKeysExamined": 43297,
+      "totalDocsExamined": 43296
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"cspjs\", \"cspjs\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "exam",
+    "total": 13390,
+    "recent97d": 2572,
+    "overLimit": false,
+    "wallMs": 134,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 13390,
+      "executionTimeMillis": 119,
+      "totalKeysExamined": 13391,
+      "totalDocsExamined": 13390
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"exam\", \"exam\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "gesp",
+    "total": 19299,
+    "recent97d": 212,
+    "overLimit": false,
+    "wallMs": 186,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 19299,
+      "executionTimeMillis": 167,
+      "totalKeysExamined": 19300,
+      "totalDocsExamined": 19299
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"gesp\", \"gesp\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "jinzhonghx",
+    "total": 13754,
+    "recent97d": 1831,
+    "overLimit": false,
+    "wallMs": 182,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 13754,
+      "executionTimeMillis": 167,
+      "totalKeysExamined": 13755,
+      "totalDocsExamined": 13754
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"jinzhonghx\", \"jinzhonghx\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "oler",
+    "total": 1611,
+    "recent97d": 1,
+    "overLimit": false,
+    "wallMs": 31,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 1611,
+      "executionTimeMillis": 27,
+      "totalKeysExamined": 1612,
+      "totalDocsExamined": 1611
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"oler\", \"oler\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "qdcpp",
+    "total": 79,
+    "recent97d": 0,
+    "overLimit": false,
+    "wallMs": 2,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 79,
+      "executionTimeMillis": 1,
+      "totalKeysExamined": 80,
+      "totalDocsExamined": 79
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"qdcpp\", \"qdcpp\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "system",
+    "total": 42,
+    "recent97d": 0,
+    "overLimit": false,
+    "wallMs": 2,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 42,
+      "executionTimeMillis": 0,
+      "totalKeysExamined": 43,
+      "totalDocsExamined": 42
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"system\", \"system\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "test",
+    "total": 0,
+    "recent97d": 0,
+    "overLimit": false,
+    "wallMs": 0,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 0,
+      "executionTimeMillis": 0,
+      "totalKeysExamined": 1,
+      "totalDocsExamined": 0
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"test\", \"test\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "scope": "yizhong",
+    "total": 33357,
+    "recent97d": 4054,
+    "overLimit": false,
+    "wallMs": 346,
+    "stats": {
+      "executionSuccess": true,
+      "nReturned": 33357,
+      "executionTimeMillis": 321,
+      "totalKeysExamined": 33357,
+      "totalDocsExamined": 33357
+    },
+    "plan": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "SORT",
+          "sortPattern": {
+            "_id": 1
+          },
+          "memLimit": 104857600,
+          "limitAmount": 200001,
+          "type": "default",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "domainId": 1,
+              "contest": 1,
+              "pid": 1,
+              "_id": -1
+            },
+            "indexName": "withProblem",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "domainId": [],
+              "contest": [],
+              "pid": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "domainId": [
+                "[\"yizhong\", \"yizhong\"]"
+              ],
+              "contest": [
+                "[MinKey, MaxKey]"
+              ],
+              "pid": [
+                "[MinKey, MaxKey]"
+              ],
+              "_id": [
+                "(ObjectId('6ac907400000000000000000'), ObjectId('000000000000000000000000')]"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+]
