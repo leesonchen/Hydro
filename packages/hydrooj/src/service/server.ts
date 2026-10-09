@@ -275,7 +275,7 @@ export async function apply(ctx: Context) {
                             redirect: (this.context.originalPath || this.request.path) + this.context.search,
                         },
                     });
-                } else if (!this.user._dudoc.join && error instanceof PermissionError) {
+                } else if (this.domain._id !== 'system' && !this.user._dudoc.join && error instanceof PermissionError) {
                     this.response.redirect = this.url('domain_join', {
                         domainId: 'system',
                         query: {

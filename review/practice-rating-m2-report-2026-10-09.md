@@ -102,8 +102,11 @@ daily 仅读取 `enabled=true` 的域，单域失败写日志并继续其他启�
 | 两个新测试文件的显式 ESLint | 通过，根 lint 范围未包含 test |
 | `node -r @hydrooj/register test/rating-v2.spec.ts` | 既有 27 项通过 |
 | 课程/赛后/团队回归 | 通过，命令见下方 |
-| `yarn build` | 5 处既有类型错误，与 PR-A 报告一致，见下方 |
-| `yarn test` | 前置批次及新功能测试通过；最终 HTTP 测试 62/65，通过基线对照确认 3 处既有失败 |
+| `yarn build` | 通过；本轮修复 Hydro 导出 `superagent` 代理声明、VJudge 重复代理初始化及 MarkdownIt 编辑器插件类型兼容 |
+| `node -r @hydrooj/register test/markdown-it-media.spec.ts` | 4 全通过，含编辑器 MarkdownIt 14 与主渲染器 MarkdownIt 15 的运行兼容 |
+| `node test/entry.js` | HTTP 回归 66/66 全通过 |
+| `yarn test` | 完整测试入口通过，含所有前置批次、评分 Mongo 集成和最终 HTTP 66/66 |
+| 本轮测试文件的单独 ESLint | MarkdownIt 测试严格检查通过；`test/main.ts` 0 错误、13 条既有警告，与 HEAD 对照数量一致，`--max-warnings=0` 因既有警告未通过 |
 
 ```bash
 yarn exec tsc --ignoreConfig --noEmit --skipLibCheck --target es2022 \
@@ -114,11 +117,13 @@ yarn exec eslint test/practice-rating-model.spec.ts test/practice-rating-integra
 node --test test/course-feedback-structure.spec.js test/practice-record-connection.spec.js test/contest-team-regressions.spec.js
 ```
 
-全仓构建错误位置为 `ui-default/components/editor/mdeditor.ts:39`、`login-with-oidc/index.ts:33/91/110` 和 `vjudge/src/fetch.ts:7`，均为现有类型或依赖定义问题。构建产生的根 `tsconfig.json` 改动已恢复，不纳入本轮提交。
+本轮补齐了全仓构建的类型兼容问题：Hydro 导出的 `superagent` 现在声明运行时注入的代理方法，VJudge 复用该初始化，编辑器显式兼容 MarkdownIt 14/15 的插件声明。构建产生的根 `tsconfig.json` 改动已恢复，不纳入提交。
 
-HTTP 失败为私有内容反馈（`test/main.ts:683`）、特权用户密码校验限流和外部邀请角色。后两项因登录配额触发限流。仅暂时移除新脚本后运行现有 `node test/entry.js`，同样 62/65、相同三项失败；脚本随后已恢复。完整 HTTP 检查先于 Worker 和指针响应恢复改动，最终改动后重新通过功能单元/集成与核心类型检查。没有将全仓检查记为全部通过，也没有为本任务修改无关失败。
+HTTP 回归最初在私有内容反馈用例中把批量 `setUserRole` 用于尚不存在的域成员，导致隐藏题目权限错误被重定向到加入域页面并最终呈现 200；测试已改为逐个建立成员记录，`node test/entry.js` 现为 66/66 全通过。生产登录限流规则保持生效，测试在用例边界清理计数，并验证 IP 和账户限额触发及清理后的恢复。
 
-原始本地日志位于 `/tmp/hydro-rating-m2-unit-final.log`、`/tmp/hydro-rating-m2-integration-final.log`、`/tmp/hydro-rating-m2-core-final.log`、`/tmp/hydro-rating-m2-lint-final.log`、`/tmp/hydro-rating-m2-test-types-final.log`、`/tmp/hydro-rating-m2-test-lint-final.log`、`/tmp/hydro-rating-m2-build.log`、`/tmp/hydro-rating-m2-full-test.log` 和 `/tmp/hydro-rating-m2-http-baseline.log`；日志为临时验收材料，不随提交保存。
+另修复 `system` 域权限错误被重定向到“加入 system 域”的问题。个人收件箱在无 system 成员身份时仍按反馈授权返回 403；普通域的非成员继续获得加入域重定向，两条路径都有 HTTP 回归断言。
+
+初次 M2 验证日志位于 `/tmp/hydro-rating-m2-*.log`；本轮修复后的完整测试日志为 `/tmp/hydro-repair-full-test-verified.log`，HTTP 日志为 `/tmp/hydro-repair-http-verified.log`。这些日志为临时验收材料，不随提交保存。
 
 ## 6. 下一批任务
 
