@@ -1,21 +1,56 @@
+import { ObjectId } from 'mongodb';
 import { Context } from '../context';
-import { BadRequestError, ForbiddenError } from '../error';
-import { canManageFeedback, feedbackActivity } from '../lib/classroomFeedbackAccess';
+import { BadRequestError, ForbiddenError, NotFoundError } from '../error';
+import { Tdoc } from '../interface';
 import { RatingDatabase } from '../lib/practice-rating/adapter';
 import { ActiveScope, COLLECTIONS, PracticeRatingStore } from '../lib/practice-rating/store';
+import { PRIV } from '../model/builtin';
+import * as contest from '../model/contest';
 import problem from '../model/problem';
 import user from '../model/user';
 import db from '../service/db';
 import { Handler } from '../service/server';
 
+/** Trial ratings contain individual learning estimates, so domain teachers/managers are not eligible yet. */
+function isPracticeRatingAdmin(handler: Handler) {
+    return !!handler.user?._id && handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)
+        && handler.session?.uid === handler.user._id && !handler.session?.sudoUid;
+}
+
+/** Resolve only the activity's assigned students; independent of classroom-feedback feature switches. */
+async function activityRoster(domainId: string, tdoc: Tdoc) {
+    const assigned = tdoc.assign || [];
+    const names = assigned.filter((g) => g !== 'teachers' && !/^\d+$/.test(g));
+    const groups = names.length ? await user.listGroup(domainId, undefined, names) : [];
+    const teachers = new Set([tdoc.owner, ...(tdoc.maintainer || []),
+        ...groups.flatMap((g) => g.class ? g.teachers || [] : [])]);
+    const students = [
+        ...assigned.filter((g) => /^\d+$/.test(g)).map(Number),
+        ...groups.flatMap((g) => g.class ? g.students || [] : g.uids || []),
+    ];
+    if (!assigned.length) {
+        const statuses = await contest.getMultiStatus(domainId, {
+            docId: tdoc.docId, $or: [{ attend: true }, { attend: { $gt: 0 } }],
+        }).project({ uid: 1 }).toArray();
+        students.push(...statuses.map((s) => s.uid));
+    }
+    return [...new Set(students)].filter((uid) => uid > 0 && !teachers.has(uid));
+}
+
 export class PracticeRatingTrialHandler extends Handler {
     async get() {
+        // Authorization is checked on every request, before fetching student or model data.
+        if (!isPracticeRatingAdmin(this)) throw new ForbiddenError();
         const scope = this.domain._id;
         const database = db as unknown as RatingDatabase;
         const config = await database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: scope });
-        if (!config?.teacherTrial) throw new ForbiddenError();
+        if (!config?.adminTrial) throw new ForbiddenError();
         const activityType = this.request.path.startsWith('/course/') ? 'course' : 'homework';
-        const { tdoc, roster } = await feedbackActivity(this, activityType, this.request.params.tid);
+        const tid = this.request.params.tid;
+        if (!/^[a-f\d]{24}$/.test(tid)) throw new BadRequestError('Invalid activity ID');
+        const tdoc = await contest.get(scope, new ObjectId(tid));
+        if (!tdoc || tdoc.domainId !== scope || tdoc.rule !== activityType) throw new NotFoundError('Activity not found');
+        const roster = await activityRoster(scope, tdoc);
         const uid = !this.request.query.uid ? undefined : Number(this.request.query.uid);
         const pid = !this.request.query.pid ? undefined : Number(this.request.query.pid);
         if ((uid !== undefined && (!Number.isSafeInteger(uid) || uid <= 0))
@@ -38,10 +73,11 @@ export class PracticeRatingTrialHandler extends Handler {
 export function apply(ctx: Context) {
     ctx.on('handler/after', async (handler) => {
         const tdoc = handler.response.body?.tdoc;
-        if (handler.request.method !== 'get' || !tdoc || !['course', 'homework'].includes(tdoc.rule)) return;
+        if (handler.request.method !== 'get' || !tdoc || !['course', 'homework'].includes(tdoc.rule)
+            || !isPracticeRatingAdmin(handler) || tdoc.domainId !== handler.domain._id) return;
         const database = db as unknown as RatingDatabase;
         const config = await database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: handler.domain._id });
-        if (config?.teacherTrial && await canManageFeedback(handler, tdoc)) {
+        if (config?.adminTrial) {
             handler.response.body.practiceRatingUrl = handler.url(`${tdoc.rule}_practice_rating`, { tid: tdoc.docId });
         }
     });
