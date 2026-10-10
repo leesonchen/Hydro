@@ -11,11 +11,16 @@ import db from '../service/db';
 const logger = new Logger('practice-rating');
 const database = db as unknown as RatingDatabase;
 const domainId = Schema.string().description('One domain; scores are not comparable across domains').required();
-// Schemastery arrays default to [], which would erase saved exclusions when this field is omitted.
-// Preserve undefined for partial updates; an explicit [] remains the only way to clear the list.
-const excludedUids = Schema.array(Schema.number().min(1).step(1))
-    .default(undefined as unknown as number[])
-    .description('Explicitly identified test/service accounts; omitted leaves configuration unchanged');
+// Schema.array() fills omitted fields with []. Use an identity schema and validate
+// explicitly so the admin script can distinguish omission from an intentional [].
+const excludedUids = Schema.any().description('Optional list of positive integer test/service UIDs; explicit [] clears it');
+function checkedExcludedUids(value: unknown): number[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.some((uid) => !Number.isSafeInteger(uid) || uid <= 0)) {
+        throw new Error('excludedUids must be an array of positive integer UIDs');
+    }
+    return value;
+}
 
 export async function apply(ctx: Context) {
     ctx.addScript('practice-rating-run', 'Fit practice R/D (report only by default; writes use independent shadow collections)', Schema.object({
@@ -24,7 +29,10 @@ export async function apply(ctx: Context) {
         excludedUids,
         write: Schema.boolean().default(false),
     }), async (options, report) => {
-        report({ message: JSON.stringify(await runPracticeRating(database, { ...options, domainId: options.domainId })) });
+        const checked = checkedExcludedUids(options.excludedUids);
+        report({ message: JSON.stringify(await runPracticeRating(database, {
+            ...options, domainId: options.domainId, excludedUids: checked,
+        })) });
         return true;
     });
     ctx.addScript('practice-rating-report', 'Read one active practice run; administrator only, no source evidence', Schema.object({
@@ -49,8 +57,9 @@ export async function apply(ctx: Context) {
         const changes: Partial<ActiveScope> = {};
         if (options.enabled !== undefined) changes.enabled = options.enabled;
         if (options.adminTrial !== undefined) changes.adminTrial = options.adminTrial;
-        if (options.excludedUids !== undefined) {
-            const effective = [...new Set<number>(options.excludedUids)].sort((a, b) => a - b);
+        const configuredExclusions = checkedExcludedUids(options.excludedUids);
+        if (configuredExclusions !== undefined) {
+            const effective = [...new Set<number>(configuredExclusions)].sort((a, b) => a - b);
             changes.excludedUids = effective;
             changes.exclusionConfigVersion = checksum(effective);
         }
