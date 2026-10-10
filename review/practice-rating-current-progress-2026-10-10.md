@@ -1,7 +1,7 @@
 # Hydro 练习评分当前进展与验证报告
 
 - 日期：2026-10-10；分支 `work/rating-all-data-shadow`；本轮评审基线 `7e299eff0bfaf2e766d96ab7e0ad136238ff70ea`。
-- 已完成 M2 加固，并实现 M3 的前向预测工具与教师只读页面。可进入**受控试用准备**，尚不能宣称模型已经有效或所有域均可运行。
+- 已完成 M2 加固，并实现 M3 的前向预测工具与管理员只读页面。可进入**受控试用准备**，尚不能宣称模型已经有效或所有域均可运行。
 - [M2 加固、逐域容量与性能报告](practice-rating-m2-hardening-2026-10-10.md)；[任务清单](WORK-HYDRO-RATING.md)；[实施方案](../doc/design/hydro-rating-implementation-plan-2026-10-08.md)。
 - [本地测试库逐域只读试算与手工复核反馈](practice-rating-local-simulation-feedback-2026-10-10.md)：23 域中 15 域拟合成功、7 域样本不足、1 域超限；这是训练内诊断，前向效果仍待观察。
 
@@ -15,9 +15,9 @@
 | M3-01：冻结未来预测 | 已实现管理员显式候选对冻结，实际概率/基线/策略先保存，再开始观察；非历史回放 |
 | M3-02：成熟结果、分桶、Brier 和基线 | 已实现只读评估，真实适配器合成未来时间验证通过；没有真实未来期数据 |
 | M3-03：独立模拟外部参考 | 未完成，需要后续真实独立模拟和人工研究判断；不得用训练拟合代替 |
-| M3-04：教师只读试用 | 工程实现与真实 HTTP/模板权限回归已完成；安装环境未启用，真实教师试用未开展 |
+| M3-04：管理员只读试用 | 本轮改成仅系统管理员可访问；新版 HTTP/模板回归待最新 CI 确认，安装环境未启用 |
 
-**模型效果仍是“尚无结论”。** 当前可准备在容量允许、明确授权的域内进行小范围教师试用和前向数据采集；公开榜单、跨域等值、精确成长、反作弊与多模型均不在本轮范围。
+**模型效果仍是“尚无结论”。** 当前可准备在容量允许、明确授权的域内进行小范围管理员试用和前向数据采集；公开榜单、跨域等值、精确成长、反作弊与多模型均不在本轮范围。
 
 ## M3 使用契约
 
@@ -39,19 +39,19 @@ hydrooj cli script practice-rating-freeze '{"domainId":"YOUR_DOMAIN","pairs":[{"
 # 之后读取实际发生作答的成熟结果；不会用后来规则改写冻结队列
 hydrooj cli script practice-rating-evaluate '{"domainId":"YOUR_DOMAIN","predictionId":"RETURNED_ID"}'
 
-# 显式开启小范围教师只读试用；enabled 控制每日拟合，两者独立
-hydrooj cli script practice-rating-configure '{"domainId":"YOUR_DOMAIN","enabled":false,"teacherTrial":true,"excludedUids":[123,456]}'
+# 单独开启管理员只读试用；默认不开放，enabled 控制每日拟合，两者独立
+hydrooj cli script practice-rating-configure '{"domainId":"YOUR_DOMAIN","adminTrial":true}'
 ```
 
-以上为操作说明，本轮未在安装实例执行。configure 会替换排除列表，省略 excludedUids 会清空；省略 teacherTrial 默认为 false。run 的显式排除与保存配置取并集；冻结使用训练 run 与冻结时配置的排除并集，并保存当时实际策略。
+以上为操作说明，本轮未在安装实例执行。configure 现在只修改显式提供的 enabled、adminTrial 或 excludedUids；省略其他字段保留旧配置，只有明确传入 excludedUids:[] 才清空排除。旧 teacherTrial 不再用于授权。run 的显式排除与保存配置取并集；冻结使用训练 run 与冻结时配置的排除并集，并保存当时实际策略。
 
-## 教师只读边界
+## 管理员专用试用边界
 
-入口：`/d/<domain>/course/<tid>/practice-rating` 和对应的 `homework` 路径。授权教师在课程/作业侧栏可见链接。须同时满足：管理员开启 teacherTrial、既有本地课堂反馈功能 classroomFeedback 开启、课程启用条件，以及既有教学权限/课程归属。沿用课程拥有者、维护者、分配班级教师和域级作业管理权限；禁止学生、无分配关系教师和 sudo 代入身份。
+入口：`/d/<domain>/course/<tid>/practice-rating` 和对应的 `homework` 路径。只有拥有 PRIV_EDIT_SYSTEM 的系统管理员（本人会话、非 sudo 代入）且对应域显式 adminTrial=true 时，页面/侧栏入口才可访问。普通教师、域管理员和学生均被服务端拒绝；历史 teacherTrial=true 不授权。该页面独立于 classroomFeedback 开关，使用活动所分配的学生名单与题单进行选择限制。
 
-学生只能从对应课程/作业名单选择；题目必须在其题单且满足当前用户的题目可见权限。跨域、越名单 UID/题号、隐藏题目均在服务器检查。请求从已解析的 domain 和路由 tid 获取边界，不信任 query/body 中伪造的 domainId。返回只包含允许的姓名/题目标题和估计摘要，无提交证据、源代码或其他活动来源。
+管理员只能从对应课程/作业名单选择；题目必须在其题单且满足当前用户的题目可见权限。跨域、越名单 UID/题号、隐藏题目均在服务器检查。请求从已解析的 domain 和路由 tid 获取边界，不信任 query/body 中伪造的 domainId。返回只包含允许的姓名/题目标题和估计摘要，无提交证据、源代码或其他活动来源。
 
-页面显示整数 R/D、暂定/样本不足/已估计、原评估日期和解释；空数据保留旧估计时提示最近运行样本不足。相同 run、同组件才显示配对概率。GET 不写评分/预测，响应 no-store；没有教师写入评分接口。
+页面显示整数 R/D、暂定/样本不足/已估计、原评估日期和解释；空数据保留旧估计时提示最近运行样本不足，最近运行失败则明确展示告警。相同 run、同组件才显示配对概率。GET 不写评分/预测，响应 no-store；没有教师写入评分接口。
 
 ## 验证与限制
 
@@ -61,7 +61,7 @@ hydrooj cli script practice-rating-configure '{"domainId":"YOUR_DOMAIN","enabled
 | M2 真实适配器/Mongo 集成 | 16/16 通过 |
 | M3 固定分桶/Brier、冻结、未来窗口、配置变化、重测、失败候选/校验 | 6/6 通过 |
 | 既有 Rating V2 单测 | `node -r @hydrooj/register test/rating-v2.spec.ts`，27/27 通过 |
-| 教师页面独立 HTTP/真实 Nunjucks 模板套件 | `node --test test/classroom-feedback-entry.js`，29/29 通过 |
+| 管理员页面独立 HTTP/真实 Nunjucks 模板套件 | `node --test test/classroom-feedback-entry.js`，29/29 通过 |
 | 完整 CI 测试入口 | `yarn test` 全部前置批次与最后 HTTP 67/67 通过 |
 | CI 构建阶段 | `yarn build:ui:iconfont`、`yarn lint:ci`、`yarn build`、`yarn build:ui:production:webpack` 全通过 |
 | 额外检查 | 新评分 TypeScript 测试/工具独立 ESLint `--max-warnings=0` 与 TypeScript 检查通过；`git diff --check` 通过 |
@@ -80,7 +80,7 @@ yarn exec tsc --ignoreConfig --noEmit --skipLibCheck --target es2022 \
 
 未通过/未执行事项：初次集成测试在沙箱因监听端口 EPERM 无法启动，随后在获准的隔离运行中通过；新增页面最初的 HTML 断言在未加载模板引擎的测试实例失败，测试改为加载真实模板服务后通过；新增文件的初始格式检查已修复。当前无未修复的代码门禁失败。Sentry 未提供令牌，生产 UI 构建给出不上传 source map 的提示，构建成功且本轮没有发布。
 
-真实未来预测、独立模拟、真实教师试用与生产忙时服务共存尚未执行。未合并、发布或部署，旧业务字段及排名逻辑保持不变。完整 CI 指本地使用既有依赖执行仓库 CI 的构建/检查/测试阶段；未重装依赖，未声称远端 GitHub Actions 已运行。
+真实未来预测、独立模拟、真实管理员试用与生产忙时服务共存尚未执行。未合并、发布或部署，旧业务字段及排名逻辑保持不变。完整 CI 指本地使用既有依赖执行仓库 CI 的构建/检查/测试阶段；未重装依赖，未声称远端 GitHub Actions 已运行。
 
 M2 由独立评审上下文重新检查全部差异，未发现可行动 P0–P2；M3 的第二独立评审因工具额度不可用，主执行上下文按冻结时间、失败写入、配置/活动 run 漂移、重测、隐藏资料、跨域和撤权清单完成复核及补测。没有将该轮描述成已通过独立评审。
 
