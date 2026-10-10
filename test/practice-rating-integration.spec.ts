@@ -338,4 +338,48 @@ describe('practice rating isolated MongoDB integration', () => {
         await hooks['task/daily']();
         assert.equal(await database.collection(COLLECTIONS.runs).countDocuments({ scope }), 1);
     });
+    it('administrator trial configuration changes only explicit fields and never revives teacherTrial', async () => {
+        const scripts: Record<string, any> = {};
+        const filename = path.resolve('packages/hydrooj/src/script/practice-rating.ts');
+        const exported: any = {};
+        const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+        }).outputText;
+        vm.runInNewContext(code, { exports: exported, require(name: string) {
+            if (name === '../context') return {};
+            if (name === '../service/db') return { default: database, __esModule: true };
+            if (name === '../logger') return { Logger: class { info() {} error() {} } };
+            if (name.startsWith('../lib/')) return require(path.resolve('packages/hydrooj/src', name.slice(3)));
+            return require(name);
+        } }, { filename });
+        await exported.apply({
+            addScript(name: string, _description: string, validate: any, run: Function) { scripts[name] = { validate, run }; },
+            on() {},
+        });
+        const { validate, run } = scripts['practice-rating-configure'];
+        const configure = async (fields: Record<string, unknown>) => run(validate({ domainId: scope, ...fields }), () => {});
+        await configure({ enabled: true, adminTrial: true, excludedUids: [3, 4, 3] });
+        let saved = await database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: scope });
+        assert.equal(saved.enabled, true);
+        assert.equal(saved.adminTrial, true);
+        assert.deepEqual(saved.excludedUids, [3, 4]);
+        const hash = saved.exclusionConfigVersion;
+        await configure({ enabled: false });
+        saved = await database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: scope });
+        assert.equal(saved.enabled, false);
+        assert.equal(saved.adminTrial, true);
+        assert.deepEqual(saved.excludedUids, [3, 4]);
+        assert.equal(saved.exclusionConfigVersion, hash);
+        await configure({ adminTrial: false });
+        saved = await database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: scope });
+        assert.equal(saved.enabled, false);
+        assert.equal(saved.adminTrial, false);
+        assert.deepEqual(saved.excludedUids, [3, 4]);
+        await configure({ excludedUids: [] });
+        saved = await database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: scope });
+        assert.deepEqual(saved.excludedUids, []);
+        assert.notEqual(saved.exclusionConfigVersion, hash);
+        await assert.rejects(configure({}), /Provide enabled, adminTrial or excludedUids/);
+    });
+
 });
