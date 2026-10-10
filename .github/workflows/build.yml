@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# Cancel obsolete builds for the same branch/PR. Keep the latest verification run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   CI: true
   YARN_ENABLE_IMMUTABLE_INSTALLS: 'false'
