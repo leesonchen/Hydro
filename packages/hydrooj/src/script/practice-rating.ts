@@ -11,7 +11,7 @@ import db from '../service/db';
 const logger = new Logger('practice-rating');
 const database = db as unknown as RatingDatabase;
 const domainId = Schema.string().description('One domain; scores are not comparable across domains').required();
-const excludedUids = Schema.array(Schema.number().min(1).step(1)).description('Explicitly identified test/service accounts').default([]);
+const excludedUids = Schema.array(Schema.number().min(1).step(1)).description('Explicitly identified test/service accounts; omitted leaves configuration unchanged');
 
 export async function apply(ctx: Context) {
     ctx.addScript('practice-rating-run', 'Fit practice R/D (report only by default; writes use independent shadow collections)', Schema.object({
@@ -33,21 +33,28 @@ export async function apply(ctx: Context) {
         report({ message: JSON.stringify(result) });
         return true;
     });
-    ctx.addScript('practice-rating-configure', 'Explicitly enable/disable daily shadow fits for one domain', Schema.object({
+    ctx.addScript('practice-rating-configure', 'Update opt-in daily fits, administrator-only trial or exclusions (only supplied fields change)', Schema.object({
         domainId,
-        enabled: Schema.boolean().required(),
-        teacherTrial: Schema.boolean().default(false).description('Enable authorized course/homework teachers to read practice estimates'),
+        enabled: Schema.boolean().description('Opt in/out of the daily shadow run'),
+        adminTrial: Schema.boolean().description('Opt in/out of system-administrator-only trial pages'),
         excludedUids,
     }), async (options, report) => {
         if (!await database.collection('domain').findOne({ _id: options.domainId as any }, { projection: { _id: 1 } })) {
             throw new Error('Unknown domain');
         }
-        const effective = [...new Set<number>(options.excludedUids)].sort((a, b) => a - b);
+        const changes: Partial<ActiveScope> = {};
+        if (options.enabled !== undefined) changes.enabled = options.enabled;
+        if (options.adminTrial !== undefined) changes.adminTrial = options.adminTrial;
+        if (options.excludedUids !== undefined) {
+            const effective = [...new Set<number>(options.excludedUids)].sort((a, b) => a - b);
+            changes.excludedUids = effective;
+            changes.exclusionConfigVersion = checksum(effective);
+        }
+        if (!Object.keys(changes).length) throw new Error('Provide enabled, adminTrial or excludedUids');
         await database.collection<ActiveScope>(COLLECTIONS.active).updateOne({ _id: options.domainId }, {
-            $set: { enabled: options.enabled, teacherTrial: options.teacherTrial,
-                excludedUids: effective, exclusionConfigVersion: checksum(effective) },
+            $set: changes,
         }, { upsert: true });
-        report({ message: `Daily practice rating ${options.enabled ? 'enabled' : 'disabled'} for ${options.domainId}` });
+        report({ message: `Practice rating settings updated for ${options.domainId}: ${Object.keys(changes).join(', ')}` });
         return true;
     });
     ctx.addScript('practice-rating-freeze', 'Freeze an explicit future cohort before its first eligible attempts', Schema.object({
