@@ -3,6 +3,7 @@
 - 日期：2026-10-10；分支 `work/rating-all-data-shadow`；本轮评审基线 `7e299eff0bfaf2e766d96ab7e0ad136238ff70ea`。
 - 已完成 M2 加固，并实现 M3 的前向预测工具与教师只读页面。可进入**受控试用准备**，尚不能宣称模型已经有效或所有域均可运行。
 - [M2 加固、逐域容量与性能报告](practice-rating-m2-hardening-2026-10-10.md)；[任务清单](WORK-HYDRO-RATING.md)；[实施方案](../doc/design/hydro-rating-implementation-plan-2026-10-08.md)。
+- [本地测试库逐域只读试算与手工复核反馈](practice-rating-local-simulation-feedback-2026-10-10.md)：23 域中 15 域拟合成功、7 域样本不足、1 域超限；这是训练内诊断，前向效果仍待观察。
 
 ## 已完成与待完成
 
