@@ -1,7 +1,7 @@
 import { ObjectId } from 'mongodb';
 import { Context } from '../context';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../error';
-import { Tdoc } from '../interface';
+import type { Tdoc } from '../interface';
 import { RatingDatabase } from '../lib/practice-rating/adapter';
 import { ActiveScope, COLLECTIONS, PracticeRatingStore } from '../lib/practice-rating/store';
 import { PRIV } from '../model/builtin';
