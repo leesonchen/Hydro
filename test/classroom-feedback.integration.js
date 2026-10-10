@@ -158,6 +158,12 @@ exports.register = () => describe('Local feedback', () => {
             try {
                 await get(manager, url).expect(403);
                 await get(manager, hwUrl).expect(403);
+                // Switching back to an administrator identity still leaves an impersonated session.
+                await database.collection('token').updateOne({ _id: sessionToken._id }, { $set: { uid: managerUid } });
+                await get(manager, url).expect(403);
+                await get(manager, hwUrl).expect(403);
+                const impersonatedPage = await get(manager, `/d/${domainId}/course/${courseId}`).expect(200);
+                assert.equal(impersonatedPage.body.practiceRatingUrl, undefined);
             } finally {
                 await database.collection('token').updateOne({ _id: sessionToken._id }, {
                     $set: { uid: managerUid },
@@ -172,6 +178,18 @@ exports.register = () => describe('Local feedback', () => {
             await get(manager, `${url}?uid=${teacherUid}&pid=${pid}`).expect(403);
             await get(manager, `${url}?uid=${uid}&pid=999999`).expect(403);
             await get(manager, `${url}?uid=not-a-user`).expect(400);
+            const originalTeacherPriv = (await model.user.coll.findOne({ _id: teacherUid })).priv;
+            await model.user.setPriv(teacherUid, originalTeacherPriv | model.builtin.PRIV.PRIV_EDIT_SYSTEM);
+            await model.problem.edit(domainId, pid, { hidden: true });
+            try {
+                await get(teacher, `${url}?uid=${uid}&pid=${pid}`).expect(403);
+                const hidden = await get(teacher, url).expect(200);
+                assert.equal(hidden.body.problems.length, 0);
+                await get(manager, `${url}?uid=${uid}&pid=${pid}`).expect(200);
+            } finally {
+                await model.problem.edit(domainId, pid, { hidden: false });
+                await model.user.setPriv(teacherUid, originalTeacherPriv);
+            }
             const spoof = await get(manager, `${url}?domainId=system&uid=${uid}&pid=${pid}`).expect(200);
             assert.equal(spoof.body.report.scope, domainId);
             await get(manager, `/d/system/course/${courseId}/practice-rating`).expect(403);

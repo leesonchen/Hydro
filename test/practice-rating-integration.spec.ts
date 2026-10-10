@@ -341,10 +341,10 @@ describe('practice rating isolated MongoDB integration', () => {
     it('reports valid writes separately from interrupted snapshots without changing the active rating', async () => {
         const first = await runPracticeRating(database, { domainId: scope, write: true });
         assert.equal(first.activated, true);
-        const past = Date.now() - 10000;
-        await database.collection(COLLECTIONS.runs).insertOne({
-            _id: 'interrupted-snapshot', scope, asOf: past,
-            capturedAt: past + 1, status: 'writing', leaseToken: 'expired-owner',
+        const previous = await store.activeRun(scope);
+        await database.collection<any>(COLLECTIONS.runs).insertOne({
+            _id: 'interrupted-snapshot', scope, asOf: previous.asOf,
+            capturedAt: previous.capturedAt + 1, status: 'writing', leaseToken: 'expired-owner',
         });
         let current = await store.read(scope, 2, 10);
         assert.equal(current.runId, first.runId);
@@ -352,7 +352,7 @@ describe('practice rating isolated MongoDB integration', () => {
         await database.collection<ActiveScope>(COLLECTIONS.active).updateOne({ _id: scope }, {
             $set: { lock: { token: 'live-owner', expiresAt: Date.now() + 60000 } },
         });
-        await database.collection(COLLECTIONS.runs).updateOne({ _id: 'interrupted-snapshot' }, {
+        await database.collection<any>(COLLECTIONS.runs).updateOne({ _id: 'interrupted-snapshot' }, {
             $set: { leaseToken: 'live-owner' },
         });
         current = await store.read(scope, 2, 10);
@@ -408,7 +408,10 @@ describe('practice rating isolated MongoDB integration', () => {
         saved = await database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: scope });
         assert.deepEqual(saved.excludedUids, []);
         assert.notEqual(saved.exclusionConfigVersion, hash);
+        await Promise.all([null, '3', [0], [1.5], ['3'], [Number.MAX_SAFE_INTEGER + 1]].map((invalid) => assert.rejects(
+            configure({ enabled: true, adminTrial: true, excludedUids: invalid }), /excludedUids must be an array of positive integer UIDs/,
+        )));
+        assert.deepEqual(await database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: scope }), saved);
         await assert.rejects(configure({}), /Provide enabled, adminTrial or excludedUids/);
     });
-
 });

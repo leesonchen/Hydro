@@ -107,7 +107,8 @@ export class PracticeRatingStore {
         const run = {
             _id: runId, scope, asOf, capturedAt: snapshot.capturedAt, modelVersion: fit.modelVersion, sampleVersion: 'practice-episodes-7d-v1',
             parameters: { ...fit.parameters, episodeWindowMs: EPISODE_WINDOW_MS, recentWindowMs: RECENT_WINDOW_MS },
-            status: 'writing', leaseToken: lease.token, snapshotVersion: 2, counts: { episodes: episodes.length, users: fit.users.length, problems: fit.problems.length },
+            status: 'writing', leaseToken: lease.token, snapshotVersion: 2,
+            counts: { episodes: episodes.length, users: fit.users.length, problems: fit.problems.length },
             fitStatus: fit.status, iterations: fit.iterations, objective: fit.objective, components: fit.components,
             diagnostics: snapshot.diagnostics,
             exclusionPolicy: snapshot.exclusionPolicy ?? null,

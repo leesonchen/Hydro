@@ -45,7 +45,7 @@ export async function apply(ctx: Context) {
         report({ message: JSON.stringify(result) });
         return true;
     });
-    ctx.addScript('practice-rating-configure', 'Update opt-in daily fits, administrator-only trial or exclusions (only supplied fields change)', Schema.object({
+    ctx.addScript('practice-rating-configure', 'Update only supplied daily fit, administrator trial or exclusion settings', Schema.object({
         domainId,
         enabled: Schema.boolean().description('Opt in/out of the daily shadow run'),
         adminTrial: Schema.boolean().description('Opt in/out of system-administrator-only trial pages'),
