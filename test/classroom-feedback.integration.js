@@ -13,6 +13,7 @@ exports.register = () => describe('Local feedback', () => {
     let uid;
     let extraUid;
     let teacherUid;
+    let managerUid;
     let peerUid;
     let teacher;
     let peer;
@@ -45,7 +46,6 @@ exports.register = () => describe('Local feedback', () => {
             await agent.post('/login').send({ uname, password: 'feedback-test-password' }).expect(302);
             return [id, agent];
         };
-        let managerUid;
         let outsiderUid;
         [managerUid, manager] = await login('manager');
         [teacherUid, teacher] = await login('teacher');
@@ -86,23 +86,34 @@ exports.register = () => describe('Local feedback', () => {
         await global.app.get('db').db.collection('opcount').deleteMany({ op: 'global' });
     });
 
-    it('practice rating trial is opt-in, read-only and restricted to teaching roster and visible problems', async () => {
+    it('practice rating trial is restricted to opted-in system administrators, not teachers or domain owners', async () => {
         const database = global.app.get('db').db;
+        const model = global.Hydro.model;
         const { runPracticeRating } = require('../packages/hydrooj/src/lib/practice-rating/runner');
         const { COLLECTIONS } = require('../packages/hydrooj/src/lib/practice-rating/store');
         const url = `/d/${domainId}/course/${courseId}/practice-rating`;
         const hwUrl = `/d/${domainId}/homework/${homeworkId}/practice-rating`;
-        await get(teacher, url).expect(403);
-        await database.collection(COLLECTIONS.active).updateOne({ _id: domainId }, { $set: { teacherTrial: true } }, { upsert: true });
+        const originalPriv = (await model.user.coll.findOne({ _id: managerUid })).priv;
         const old = Date.now() - 8 * 86400000;
         const ids = [101, 102].map((n) => new ObjectId(ObjectId.createFromTime(Math.floor(old / 1000)).toHexString().slice(0, 8)
             + n.toString(16).padStart(16, '0')));
+        await get(manager, url).expect(403);
+        // Existing teacherTrial configurations must never grant access after migration.
+        await database.collection(COLLECTIONS.active).updateOne({ _id: domainId }, {
+            $set: { teacherTrial: true, adminTrial: true },
+        }, { upsert: true });
+        await get(teacher, url).expect(403);
+        await get(peer, url).expect(403);
+        await get(manager, url).expect(403); // Domain ownership alone is insufficient.
+        await get(student, url).expect(403);
+        await get(outsider, url).expect(403);
+        await model.user.setPriv(managerUid, originalPriv | model.builtin.PRIV.PRIV_EDIT_SYSTEM);
         await database.collection('record').insertMany([uid, extraUid].map((studentUid, i) => ({
             _id: ids[i], domainId, uid: studentUid, pid, status: i ? 2 : 1, judgeAt: new Date(old + 1000),
         })));
         try {
             const run = await runPracticeRating(database, { domainId, write: true });
-            const response = await get(teacher, `${url}?uid=${uid}&pid=${pid}`).expect(200);
+            const response = await get(manager, `${url}?uid=${uid}&pid=${pid}`).expect(200);
             assert.equal(response.body.report.runId, run.runId);
             assert.equal(typeof response.body.report.probability, 'number');
             assert(response.headers['cache-control'].includes('no-store'));
@@ -113,46 +124,50 @@ exports.register = () => describe('Local feedback', () => {
             const renderer = global.app.plugin(require('@hydrooj/ui-default/backendlib/template').TemplateService);
             try {
                 await renderer;
-                const html = await teacher.get(`${url}?uid=${uid}&pid=${pid}`).accept('html').expect(200);
-                assert(html.text.includes('教师只读试用'));
+                const html = await manager.get(`${url}?uid=${uid}&pid=${pid}`).accept('html').expect(200);
+                assert(html.text.includes('管理员只读试用'));
                 assert(html.text.includes('不等于独立考试能力'));
                 assert(!html.text.includes('DATETIME_SPAN_ERROR'));
-                const page = await teacher.get(`/d/${domainId}/course/${courseId}`).accept('html').expect(200);
-                assert(page.text.includes('/practice-rating'));
+                const adminPage = await manager.get(`/d/${domainId}/course/${courseId}`).accept('html').expect(200);
+                assert(adminPage.text.includes('/practice-rating'));
+                const teacherPage = await teacher.get(`/d/${domainId}/course/${courseId}`).accept('html').expect(200);
+                assert(!teacherPage.text.includes('/practice-rating'));
+                // Failure diagnostics are visible but never replace the active estimate.
+                const failureId = 'failed-trial-fixture';
+                await database.collection(COLLECTIONS.runs).insertOne({
+                    _id: failureId, scope: domainId, asOf: Date.now(), capturedAt: Date.now() + 10000, status: 'failed',
+                });
+                const warningPage = await manager.get(url).accept('html').expect(200);
+                assert(warningPage.text.includes('最近一次计算失败'));
+                await database.collection(COLLECTIONS.runs).deleteOne({ _id: failureId });
             } finally {
                 await renderer.dispose();
                 if (previousUiAddon === undefined) delete global.addons['ui-default'];
                 else global.addons['ui-default'] = previousUiAddon;
             }
-            await get(peer, url).expect(200);
-            await get(teacher, hwUrl).expect(200);
-            await get(teacher, `${url}?uid=&pid=`).expect(200);
-            await get(student, url).expect(403);
-            await get(outsider, url).expect(403);
-            await get(teacher, `${url}?uid=${teacherUid}&pid=${pid}`).expect(403);
-            await get(teacher, `${url}?uid=${uid}&pid=999999`).expect(403);
-            await get(teacher, `${url}?uid=not-a-user`).expect(400);
-            const spoof = await get(teacher, `${url}?domainId=system&uid=${uid}&pid=${pid}`).expect(200);
+            await get(manager, hwUrl).expect(200);
+            await get(manager, `${url}?uid=&pid=`).expect(200);
+            await get(manager, `${url}?uid=${teacherUid}&pid=${pid}`).expect(403);
+            await get(manager, `${url}?uid=${uid}&pid=999999`).expect(403);
+            await get(manager, `${url}?uid=not-a-user`).expect(400);
+            const spoof = await get(manager, `${url}?domainId=system&uid=${uid}&pid=${pid}`).expect(200);
             assert.equal(spoof.body.report.scope, domainId);
-            const cross = await get(teacher, `/d/system/course/${courseId}/practice-rating`);
-            assert.notEqual(cross.status, 200);
-            const postResult = await teacher.post(url).set('Accept', 'application/json').send({ uid, pid });
+            await get(manager, `/d/system/course/${courseId}/practice-rating`).expect(403);
+            const postResult = await manager.post(url).set('Accept', 'application/json').send({ uid, pid });
             assert.notEqual(postResult.status, 200);
-            await global.Hydro.model.problem.edit(domainId, pid, { hidden: true });
-            await get(teacher, `${url}?uid=${uid}&pid=${pid}`).expect(403);
-            const hidden = await get(teacher, url).expect(200);
-            assert.equal(hidden.body.problems.length, 0);
-            await get(manager, `${url}?uid=${uid}&pid=${pid}`).expect(200);
-            await global.Hydro.model.problem.edit(domainId, pid, { hidden: false });
-            await global.Hydro.model.domain.setUserRole(domainId, teacherUid, 'read-only', true);
-            await get(teacher, url).expect(403);
-            await global.Hydro.model.domain.setUserRole(domainId, teacherUid, 'teacher', true);
+            // Trial access is independent of the classroom-feedback feature toggle.
+            await model.domain.edit(domainId, { classroomFeedback: false });
+            await get(manager, url).expect(200);
+            await model.domain.edit(domainId, { classroomFeedback: true });
             assert.equal(await database.collection(COLLECTIONS.runs).countDocuments({ scope: domainId }), 1);
-            await database.collection(COLLECTIONS.active).updateOne({ _id: domainId }, { $set: { teacherTrial: false } });
-            await get(teacher, url).expect(403);
+            await database.collection(COLLECTIONS.active).updateOne({ _id: domainId }, { $set: { adminTrial: false } });
+            await get(manager, url).expect(403);
+            // The deprecated flag cannot re-enable any trial page.
+            await database.collection(COLLECTIONS.active).updateOne({ _id: domainId }, { $unset: { adminTrial: '' } });
+            await get(manager, url).expect(403);
         } finally {
-            await global.Hydro.model.problem.edit(domainId, pid, { hidden: false });
-            await global.Hydro.model.domain.setUserRole(domainId, teacherUid, 'teacher', true);
+            await model.domain.edit(domainId, { classroomFeedback: true });
+            await model.user.setPriv(managerUid, originalPriv);
             await database.collection('record').deleteMany({ _id: { $in: ids } });
             await Promise.all(Object.values(COLLECTIONS).map((name) => database.collection(name).deleteMany(
                 name === COLLECTIONS.active ? { _id: domainId } : { scope: domainId },
