@@ -107,7 +107,7 @@ export class PracticeRatingStore {
         const run = {
             _id: runId, scope, asOf, capturedAt: snapshot.capturedAt, modelVersion: fit.modelVersion, sampleVersion: 'practice-episodes-7d-v1',
             parameters: { ...fit.parameters, episodeWindowMs: EPISODE_WINDOW_MS, recentWindowMs: RECENT_WINDOW_MS },
-            status: 'writing', snapshotVersion: 2, counts: { episodes: episodes.length, users: fit.users.length, problems: fit.problems.length },
+            status: 'writing', leaseToken: lease.token, snapshotVersion: 2, counts: { episodes: episodes.length, users: fit.users.length, problems: fit.problems.length },
             fitStatus: fit.status, iterations: fit.iterations, objective: fit.objective, components: fit.components,
             diagnostics: snapshot.diagnostics,
             exclusionPolicy: snapshot.exclusionPolicy ?? null,
@@ -202,7 +202,13 @@ export class PracticeRatingStore {
     async read(scope: string, uid?: number, pid?: number, revision: string | null = null) {
         const run = await this.activeRun(scope);
         const attempt = await this.database.collection<any>(COLLECTIONS.runs).find({ scope }).sort({ capturedAt: -1, _id: -1 }).limit(1).next();
-        const latestAttempt = attempt ? { runId: attempt._id, asOf: attempt.asOf, status: attempt.status } : null;
+        const activeScope = attempt?.status === 'writing'
+            ? await this.database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: scope }) : null;
+        const interrupted = attempt?.status === 'writing'
+            && (!activeScope?.lock || activeScope.lock.token !== attempt.leaseToken
+                || activeScope.lock.expiresAt <= Date.now());
+        const latestAttempt = attempt ? { runId: attempt._id, asOf: attempt.asOf,
+            status: interrupted ? 'interrupted' : attempt.status } : null;
         if (!run) return { scope, status: 'insufficient', runId: null, latestAttempt, user: null, problem: null, probability: null };
         const [user, problem] = await Promise.all([
             uid === undefined ? null : this.database.collection<StoredUser>(COLLECTIONS.users).findOne({ scope, runId: run._id, uid }),
