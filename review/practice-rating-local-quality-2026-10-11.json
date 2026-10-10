@@ -1,0 +1,3550 @@
+{
+  "container": "hydro",
+  "asOf": 1791646169242,
+  "commit": "5627b244f80c3e3dcc481edd67c570413c618b18",
+  "domains": [
+    {
+      "scope": "Contest",
+      "records": 16136,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 7252,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 7243,
+        "totalEpisodes": 7252,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 9,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_record": 2,
+          "invalid_status": 5
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 16136,
+        "trainingObservations": 9
+      },
+      "training": 9,
+      "trainingSuccesses": 9,
+      "users": {
+        "total": 3,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 9,
+        "estimated": 0
+      },
+      "components": 3,
+      "iterations": 10,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "Contest",
+        "splitAt": 1789542070000,
+        "training": 7,
+        "holdout": 2,
+        "purged": 0,
+        "fitStatus": "ok",
+        "components": 2,
+        "trainingProvisional": {
+          "users": 2,
+          "problems": 7
+        },
+        "unknownRevision": {
+          "training": 7,
+          "holdout": 2,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 2,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 472
+    },
+    {
+      "scope": "Cpp2023",
+      "records": 28923,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 11545,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 1,
+        "outsideRecentWindow": 11529,
+        "totalEpisodes": 11545,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 15,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_status": 65
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 28923,
+        "trainingObservations": 15
+      },
+      "training": 15,
+      "trainingSuccesses": 12,
+      "users": {
+        "total": 8,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 14,
+        "estimated": 0
+      },
+      "components": 7,
+      "iterations": 10,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "Cpp2023",
+        "splitAt": 1787886417000,
+        "training": 12,
+        "holdout": 3,
+        "purged": 0,
+        "fitStatus": "ok",
+        "components": 6,
+        "trainingProvisional": {
+          "users": 6,
+          "problems": 12
+        },
+        "unknownRevision": {
+          "training": 12,
+          "holdout": 3,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 3,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 756
+    },
+    {
+      "scope": "Cpp2023Q2",
+      "records": 12810,
+      "excludedConfigured": 0,
+      "status": "insufficient",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 3235,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 3235,
+        "totalEpisodes": 3235,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 0,
+        "unknownRevisionTrainingRatio": null,
+        "excludedByReason": {
+          "invalid_status": 2
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 12810,
+        "trainingObservations": 0
+      },
+      "training": 0,
+      "trainingSuccesses": 0,
+      "users": {
+        "total": 0,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 0,
+        "estimated": 0
+      },
+      "components": 0,
+      "iterations": 0,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "Cpp2023Q2",
+        "splitAt": null,
+        "training": 0,
+        "holdout": 0,
+        "purged": 0,
+        "fitStatus": "insufficient",
+        "components": 0,
+        "trainingProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "unknownRevision": {
+          "training": 0,
+          "holdout": 0,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 0,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 233
+    },
+    {
+      "scope": "PythonGrade1",
+      "records": 50066,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 21437,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 20858,
+        "totalEpisodes": 21437,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 579,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_status": 15
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 50066,
+        "trainingObservations": 579
+      },
+      "training": 579,
+      "trainingSuccesses": 552,
+      "users": {
+        "total": 18,
+        "estimated": 10
+      },
+      "problems": {
+        "total": 100,
+        "estimated": 0
+      },
+      "components": 1,
+      "iterations": 31,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "PythonGrade1",
+        "splitAt": 1783913922000,
+        "training": 2,
+        "holdout": 116,
+        "purged": 461,
+        "fitStatus": "ok",
+        "components": 1,
+        "trainingProvisional": {
+          "users": 1,
+          "problems": 2
+        },
+        "unknownRevision": {
+          "training": 2,
+          "holdout": 116,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 116,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 839
+    },
+    {
+      "scope": "PythonGrade2",
+      "records": 77634,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 31992,
+        "openEpisodes": 0,
+        "pendingEpisodes": 1,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 31372,
+        "totalEpisodes": 31992,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 619,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_status": 25
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 77634,
+        "trainingObservations": 619
+      },
+      "training": 619,
+      "trainingSuccesses": 568,
+      "users": {
+        "total": 26,
+        "estimated": 12
+      },
+      "problems": {
+        "total": 187,
+        "estimated": 0
+      },
+      "components": 2,
+      "iterations": 34,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "PythonGrade2",
+        "splitAt": 1788663086000,
+        "training": 486,
+        "holdout": 124,
+        "purged": 9,
+        "fitStatus": "ok",
+        "components": 1,
+        "trainingProvisional": {
+          "users": 10,
+          "problems": 161
+        },
+        "unknownRevision": {
+          "training": 486,
+          "holdout": 124,
+          "scored": 8
+        },
+        "skipped": {
+          "missingUser": 70,
+          "missingProblem": 46,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 4,
+        "scoredNegatives": 4,
+        "scoredProvisional": {
+          "users": 3,
+          "problems": 8
+        },
+        "scoredProvisionalAny": 8,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": 0.9384223274049465,
+        "meanActual": 0.5,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 8,
+          "brier": 0.4565421509809793,
+          "overallBaselineBrier": 0.42966434655963687,
+          "problemBaselineBrier": 0.4305555555555556,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 3,
+              "predicted": 0.8949619814388036,
+              "actual": 0.6666666666666666
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 5,
+              "predicted": 0.9644985349846322,
+              "actual": 0.4
+            }
+          ]
+        }
+      },
+      "elapsedMs": 926
+    },
+    {
+      "scope": "PythonGrade3",
+      "records": 59234,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 25049,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 23938,
+        "totalEpisodes": 25049,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 1111,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_status": 75
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 59234,
+        "trainingObservations": 1111
+      },
+      "training": 1111,
+      "trainingSuccesses": 1069,
+      "users": {
+        "total": 15,
+        "estimated": 11
+      },
+      "problems": {
+        "total": 201,
+        "estimated": 0
+      },
+      "components": 1,
+      "iterations": 24,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "PythonGrade3",
+        "splitAt": 1787622702000,
+        "training": 830,
+        "holdout": 223,
+        "purged": 58,
+        "fitStatus": "ok",
+        "components": 1,
+        "trainingProvisional": {
+          "users": 6,
+          "problems": 160
+        },
+        "unknownRevision": {
+          "training": 830,
+          "holdout": 223,
+          "scored": 42
+        },
+        "skipped": {
+          "missingUser": 0,
+          "missingProblem": 181,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 38,
+        "scoredNegatives": 4,
+        "scoredProvisional": {
+          "users": 2,
+          "problems": 39
+        },
+        "scoredProvisionalAny": 42,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": 0.925881122590998,
+        "meanActual": 0.9047619047619048,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 42,
+          "brier": 0.08320903775020316,
+          "overallBaselineBrier": 0.09072773019790009,
+          "problemBaselineBrier": 0.19907407407407407,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 1,
+              "predicted": 0.16377245243368085,
+              "actual": 0
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 1,
+              "predicted": 0.35295359581087327,
+              "actual": 1
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 2,
+              "predicted": 0.7036026679596551,
+              "actual": 1
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 3,
+              "predicted": 0.8850653847560097,
+              "actual": 1
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 35,
+              "predicted": 0.9802251317254289,
+              "actual": 0.9142857142857143
+            }
+          ]
+        }
+      },
+      "elapsedMs": 772
+    },
+    {
+      "scope": "aiedu",
+      "records": 319,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 186,
+        "openEpisodes": 98,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 1,
+        "totalEpisodes": 186,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 87,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {},
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 319,
+        "trainingObservations": 87
+      },
+      "training": 87,
+      "trainingSuccesses": 87,
+      "users": {
+        "total": 3,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 77,
+        "estimated": 0
+      },
+      "components": 1,
+      "iterations": 13,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "aiedu",
+        "splitAt": 1789494453000,
+        "training": 25,
+        "holdout": 18,
+        "purged": 44,
+        "fitStatus": "ok",
+        "components": 2,
+        "trainingProvisional": {
+          "users": 2,
+          "problems": 25
+        },
+        "unknownRevision": {
+          "training": 25,
+          "holdout": 18,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 1,
+          "missingProblem": 17,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 21
+    },
+    {
+      "scope": "contests",
+      "records": 3,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 2,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 1,
+        "totalEpisodes": 2,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 1,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {},
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 3,
+        "trainingObservations": 1
+      },
+      "training": 1,
+      "trainingSuccesses": 1,
+      "users": {
+        "total": 1,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 1,
+        "estimated": 0
+      },
+      "components": 1,
+      "iterations": 10,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "contests",
+        "splitAt": 1783420442000,
+        "training": 0,
+        "holdout": 1,
+        "purged": 0,
+        "fitStatus": "insufficient",
+        "components": 0,
+        "trainingProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "unknownRevision": {
+          "training": 0,
+          "holdout": 1,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 0,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 1
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 5
+    },
+    {
+      "scope": "cpp2025",
+      "records": 1512,
+      "excludedConfigured": 0,
+      "status": "insufficient",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 392,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 392,
+        "totalEpisodes": 392,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 0,
+        "unknownRevisionTrainingRatio": null,
+        "excludedByReason": {},
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 1512,
+        "trainingObservations": 0
+      },
+      "training": 0,
+      "trainingSuccesses": 0,
+      "users": {
+        "total": 0,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 0,
+        "estimated": 0
+      },
+      "components": 0,
+      "iterations": 0,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "cpp2025",
+        "splitAt": null,
+        "training": 0,
+        "holdout": 0,
+        "purged": 0,
+        "fitStatus": "insufficient",
+        "components": 0,
+        "trainingProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "unknownRevision": {
+          "training": 0,
+          "holdout": 0,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 0,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 15
+    },
+    {
+      "scope": "cpp2026",
+      "records": 1769,
+      "excludedConfigured": 0,
+      "status": "insufficient",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 760,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 760,
+        "totalEpisodes": 760,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 0,
+        "unknownRevisionTrainingRatio": null,
+        "excludedByReason": {
+          "invalid_status": 16
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 1769,
+        "trainingObservations": 0
+      },
+      "training": 0,
+      "trainingSuccesses": 0,
+      "users": {
+        "total": 0,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 0,
+        "estimated": 0
+      },
+      "components": 0,
+      "iterations": 0,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "cpp2026",
+        "splitAt": null,
+        "training": 0,
+        "holdout": 0,
+        "purged": 0,
+        "fitStatus": "insufficient",
+        "components": 0,
+        "trainingProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "unknownRevision": {
+          "training": 0,
+          "holdout": 0,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 0,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 17
+    },
+    {
+      "scope": "cpp_pj",
+      "records": 839,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 364,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 352,
+        "totalEpisodes": 364,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 12,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {},
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 839,
+        "trainingObservations": 12
+      },
+      "training": 12,
+      "trainingSuccesses": 10,
+      "users": {
+        "total": 4,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 10,
+        "estimated": 0
+      },
+      "components": 2,
+      "iterations": 14,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "cpp_pj",
+        "splitAt": 1787472915000,
+        "training": 5,
+        "holdout": 3,
+        "purged": 4,
+        "fitStatus": "ok",
+        "components": 3,
+        "trainingProvisional": {
+          "users": 3,
+          "problems": 5
+        },
+        "unknownRevision": {
+          "training": 5,
+          "holdout": 3,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 3,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 10
+    },
+    {
+      "scope": "cpp_tg",
+      "records": 565,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 247,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 245,
+        "totalEpisodes": 247,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 2,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {},
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 565,
+        "trainingObservations": 2
+      },
+      "training": 2,
+      "trainingSuccesses": 0,
+      "users": {
+        "total": 2,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 2,
+        "estimated": 0
+      },
+      "components": 2,
+      "iterations": 10,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "cpp_tg",
+        "splitAt": 1790258957000,
+        "training": 1,
+        "holdout": 1,
+        "purged": 0,
+        "fitStatus": "ok",
+        "components": 1,
+        "trainingProvisional": {
+          "users": 1,
+          "problems": 1
+        },
+        "unknownRevision": {
+          "training": 1,
+          "holdout": 1,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 1,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 8
+    },
+    {
+      "scope": "cppbasics",
+      "records": 29477,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 15273,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 0,
+        "totalEpisodes": 15273,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 15273,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_status": 12
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 29477,
+        "trainingObservations": 15273
+      },
+      "training": 15273,
+      "trainingSuccesses": 14749,
+      "users": {
+        "total": 112,
+        "estimated": 98
+      },
+      "problems": {
+        "total": 340,
+        "estimated": 124
+      },
+      "components": 1,
+      "iterations": 19,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "cppbasics",
+        "splitAt": 1785568737000,
+        "training": 8970,
+        "holdout": 3055,
+        "purged": 3248,
+        "fitStatus": "ok",
+        "components": 1,
+        "trainingProvisional": {
+          "users": 16,
+          "problems": 174
+        },
+        "unknownRevision": {
+          "training": 8970,
+          "holdout": 3055,
+          "scored": 194
+        },
+        "skipped": {
+          "missingUser": 2789,
+          "missingProblem": 72,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 183,
+        "scoredNegatives": 11,
+        "scoredProvisional": {
+          "users": 4,
+          "problems": 68
+        },
+        "scoredProvisionalAny": 141,
+        "scoredEstimatedBoth": 53,
+        "meanPredicted": 0.8496596199598138,
+        "meanActual": 0.9432989690721649,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 194,
+          "brier": 0.09502758830235343,
+          "overallBaselineBrier": 0.0545647345416785,
+          "problemBaselineBrier": 0.055030855772651203,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 5,
+              "predicted": 0.04793072998641747,
+              "actual": 0.8
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 4,
+              "predicted": 0.13611819233680533,
+              "actual": 0.75
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 1,
+              "predicted": 0.2363997270846925,
+              "actual": 1
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 8,
+              "predicted": 0.36810432348259803,
+              "actual": 0.75
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 4,
+              "predicted": 0.43156776941801067,
+              "actual": 1
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 7,
+              "predicted": 0.5417142406545067,
+              "actual": 1
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 4,
+              "predicted": 0.6403999006805217,
+              "actual": 0.5
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 12,
+              "predicted": 0.7604885789959294,
+              "actual": 1
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 20,
+              "predicted": 0.8616747451400599,
+              "actual": 0.9
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 129,
+              "predicted": 0.9800726924205501,
+              "actual": 0.9767441860465116
+            }
+          ]
+        }
+      },
+      "elapsedMs": 528
+    },
+    {
+      "scope": "cpptrain",
+      "records": 295913,
+      "excludedConfigured": 0,
+      "status": "record_limit",
+      "error": "Domain record limit exceeded; no truncated fit is allowed",
+      "elapsedMs": 1962
+    },
+    {
+      "scope": "cspjs",
+      "records": 43296,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 11707,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 6784,
+        "totalEpisodes": 11707,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 4923,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_status": 97
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 43296,
+        "trainingObservations": 4923
+      },
+      "training": 4923,
+      "trainingSuccesses": 3496,
+      "users": {
+        "total": 254,
+        "estimated": 163
+      },
+      "problems": {
+        "total": 262,
+        "estimated": 85
+      },
+      "components": 1,
+      "iterations": 116,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "cspjs",
+        "splitAt": 1788395531000,
+        "training": 3556,
+        "holdout": 985,
+        "purged": 382,
+        "fitStatus": "ok",
+        "components": 1,
+        "trainingProvisional": {
+          "users": 88,
+          "problems": 85
+        },
+        "unknownRevision": {
+          "training": 3556,
+          "holdout": 985,
+          "scored": 116
+        },
+        "skipped": {
+          "missingUser": 137,
+          "missingProblem": 732,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 97,
+        "scoredNegatives": 19,
+        "scoredProvisional": {
+          "users": 4,
+          "problems": 11
+        },
+        "scoredProvisionalAny": 116,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": 0.8446444858262897,
+        "meanActual": 0.8362068965517241,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 116,
+          "brier": 0.16727831724934117,
+          "overallBaselineBrier": 0.16673492425098854,
+          "problemBaselineBrier": 0.2501021519019487,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 1,
+              "predicted": 0.010798253008302488,
+              "actual": 1
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 4,
+              "predicted": 0.1439469068853917,
+              "actual": 0.5
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 2,
+              "predicted": 0.23080313974828265,
+              "actual": 1
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 2,
+              "predicted": 0.47301464881017474,
+              "actual": 1
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 1,
+              "predicted": 0.5057569417784076,
+              "actual": 1
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 7,
+              "predicted": 0.6801695933413735,
+              "actual": 0.8571428571428571
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 14,
+              "predicted": 0.7892875315136628,
+              "actual": 0.7857142857142857
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 22,
+              "predicted": 0.8660894631994047,
+              "actual": 0.7727272727272727
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 63,
+              "predicted": 0.9621206535148671,
+              "actual": 0.873015873015873
+            }
+          ]
+        }
+      },
+      "elapsedMs": 1224
+    },
+    {
+      "scope": "exam",
+      "records": 13390,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 7828,
+        "openEpisodes": 0,
+        "pendingEpisodes": 5,
+        "missingEpisodes": 5,
+        "outsideRecentWindow": 6277,
+        "totalEpisodes": 7828,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 1541,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_status": 89
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 13390,
+        "trainingObservations": 1541
+      },
+      "training": 1541,
+      "trainingSuccesses": 1024,
+      "users": {
+        "total": 187,
+        "estimated": 65
+      },
+      "problems": {
+        "total": 36,
+        "estimated": 21
+      },
+      "components": 1,
+      "iterations": 68,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "exam",
+        "splitAt": 1789182820000,
+        "training": 926,
+        "holdout": 309,
+        "purged": 306,
+        "fitStatus": "ok",
+        "components": 1,
+        "trainingProvisional": {
+          "users": 61,
+          "problems": 15
+        },
+        "unknownRevision": {
+          "training": 926,
+          "holdout": 309,
+          "scored": 1
+        },
+        "skipped": {
+          "missingUser": 302,
+          "missingProblem": 6,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 1,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 1
+        },
+        "scoredProvisionalAny": 1,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": 0.06882788847141265,
+        "meanActual": 0,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 1,
+          "brier": 0.004737278231433218,
+          "overallBaselineBrier": 0.467288880388489,
+          "problemBaselineBrier": 0.011080332409972297,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 1,
+              "predicted": 0.06882788847141265,
+              "actual": 0
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 218
+    },
+    {
+      "scope": "gesp",
+      "records": 19299,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 5093,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 5033,
+        "totalEpisodes": 5093,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 60,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_status": 54
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 19299,
+        "trainingObservations": 60
+      },
+      "training": 60,
+      "trainingSuccesses": 51,
+      "users": {
+        "total": 14,
+        "estimated": 1
+      },
+      "problems": {
+        "total": 51,
+        "estimated": 0
+      },
+      "components": 11,
+      "iterations": 21,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "gesp",
+        "splitAt": 1787987235000,
+        "training": 43,
+        "holdout": 12,
+        "purged": 5,
+        "fitStatus": "ok",
+        "components": 11,
+        "trainingProvisional": {
+          "users": 12,
+          "problems": 42
+        },
+        "unknownRevision": {
+          "training": 43,
+          "holdout": 12,
+          "scored": 1
+        },
+        "skipped": {
+          "missingUser": 1,
+          "missingProblem": 6,
+          "componentMismatch": 4,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 1,
+        "scoredProvisional": {
+          "users": 1,
+          "problems": 1
+        },
+        "scoredProvisionalAny": 1,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": 0.25315917139704364,
+        "meanActual": 0,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 1,
+          "brier": 0.06408956606243772,
+          "overallBaselineBrier": 0.7009194159004868,
+          "problemBaselineBrier": 1,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 1,
+              "predicted": 0.25315917139704364,
+              "actual": 0
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 276
+    },
+    {
+      "scope": "jinzhonghx",
+      "records": 13754,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 6410,
+        "openEpisodes": 0,
+        "pendingEpisodes": 1,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 5696,
+        "totalEpisodes": 6410,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 713,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_status": 13
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 13754,
+        "trainingObservations": 713
+      },
+      "training": 713,
+      "trainingSuccesses": 600,
+      "users": {
+        "total": 46,
+        "estimated": 17
+      },
+      "problems": {
+        "total": 124,
+        "estimated": 6
+      },
+      "components": 1,
+      "iterations": 65,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "jinzhonghx",
+        "splitAt": 1789473923000,
+        "training": 507,
+        "holdout": 143,
+        "purged": 63,
+        "fitStatus": "ok",
+        "components": 1,
+        "trainingProvisional": {
+          "users": 6,
+          "problems": 112
+        },
+        "unknownRevision": {
+          "training": 507,
+          "holdout": 143,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 123,
+          "missingProblem": 20,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 214
+    },
+    {
+      "scope": "oler",
+      "records": 1611,
+      "excludedConfigured": 0,
+      "status": "insufficient",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 548,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 548,
+        "totalEpisodes": 548,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 0,
+        "unknownRevisionTrainingRatio": null,
+        "excludedByReason": {},
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 1611,
+        "trainingObservations": 0
+      },
+      "training": 0,
+      "trainingSuccesses": 0,
+      "users": {
+        "total": 0,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 0,
+        "estimated": 0
+      },
+      "components": 0,
+      "iterations": 0,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "oler",
+        "splitAt": null,
+        "training": 0,
+        "holdout": 0,
+        "purged": 0,
+        "fitStatus": "insufficient",
+        "components": 0,
+        "trainingProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "unknownRevision": {
+          "training": 0,
+          "holdout": 0,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 0,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 29
+    },
+    {
+      "scope": "qdcpp",
+      "records": 79,
+      "excludedConfigured": 0,
+      "status": "insufficient",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 51,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 51,
+        "totalEpisodes": 51,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 0,
+        "unknownRevisionTrainingRatio": null,
+        "excludedByReason": {
+          "invalid_status": 3
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 79,
+        "trainingObservations": 0
+      },
+      "training": 0,
+      "trainingSuccesses": 0,
+      "users": {
+        "total": 0,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 0,
+        "estimated": 0
+      },
+      "components": 0,
+      "iterations": 0,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "qdcpp",
+        "splitAt": null,
+        "training": 0,
+        "holdout": 0,
+        "purged": 0,
+        "fitStatus": "insufficient",
+        "components": 0,
+        "trainingProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "unknownRevision": {
+          "training": 0,
+          "holdout": 0,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 0,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 7
+    },
+    {
+      "scope": "system",
+      "records": 42,
+      "excludedConfigured": 0,
+      "status": "insufficient",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 24,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 24,
+        "totalEpisodes": 24,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 0,
+        "unknownRevisionTrainingRatio": null,
+        "excludedByReason": {
+          "service_account": 1
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 42,
+        "trainingObservations": 0
+      },
+      "training": 0,
+      "trainingSuccesses": 0,
+      "users": {
+        "total": 0,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 0,
+        "estimated": 0
+      },
+      "components": 0,
+      "iterations": 0,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "system",
+        "splitAt": null,
+        "training": 0,
+        "holdout": 0,
+        "purged": 0,
+        "fitStatus": "insufficient",
+        "components": 0,
+        "trainingProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "unknownRevision": {
+          "training": 0,
+          "holdout": 0,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 0,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 4
+    },
+    {
+      "scope": "test",
+      "records": 0,
+      "excludedConfigured": 0,
+      "status": "insufficient",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 0,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 0,
+        "totalEpisodes": 0,
+        "unknownRevisionEpisodeRatio": null,
+        "unknownRevisionTrainingObservations": 0,
+        "unknownRevisionTrainingRatio": null,
+        "excludedByReason": {},
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 0,
+        "trainingObservations": 0
+      },
+      "training": 0,
+      "trainingSuccesses": 0,
+      "users": {
+        "total": 0,
+        "estimated": 0
+      },
+      "problems": {
+        "total": 0,
+        "estimated": 0
+      },
+      "components": 0,
+      "iterations": 0,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "test",
+        "splitAt": null,
+        "training": 0,
+        "holdout": 0,
+        "purged": 0,
+        "fitStatus": "insufficient",
+        "components": 0,
+        "trainingProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "unknownRevision": {
+          "training": 0,
+          "holdout": 0,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 0,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 0
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "scope": "yizhong",
+      "records": 33357,
+      "excludedConfigured": 0,
+      "status": "ok",
+      "modelVersion": "practice-rating-1pl-v1",
+      "parameters": {
+        "priorMean": 1500,
+        "priorSd": 600,
+        "slope": 0.005756462732485115,
+        "maxIterations": 300,
+        "tolerance": 1e-05,
+        "minimumUserSamples": 10,
+        "minimumProblemSamples": 20
+      },
+      "diagnostics": {
+        "unknownRevisionEpisodes": 12194,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 11128,
+        "totalEpisodes": 12194,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 1066,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {
+          "invalid_status": 50
+        },
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 33357,
+        "trainingObservations": 1066
+      },
+      "training": 1066,
+      "trainingSuccesses": 954,
+      "users": {
+        "total": 22,
+        "estimated": 19
+      },
+      "problems": {
+        "total": 177,
+        "estimated": 6
+      },
+      "components": 2,
+      "iterations": 24,
+      "retrospectiveQuality": {
+        "kind": "retrospective-current-state-edge-holdout",
+        "scope": "yizhong",
+        "splitAt": 1783569465000,
+        "training": 0,
+        "holdout": 214,
+        "purged": 852,
+        "fitStatus": "insufficient",
+        "components": 0,
+        "trainingProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "unknownRevision": {
+          "training": 0,
+          "holdout": 214,
+          "scored": 0
+        },
+        "skipped": {
+          "missingUser": 0,
+          "missingProblem": 0,
+          "componentMismatch": 0,
+          "unavailableFitValue": 214
+        },
+        "scoredPositives": 0,
+        "scoredNegatives": 0,
+        "scoredProvisional": {
+          "users": 0,
+          "problems": 0
+        },
+        "scoredProvisionalAny": 0,
+        "scoredEstimatedBoth": 0,
+        "meanPredicted": null,
+        "meanActual": null,
+        "metrics": {
+          "conclusion": "尚无结论",
+          "samples": 0,
+          "brier": null,
+          "overallBaselineBrier": null,
+          "problemBaselineBrier": null,
+          "bins": [
+            {
+              "lower": 0,
+              "upper": 0.1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.1,
+              "upper": 0.2,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.3,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.3,
+              "upper": 0.4,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.5,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.5,
+              "upper": 0.6,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.7,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.7,
+              "upper": 0.8,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.8,
+              "upper": 0.9,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            },
+            {
+              "lower": 0.9,
+              "upper": 1,
+              "samples": 0,
+              "predicted": null,
+              "actual": null
+            }
+          ]
+        }
+      },
+      "elapsedMs": 505
+    }
+  ],
+  "writes": [],
+  "rawSha256": "a205271dcaf49558a9c07006efe006f1604d0060ed1ceeb276156b5e74724902",
+  "sourceSha256": {
+    "tools/practice-rating-local-audit.ts": "572fc264dd282427d7ade29847c0e7fe7889cf8dace7b60d42266f14c198b05f",
+    "tools/practice-rating-quality.ts": "19bbe06d077f508c8d94488dcfeec974911717a93eba7e35c7aa7da8e407cbca"
+  }
+}

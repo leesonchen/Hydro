@@ -7,6 +7,7 @@ import { capturePracticeInput, MAX_RECORDS } from '../packages/hydrooj/src/lib/p
 import { completionProbability, problemKey } from '../packages/hydrooj/src/lib/practice-rating/model';
 import { preparePracticeRun } from '../packages/hydrooj/src/lib/practice-rating/runner';
 import { ActiveScope, COLLECTIONS } from '../packages/hydrooj/src/lib/practice-rating/store';
+import { evaluateRetrospectiveQuality } from './practice-rating-quality';
 
 const container = process.argv[2] || 'hydro';
 const revision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' });
@@ -47,6 +48,8 @@ async function main() {
                 const input = await capturePracticeInput(db, scope, excludedUids, asOf);
                 const { fit, snapshots, diagnostics } = preparePracticeRun(input);
                 result.status = fit.status;
+                result.modelVersion = fit.modelVersion;
+                result.parameters = fit.parameters;
                 result.diagnostics = diagnostics;
                 result.training = snapshots.length;
                 result.trainingSuccesses = snapshots.reduce((sum, row) => sum + row.observation.y, 0);
@@ -54,6 +57,7 @@ async function main() {
                 result.problems = { total: fit.problems.length, estimated: fit.problems.filter((p) => p.status === 'estimated').length };
                 result.components = fit.components;
                 result.iterations = fit.iterations;
+                result.retrospectiveQuality = evaluateRetrospectiveQuality(scope, snapshots);
                 if (fit.status === 'ok' && snapshots.length) {
                     const byProblem = new Map(fit.problems.map((p) => [problemKey(p.pid, p.revision), p]));
                     const byUser = new Map(fit.users.map((u) => [u.uid, u]));
