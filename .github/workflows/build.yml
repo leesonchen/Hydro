@@ -1,8 +1,9 @@
 name: CI
 
-# Temporarily paused to avoid spending GitHub-hosted runner minutes.
-# Manually dispatch only after an administrator explicitly approves usage.
+# Run automated checks on pushed commits and pull requests; no daily schedule.
 on:
+  push:
+  pull_request:
   workflow_dispatch:
 
 permissions:
