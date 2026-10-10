@@ -85,3 +85,13 @@ yarn exec tsc --ignoreConfig --noEmit --skipLibCheck --target es2022 \
 M2 由独立评审上下文重新检查全部差异，未发现可行动 P0–P2；M3 的第二独立评审因工具额度不可用，主执行上下文按冻结时间、失败写入、配置/活动 run 漂移、重测、隐藏资料、跨域和撤权清单完成复核及补测。没有将该轮描述成已通过独立评审。
 
 临时日志：`/tmp/hydro-rating-final-{test,lint,build,ui}.log`、`/tmp/hydro-rating-m3-validation-final.log`；实测聚合 JSON 随报告提交。构建自动生成的根 `tsconfig.json` 已恢复，不纳入提交；业务库凭据、源码/身份数据和临时运行日志均未加入版本控制。
+
+## 2026-10-10 管理员专用权限收敛（追加开发）
+
+用户决定：新算法及其试用页面在效果成熟前**仅开放给系统管理员**。本轮将课程/作业试用页从教师授权改为同时满足 `PRIV_EDIT_SYSTEM`、本人会话非代入登录、域级显式 `adminTrial=true` 的服务端鉴权。普通授课教师、课程负责人、域管理员与学生均不得访问；原有 `teacherTrial` 即使为 true 也不再授权。管理员页面与课堂反馈开关解耦，仍只列出对应活动的学生和题目。导航及标题改为“管理员试用”，不新增学生或教师入口。
+
+`practice-rating-configure` 仅更新显式传入的 `enabled/adminTrial/excludedUids`；省略排除名单保留旧值，显式 `excludedUids:[]` 才清空。教师页面最近计算失败时展示明确提示，但继续读取最后有效快照。新增配置部分更新的 Mongo 集成用例，以及系统管理员/教师/域管理员/学生、老开关、课程作业入口、失败提示、撤权和功能开关独立性的 HTTP 回归用例。
+
+**新一轮 CI 尚未通过。** GitHub Actions 在提交 `8c44f1e2` 和 `02c74cb9` 的 push 上均于约 3 秒内返回 failure，工作流 API 未返回任何执行步骤、下载日志返回 BlobNotFound；对 `38024934482` 发起一次失败作业重试也未进入可检查的构建/测试步骤。无法确认失败属于平台调度、账户配额或具体仓库配置，不能视为源码构建失败，也不能声称本轮 HTTP/集成测试已通过。合并前必须由可工作的 CI/本地完整依赖环境实际执行 `yarn lint:ci`、`yarn build`、`yarn test:practice-rating:integration`、`node --test test/classroom-feedback-entry.js`、`yarn test`，并保存日志。此前通过的 CI 只覆盖管理员权限修改**之前**的代码。
+
+本轮未修改旧 `difficulty/rp/rpInfo/level/rank`，没有改变模型公式和训练口径，也未合并或部署。向教师和学生开放需要以后另外设计授权、可解释性和发布资格，而不是简单复用管理员开关。
