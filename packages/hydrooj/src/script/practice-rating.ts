@@ -11,7 +11,11 @@ import db from '../service/db';
 const logger = new Logger('practice-rating');
 const database = db as unknown as RatingDatabase;
 const domainId = Schema.string().description('One domain; scores are not comparable across domains').required();
-const excludedUids = Schema.array(Schema.number().min(1).step(1)).description('Explicitly identified test/service accounts; omitted leaves configuration unchanged');
+// Schemastery arrays default to [], which would erase saved exclusions when this field is omitted.
+// Preserve undefined for partial updates; an explicit [] remains the only way to clear the list.
+const excludedUids = Schema.array(Schema.number().min(1).step(1))
+    .default(undefined as unknown as number[])
+    .description('Explicitly identified test/service accounts; omitted leaves configuration unchanged');
 
 export async function apply(ctx: Context) {
     ctx.addScript('practice-rating-run', 'Fit practice R/D (report only by default; writes use independent shadow collections)', Schema.object({
