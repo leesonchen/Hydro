@@ -1,8 +1,9 @@
 name: CI
 
+# Temporarily paused to avoid spending GitHub-hosted runner minutes.
+# Manually dispatch only after an administrator explicitly approves usage.
 on:
-- push
-- pull_request
+  workflow_dispatch:
 
 permissions:
   contents: read
