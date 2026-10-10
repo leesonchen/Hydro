@@ -338,6 +338,33 @@ describe('practice rating isolated MongoDB integration', () => {
         await hooks['task/daily']();
         assert.equal(await database.collection(COLLECTIONS.runs).countDocuments({ scope }), 1);
     });
+    it('reports valid writes separately from interrupted snapshots without changing the active rating', async () => {
+        const first = await runPracticeRating(database, { domainId: scope, write: true });
+        assert.equal(first.activated, true);
+        const past = Date.now() - 10000;
+        await database.collection(COLLECTIONS.runs).insertOne({
+            _id: 'interrupted-snapshot', scope, asOf: past,
+            capturedAt: past + 1, status: 'writing', leaseToken: 'expired-owner',
+        });
+        let current = await store.read(scope, 2, 10);
+        assert.equal(current.runId, first.runId);
+        assert.equal(current.latestAttempt.status, 'interrupted');
+        await database.collection<ActiveScope>(COLLECTIONS.active).updateOne({ _id: scope }, {
+            $set: { lock: { token: 'live-owner', expiresAt: Date.now() + 60000 } },
+        });
+        await database.collection(COLLECTIONS.runs).updateOne({ _id: 'interrupted-snapshot' }, {
+            $set: { leaseToken: 'live-owner' },
+        });
+        current = await store.read(scope, 2, 10);
+        assert.equal(current.latestAttempt.status, 'writing');
+        await database.collection<ActiveScope>(COLLECTIONS.active).updateOne({ _id: scope }, {
+            $set: { 'lock.expiresAt': 0 },
+        });
+        current = await store.read(scope, 2, 10);
+        assert.equal(current.latestAttempt.status, 'interrupted');
+        assert.equal((await store.activeRun(scope))._id, first.runId);
+    });
+
     it('administrator trial configuration changes only explicit fields and never revives teacherTrial', async () => {
         const scripts: Record<string, any> = {};
         const filename = path.resolve('packages/hydrooj/src/script/practice-rating.ts');
