@@ -32,6 +32,9 @@ export interface ActiveScope {
     runId?: string;
     asOf?: number;
     enabled?: boolean;
+    /** Only system administrators may view the trial page; defaults to disabled. */
+    adminTrial?: boolean;
+    /** Deprecated legacy flag; intentionally grants no trial-page access. */
     teacherTrial?: boolean;
     excludedUids?: number[];
     exclusionConfigVersion?: string;
