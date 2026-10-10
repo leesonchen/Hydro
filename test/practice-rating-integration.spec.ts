@@ -358,6 +358,8 @@ describe('practice rating isolated MongoDB integration', () => {
         });
         const { validate, run } = scripts['practice-rating-configure'];
         const configure = async (fields: Record<string, unknown>) => run(validate({ domainId: scope, ...fields }), () => {});
+        const omitted = validate({ domainId: scope, enabled: false });
+        assert.equal(omitted.excludedUids, undefined, 'Schemastery must not inject [] for an omitted list');
         await configure({ enabled: true, adminTrial: true, excludedUids: [3, 4, 3] });
         let saved = await database.collection<ActiveScope>(COLLECTIONS.active).findOne({ _id: scope });
         assert.equal(saved.enabled, true);
