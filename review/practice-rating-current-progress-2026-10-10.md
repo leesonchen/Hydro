@@ -95,3 +95,13 @@ M2 由独立评审上下文重新检查全部差异，未发现可行动 P0–P2
 **新一轮 CI 尚未通过。** GitHub Actions 在提交 `8c44f1e2` 和 `02c74cb9` 的 push 上均于约 3 秒内返回 failure，工作流 API 未返回任何执行步骤、下载日志返回 BlobNotFound；对 `38024934482` 发起一次失败作业重试也未进入可检查的构建/测试步骤。无法确认失败属于平台调度、账户配额或具体仓库配置，不能视为源码构建失败，也不能声称本轮 HTTP/集成测试已通过。合并前必须由可工作的 CI/本地完整依赖环境实际执行 `yarn lint:ci`、`yarn build`、`yarn test:practice-rating:integration`、`node --test test/classroom-feedback-entry.js`、`yarn test`，并保存日志。此前通过的 CI 只覆盖管理员权限修改**之前**的代码。
 
 本轮未修改旧 `difficulty/rp/rpInfo/level/rank`，没有改变模型公式和训练口径，也未合并或部署。向教师和学生开放需要以后另外设计授权、可解释性和发布资格，而不是简单复用管理员开关。
+
+## 2026-10-10 配置与试用状态加固（后续修复）
+
+根据代码复核，修复 `practice-rating-configure` 的 Schemastery 可选数组隐式空数组行为：省略 `excludedUids` 必须保留旧排除配置，显式传入 `[]` 才清空。Mongo 配置集成测试增加真正执行 Schema 校验后对 `undefined` 的断言，防止未来库升级回归。
+
+对 `practice_rating_runs` 的新写入快照记录持有租约 token；读报告时只在最新运行状态为 `writing` 时核对活动租约，区分仍在写入与已中断／租约过期的任务。管理员试用页对应展示“仍在写入”或“异常中断”，保留上一份有效 R/D；新增 Mongo 集成用例覆盖有效租约、过期租约及已有结果不被覆盖。
+
+管理员权限测试新增模拟 sudo 代入会话，要求课程与作业试用 URL 均返回 403。所有修改仍保持在独立影子评分集合及管理员页面，不影响旧 `difficulty/rp/rpInfo/level/rank`。
+
+**验证边界：**此次通过 GitHub 文件接口提交，当前执行容器无法联网克隆仓库，也没有完整 Hydro/Yarn 依赖，因此尚未实际执行新增 Mongo/HTTP 回归或全量编译。用户确认 GitHub Actions 已到免费额度上限，当前不将远端 CI 失败作为代码缺陷，但仍需在 Codex 已有完整本地环境实际运行 `yarn lint:ci`、`yarn build`、`yarn test:practice-rating:integration`、`node --test test/classroom-feedback-entry.js` 后才能声明通过。本轮未合并、发布或部署。
