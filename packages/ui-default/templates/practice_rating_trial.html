@@ -1,7 +1,7 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 <div class="row"><div class="columns"><section class="section">
-  <div class="section__header"><h1 class="section__title">练习评分 · 教师只读试用</h1></div>
+  <div class="section__header"><h1 class="section__title">练习评分 · 管理员只读试用</h1></div>
   <div class="section__body typo">
     <p><a href="{{ backUrl }}">{{ title }}</a></p>
     <p>根据本站正常练习记录估计；分数相等时，7 天内完成的模型概率约为 50%。允许参考资料的记录也包含在内，不等于独立考试能力。</p>
@@ -17,10 +17,12 @@
     </form>
     {% if report.runId %}
       <p>评估日期：{{ datetimeSpan(report.asOf)|safe }}</p>
-      {% if report.latestAttempt and report.latestAttempt.status == 'insufficient' %}
-        <p>最近一次运行样本不足，当前保留上次有效估计。请注意评估日期。</p>
-      {% endif %}
     {% else %}<p>样本不足，尚未估计。</p>{% endif %}
+    {% if report.latestAttempt and report.latestAttempt.status == 'failed' %}
+      <p>最近一次计算失败，{% if report.runId %}当前保留上次有效估计{% else %}目前没有可用的评分结果{% endif %}。请注意评估日期并由管理员检查任务日志。</p>
+    {% elif report.latestAttempt and report.latestAttempt.status == 'insufficient' and report.runId %}
+      <p>最近一次运行样本不足，当前保留上次有效估计。请注意评估日期。</p>
+    {% endif %}
     <table class="data-table"><thead><tr><th>统计量</th><th>分数</th><th>状态</th><th>训练样本数</th></tr></thead><tbody>
       {% for label, estimate in [['用户练习水平 R', report.user], ['题目统计难度 D', report.problem]] %}
       <tr><td>{{ label }}</td><td>{% if estimate and estimate.value != null %}{{ estimate.value|round }}{% else %}—{% endif %}</td>
