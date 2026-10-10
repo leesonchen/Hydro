@@ -145,6 +145,28 @@ exports.register = () => describe('Local feedback', () => {
                 if (previousUiAddon === undefined) delete global.addons['ui-default'];
                 else global.addons['ui-default'] = previousUiAddon;
             }
+            // Real account-switch endpoint marks sudoUid and changes the session identity.
+            // It must never inherit access to the administrator-only trial.
+            const sessionToken = await database.collection('token').findOne({
+                tokenType: 0, uid: managerUid,
+            });
+            assert(sessionToken, 'Expected administrator login session');
+            const previousSudoUid = sessionToken.sudoUid;
+            await database.collection('token').updateOne({ _id: sessionToken._id }, {
+                $set: { sudoUid: managerUid, uid },
+            });
+            try {
+                await get(manager, url).expect(403);
+                await get(manager, hwUrl).expect(403);
+            } finally {
+                await database.collection('token').updateOne({ _id: sessionToken._id }, {
+                    $set: { uid: managerUid },
+                    $unset: { sudoUid: '' },
+                });
+                if (previousSudoUid !== undefined) {
+                    await database.collection('token').updateOne({ _id: sessionToken._id }, { $set: { sudoUid: previousSudoUid } });
+                }
+            }
             await get(manager, hwUrl).expect(200);
             await get(manager, `${url}?uid=&pid=`).expect(200);
             await get(manager, `${url}?uid=${teacherUid}&pid=${pid}`).expect(403);
