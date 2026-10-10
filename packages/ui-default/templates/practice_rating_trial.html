@@ -18,7 +18,11 @@
     {% if report.runId %}
       <p>评估日期：{{ datetimeSpan(report.asOf)|safe }}</p>
     {% else %}<p>样本不足，尚未估计。</p>{% endif %}
-    {% if report.latestAttempt and report.latestAttempt.status == 'failed' %}
+    {% if report.latestAttempt and report.latestAttempt.status == 'interrupted' %}
+      <p>最近一次计算异常中断，{% if report.runId %}当前保留上次有效估计{% else %}目前没有可用的评分结果{% endif %}。请由管理员检查任务日志。</p>
+    {% elif report.latestAttempt and report.latestAttempt.status == 'writing' %}
+      <p>最近一次计算仍在写入，请等待完成；{% if report.runId %}目前显示上次有效估计{% else %}目前尚无可用估计{% endif %}。</p>
+    {% elif report.latestAttempt and report.latestAttempt.status == 'failed' %}
       <p>最近一次计算失败，{% if report.runId %}当前保留上次有效估计{% else %}目前没有可用的评分结果{% endif %}。请注意评估日期并由管理员检查任务日志。</p>
     {% elif report.latestAttempt and report.latestAttempt.status == 'insufficient' and report.runId %}
       <p>最近一次运行样本不足，当前保留上次有效估计。请注意评估日期。</p>
