@@ -296,6 +296,8 @@ export async function updateAllowedNodes(
     const statusFilter = {
         _id: tsdoc._id, domainId, docType: DocumentModel.TYPE_CONTEST, docId: tid, uid, attend: tsdoc.attend,
         accept: tsdoc.accept ?? { $exists: false },
+        // Score-based prerequisites can change without changing the AC count.
+        score: tsdoc.score ?? { $exists: false },
     };
     // Each automatic grant only fills an unset node. Manual allow/deny always wins.
     await Promise.all(opened.map((nodeId) => DocumentModel.collStatus.updateOne({
@@ -1189,9 +1191,7 @@ export class CourseEditHandler extends Handler {
             this.tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
             if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
             if (this.tdoc.rule !== 'course') throw new ContestNotFoundError(domainId, tid);
-            if (!this.user.own(this.tdoc)) {
-                this.checkPerm(PERM.PERM_EDIT_HOMEWORK);
-            }
+            if (!canEditCourse(this, this.tdoc)) throw new ForbiddenError();
         } else if (isTemplate) {
             if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)) {
                 throw new ForbiddenError('要创建课程模板，你需要拥有 PERM_EDIT_HOMEWORK 权限。');

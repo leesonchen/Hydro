@@ -172,6 +172,33 @@ test('SELF permission only bypasses assignment and release gates for owners and 
     await assert.rejects(handler(handlers.CourseScoreboardHandler, unrelated).exportScoreboard('d', course.docId, 0, 'csv'), errors.ForbiddenError);
 });
 
+test('course edit requires the current scoped write permission even for owner/maintainer', async () => {
+    const course = await courseFixture({ owner: 2 });
+    await userFixture();
+    // Warm the shared cache with full permission, then obtain the actual scoped user.
+    await users.getById('d', 2);
+    const scopedOwner = await users.getById('d', 2, PERM.PERM_VIEW_HOMEWORK.toString());
+    assert.equal(scopedOwner.own(course), true);
+    for (const currentUser of [scopedOwner, actor(3, PERM.PERM_VIEW_HOMEWORK)]) {
+        const h = handler(handlers.CourseEditHandler, currentUser);
+        assert.equal(handlers.canEditCourse(h, course), false);
+        await assert.rejects(h.prepare('d', course.docId), errors.ForbiddenError);
+    }
+    await assert.rejects(
+        handler(handlers.CourseEditHandler, actor(4, PERM.PERM_EDIT_HOMEWORK_SELF))
+            .prepare('d', course.docId), errors.ForbiddenError,
+    );
+    for (const currentUser of [
+        actor(2, PERM.PERM_EDIT_HOMEWORK_SELF),
+        actor(3, PERM.PERM_EDIT_HOMEWORK_SELF),
+        actor(5, PERM.PERM_EDIT_HOMEWORK),
+    ]) {
+        const h = handler(handlers.CourseEditHandler, currentUser);
+        await h.prepare('d', course.docId);
+        assert.equal(h.tdoc.docId.toString(), course.docId.toString());
+    }
+});
+
 test('attachment writes reject students and unrelated SELF teachers before any side effect', async () => {
     for (const assign of [['2'], ['teachers']]) {
         const course = await courseFixture({ assign });
@@ -230,6 +257,51 @@ for (const mutation of ['deny', 'cancel', 'cancel-rejoin', 'judge']) {
     });
 }
 
+
+async function scoreGatedCourseFixture() {
+    const course = await courseFixture({
+        dag: [
+            { _id: 1, title: 'prerequisite', pids: [10] },
+            { _id: 2, title: 'score gated', pids: [], requireNids: [1],
+                completeCondition: { type: 'score', value: 60 } },
+        ],
+        pids: [10],
+    });
+    await document.collStatus.updateOne(
+        { domainId: 'd', docId: course.docId, uid: 2 },
+        { $set: { allow: { 1: true }, score: { 0: 80, 1: 80 }, accept: { 0: 0, 1: 0 } } },
+    );
+    return course;
+}
+
+test('automatic unlock still opens a score-gated chapter when scores are unchanged', async () => {
+    const course = await scoreGatedCourseFixture();
+    await handlers.updateAllowedNodes('d', course.docId, 2, course);
+    const status = await contest.getStatus('d', course.docId, 2);
+    assert.equal(status.allow[2], true);
+});
+
+test('a stale score prerequisite cannot unlock after a partial-score downgrade without an AC change', async () => {
+    const course = await scoreGatedCourseFixture();
+    let entered;
+    const paused = new Promise((resolve) => { entered = resolve; });
+    let release;
+    const resume = new Promise((resolve) => { release = resolve; });
+    assessmentBarrier = async () => { entered(); await resume; };
+    const updating = handlers.updateAllowedNodes('d', course.docId, 2, course);
+    await paused;
+    // The score changes from 80 to 20, while the accepted count stays at zero.
+    await document.collStatus.updateOne(
+        { domainId: 'd', docId: course.docId, uid: 2 },
+        { $set: { score: { 0: 20, 1: 20 } } },
+    );
+    release();
+    await updating;
+    const status = await contest.getStatus('d', course.docId, 2);
+    assert.equal(status.score[1], 20);
+    assert.equal(status.accept[0], 0);
+    assert.equal(status.allow[2], undefined);
+});
 
 test('HTTP attachment POSTs enforce the role matrix before storage and persist authorized replacement once', async () => {
     const course = await courseFixture();
