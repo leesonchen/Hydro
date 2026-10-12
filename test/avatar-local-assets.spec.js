@@ -103,16 +103,26 @@ test('all Hydro template avatarUrl image tags opt into fallback', () => {
   scan('packages/blog/templates');
 });
 
-test('XiaoLai uses checked local build assets with the OFL license', () => {
-  const css = read('packages/ui-default/misc/typography.styl');
-  const main = read('packages/ui-default/build/main.ts');
+test('React search and domain autocomplete avatars opt into fallback', () => {
+  const search = read('packages/ui-default/components/omnisearch/index.page.tsx');
+  const domains = read('packages/ui-default/components/autocomplete/components/DomainSelectAutoComplete.tsx');
+  assert.match(search, /<img data-avatar-fallback src=\{avatarUrl\}/);
+  assert.match(domains, /<img data-avatar-fallback className="small domain-profile-avatar"/);
+});
+
+test('optional XiaoLai build never requires a network request by default', () => {
   const helper = read('packages/ui-default/build/downloadXiaolaiFont.ts');
-  const webpack = read('packages/ui-default/build/config/webpack.ts');
+  const config = read('packages/ui-default/build/config/webpack.ts');
+  const main = read('packages/ui-default/build/main.ts');
+  const styl = read('packages/ui-default/misc/typography.styl');
   const license = read('packages/ui-default/misc/fonts/OFL.txt');
-  assert.match(css, /src: url\('\.\/fonts\/Xiaolai-Regular\.ttf'\)/);
-  assert.doesNotMatch(css, /raw\.githubusercontent\.com/);
-  assert.match(main, /await ensureXiaolaiFont\(\)/);
+  assert.match(config, /await prepareXiaolaiFont\(\)/);
+  assert.doesNotMatch(main, /ensureXiaolaiFont/);
+  assert.match(helper, /process\.env\.HYDRO_FETCH_XIAOLAI_FONT === '1'/);
+  assert.match(helper, /if \(!fs\.existsSync\(asset\) && process\.env\.HYDRO_FETCH_XIAOLAI_FONT === '1'\)/);
   assert.match(helper, /e2f68daf0e72777a8cf58bc83de1b98634b251e537ddbfca24b0ae50d1802da2/);
-  assert.match(webpack, /misc\/fonts\/OFL\.txt/);
+  assert.match(helper, /fs\.existsSync\(asset\) \? fontFace :/);
+  assert.match(styl, /@import '\.\/xiaolai-font\.generated\.styl'/);
+  assert.doesNotMatch(styl, /raw\.githubusercontent\.com/);
   assert.match(license, /SIL OPEN FONT LICENSE Version 1\.1/);
 });

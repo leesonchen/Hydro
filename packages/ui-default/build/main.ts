@@ -8,7 +8,6 @@ import webpack, { Stats } from 'webpack';
 import WebpackDevServer from 'webpack-dev-server';
 import webpackConfig from './config/webpack';
 import root from './utils/root';
-import ensureXiaolaiFont from './downloadXiaolaiFont';
 
 const argv = cac().parse();
 
@@ -116,7 +115,6 @@ async function main() {
       },
     });
   } else {
-    await ensureXiaolaiFont();
     await runWebpack(argv.options as any);
     await Promise.all(globbySync('public/**/*.map').map((i) => fs.remove(i)));
   }

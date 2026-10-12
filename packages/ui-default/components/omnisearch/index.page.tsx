@@ -74,7 +74,7 @@ export default new AutoloadPage('omnibar', () => {
         }) => (
           <a key={_id} className="omnibar-content-section omnibar-user" href={`${prefix}/user/${_id}`}>
             <div>
-              <img src={avatarUrl} alt={uname} />
+              <img data-avatar-fallback src={avatarUrl} alt={uname} />
               <div className="omnibar-user-info">
                 <span>UID {_id}</span><br />
                 <div><span style={{ lineHeight: '20px' }}>{uname}</span></div>
