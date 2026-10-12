@@ -3,6 +3,9 @@
 {% import "components/record.html" as record with context %}
 {% import "components/problem.html" as problem with context %}
 {% block content %}
+{% if tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc,tsdoc) %}
+  {% include 'partials/contest_monitor_client.html' %}
+{% endif %}
 {{ set(UiContext, 'tdoc', tdoc) }}
 {{ set(UiContext, 'tsdoc', tsdoc) }}
 <div class="row responsive-sidebar-layout">

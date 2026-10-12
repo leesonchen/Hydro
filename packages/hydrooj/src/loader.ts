@@ -17,6 +17,7 @@ import {
 import { sleep, unwrapExports } from './utils';
 import { PRIV } from './model/builtin';
 import { getAddons } from './options';
+import LoggerService from '@cordisjs/plugin-logger';
 import { TimerService } from '@cordisjs/plugin-timer';
 import Schema from 'schemastery';
 import { isEqual } from 'lodash';
@@ -162,9 +163,12 @@ export class Loader extends Service {
     }
 }
 
-app.logger.exporter({
-    levels: { default: process.env.DEV ? 3 : 2 },
-    export: ({ name, type, args }) => (new Logger(name)[type] as (...args: any[]) => void)(...args),
+if (!app.logger) app.plugin(LoggerService, { console: { enabled: false } });
+app.inject(['logger'], (ctx) => {
+    ctx.logger.exporter({
+        levels: { default: process.env.DEV ? 3 : 2 },
+        export: ({ name, type, body }) => (new Logger(name)[type] as (...args: any[]) => void)('%s', body),
+    });
 });
 app.plugin(ApiMixin);
 app.plugin(TimerService);

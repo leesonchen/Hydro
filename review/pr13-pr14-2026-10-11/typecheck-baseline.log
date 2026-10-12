@@ -1,0 +1,16 @@
+packages/hydrooj/src/commands/diagnosis.ts(116,66): error TS2353: Object literal may only specify known properties, and 'seqNoIndent' does not exist in type 'DumpOptions'.
+packages/hydrooj/src/commands/diagnosis.ts(119,60): error TS2353: Object literal may only specify known properties, and 'seqNoIndent' does not exist in type 'DumpOptions'.
+packages/hydrooj/src/handler/home.ts(466,22): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/handler/home.ts(534,22): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/loader.ts(165,5): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/service/hmr.ts(27,13): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/service/hmr.ts(33,17): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/service/hmr.ts(45,17): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/service/hmr.ts(47,17): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/service/worker.ts(44,22): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/service/worker.ts(65,26): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/service/worker.ts(69,34): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/service/worker.ts(70,34): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/service/worker.ts(77,43): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/service/worker.ts(80,26): error TS2339: Property 'logger' does not exist on type 'Context'.
+packages/hydrooj/src/settings.ts(119,26): error TS2339: Property 'logger' does not exist on type 'Context'.

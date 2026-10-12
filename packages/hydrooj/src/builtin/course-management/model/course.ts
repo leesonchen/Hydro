@@ -9,6 +9,16 @@ export const DEFAULT_COURSE_LESSON_DURATION_HOURS = 3;
 export interface DagNode {
     _id: number;
     title: string;
+    kind?: 'lesson' | 'assessment';
+    assessment?: {
+        contestTid?: string;
+        rule: 'acm' | 'oi' | 'ioi' | 'strictioi';
+        beginAt: string;
+        endAt: string;
+        rated?: boolean;
+        monitorMode?: 'off' | 'browser';
+        passScore?: number;
+    };
     lecture?: string | boolean;
     pids: number[];
     requireNids?: number[];
@@ -55,6 +65,7 @@ export interface CourseStatus {
     accept: Record<number, number>;
     detail: Record<number, any>;
     journal?: any[];
+    assessmentResults?: Record<number, { score: number, completed: boolean }>;
 }
 
 interface CourseJournal {
@@ -136,7 +147,7 @@ export const courseRule: ContestRule<CourseStatus> = ContestModel.buildContestRu
             score,
             accept,
             detail,
-            progress: Math.floor((accept[0] / tdoc.pids.length) * 100),
+            progress: tdoc.pids.length ? Math.floor((accept[0] / tdoc.pids.length) * 100) : 0,
         };
     },
 

@@ -11,7 +11,7 @@ import {
 import { Context, Service } from '../context';
 import {
     BadRequestError, ContestAlreadyStartedError, ContestNotAttendedError, ContestNotEndedError,
-    ContestNotFoundError, ContestNotLiveError, ContestScoreboardHiddenError, FileLimitExceededError, FileUploadError,
+    ContestNotFoundError, ContestNotLiveError, ContestScoreboardHiddenError, FileLimitExceededError, FileUploadError, ForbiddenError,
     InvalidTokenError, MethodNotAllowedError, NotAssignedError, NotFoundError, PermissionError, TeamMemberLimitError,
     ValidationError,
 } from '../error';
@@ -19,6 +19,7 @@ import { ContestStatusDoc, FileInfo, ScoreboardConfig, Tdoc } from '../interface
 import {
     canManagePractice, canReadPractice, canSubmitPractice, getPracticeResults, grantPracticeAccess, isPracticeOpen, supportsPractice,
 } from '../lib/contest-practice';
+import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
@@ -33,6 +34,7 @@ import user from '../model/user';
 import {
     Handler, param, post, Type, Types,
 } from '../service/server';
+import { ContestMonitorHandler } from './contest-monitor';
 
 export class ContestListHandler extends Handler {
     @param('rule', Types.Range(contest.RULES), true)
@@ -58,6 +60,7 @@ export class ContestListHandler extends Handler {
                         { assign: { $size: 0 } },
                     ],
                 },
+            sourceType: { $ne: 'course_assessment' as const },
             ...rule ? { rule } : { rule: { $in: rules } },
             ...group ? { assign: { $in: [group] } } : {},
             ...q ? { title: { $regex } } : {},
@@ -93,7 +96,8 @@ export class ContestDetailBaseHandler extends Handler {
     async __prepare(domainId: string, tid: ObjectId) {
         if (!tid) return; // ProblemDetailHandler also extends from ContestDetailBaseHandler
         this.tdoc = await contest.get(domainId, tid);
-        if (!contest.canAccessAssignedContest(this.user, this.tdoc)) {
+        const courseTeacher = await assertCourseAssessmentAccess(this.user, this.tdoc);
+        if (!courseTeacher && !contest.canAccessAssignedContest(this.user, this.tdoc)) {
             throw new NotAssignedError('contest', tid);
         }
         if (this.tdoc.allowTeam) {
@@ -440,6 +444,7 @@ export class ContestEditHandler extends Handler {
             this.tdoc = await contest.get(domainId, tid);
             if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
             if (contest.RULES[this.tdoc.rule].hidden) throw new ContestNotFoundError(domainId, tid);
+            if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('Edit classroom tests in course editor');
             if (!this.user.own(this.tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
             else this.checkPerm(PERM.PERM_EDIT_CONTEST_SELF);
         } else this.checkPerm(PERM.PERM_CREATE_CONTEST);
@@ -491,6 +496,7 @@ export class ContestEditHandler extends Handler {
     @param('langs', Types.CommaSeperatedArray, true)
     @param('allowPractice', Types.Boolean, true)
     @param('hideInBanner', Types.Boolean, true)
+    @param('monitorMode', Types.String, true)
     async postUpdate(
         domainId: string, tid: ObjectId, beginAtDate: string, beginAtTime: string, duration: number,
         title: string, content: string, rule: string, _pids: string, rated = false,
@@ -499,7 +505,9 @@ export class ContestEditHandler extends Handler {
         keepScoreboardHidden = false, allowTeam = false, langs: string[] = [],
         allowPractice?: boolean,
         hideInBanner = false,
+        monitorMode: NonNullable<Tdoc['monitorMode']> = 'off',
     ) {
+        if (!['off', 'browser'].includes(monitorMode)) throw new ValidationError('monitorMode');
         if (!Object.keys(contest.RULES).includes(rule) || contest.RULES[rule].hidden) throw new ValidationError('rule');
         if (autoHide) this.checkPerm(PERM.PERM_EDIT_PROBLEM);
         const allowTeamProvided = Object.hasOwn(this.request.body || {}, 'allowTeam');
@@ -520,7 +528,7 @@ export class ContestEditHandler extends Handler {
             assign, _code, autoHide, lockAt, maintainer, allowViewCode, allowPrint,
             keepScoreboardHidden, allowTeam, langs,
             allowPractice: allowPracticeProvided ? !!allowPractice : this.tdoc?.allowPractice ?? false,
-            hideInBanner,
+            hideInBanner, monitorMode,
         };
         const needsRecalc = !!tid && (
             this.tdoc.beginAt.getTime() !== beginAt.getTime()
@@ -1142,6 +1150,7 @@ class ContestTeamHandler extends Handler {
 
 export async function apply(ctx: Context) {
     ctx.Route('contest_create', '/contest/create', ContestEditHandler);
+    ctx.Route('contest_monitor', '/contest/:tid/monitor', ContestMonitorHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_main', '/contest', ContestListHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_team', '/contest/team', ContestTeamHandler); // before /contest/:tid: "team" is not a valid ObjectId
     ctx.Route('contest_detail', '/contest/:tid', ContestDetailHandler, PERM.PERM_VIEW_CONTEST);

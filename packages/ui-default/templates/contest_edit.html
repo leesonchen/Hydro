@@ -132,6 +132,13 @@
           <h2 class="section__title">{{ _('Contest Settings') }}</h2>
         </div>
         <div class="section__body">
+          {{ form.form_select({
+            columns:6,
+            label:'考试监控模式',
+            name:'monitorMode',
+            options:{'off':'关闭', 'browser':'浏览器切屏提醒与记录'},
+            value:tdoc.monitorMode|default('off')
+          }) }}
           {{ form.form_text({
             columns:12,
             label:'Submission language limit',

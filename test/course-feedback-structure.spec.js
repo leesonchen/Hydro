@@ -75,3 +75,15 @@ test('deleted IDs and stale structure revisions cannot be reused', () => {
     assert.equal(next.nodeIdHighWatermark, 10);
     assert.equal(next.dagRevision, 3);
 });
+
+
+test('assessment nodes never take exercise grading or access ownership even with historical mappings', () => {
+    const mixed = { ...course, dag: [...dag, { _id: 3, kind: 'assessment', pids: [10] }],
+        problemNodeIds: { 10: 3 }, problemAccessNodeIds: { 10: 3 } };
+    assert.equal(structure.problemNodeIds(mixed)[10], 2);
+    assert.equal(structure.problemAccessNodeIds(mixed)[10], 1);
+    const next = structure.nextStructure(mixed, [...mixed.dag].reverse(), 0);
+    assert.equal(next.problemNodeIds[10], 2);
+    assert.equal(next.problemAccessNodeIds[10], 1);
+    assert.deepEqual(courseRule.stat({ ...mixed, ...next }, journal), courseRule.stat(course, journal));
+});

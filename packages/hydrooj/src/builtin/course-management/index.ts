@@ -5,6 +5,7 @@ import { hasReferenceCodeSolution } from '../../lib/referenceCode';
 import {
     ContestModel,
     Context,
+    DocumentModel,
     ForbiddenError,
     ObjectId,
     PERM,
@@ -16,6 +17,8 @@ import {
     CourseDetailHandler, CourseEditHandler, CourseFileDownloadHandler,
     CourseLectureHandler, CourseMainHandler, CourseManageHandler, CourseProblemReferenceHandler, CourseScoreboardHandler,
 } from './handler/course';
+import { cleanupInactiveAssessments, syncAssessmentContests, validateAssessmentPlan } from './model/assessment';
+import type { CourseTdoc } from './model/course';
 
 export const name = 'course-management';
 
@@ -24,6 +27,49 @@ export const Config = Schema.object({
 });
 
 export async function apply(ctx: Context, config: any) {
+    await ctx.db.ensureIndexes(DocumentModel.coll, {
+        key: { domainId: 1, docType: 1, sourceType: 1, sourceCourseTid: 1, sourceNodeId: 1 },
+        name: 'classroomAssessmentBinding', unique: true,
+        partialFilterExpression: { sourceType: 'course_assessment' },
+    });
+    ctx.on('contest/before-edit', async (tdoc, changes) => {
+        if (tdoc.sourceType === 'course_assessment') {
+            if (changes.rated === true) throw new ForbiddenError('Classroom test rating requires certification');
+            if ((changes.sourceType && changes.sourceType !== tdoc.sourceType)
+                || (changes.sourceCourseTid && !changes.sourceCourseTid.equals(tdoc.sourceCourseTid))
+                || (changes.sourceNodeId !== undefined && changes.sourceNodeId !== tdoc.sourceNodeId)) {
+                throw new ForbiddenError('Classroom test bindings cannot be changed');
+            }
+        }
+        if (tdoc.rule !== 'course') return;
+        // Class schedule changes shift unopened tests while keeping started exams immutable.
+        if (changes.beginAt && !changes.dag) {
+            const shiftMs = changes.beginAt.getTime() - tdoc.beginAt.getTime();
+            if (shiftMs) {
+                changes.dag = structuredClone((tdoc as CourseTdoc).dag || []);
+                for (const node of changes.dag) {
+                    if (node.kind !== 'assessment' || !node.assessment || new Date(node.assessment.beginAt) <= new Date()) continue;
+                    node.assessment.beginAt = new Date(new Date(node.assessment.beginAt).getTime() + shiftMs).toISOString();
+                    node.assessment.endAt = new Date(new Date(node.assessment.endAt).getTime() + shiftMs).toISOString();
+                }
+            }
+        }
+        const next = { ...tdoc, ...changes } as CourseTdoc;
+        await validateAssessmentPlan(tdoc.domainId, next.dag || [], tdoc as CourseTdoc, next.beginAt, next.endAt);
+    });
+    ctx.on('contest/edit', async (tdoc) => {
+        if (tdoc.rule !== 'course' || tdoc.assign?.includes('teachers')) return;
+        const course = tdoc as CourseTdoc;
+        const dag = structuredClone(course.dag || []);
+        await syncAssessmentContests(course.domainId, course.docId, dag, course.title, course.owner,
+            course.assign || [], course.maintainer || []);
+        if (JSON.stringify(dag) !== JSON.stringify(course.dag || [])) {
+            const updated = await ContestModel.editIfAssigned(course.domainId, course.docId, course.assign || [], { dag },
+                { dagRevision: course.dagRevision ?? { $exists: false } });
+            if (!updated) throw new ForbiddenError('Course changed while synchronizing classroom tests; retry');
+        }
+        await cleanupInactiveAssessments(course.domainId, course.docId, dag);
+    });
     // i18n 翻译
     ctx.i18n.load('zh', {
         // 页面标题

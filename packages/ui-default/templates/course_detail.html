@@ -34,11 +34,12 @@
       </div>
       {% else %}
       {%- for node in tdoc['dag'] -%}
+        {% set _assessment = node.kind == 'assessment' %}
         {% set _hasLecture = node['lecture'] %}
         {% set _hasProblems = node['pids'] and node['pids']|length > 0 %}
         {% set _canViewLecture = isTeacherEditor or (not isTemplate and lectureAccess and lectureAccess[node['_id']]) %}
         {% set _canViewProblems = isTeacherEditor or (not isTemplate and tsdoc and tsdoc.allow[node['_id']]) %}
-        {% set _shouldShow = pdict and ((_hasLecture and _canViewLecture) or (_hasProblems and _canViewProblems)) %}
+        {% set _shouldShow = (_assessment and _canViewProblems) or (pdict and ((_hasLecture and _canViewLecture) or (_hasProblems and _canViewProblems))) %}
         {% if _shouldShow %}
         <div data-heading-extract-to="#menu-item-course_detail" class="training__section expanded">
           <div class="section__header clearfix">
@@ -65,7 +66,7 @@
                     data-tsdoc-attend="{{ tsAttend|default(false) }}"
                     data-can-view-scoreboard="{{ canViewScoreboard }}"
                   ></span>
-                  {% if canViewScoreboard %}
+                  {% if canViewScoreboard and (not _assessment or isTeacherEditor) %}
                     <a href="{{ url('course_scoreboard', tid=tdoc.docId, id=node._id)}}"><span class="icon icon-statistics"></span> {{ _('Scoreboard') }}</a>
                   {% endif %}
                 {% endif %}
@@ -78,6 +79,18 @@
                   {{ node['content']|markdown|safe }}
                 </div>
               {% endif %}
+              {% if _assessment %}
+              <div class="section__body typo">
+                {% set exam = assessments[node._id] %}
+                {% if exam %}
+                  <p><b>课堂测试 · {{ exam.rule|upper }}</b> · 开始 {{ datetimeSpan(exam.beginAt)|safe }} · 结束 {{ datetimeSpan(exam.endAt)|safe }}</p>
+                  {% if isTeacherEditor or (not isTemplate and tsdoc.allow[node._id]) %}
+                    <p><a class="rounded primary button" href="{{ url('contest_detail', tid=exam.tid) }}">进入课堂测试</a></p>
+                  {% endif %}
+                  {% if exam.score != null %}<p>我的测试成绩：{{ exam.score }}{% if exam.metric == 'accepted' %} 题通过{% else %} 分{% endif %}</p>{% endif %}
+                {% else %}<p>课堂测试尚未生成，或此课程为模板。</p>{% endif %}
+              </div>
+              {% else %}
               <div class="section__body no-padding training__problems">
                 <table class="data-table">
                   <colgroup>
@@ -128,6 +141,7 @@
                   </tbody>
                 </table>
               </div>
+              {% endif %}
           </div>
         </div>
         {% endif %}

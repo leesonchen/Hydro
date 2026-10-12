@@ -10,10 +10,16 @@ import {
     Types, UserModel, ValidationError,
 } from '../../../plugin-api';
 import bus from '../../../service/bus';
+import type { AssessmentResult } from '../model/assessment';
+import {
+    cleanupInactiveAssessments, getAssessmentResults, validateAssessmentPlan,
+} from '../model/assessment';
 import { ClassModel } from '../model/class';
 import type { CourseTdoc, DagNode } from '../model/course';
 import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
 import { nextStructure, nodeHighWatermark, problemAccessNodeIds, problemNodeIds } from '../model/structure';
+
+const ASSESSMENT_RULES = ['acm', 'oi', 'ioi', 'strictioi'];
 
 const TEMPLATE_ALL_KEY = 'templates::__all';
 const TEMPLATE_UNCATEGORIZED_KEY = 'templates::__uncategorized';
@@ -64,7 +70,7 @@ function checkProblemRuleComplete(tsdoc: any, pids: number[], condition: Complet
 function getExtraStudentUids(tdoc: CourseTdoc) {
     return (tdoc.assign || [])
         .filter((g: string) => /^\d+$/.test(g))
-        .map((s: string) => parseInt(s, 10))
+        .map((s: string) => Number.parseInt(s, 10))
         .filter((uid: number) => Number.isFinite(uid) && uid > 0);
 }
 
@@ -138,7 +144,7 @@ export async function courseNodeHighWatermark(domainId: string, tdoc: CourseTdoc
 }
 
 // 检查前置章节完成情况（按当前节点 completeCondition 聚合判断）
-function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc): boolean {
+function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc, assessments: Record<number, AssessmentResult> = {}): boolean {
     if (!tsdoc) {
         console.log('[checkPrerequisitesComplete] tsdoc is null/undefined');
         return false;
@@ -160,9 +166,15 @@ function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc)
             console.log(`[checkPrerequisitesComplete] required node ${nid} not found in dag`);
             return false;
         }
-        acceptCount += tsdoc.accept?.[nid] ?? 0;
-        totalScore += tsdoc.score?.[nid] ?? 0;
-        totalPids += reqNode.pids?.length || 0;
+        if (reqNode.kind === 'assessment') {
+            acceptCount += assessments[nid]?.completed ? 1 : 0;
+            totalScore += assessments[nid]?.score || 0;
+            totalPids += 1;
+        } else {
+            acceptCount += tsdoc.accept?.[nid] ?? 0;
+            totalScore += tsdoc.score?.[nid] ?? 0;
+            totalPids += reqNode.pids?.length || 0;
+        }
     }
 
     const condition = node.completeCondition || { type: 'all' };
@@ -207,10 +219,8 @@ export async function updateAllowedNodes(
         uid: tsdoc?.uid,
     }));
 
-    if (!tsdoc?.attend) {
-        console.log('[updateAllowedNodes] tsdoc not found or not attended, returning');
-        return;
-    }
+    const assessmentResults = await getAssessmentResults(domainId, tdoc, uid);
+    if (!tsdoc?.attend) return assessmentResults;
 
     const allow = tsdoc?.allow || {};
     let updated = false;
@@ -218,7 +228,7 @@ export async function updateAllowedNodes(
     // 如果没有DAG，所有章节默认开放（如果被手工禁止则需要手工允许）
     if (!tdoc.dag || tdoc.dag.length === 0) {
         console.log('[updateAllowedNodes] no DAG, returning');
-        return;
+        return assessmentResults;
     }
 
     console.log(`[updateAllowedNodes] dag nodes count: ${tdoc.dag.length}`);
@@ -242,7 +252,7 @@ export async function updateAllowedNodes(
 
         console.log(`[updateAllowedNodes] node ${node._id} has requirements: ${JSON.stringify(node.requireNids)}`);
 
-        const allRequirementsMet = checkPrerequisitesComplete(tsdoc || {}, node, tdoc);
+        const allRequirementsMet = checkPrerequisitesComplete(tsdoc || {}, node, tdoc, assessmentResults);
 
         console.log(`[updateAllowedNodes] node ${node._id} allRequirementsMet: ${allRequirementsMet}`);
 
@@ -253,12 +263,26 @@ export async function updateAllowedNodes(
         }
     }
 
-    if (updated) {
-        console.log('[updateAllowedNodes] updating allow:', JSON.stringify(allow));
-        await ContestModel.setStatus(domainId, tid, uid, { allow, attend: true });
-    } else {
-        console.log('[updateAllowedNodes] no updates needed');
+    const snapshot: Record<number, { score: number, completed: boolean }> = {};
+    for (const node of tdoc.dag) {
+        if (node.kind !== 'assessment') continue;
+        snapshot[node._id] = {
+            score: assessmentResults[node._id]?.score ?? 0,
+            completed: assessmentResults[node._id]?.completed ?? false,
+        };
     }
+    const totalUnits = tdoc.pids.length + tdoc.dag.filter((node) => node.kind === 'assessment').length;
+    const completedAssessments = Object.values(snapshot).filter((v) => v.completed).length;
+    const progress = totalUnits
+        ? Math.floor(((tsdoc.accept?.[0] || 0) + completedAssessments) * 100 / totalUnits)
+        : 0;
+    if (updated || tsdoc.progress !== progress
+        || JSON.stringify(tsdoc.assessmentResults || {}) !== JSON.stringify(snapshot)) {
+        await ContestModel.setStatus(domainId, tid, uid, {
+            allow, attend: true, progress, assessmentResults: snapshot,
+        });
+    }
+    return assessmentResults;
 }
 
 // 检测DAG中是否存在循环依赖
@@ -332,6 +356,29 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
                 pids.push(pdoc.docId);
             }
 
+            let assessment: DagNode['assessment'];
+            const kind = node.kind === 'assessment' ? 'assessment' : 'lesson';
+            if (kind === 'assessment') {
+                const settings = node.assessment || {};
+                if (!ASSESSMENT_RULES.includes(settings.rule)) throw new Error('Invalid assessment rule');
+                const beginAt = new Date(settings.beginAt);
+                const endAt = new Date(settings.endAt);
+                if (!Number.isFinite(beginAt.getTime()) || !Number.isFinite(endAt.getTime()) || beginAt >= endAt) {
+                    throw new Error('Invalid assessment window');
+                }
+                if (!pids.length) throw new Error('Assessment requires at least one problem');
+                if (!['off', 'browser', undefined].includes(settings.monitorMode)) throw new Error('Invalid monitoring mode');
+                assessment = {
+                    rule: settings.rule,
+                    monitorMode: settings.monitorMode || 'off',
+                    beginAt: beginAt.toISOString(),
+                    endAt: endAt.toISOString(),
+                    rated: false, // explicit certification is required before rating
+                    passScore: settings.passScore === undefined ? 0 : Number(settings.passScore),
+                    ...(typeof settings.contestTid === 'string' && /^[a-f0-9]{24}$/i.test(settings.contestTid)
+                        ? { contestTid: settings.contestTid } : {}),
+                };
+            }
             const lecture = typeof node.lecture === 'string' ? node.lecture.trim() : node.lecture;
             let lectureRule: DagNode['lectureRule'];
             if (lecture && node.lectureRule) {
@@ -354,6 +401,8 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
 
             result.push({
                 _id: +node._id,
+                kind,
+                ...(assessment ? { assessment } : {}),
                 title: node.title,
                 lecture: lecture || false,
                 pids: Array.from(new Set(pids)),
@@ -363,7 +412,7 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
             });
         }
 
-        const coursePids = new Set(result.flatMap((node) => node.pids));
+        const coursePids = new Set(result.filter((node) => node.kind !== 'assessment').flatMap((node) => node.pids));
         for (const node of result) {
             if (!node.lectureRule) continue;
             for (const pid of node.lectureRule.pids) {
@@ -1028,7 +1077,7 @@ export class CourseDetailHandler extends Handler {
         const udict = await UserModel.getListForRender(domainId, uids, ['displayName']);
 
         // 更新可访问章节
-        if (tsdoc?.attend) await updateAllowedNodes(domainId, tid, this.user._id, this.tdoc, tsdoc);
+        const assessmentResults = await updateAllowedNodes(domainId, tid, this.user._id, this.tdoc, tsdoc);
         tsdoc &&= await ContestModel.getStatus(domainId, tid, this.user._id);
         const lectureAccess: Record<number, boolean> = {};
         for (const node of this.tdoc.dag || []) {
@@ -1037,7 +1086,7 @@ export class CourseDetailHandler extends Handler {
 
         this.response.template = 'course_detail.html';
         this.response.body = {
-            tdoc: this.tdoc, tsdoc, udict, lectureAccess,
+            tdoc: this.tdoc, tsdoc, udict, lectureAccess, assessments: assessmentResults,
             feedbackUrl: await canManageFeedback(this, this.tdoc) ? this.url('course_feedback', { tid }) : null,
         };
 
@@ -1175,7 +1224,7 @@ export class CourseEditHandler extends Handler {
             this.response.body.assign = allAssign.filter((g) => !/^\d+$/.test(g));
             this.response.body.extraStudents = allAssign
                 .filter((g) => /^\d+$/.test(g))
-                .map((s) => parseInt(s, 10));
+                .map((s) => Number.parseInt(s, 10));
         }
     }
 
@@ -1218,14 +1267,14 @@ export class CourseEditHandler extends Handler {
         assign = Array.from(new Set((assign || []).map((s) => (s || '').trim()).filter(Boolean)));
         templateCategory = (templateCategory || '').trim();
         const extraStudents = Array.from(new Set((extraStudentsStr || [])
-            .map((s) => parseInt(s, 10))
+            .map((s) => Number.parseInt(s, 10))
             .filter((n) => Number.isFinite(n) && n > 0)));
         if (!isTemplate && assign.includes('teachers')) {
             throw new BadRequestError('不能分配课程给 teachers 组');
         }
 
         const dag = await parseDag(domainId, dagJson);
-        const pids = Array.from(new Set(dag.flatMap((n) => n.pids)));
+        const pids = Array.from(new Set(dag.filter((n) => n.kind !== 'assessment').flatMap((n) => n.pids)));
 
         const beginAt = moment.tz(beginAtStr, 'YYYY-M-D H:mm', this.user.timeZone);
         if (!beginAt.isValid()) throw new ValidationError('beginAt');
@@ -1245,6 +1294,7 @@ export class CourseEditHandler extends Handler {
         if (!lessonEndAt.isValid()) throw new ValidationError('lessonEndAt');
         if (lessonBeginAt.isSameOrAfter(lessonEndAt)) throw new ValidationError('lessonBeginAt', 'lessonEndAt');
 
+        await validateAssessmentPlan(domainId, dag, this.tdoc, beginAt.toDate(), endAt.toDate());
         const editor = this.user._id;
         const updateAt = new Date();
         const editingTemplate = !!this.tdoc?.assign?.includes('teachers');
@@ -1344,6 +1394,9 @@ export class CourseEditHandler extends Handler {
                 : [...nonDigitAssign, ...extraStudents.map((s) => s.toString())];
             const copiedLecture = copyLectureForTemplate(sourceCourseForTemplate, dag);
             const finalDag = copiedLecture.dag;
+            if (isTemplate) {
+                for (const node of finalDag) if (node.assessment) delete node.assessment.contestTid;
+            }
             const finalLecture = copiedLecture.lecture;
             const finalLectureMeta = copiedLecture.lectureMeta;
             let structure: ReturnType<typeof nextStructure>;
@@ -1416,6 +1469,7 @@ export class CourseEditHandler extends Handler {
                     `contest/${domainId}/${tid}/public/${f.name}`,
                 )));
             }
+            if (!isTemplate) await cleanupInactiveAssessments(domainId, tid, finalDag);
             // 清除旧的 extraStudents 字段（已合并到 assign）
             await DocumentModel.set(domainId, DocumentModel.TYPE_CONTEST, tid, undefined, { extraStudents: '' as any });
         } finally {
@@ -1461,6 +1515,7 @@ export class CourseEditHandler extends Handler {
                 }
                 expectedAssign = lockedCourse.assign || [];
             }
+            await validateAssessmentPlan(domainId, [], currentCourse, currentCourse.beginAt, currentCourse.endAt);
             const deleted = await ContestModel.delIfAssignUnchanged(domainId, tid, expectedAssign);
             if (!deleted) {
                 throw new BadRequestError('Course assignment changed. Please refresh and try again.');
@@ -1472,6 +1527,7 @@ export class CourseEditHandler extends Handler {
                 } catch { }
             }
         }
+        await cleanupInactiveAssessments(domainId, tid, []);
         this.response.redirect = this.url('course_main');
     }
 }
@@ -1508,7 +1564,7 @@ export class CourseManageHandler extends Handler {
         const allAssign = (tdoc as CourseTdoc).assign || [];
         const extraStudents = allAssign
             .filter((g: string) => /^\d+$/.test(g))
-            .map((s: string) => parseInt(s, 10));
+            .map((s: string) => Number.parseInt(s, 10));
         const allUids = Array.from(new Set([
             ...tsdocs.map((t) => t.uid),
             ...(group?.students || []),
@@ -1963,6 +2019,15 @@ export class CourseScoreboardHandler extends Handler {
             }
         }
 
+        const assessmentNode = tdoc.dag?.find((node) => node._id === id);
+        if (assessmentNode?.kind === 'assessment' && assessmentNode.assessment?.contestTid) {
+            if (!canEditCourse(this, tdoc)) throw new ForbiddenError('无权限查看课堂测试成绩板');
+            const contestTid = new ObjectId(assessmentNode.assessment.contestTid);
+            this.response.redirect = ext
+                ? this.url('contest_scoreboard_view', { tid: contestTid, view: ext })
+                : this.url('contest_scoreboard', { tid: contestTid });
+            return;
+        }
         if (ext) {
             await this.exportScoreboard(domainId, tid, id, ext);
             return;

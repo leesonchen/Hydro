@@ -1,5 +1,8 @@
 {% extends "layout/basic.html" %}
 {% block content %}
+{% if tdoc and tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc,tsdoc) %}
+  {% include 'partials/contest_monitor_client.html' %}
+{% endif %}
 <script>
 {{ set(UiContext, {
   problemId: pdoc.pid|default(pdoc.docId),

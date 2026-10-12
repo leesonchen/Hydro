@@ -272,6 +272,22 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
               + '</div>'
             + '</div>'
             + '<div class="section__body">'
+              + '<div class="row"><div class="columns"><label>章节类型<select class="select dag-kind">'
+              + '<option value="lesson">普通章节</option><option value="assessment">课堂测试</option></select></label></div></div>'
+              + '<div class="row dag-assessment-row"><div class="columns"><label>赛制<select class="select dag-assessment-rule">'
+              + '<option value="oi">OI</option><option value="ioi">IOI</option><option value="strictioi">Strict IOI</option>'
+              + '<option value="acm">ACM</option></select></label></div></div>'
+              + '<div class="row dag-assessment-row"><div class="columns">'
+              + '<label>开始时间（浏览器本地时间）<input type="datetime-local" step="1" class="textbox dag-assessment-begin" /></label></div>'
+              + '</div>'
+              + '<div class="row dag-assessment-row"><div class="columns">'
+              + '<label>结束时间（浏览器本地时间）<input type="datetime-local" step="1" class="textbox dag-assessment-end" /></label></div></div>'
+              + '<div class="row dag-assessment-row"><div class="columns"><label>'
+              + '<span class="dag-assessment-pass-label">达标分数</span>（默认 0，须在考试结束且有提交记录后完成）'
+              + '<input class="textbox dag-assessment-pass" type="number" min="0" step="1" />'
+              + '</label></div></div>'
+              + '<div class="row dag-assessment-row"><div class="columns"><label>考试监控<select class="select dag-assessment-monitor">'
+              + '<option value="off">关闭</option><option value="browser">浏览器切屏提醒与记录</option></select></label></div></div>'
               + '<div class="row"><div class="columns">'
                 + '<label>章节标题<input class="textbox dag-title" /></label>'
               + '</div></div>'
@@ -334,6 +350,57 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         $headerTitle.text(`课时 ${nodeIndex + 1}. ${node.title}`);
         $moveUp.prop('disabled', nodeIndex === 0);
         $moveDown.prop('disabled', nodeIndex === nodes.length - 1);
+        const $kind = $section.find('.dag-kind');
+        const $assessmentRows = $section.find('.dag-assessment-row');
+        const $rule = $section.find('.dag-assessment-rule');
+        const $begin = $section.find('.dag-assessment-begin');
+        const $end = $section.find('.dag-assessment-end');
+        const $pass = $section.find('.dag-assessment-pass');
+        const $monitor = $section.find('.dag-assessment-monitor');
+        $monitor.val(node.assessment?.monitorMode || 'off');
+        function updateAssessmentMetric() {
+          const acm = $rule.val() === 'acm';
+          $section.find('.dag-assessment-pass-label').text(acm ? '达标通过题数' : '达标分数');
+          $pass.attr('step', acm ? '1' : 'any');
+          if (acm) $pass.attr('max', node.pids.length);
+          else $pass.removeAttr('max');
+        }
+        $kind.val(node.kind || 'lesson');
+        $rule.val(node.assessment?.rule || 'oi');
+        updateAssessmentMetric();
+        const toLocalTime = (value: string) => {
+          if (!value) return '';
+          const date = new Date(value);
+          if (!Number.isFinite(date.getTime())) return '';
+          return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+        };
+        const toIsoTime = (value: any) => {
+          const date = new Date(String(value || ''));
+          return Number.isFinite(date.getTime()) ? date.toISOString() : '';
+        };
+        $begin.val(toLocalTime(node.assessment?.beginAt || ''));
+        $end.val(toLocalTime(node.assessment?.endAt || ''));
+        $pass.val(node.assessment?.passScore ?? 0);
+        function syncAssessment() {
+          node.kind = String($kind.val());
+          $assessmentRows.toggle(node.kind === 'assessment');
+          if (node.kind === 'assessment') {
+            node.assessment = {
+              ...(node.assessment || {}), rule: String($rule.val()),
+              beginAt: toIsoTime($begin.val()), endAt: toIsoTime($end.val()), rated: false,
+              passScore: Math.max(0, Number($pass.val()) || 0), monitorMode: String($monitor.val() || 'off'),
+            };
+          } else delete node.assessment;
+          updateAssessmentMetric();
+          commit({ source: 'assessment' });
+        }
+        $kind.on('change', syncAssessment);
+        $rule.on('change', syncAssessment);
+        $begin.on('change blur', syncAssessment);
+        $end.on('change blur', syncAssessment);
+        $pass.on('change blur', syncAssessment);
+        $monitor.on('change', syncAssessment);
+        $assessmentRows.toggle((node.kind || 'lesson') === 'assessment');
         $title.val(node.title);
         $title.on('input', () => {
           const nextTitle = String($title.val() || '').trim();

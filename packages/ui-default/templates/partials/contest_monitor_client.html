@@ -1,0 +1,118 @@
+<div id="contest-monitor-banner" class="typo" style="padding:10px;background:#fff4d3;border:1px solid #ecd180;margin-bottom:12px">
+  监控模式已开启：切换网页、失去焦点和退出全屏会被记录；浏览器不能阻止打开其他程序。
+  <button type="button" id="contest-monitor-fullscreen" class="rounded button small">进入全屏</button>
+  <span id="contest-monitor-warning" role="status" style="margin-left:8px"></span>
+</div>
+<script>
+(function installMonitor() {
+  if (window.__contestMonitorCleanup) window.__contestMonitorCleanup();
+  var contestId = '{{ tdoc.docId }}';
+  var sessionKey = 'hydro-monitor-session:' + contestId;
+  var queueKey = 'hydro-monitor-queue:' + contestId;
+  function newId() {
+    return (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+  }
+  function load(key, fallback) { try { return sessionStorage.getItem(key) || fallback; } catch (e) { return fallback; } }
+  function save(key, value) { try { sessionStorage.setItem(key, value); } catch (e) { /* storage unavailable */ } }
+  var session = load(sessionKey, newId());
+  save(sessionKey, session);
+  // Sequence is local to each new page instance; the backend uses both fields to deduplicate.
+  var pageInstanceId = newId();
+  var sequence = 0;
+  var endpoint = "{{ url('contest_monitor', tid=tdoc.docId) }}";
+  var status = document.getElementById('contest-monitor-warning');
+  var pending;
+  try { pending = JSON.parse(load(queueKey, '[]')); } catch (e) { pending = []; }
+  if (!Array.isArray(pending)) pending = [];
+  var inFlight = false;
+  var stopped = false;
+  var last = {};
+  function show(message) { if (status) status.textContent = message; }
+  function persist() { save(queueKey, JSON.stringify(pending.slice(-120))); }
+  function transmit() {
+    if (inFlight || stopped || !pending.length) return;
+    inFlight = true;
+    var first = pending[0];
+    fetch(endpoint, {
+      method: 'POST', credentials: 'same-origin', keepalive: true,
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(first)
+    }).then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    }).then(function (body) {
+      if (stopped) return;
+      if (!body || body.ok !== true) throw new Error('Monitor acknowledgement missing');
+      pending = pending.filter(function (item) {
+        return item.sessionId !== first.sessionId || item.pageInstanceId !== first.pageInstanceId || item.sequence !== first.sequence;
+      });
+      persist();
+      show('监控状态正常');
+      inFlight = false;
+      transmit();
+    }).catch(function () {
+      if (stopped) return;
+      inFlight = false;
+      show('监控事件暂未同步，恢复网络后自动重试');
+    });
+  }
+  function emit(eventType) {
+    if (stopped) return;
+    var now = Date.now();
+    if (last[eventType] && now - last[eventType] < 1000) return;
+    last[eventType] = now;
+    // Keep anomalous events before heartbeat samples if the network is down.
+    if (eventType === 'heartbeat' && pending.some(function (item) { return item.eventType === 'heartbeat'; })) return;
+    pending.push({ eventType: eventType, sessionId: session, pageInstanceId: pageInstanceId, sequence: ++sequence, clientAt: now });
+    if (pending.length > 120) {
+      var hb = pending.findIndex(function (item, index) { return item.eventType === 'heartbeat' && (!inFlight || index !== 0); });
+      if (hb !== -1) pending.splice(hb, 1);
+      else pending.splice(inFlight ? 1 : 0, 1);
+    }
+    persist();
+    if (eventType !== 'heartbeat') show('检测到 ' + eventType + '，正在上报');
+    transmit();
+  }
+  function visibility() { emit(document.hidden ? 'page_hidden' : 'page_visible'); }
+  function blur() { emit('window_blur'); }
+  function focus() { emit('window_focus'); }
+  function fullscreen() { emit(document.fullscreenElement ? 'fullscreen_enter' : 'fullscreen_exit'); }
+  function paste() { emit('paste_detected'); }
+  function unload() { emit('page_leave'); stopTransport(); }
+  function pageshow(event) { if (event.persisted) installMonitor(); }
+  document.addEventListener('visibilitychange', visibility);
+  window.addEventListener('blur', blur);
+  window.addEventListener('focus', focus);
+  document.addEventListener('fullscreenchange', fullscreen);
+  document.addEventListener('paste', paste);
+  window.addEventListener('pagehide', unload);
+  window.addEventListener('pageshow', pageshow);
+  var fullButton = document.getElementById('contest-monitor-fullscreen');
+  function enterFullscreen() {
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(function () { show('浏览器未允许进入全屏'); });
+    }
+  }
+  if (fullButton) fullButton.addEventListener('click', enterFullscreen);
+  var heartbeatTimer = setInterval(function () { if (!document.hidden) emit('heartbeat'); }, 15000);
+  var retryTimer = setInterval(transmit, 4000);
+  transmit();
+  emit('heartbeat');
+  function stopTransport() {
+    stopped = true;
+    clearInterval(heartbeatTimer);
+    clearInterval(retryTimer);
+    document.removeEventListener('visibilitychange', visibility);
+    window.removeEventListener('blur', blur);
+    window.removeEventListener('focus', focus);
+    document.removeEventListener('fullscreenchange', fullscreen);
+    document.removeEventListener('paste', paste);
+    window.removeEventListener('pagehide', unload);
+    if (fullButton) fullButton.removeEventListener('click', enterFullscreen);
+  }
+  window.__contestMonitorCleanup = function () {
+    stopTransport();
+    window.removeEventListener('pageshow', pageshow);
+  };
+})();
+</script>

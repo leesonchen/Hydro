@@ -164,7 +164,7 @@ class Nunjucks extends nunjucks.Environment {
 }
 
 export class TemplateService extends Service {
-  static inject = ['server'];
+  static inject = ['server', 'logger'];
 
   registry: Record<string, string> = {};
 

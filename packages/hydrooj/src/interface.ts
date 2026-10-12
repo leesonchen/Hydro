@@ -285,6 +285,8 @@ export interface Tdoc extends Document {
     rule: string;
     pids: number[];
     rated?: boolean;
+    /** Opt-in browser activity monitoring; telemetry is advisory, not proof of misconduct. */
+    monitorMode?: 'off' | 'browser';
     _code?: string;
     assign?: string[];
     files?: FileInfo[];
@@ -309,6 +311,11 @@ export interface Tdoc extends Document {
      * 在比赛有效时间内选择特定的 X 小时参加比赛（从首次打开比赛算起）
      */
     duration: number;
+
+    /** Provenance for independently scheduled chapter assessment contests. */
+    sourceType?: 'course_assessment';
+    sourceCourseTid?: ObjectId;
+    sourceNodeId?: number;
 
     // For homework
     penaltySince?: Date;

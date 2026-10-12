@@ -202,6 +202,9 @@ describe('Private content feedback', () => {
             '../../../lib/referenceCode': {}, '../../../model/feedback': Feedback,
             '../../../lib/classroomFeedbackAccess': {}, '../../../model/classroomFeedback': {},
             '../model/structure': courseStructure,
+            '../model/assessment': loadSource('packages/hydrooj/src/builtin/course-management/model/assessment.ts', {
+                '../../../plugin-api': pluginApi,
+            }),
             '../../../plugin-api': pluginApi, '../../../service/bus': {},
             '../model/class': {}, '../model/course': { DEFAULT_COURSE_LESSON_DURATION_HOURS: 3 },
         }, { console: { ...console, log() {} } }).CourseLectureHandler;

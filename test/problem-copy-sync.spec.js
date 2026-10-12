@@ -422,7 +422,7 @@ test('ProblemFilesHandler exposes copiedCount, lists copies with permission filt
 
     // Timestamp-free concurrent content changes are rejected by snapshot predicates.
     conditionalUpdateMode = 'concurrent-content';
-    sourceProblem.updateAt = new Date('2026-10-11T12:00:00Z');
+    sourceProblem.updateAt = new Date(Date.now() + 60000);
     const editCountBeforeConflict = editedRecords.length;
     handler.response = { body: {} };
     await handler.postSyncCopiedProblems();

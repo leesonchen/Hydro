@@ -100,7 +100,7 @@ test('real webpack Node type context exports declaration strings without followi
 test('unsupported Monaco fallback and config updates keep YAML sequences unindented', async () => {
     const source = fs.readFileSync(path.join(__dirname, '../packages/ui-default/components/problemconfig/ProblemConfigEditor.tsx'), 'utf8');
     const compiled = ts.transpileModule(source, {
-        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
     }).outputText;
     const module = { exports: {} };
     vm.runInThisContext('(function(require, module, exports, console) {\n' + compiled + '\n})')(

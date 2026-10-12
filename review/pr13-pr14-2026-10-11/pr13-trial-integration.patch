@@ -1,0 +1,433 @@
+diff --git a/.github/workflows/codeql.yml b/.github/workflows/codeql.yml
+index 0763b4ef..028b997c 100644
+--- a/.github/workflows/codeql.yml
++++ b/.github/workflows/codeql.yml
+@@ -5,8 +5,6 @@ on:
+     branches: [ "master" ]
+   pull_request:
+     branches: [ "master" ]
+-  schedule:
+-    - cron: "37 0 * * 2"
+ 
+ jobs:
+   analyze:
+diff --git a/packages/hydrooj/src/handler/contest-monitor.ts b/packages/hydrooj/src/handler/contest-monitor.ts
+new file mode 100644
+index 00000000..f9a3cf78
+--- /dev/null
++++ b/packages/hydrooj/src/handler/contest-monitor.ts
+@@ -0,0 +1,111 @@
++import { ObjectId } from 'mongodb';
++import { Context } from '../context';
++import { ContestNotAttendedError, ContestNotFoundError, ForbiddenError, ValidationError } from '../error';
++import { PERM } from '../model/builtin';
++import * as contest from '../model/contest';
++import db from '../service/db';
++import { Handler, param, Types } from '../service/server';
++
++type MonitorEventType = 'page_hidden' | 'page_visible' | 'window_blur' | 'window_focus'
++    | 'fullscreen_exit' | 'fullscreen_enter' | 'paste_detected' | 'page_leave' | 'heartbeat';
++
++const eventTypes: MonitorEventType[] = [
++    'page_hidden', 'page_visible', 'window_blur', 'window_focus',
++    'fullscreen_exit', 'fullscreen_enter', 'paste_detected', 'page_leave', 'heartbeat',
++];
++const events = db.collection('contest.monitor' as any);
++const sessions = db.collection('contest.monitor.sessions' as any);
++const retentionMs = 90 * 24 * 60 * 60 * 1000;
++
++export class ContestMonitorHandler extends Handler {
++    @param('tid', Types.ObjectId)
++    async get(domainId: string, tid: ObjectId) {
++        const tdoc = await contest.get(domainId, tid);
++        if (tdoc.monitorMode !== 'browser') throw new ContestNotFoundError(domainId, tid);
++        if (!this.user.own(tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) throw new ForbiddenError();
++        const [eventDocs, sessionDocs] = await Promise.all([
++            events.find({ domainId, contestTid: tid, eventType: { $ne: 'heartbeat' } } as any)
++                .sort({ serverAt: -1 }).limit(500).toArray(),
++            sessions.find({ domainId, contestTid: tid } as any)
++                .sort({ lastSeenAt: -1 }).limit(500).toArray(),
++        ]);
++        this.response.body = { tdoc, events: eventDocs, sessions: sessionDocs, page_name: 'contest_monitor' };
++        this.response.template = 'contest_monitor.html';
++    }
++
++    @param('tid', Types.ObjectId)
++    @param('eventType', Types.String)
++    @param('sessionId', Types.String)
++    @param('pageInstanceId', Types.String)
++    @param('sequence', Types.Int)
++    async post(domainId: string, tid: ObjectId, eventType: string, sessionId: string, pageInstanceId: string, sequence: number) {
++        const tdoc = await contest.get(domainId, tid);
++        if (tdoc.monitorMode !== 'browser') throw new ContestNotFoundError(domainId, tid);
++        if (!eventTypes.includes(eventType as MonitorEventType)) throw new ValidationError('eventType');
++        if (!/^[a-zA-Z0-9-]{10,100}$/.test(sessionId)
++            || !/^[a-zA-Z0-9-]{10,100}$/.test(pageInstanceId)
++            || !Number.isSafeInteger(sequence) || sequence < 1 || sequence > 10000000) {
++            throw new ValidationError('sessionId');
++        }
++        const status = await contest.getStatus(domainId, tid, this.user._id);
++        if (!status?.attend) throw new ContestNotAttendedError(domainId, tid);
++        if (!contest.isOngoing(tdoc, status)) throw new ForbiddenError('Exam is not active');
++        await this.limitRate('contest_monitor', 60, 150);
++
++        const now = new Date();
++        const expiresAt = new Date(now.getTime() + retentionMs);
++        const key = { domainId, contestTid: tid, uid: this.user._id, sessionId };
++        if (eventType !== 'heartbeat') {
++            // Uniqueness includes pageInstanceId; the page sequence can start at 1 on each navigation.
++            const result = await events.updateOne({ ...key, pageInstanceId, sequence } as any, {
++                $setOnInsert: { eventType, serverAt: now, expiresAt },
++            } as any, { upsert: true });
++            if (!result.upsertedId) {
++                this.response.body = { ok: true, duplicate: true };
++                return;
++            }
++        }
++
++        const previous = await sessions.findOne(key as any) as any;
++        const sessionFields: Record<string, any> = {
++            lastSeenAt: now, lastEventType: eventType, expiresAt,
++        };
++        const removeFields: Record<string, string> = {};
++        let durationMs: number | undefined;
++        if (eventType === 'page_hidden') sessionFields.hiddenSince = now;
++        if (eventType === 'window_blur') sessionFields.blurSince = now;
++        if (eventType === 'page_visible' && previous?.hiddenSince instanceof Date) {
++            durationMs = Math.max(0, now.getTime() - previous.hiddenSince.getTime());
++            removeFields.hiddenSince = '';
++        }
++        if (eventType === 'window_focus' && previous?.blurSince instanceof Date) {
++            durationMs = Math.max(0, now.getTime() - previous.blurSince.getTime());
++            removeFields.blurSince = '';
++        }
++        if (typeof durationMs === 'number') {
++            await events.updateOne({ ...key, pageInstanceId, sequence } as any, { $set: { durationMs } } as any);
++        }
++        await sessions.updateOne(key as any, {
++            $set: sessionFields,
++            ...(Object.keys(removeFields).length ? { $unset: removeFields } : {}),
++        } as any, { upsert: true });
++        this.response.body = { ok: true };
++    }
++}
++
++export async function apply(ctx: Context) {
++    ctx.on('domain/delete', (domainId) => Promise.all([
++        events.deleteMany({ domainId } as any),
++        sessions.deleteMany({ domainId } as any),
++    ]));
++    await ctx.db.ensureIndexes(events,
++        { key: { domainId: 1, contestTid: 1, uid: 1, sessionId: 1, pageInstanceId: 1, sequence: 1 }, name: 'monitorDedupe', unique: true },
++        { key: { domainId: 1, contestTid: 1, serverAt: -1 }, name: 'monitorListing' },
++        { key: { expiresAt: 1 }, name: 'monitorEventsExpire', expireAfterSeconds: 0 },
++    );
++    await ctx.db.ensureIndexes(sessions,
++        { key: { domainId: 1, contestTid: 1, uid: 1, sessionId: 1 }, name: 'monitorSession', unique: true },
++        { key: { domainId: 1, contestTid: 1, lastSeenAt: -1 }, name: 'monitorLiveSessions' },
++        { key: { expiresAt: 1 }, name: 'monitorSessionsExpire', expireAfterSeconds: 0 },
++    );
++}
+diff --git a/packages/hydrooj/src/handler/contest.ts b/packages/hydrooj/src/handler/contest.ts
+index f9fba984..8d63c64e 100644
+--- a/packages/hydrooj/src/handler/contest.ts
++++ b/packages/hydrooj/src/handler/contest.ts
+@@ -9,6 +9,7 @@ import {
+     Counter, getAlphabeticId, randomstring, sortFiles, Time, yaml,
+ } from '@hydrooj/utils/lib/utils';
+ import { Context, Service } from '../context';
++import { ContestMonitorHandler, apply as applyContestMonitor } from './contest-monitor';
+ import {
+     BadRequestError, ContestAlreadyStartedError, ContestNotAttendedError, ContestNotEndedError,
+     ContestNotFoundError, ContestNotLiveError, ContestScoreboardHiddenError, FileLimitExceededError, FileUploadError,
+@@ -491,6 +492,7 @@ export class ContestEditHandler extends Handler {
+     @param('langs', Types.CommaSeperatedArray, true)
+     @param('allowPractice', Types.Boolean, true)
+     @param('hideInBanner', Types.Boolean, true)
++    @param('monitorMode', Types.String, true)
+     async postUpdate(
+         domainId: string, tid: ObjectId, beginAtDate: string, beginAtTime: string, duration: number,
+         title: string, content: string, rule: string, _pids: string, rated = false,
+@@ -499,7 +501,9 @@ export class ContestEditHandler extends Handler {
+         keepScoreboardHidden = false, allowTeam = false, langs: string[] = [],
+         allowPractice?: boolean,
+         hideInBanner = false,
++        monitorMode: NonNullable<Tdoc['monitorMode']> = 'off',
+     ) {
++        if (!['off', 'browser'].includes(monitorMode)) throw new ValidationError('monitorMode');
+         if (!Object.keys(contest.RULES).includes(rule) || contest.RULES[rule].hidden) throw new ValidationError('rule');
+         if (autoHide) this.checkPerm(PERM.PERM_EDIT_PROBLEM);
+         const allowTeamProvided = Object.hasOwn(this.request.body || {}, 'allowTeam');
+@@ -520,7 +524,7 @@ export class ContestEditHandler extends Handler {
+             assign, _code, autoHide, lockAt, maintainer, allowViewCode, allowPrint,
+             keepScoreboardHidden, allowTeam, langs,
+             allowPractice: allowPracticeProvided ? !!allowPractice : this.tdoc?.allowPractice ?? false,
+-            hideInBanner,
++            hideInBanner, monitorMode,
+         };
+         const needsRecalc = !!tid && (
+             this.tdoc.beginAt.getTime() !== beginAt.getTime()
+@@ -1141,7 +1145,9 @@ class ContestTeamHandler extends Handler {
+ }
+ 
+ export async function apply(ctx: Context) {
++    await applyContestMonitor(ctx);
+     ctx.Route('contest_create', '/contest/create', ContestEditHandler);
++    ctx.Route('contest_monitor', '/contest/:tid/monitor', ContestMonitorHandler, PERM.PERM_VIEW_CONTEST);
+     ctx.Route('contest_main', '/contest', ContestListHandler, PERM.PERM_VIEW_CONTEST);
+     ctx.Route('contest_team', '/contest/team', ContestTeamHandler); // before /contest/:tid: "team" is not a valid ObjectId
+     ctx.Route('contest_detail', '/contest/:tid', ContestDetailHandler, PERM.PERM_VIEW_CONTEST);
+diff --git a/packages/hydrooj/src/interface.ts b/packages/hydrooj/src/interface.ts
+index e64339b0..6499e043 100644
+--- a/packages/hydrooj/src/interface.ts
++++ b/packages/hydrooj/src/interface.ts
+@@ -285,6 +285,8 @@ export interface Tdoc extends Document {
+     rule: string;
+     pids: number[];
+     rated?: boolean;
++    /** Opt-in browser activity monitoring; telemetry is advisory, not proof of misconduct. */
++    monitorMode?: 'off' | 'browser';
+     _code?: string;
+     assign?: string[];
+     files?: FileInfo[];
+diff --git a/packages/ui-default/templates/contest_detail.html b/packages/ui-default/templates/contest_detail.html
+index cfd15db7..b7bad4d3 100644
+--- a/packages/ui-default/templates/contest_detail.html
++++ b/packages/ui-default/templates/contest_detail.html
+@@ -3,6 +3,9 @@
+ {% import "components/record.html" as record with context %}
+ {% import "components/problem.html" as problem with context %}
+ {% block content %}
++{% if tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc,tsdoc) %}
++  {% include 'partials/contest_monitor_client.html' %}
++{% endif %}
+ {{ set(UiContext, 'tdoc', tdoc) }}
+ {{ set(UiContext, 'tsdoc', tsdoc) }}
+ <div class="row responsive-sidebar-layout">
+diff --git a/packages/ui-default/templates/contest_edit.html b/packages/ui-default/templates/contest_edit.html
+index a9bea887..ea93bdd3 100644
+--- a/packages/ui-default/templates/contest_edit.html
++++ b/packages/ui-default/templates/contest_edit.html
+@@ -132,6 +132,13 @@
+           <h2 class="section__title">{{ _('Contest Settings') }}</h2>
+         </div>
+         <div class="section__body">
++          {{ form.form_select({
++            columns:6,
++            label:'考试监控模式',
++            name:'monitorMode',
++            options:{'off':'关闭', 'browser':'浏览器切屏提醒与记录'},
++            value:tdoc.monitorMode|default('off')
++          }) }}
+           {{ form.form_text({
+             columns:12,
+             label:'Submission language limit',
+diff --git a/packages/ui-default/templates/contest_monitor.html b/packages/ui-default/templates/contest_monitor.html
+new file mode 100644
+index 00000000..f9931f67
+--- /dev/null
++++ b/packages/ui-default/templates/contest_monitor.html
+@@ -0,0 +1,19 @@
++{% extends "layout/basic.html" %}
++{% block content %}
++<div class="section">
++  <div class="section__header"><h1 class="section__title">监考记录：{{ tdoc.title }}</h1></div>
++  <div class="section__body typo">
++    <p>仅记录页面可见性、焦点、全屏与粘贴行为。此记录不能单独作为作弊结论。页面刷新可查看新增事件。</p>
++    <p>参赛人数：{{ tdoc.attend|default(0) }}；最近 500 条非心跳事件（正常页面导航不视为作弊）。</p>
++    <p>考试活跃会话（最近心跳）：{{ sessions.length }}</p>
++    <table class="data-table">
++      <thead><tr><th>学生 UID</th><th>事件类型</th><th>时间（服务端）</th><th>会话</th><th>离开时长（毫秒）</th></tr></thead>
++      <tbody>
++      {% for event in events %}
++        <tr><td>{{ event.uid }}</td><td>{{ event.eventType }}</td><td>{{ datetimeSpan(event.serverAt)|safe }}</td><td>{{ event.sessionId }}</td><td>{{ event.durationMs|default('-') }}</td></tr>
++      {% endfor %}
++      </tbody>
++    </table>
++  </div>
++</div>
++{% endblock %}
+diff --git a/packages/ui-default/templates/contest_problemlist.html b/packages/ui-default/templates/contest_problemlist.html
+index 45c36414..fe3ce2d1 100644
+--- a/packages/ui-default/templates/contest_problemlist.html
++++ b/packages/ui-default/templates/contest_problemlist.html
+@@ -3,6 +3,9 @@
+ {% import "components/record.html" as record with context %}
+ {% import "components/problem.html" as problem with context %}
+ {% block content %}
++{% if tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc,tsdoc) %}
++  {% include 'partials/contest_monitor_client.html' %}
++{% endif %}
+ {{ set(UiContext, 'tdoc', tdoc) }}
+ {{ set(UiContext, 'tsdoc', tsdoc) }}
+ {% set hasCorrection = showPractice or (correction and Object.keys(correction).length) %}
+diff --git a/packages/ui-default/templates/partials/contest_monitor_client.html b/packages/ui-default/templates/partials/contest_monitor_client.html
+new file mode 100644
+index 00000000..963f5754
+--- /dev/null
++++ b/packages/ui-default/templates/partials/contest_monitor_client.html
+@@ -0,0 +1,107 @@
++<div id="contest-monitor-banner" class="typo" style="padding:10px;background:#fff4d3;border:1px solid #ecd180;margin-bottom:12px">
++  监控模式已开启：切换网页、失去焦点和退出全屏会被记录；浏览器不能阻止打开其他程序。
++  <button type="button" id="contest-monitor-fullscreen" class="rounded button small">进入全屏</button>
++  <span id="contest-monitor-warning" role="status" style="margin-left:8px"></span>
++</div>
++<script>
++(function () {
++  if (window.__contestMonitorCleanup) window.__contestMonitorCleanup();
++  var contestId = '{{ tdoc.docId }}';
++  var sessionKey = 'hydro-monitor-session:' + contestId;
++  var queueKey = 'hydro-monitor-queue:' + contestId;
++  function newId() {
++    return (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
++  }
++  function load(key, fallback) { try { return sessionStorage.getItem(key) || fallback; } catch (e) { return fallback; } }
++  function save(key, value) { try { sessionStorage.setItem(key, value); } catch (e) { /* storage unavailable */ } }
++  var session = load(sessionKey, newId());
++  save(sessionKey, session);
++  // Sequence is local to each new page instance; the backend uses both fields to deduplicate.
++  var pageInstanceId = newId();
++  var sequence = 0;
++  var endpoint = "{{ url('contest_monitor', tid=tdoc.docId) }}";
++  var status = document.getElementById('contest-monitor-warning');
++  var pending;
++  try { pending = JSON.parse(load(queueKey, '[]')); } catch (e) { pending = []; }
++  if (!Array.isArray(pending)) pending = [];
++  var inFlight = false;
++  var stopped = false;
++  var last = {};
++  function show(message) { if (status) status.textContent = message; }
++  function persist() { save(queueKey, JSON.stringify(pending.slice(-120))); }
++  function transmit() {
++    if (inFlight || stopped || !pending.length) return;
++    inFlight = true;
++    var first = pending[0];
++    fetch(endpoint, {
++      method: 'POST', credentials: 'same-origin', keepalive: true,
++      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
++      body: JSON.stringify(first)
++    }).then(function (response) {
++      if (!response.ok) throw new Error('HTTP ' + response.status);
++      return response.json();
++    }).then(function (body) {
++      if (stopped) return;
++      if (!body || body.ok !== true) throw new Error('Monitor acknowledgement missing');
++      pending.shift();
++      persist();
++      show('监控状态正常');
++      inFlight = false;
++      transmit();
++    }).catch(function () {
++      if (stopped) return;
++      inFlight = false;
++      show('监控事件暂未同步，恢复网络后自动重试');
++    });
++  }
++  function emit(eventType) {
++    var now = Date.now();
++    if (last[eventType] && now - last[eventType] < 1000) return;
++    last[eventType] = now;
++    // Keep anomalous events before heartbeat samples if the network is down.
++    if (eventType === 'heartbeat' && pending.some(function (item) { return item.eventType === 'heartbeat'; })) return;
++    pending.push({ eventType: eventType, sessionId: session, pageInstanceId: pageInstanceId, sequence: ++sequence });
++    if (pending.length > 120) {
++      var hb = pending.findIndex(function (item) { return item.eventType === 'heartbeat'; });
++      if (hb !== -1) pending.splice(hb, 1);
++      else pending.shift();
++    }
++    persist();
++    if (eventType !== 'heartbeat') show('检测到 ' + eventType + '，正在上报');
++    transmit();
++  }
++  function visibility() { emit(document.hidden ? 'page_hidden' : 'page_visible'); }
++  function blur() { emit('window_blur'); }
++  function focus() { emit('window_focus'); }
++  function fullscreen() { emit(document.fullscreenElement ? 'fullscreen_enter' : 'fullscreen_exit'); }
++  function paste() { emit('paste_detected'); }
++  function unload() { emit('page_leave'); }
++  document.addEventListener('visibilitychange', visibility);
++  window.addEventListener('blur', blur);
++  window.addEventListener('focus', focus);
++  document.addEventListener('fullscreenchange', fullscreen);
++  document.addEventListener('paste', paste);
++  window.addEventListener('pagehide', unload);
++  var fullButton = document.getElementById('contest-monitor-fullscreen');
++  if (fullButton) fullButton.addEventListener('click', function () {
++    if (document.documentElement.requestFullscreen) {
++      document.documentElement.requestFullscreen().catch(function () { show('浏览器未允许进入全屏'); });
++    }
++  });
++  var heartbeatTimer = setInterval(function () { if (!document.hidden) emit('heartbeat'); }, 15000);
++  var retryTimer = setInterval(transmit, 4000);
++  transmit();
++  emit('heartbeat');
++  window.__contestMonitorCleanup = function () {
++    stopped = true;
++    clearInterval(heartbeatTimer);
++    clearInterval(retryTimer);
++    document.removeEventListener('visibilitychange', visibility);
++    window.removeEventListener('blur', blur);
++    window.removeEventListener('focus', focus);
++    document.removeEventListener('fullscreenchange', fullscreen);
++    document.removeEventListener('paste', paste);
++    window.removeEventListener('pagehide', unload);
++  };
++})();
++</script>
+diff --git a/packages/ui-default/templates/partials/contest_sidebar.html b/packages/ui-default/templates/partials/contest_sidebar.html
+index 2a1f803a..0aaa18f6 100644
+--- a/packages/ui-default/templates/partials/contest_sidebar.html
++++ b/packages/ui-default/templates/partials/contest_sidebar.html
+@@ -167,6 +167,9 @@
+         <span class="icon icon-print"></span> {{ _('Print') }}
+       </a></li>
+     {% endif %}
++    {% if tdoc.monitorMode == 'browser' and (handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST)) %}
++      <li class="menu__item"><a class="menu__link" href="{{ url('contest_monitor', tid=tdoc.docId) }}"><span class="icon icon-flag"></span> 监考记录</a></li>
++    {% endif %}
+     {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST) %}
+       <li class="menu__item"><a class="menu__link" href="{{ url('contest_edit', tid=tdoc.docId) }}">
+         <span class="icon icon-edit"></span> {{ tdoc.rule == 'course' and _('Edit Course') or _('Edit Contest') }}
+diff --git a/packages/ui-default/templates/problem_detail.html b/packages/ui-default/templates/problem_detail.html
+index 68d69bff..f1628854 100644
+--- a/packages/ui-default/templates/problem_detail.html
++++ b/packages/ui-default/templates/problem_detail.html
+@@ -1,5 +1,8 @@
+ {% extends "layout/basic.html" %}
+ {% block content %}
++{% if tdoc and tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc,tsdoc) %}
++  {% include 'partials/contest_monitor_client.html' %}
++{% endif %}
+ <script>
+ {{ set(UiContext, {
+   problemId: pdoc.pid|default(pdoc.docId),
+diff --git a/packages/ui-default/templates/problem_submit.html b/packages/ui-default/templates/problem_submit.html
+index 168dff6e..decb5e16 100644
+--- a/packages/ui-default/templates/problem_submit.html
++++ b/packages/ui-default/templates/problem_submit.html
+@@ -1,5 +1,8 @@
+ {% extends "layout/basic.html" %}
+ {% block content %}
++{% if tdoc and tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc, tsdoc) %}
++  {% include 'partials/contest_monitor_client.html' %}
++{% endif %}
+ {{ set(UiContext, 'pdoc', pdoc) }}
+ <div class="row responsive-sidebar-layout">
+   <div class="medium-9 columns">
+diff --git a/tsconfig.json b/tsconfig.json
+index 662a6141..7ae52507 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -2,7 +2,11 @@
+   "compilerOptions": {
+     "target": "es2022",
+     "lib": [
+-      "esnext"
++      "esnext",
++      "DOM"
++    ],
++    "types": [
++      "node"
+     ],
+     "module": "preserve",
+     "esModuleInterop": true,

@@ -3,13 +3,14 @@ import type { CourseTdoc, DagNode } from './course';
 function nodeIds(course: Partial<CourseTdoc>, field: 'problemNodeIds' | 'problemAccessNodeIds'): Record<number, number> {
     const owners: Record<number, number> = {};
     for (const node of course.dag || []) {
+        if (node.kind === 'assessment') continue;
         for (const pid of node.pids) {
             // Legacy grading uses the last matching node; access uses the first.
             if (field === 'problemNodeIds' || owners[pid] === undefined) owners[pid] = node._id;
         }
     }
     for (const [pid, id] of Object.entries(course[field] || {})) {
-        if (course.dag?.some((node) => node._id === id && node.pids.includes(+pid))) owners[+pid] = id;
+        if (course.dag?.some((node) => node._id === id && node.kind !== 'assessment' && node.pids.includes(+pid))) owners[+pid] = id;
     }
     return owners;
 }
@@ -33,10 +34,10 @@ export function nextStructure(current: CourseTdoc | undefined, dag: DagNode[], e
     const owners = problemNodeIds({ dag });
     const accessOwners = problemAccessNodeIds({ dag });
     for (const [pid, id] of Object.entries(current ? problemNodeIds(current) : {})) {
-        if (dag.some((node) => node._id === id && node.pids.includes(+pid))) owners[+pid] = id;
+        if (dag.some((node) => node._id === id && node.kind !== 'assessment' && node.pids.includes(+pid))) owners[+pid] = id;
     }
     for (const [pid, id] of Object.entries(current ? problemAccessNodeIds(current) : {})) {
-        if (dag.some((node) => node._id === id && node.pids.includes(+pid))) accessOwners[+pid] = id;
+        if (dag.some((node) => node._id === id && node.kind !== 'assessment' && node.pids.includes(+pid))) accessOwners[+pid] = id;
     }
     return { dag, problemNodeIds: owners, problemAccessNodeIds: accessOwners,
         nodeIdHighWatermark: Math.max(high, ...dag.map((node) => node._id)),

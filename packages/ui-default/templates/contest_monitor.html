@@ -1,0 +1,19 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="section">
+  <div class="section__header"><h1 class="section__title">监考记录：{{ tdoc.title }}</h1></div>
+  <div class="section__body typo">
+    <p>仅记录页面可见性、焦点、全屏与粘贴行为。此记录不能单独作为作弊结论。页面刷新可查看新增事件。</p>
+    <p>参赛人数：{{ tdoc.attend|default(0) }}；最近 500 条非心跳事件（正常页面导航不视为作弊）。</p>
+    <p>考试活跃会话（最近心跳）：{{ sessions.length }}</p>
+    <table class="data-table">
+      <thead><tr><th>学生 UID</th><th>事件类型</th><th>时间（服务端）</th><th>会话</th><th>离开时长（毫秒）</th></tr></thead>
+      <tbody>
+      {% for event in events %}
+        <tr><td>{{ event.uid }}</td><td>{{ event.eventType }}</td><td>{{ datetimeSpan(event.serverAt)|safe }}</td><td>{{ event.sessionId }}</td><td>{{ event.durationMs|default('-') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

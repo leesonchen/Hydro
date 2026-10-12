@@ -37,9 +37,9 @@ describe('App', () => {
     }, { timeout: 30000 });
 
     beforeEach(async () => {
-        // Keep unrelated HTTP cases from sharing the five-second transport quota.
+        // Transport and login quotas apply within each case, not across unrelated fixtures.
         // Feature-specific limits remain active, including classroom_feedback.
-        await global.app.get('db').db.collection('opcount').deleteMany({ op: 'global' });
+        await global.app.get('db').db.collection('opcount').deleteMany({ op: { $in: ['global', 'user_login'] } });
     });
 
     it('enforces the global HTTP quota within a case and recovers after its counter is cleared', async () => {
@@ -94,6 +94,8 @@ describe('App', () => {
         assert(cookie.some((item) => /samesite=lax/i.test(item)));
         Root.creditionals = cookie;
     });
+
+    require('./contest-assessment-http').register(() => agent);
 
     it('Rejects session IDs supplied through the query string', async () => {
         const sid = /(?:^|;\s*)sid=([^;]+)/.exec(Root.creditionals[0])?.[1];
@@ -649,7 +651,7 @@ describe('App', () => {
             await DomainModel.add(otherDomainId, actors.outside.uid, 'Other feedback domain', '');
             const studentPerm = PERM.PERM_VIEW | PERM.PERM_VIEW_PROBLEM | PERM.PERM_VIEW_HOMEWORK | PERM.PERM_ATTEND_HOMEWORK;
             await DomainModel.edit(domainId, { roles: { student: studentPerm.toString() }, enableCourse: true });
-            await DomainModel.setUserRole(domainId, [actors.student.uid, actors.other.uid], 'student', true);
+            await Promise.all([actors.student.uid, actors.other.uid].map((uid) => DomainModel.setUserRole(domainId, uid, 'student', true)));
             pid = await ProblemModel.add(domainId, '', 'Feedback source', 'Original statement', actors.owner.uid);
             const beginAt = new Date(Date.now() - 3600000);
             const endAt = new Date(Date.now() + 3600000);
@@ -680,7 +682,8 @@ describe('App', () => {
             const initialMessage = await MessageModel.coll.findOne({ feedbackId });
             assert(initialMessage.to.includes(actors.owner.uid));
             assert(initialMessage.to.includes(actors.sys.uid));
-            assert(initialMessage.to.includes(2));
+            const rootPriv = (await UserModel.coll.findOne({ _id: 2 })).priv;
+            assert.equal(initialMessage.to.includes(2), (rootPriv & PRIV.PRIV_EDIT_SYSTEM) === PRIV.PRIV_EDIT_SYSTEM);
             assert(!initialMessage.to.includes(actors.other.uid));
             assert(!initialMessage.to.includes(actors.outside.uid));
             assert.equal((await UserModel.coll.findOne({ _id: actors.student.uid })).priv, PRIV.PRIV_USER_PROFILE);
@@ -692,13 +695,14 @@ describe('App', () => {
             }).expect(403);
 
             for (const role of ['other', 'outside']) {
+                assert.equal(await FeedbackModel.canAccess(feedbackDoc, actors[role].uid), false);
                 await actors[role].client.get(`/home/messages?feedback=${feedbackId}`).set('Accept', 'application/json').expect(403);
-                await actors[role].client.post('/home/messages').set('Accept', 'application/json').send({
+                await actors[role].client.post('/d/system/home/messages').set('Accept', 'application/json').send({
                     operation: 'feedback_reply', feedbackId, content: 'Unauthorized reply', domainId,
                 }).expect(403);
             }
             for (const role of ['owner', 'sys', 'student']) {
-                const replied = await actors[role].client.post('/home/messages').set('Accept', 'application/json').send({
+                const replied = await actors[role].client.post('/d/system/home/messages').set('Accept', 'application/json').send({
                     operation: 'feedback_reply', feedbackId, content: `Reply from ${role}`, to: [actors.other.uid], domainId: otherDomainId,
                 }).expect(200);
                 assert.equal(replied.body.mdoc.domainId, domainId);
@@ -717,6 +721,9 @@ describe('App', () => {
             }).expect(403);
 
             await ProblemModel.edit(domainId, pid, { hidden: true });
+            assert.equal((await ProblemModel.get(domainId, pid)).hidden, true);
+            const hiddenProblem = await ProblemModel.get(domainId, pid);
+            assert.equal(ProblemModel.canViewBy(hiddenProblem, await UserModel.getById(domainId, actors.student.uid)), false);
             await submitFeedback(sourceUrl).expect(403);
             await ProblemModel.edit(domainId, pid, { hidden: false });
             await submitFeedback(`${sourceUrl}?tid=${unassignedTid}`).expect(403);

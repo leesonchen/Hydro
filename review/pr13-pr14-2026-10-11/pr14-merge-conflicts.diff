@@ -1,0 +1,964 @@
+diff --cc packages/hydrooj/src/builtin/course-management/handler/course.ts
+index 461008c3,a3a9e6d2..00000000
+--- a/packages/hydrooj/src/builtin/course-management/handler/course.ts
++++ b/packages/hydrooj/src/builtin/course-management/handler/course.ts
+@@@ -1,146 -1,41 +1,164 @@@
+  import assert from 'assert';
+ +import { canManageFeedback } from '../../../lib/classroomFeedbackAccess';
+ +import { getReferenceCodeSolutions, isReferenceCodeSolution, REFERENCE_CODE_TITLE } from '../../../lib/referenceCode';
+ +import { feedbackRepository } from '../../../model/classroomFeedback';
+ +import FeedbackModel from '../../../model/feedback';
+  import {
+ -    _, BadRequestError, ContestModel, ContestNotFoundError, ContestScoreboardHiddenError,
+ +    _, BadRequestError, ContestAlreadyAttendedError, ContestModel, ContestNotFoundError, ContestScoreboardHiddenError,
+      DocumentModel, ForbiddenError, Handler, moment, NotAssignedError, ObjectId, OplogModel,
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/handler/course.ts
+ +    param, PERM, post, PRIV, ProblemModel, ProblemNotFoundError, SolutionModel, sortFiles, STATUS, StorageModel, SystemModel,
+ +    Types, UserModel, ValidationError,
+ +} from '../../../plugin-api';
+ +import bus from '../../../service/bus';
+++=======
++     param, PERM, post, ProblemModel, ProblemNotFoundError, sortFiles, StorageModel, SystemModel,
++     SolutionModel, STATUS, Types, UserModel, ValidationError,
++ } from 'hydrooj';
++ import bus from 'hydrooj/src/service/bus';
++ import type { CourseTdoc, DagNode } from '../model/course';
++ import {
++     cleanupInactiveAssessments, getAssessmentResults, syncAssessmentContests, validateAssessmentPlan,
++ } from '../model/assessment';
++ import type { AssessmentResult } from '../model/assessment';
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/handler/course.ts
+  import { ClassModel } from '../model/class';
+ +import type { CourseTdoc, DagNode } from '../model/course';
+ +import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
+ +import { nextStructure, nodeHighWatermark, problemAccessNodeIds, problemNodeIds } from '../model/structure';
+  
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/handler/course.ts
+ +const TEMPLATE_ALL_KEY = 'templates::__all';
+ +const TEMPLATE_UNCATEGORIZED_KEY = 'templates::__uncategorized';
+++=======
++ const ASSESSMENT_RULES = ['acm', 'oi', 'ioi', 'strictioi'];
++ 
++ const REFERENCE_CODE_TITLE = '【参考代码】';
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/handler/course.ts
+  
+  function fillMessage(template: string, ...params: Array<string | number>) {
+ -    return template.replace(/\{(\d+)\}/g, (_, index) => String(params[Number(index)] ?? ''));
+ +    return template.replace(/\{(\d+)\}/g, (match, index) => String(params[Number(index)] ?? ''));
+  }
+  
+ -function isReferenceCodeSolutionByContent(content = '') {
+ -    const firstLine = content.split(/\r?\n/).find((line) => line.trim());
+ -    if (!firstLine) return false;
+ -    const title = firstLine.trim().replace(/^#+\s*/, '');
+ -    return title.startsWith(REFERENCE_CODE_TITLE);
+ +function normalizeTemplateIds(templateIds: any) {
+ +    const values = Array.isArray(templateIds) ? templateIds : [templateIds];
+ +    return Array.from(new Set(values
+ +        .flatMap((id) => (id === undefined || id === null ? '' : String(id)).split(','))
+ +        .map((id) => id.trim())
+ +        .filter(Boolean)));
+  }
+  
+ -function isReferenceCodeSolution(doc: any) {
+ -    return doc?.title === REFERENCE_CODE_TITLE || isReferenceCodeSolutionByContent(doc?.content || '');
+ +type CompleteCondition = NonNullable<DagNode['completeCondition']>;
+ +
+ +function normalizeCondition(condition: any): CompleteCondition {
+ +    return condition || { type: 'all' };
+ +}
+ +
+ +function validateCondition(condition: any, field: string) {
+ +    assert(typeof condition === 'object', `${field} must be an object`);
+ +    assert(['all', 'problem', 'score'].includes(condition.type), `${field} type must be all, problem or score`);
+ +    if (condition.type === 'all') {
+ +        assert(!condition.value, `${field} value must not be set when type is all`);
+ +    } else {
+ +        assert(condition.value, `${field} value must be set when type is not all`);
+ +    }
+ +}
+ +
+ +function checkProblemRuleComplete(tsdoc: any, pids: number[], condition: CompleteCondition): boolean {
+ +    if (!tsdoc?.attend || !pids.length) return false;
+ +    let acceptCount = 0;
+ +    let totalScore = 0;
+ +    for (const pid of pids) {
+ +        const detail = tsdoc.detail?.[pid] || tsdoc.detail?.[String(pid)];
+ +        if (detail?.status === STATUS.STATUS_ACCEPTED) acceptCount++;
+ +        totalScore += detail?.score || 0;
+ +    }
+ +    if (condition.type === 'all') return acceptCount >= pids.length;
+ +    if (condition.type === 'problem') return acceptCount >= (condition.value || 0);
+ +    if (condition.type === 'score') return totalScore >= (condition.value || 0);
+ +    return false;
+ +}
+ +
+ +function getExtraStudentUids(tdoc: CourseTdoc) {
+ +    return (tdoc.assign || [])
+ +        .filter((g: string) => /^\d+$/.test(g))
+ +        .map((s: string) => parseInt(s, 10))
+ +        .filter((uid: number) => Number.isFinite(uid) && uid > 0);
+ +}
+ +
+ +function getAssignGroup(tdoc: CourseTdoc) {
+ +    return (tdoc.assign || []).find((g: string) => g !== 'teachers' && !/^\d+$/.test(g)) || '';
+ +}
+ +
+ +function isAssignedToCourse(tdoc: CourseTdoc, user: any) {
+ +    if (!tdoc.assign?.length) return true;
+ +    const userIdStr = user._id.toString();
+ +    return tdoc.assign.some((g: string) => user.group?.includes(g) || g === userIdStr);
+ +}
+ +
+ +async function getCourseAudience(domainId: string, tdoc: CourseTdoc) {
+ +    const groupName = getAssignGroup(tdoc);
+ +    const group = groupName ? await ClassModel.getGroupByName(domainId, groupName) : null;
+ +    const teacherUids = new Set<number>([
+ +        ...(group?.teachers || []),
+ +        tdoc.owner,
+ +        (tdoc as any).editor,
+ +    ].filter(Boolean));
+ +    const studentUids = new Set<number>([
+ +        ...(group?.students || []),
+ +        ...getExtraStudentUids(tdoc),
+ +    ].filter((uid) => !teacherUids.has(uid)));
+ +    return {
+ +        teacherUids: Array.from(teacherUids),
+ +        studentUids: Array.from(studentUids),
+ +        restrictToStudentRoster: !!group || getExtraStudentUids(tdoc).length > 0,
+ +    };
+ +}
+ +
+ +async function getCourseStudentUids(domainId: string, tdoc: CourseTdoc) {
+ +    const groupName = getAssignGroup(tdoc);
+ +    const group = groupName ? await ClassModel.getGroupByName(domainId, groupName) : null;
+ +    return Array.from(new Set([...(group?.students || []), ...getExtraStudentUids(tdoc)].filter(Boolean)));
+ +}
+ +
+ +function canEditCourse(handler: Handler, tdoc: CourseTdoc) {
+ +    return handler.user.own(tdoc)
+ +        || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+ +        || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+ +}
+ +
+ +function studentCanViewCourseLecture(node: DagNode, tsdoc: any) {
+ +    if (!tsdoc?.attend) return false;
+ +    const nodeId = node._id;
+ +    const lectureFlag = tsdoc.lectureAllow?.[nodeId];
+ +    if (lectureFlag === false || lectureFlag === 0) return false;
+ +    if (lectureFlag === true || lectureFlag === 1) return true;
+ +    if (node.lectureRule) {
+ +        return checkProblemRuleComplete(tsdoc, node.lectureRule.pids, node.lectureRule.condition);
+ +    }
+ +    return tsdoc.allow?.[nodeId] === true;
+ +}
+ +
+ +function canViewCourseLecture(handler: Handler, tdoc: CourseTdoc, node: DagNode, tsdoc: any) {
+ +    return canEditCourse(handler, tdoc) || handler.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
+ +        || studentCanViewCourseLecture(node, tsdoc);
+ +}
+ +
+ +export async function courseNodeHighWatermark(domainId: string, tdoc: CourseTdoc) {
+ +    const [statuses, max] = await Promise.all([
+ +        ContestModel.getMultiStatus(domainId, { docId: tdoc.docId })
+ +            .project({ allow: 1, lectureAllow: 1, score: 1, accept: 1 }).toArray(),
+ +        feedbackRepository.maxNodeId({ domainId, activityType: 'course', activityId: tdoc.docId.toString() }),
+ +    ]);
+ +    const keys = statuses.flatMap((status) => ['allow', 'lectureAllow', 'score', 'accept']
+ +        .flatMap((field) => Object.keys(status[field] || {}).map(Number))).filter(Number.isSafeInteger);
+ +    return nodeHighWatermark(tdoc, Math.max(max, ...keys));
+  }
+  
+  // 检查前置章节完成情况（按当前节点 completeCondition 聚合判断）
+- function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc): boolean {
++ function checkPrerequisitesComplete(tsdoc: any, node: DagNode, tdoc: CourseTdoc, assessments: Record<number, AssessmentResult> = {}): boolean {
+      if (!tsdoc) {
+ -        console.log(`[checkPrerequisitesComplete] tsdoc is null/undefined`);
+ +        console.log('[checkPrerequisitesComplete] tsdoc is null/undefined');
+          return false;
+      }
+  
+@@@ -206,19 -106,19 +230,30 @@@ export async function updateAllowedNode
+          allow: tsdoc?.allow,
+          uid: tsdoc?.uid,
+      }));
+ -    
+ +
+      if (!tsdoc?.attend) {
+          console.log('[updateAllowedNodes] tsdoc not found or not attended, returning');
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/handler/course.ts
+ +        return;
+ +    }
+ +
+++=======
++         return {};
++     }
++     const assessmentResults = await getAssessmentResults(domainId, tdoc, uid);
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/handler/course.ts
+      const allow = tsdoc?.allow || {};
+      let updated = false;
+  
+      // 如果没有DAG，所有章节默认开放（如果被手工禁止则需要手工允许）
+      if (!tdoc.dag || tdoc.dag.length === 0) {
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/handler/course.ts
+ +        console.log('[updateAllowedNodes] no DAG, returning');
+ +        return;
+++=======
++         console.log(`[updateAllowedNodes] no DAG, returning`);
++         return assessmentResults;
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/handler/course.ts
+      }
+  
+      console.log(`[updateAllowedNodes] dag nodes count: ${tdoc.dag.length}`);
+@@@ -241,8 -141,8 +276,13 @@@
+          }
+  
+          console.log(`[updateAllowedNodes] node ${node._id} has requirements: ${JSON.stringify(node.requireNids)}`);
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/handler/course.ts
+ +
+ +        const allRequirementsMet = checkPrerequisitesComplete(tsdoc || {}, node, tdoc);
+++=======
++         
++         const allRequirementsMet = checkPrerequisitesComplete(tsdoc || {}, node, tdoc, assessmentResults);
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/handler/course.ts
+  
+          console.log(`[updateAllowedNodes] node ${node._id} allRequirementsMet: ${allRequirementsMet}`);
+  
+@@@ -253,12 -153,26 +293,34 @@@
+          }
+      }
+  
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/handler/course.ts
+ +    if (updated) {
+ +        console.log('[updateAllowedNodes] updating allow:', JSON.stringify(allow));
+ +        await ContestModel.setStatus(domainId, tid, uid, { allow, attend: true });
+ +    } else {
+ +        console.log('[updateAllowedNodes] no updates needed');
+++=======
++     const snapshot: Record<number, { score: number; completed: boolean }> = {};
++     for (const node of tdoc.dag) {
++         if (node.kind !== 'assessment') continue;
++         snapshot[node._id] = {
++             score: assessmentResults[node._id]?.score ?? 0,
++             completed: assessmentResults[node._id]?.completed ?? false,
++         };
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/handler/course.ts
+      }
++     const totalUnits = tdoc.pids.length + tdoc.dag.filter((node) => node.kind === 'assessment').length;
++     const completedAssessments = Object.values(snapshot).filter((v) => v.completed).length;
++     const progress = totalUnits
++         ? Math.floor(((tsdoc.accept?.[0] || 0) + completedAssessments) * 100 / totalUnits)
++         : 0;
++     if (updated || tsdoc.progress !== progress
++         || JSON.stringify(tsdoc.assessmentResults || {}) !== JSON.stringify(snapshot)) {
++         await ContestModel.setStatus(domainId, tid, uid, {
++             allow, attend: true, progress, assessmentResults: snapshot,
++         });
++     }
++     return assessmentResults;
+  }
+  
+  // 检测DAG中是否存在循环依赖
+@@@ -332,30 -257,33 +394,56 @@@ export async function parseDag(domainId
+                  pids.push(pdoc.docId);
+              }
+  
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/handler/course.ts
+ +            const lecture = typeof node.lecture === 'string' ? node.lecture.trim() : node.lecture;
+ +            let lectureRule: DagNode['lectureRule'];
+ +            if (lecture && node.lectureRule) {
+ +                assert(typeof node.lectureRule === 'object', 'lectureRule must be an object');
+ +                assert(node.lectureRule.pids instanceof Array, 'lectureRule pids must be an array');
+ +                assert(node.lectureRule.pids.length, 'lectureRule pids must not be empty');
+ +                const lectureRulePids: number[] = [];
+ +                for await (const i of Object.keys(node.lectureRule.pids)) {
+ +                    const pdoc = await ProblemModel.get(domainId, node.lectureRule.pids[i]);
+ +                    if (!pdoc) throw new ProblemNotFoundError(domainId, node.lectureRule.pids[i]);
+ +                    lectureRulePids.push(pdoc.docId);
+ +                }
+ +                const condition = normalizeCondition(node.lectureRule.condition);
+ +                validateCondition(condition, 'lectureRule condition');
+ +                lectureRule = {
+ +                    pids: Array.from(new Set(lectureRulePids)),
+ +                    condition,
+ +                };
+ +            }
+ +
+++=======
++             let assessment: DagNode['assessment'];
++             const kind = node.kind === 'assessment' ? 'assessment' : 'lesson';
++             if (kind === 'assessment') {
++                 const settings = node.assessment || {};
++                 if (!ASSESSMENT_RULES.includes(settings.rule)) throw new Error('Invalid assessment rule');
++                 const beginAt = new Date(settings.beginAt);
++                 const endAt = new Date(settings.endAt);
++                 if (!Number.isFinite(beginAt.getTime()) || !Number.isFinite(endAt.getTime()) || beginAt >= endAt) {
++                     throw new Error('Invalid assessment window');
++                 }
++                 if (!pids.length) throw new Error('Assessment requires at least one problem');
++                 assessment = {
++                     rule: settings.rule,
++                     beginAt: beginAt.toISOString(),
++                     endAt: endAt.toISOString(),
++                     rated: false, // explicit certification is required before rating
++                     passScore: Math.max(0, Number(settings.passScore) || 0),
++                     ...(typeof settings.contestTid === 'string' && /^[a-f0-9]{24}$/i.test(settings.contestTid)
++                         ? { contestTid: settings.contestTid } : {}),
++                 };
++             }
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/handler/course.ts
+              result.push({
+                  _id: +node._id,
++                 kind,
++                 ...(assessment ? { assessment } : {}),
+                  title: node.title,
+ -                lecture: node.lecture || false,
+ +                lecture: lecture || false,
+                  pids: Array.from(new Set(pids)),
+                  ...(node.requireNids ? { requireNids: Array.from(new Set(node.requireNids)) } : {}),
+                  completeCondition: node.completeCondition || { type: 'all' },
+@@@ -1028,18 -748,32 +1116,47 @@@ export class CourseDetailHandler extend
+          const udict = await UserModel.getListForRender(domainId, uids, ['displayName']);
+  
+          // 更新可访问章节
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/handler/course.ts
+ +        if (tsdoc?.attend) await updateAllowedNodes(domainId, tid, this.user._id, this.tdoc, tsdoc);
+ +        tsdoc &&= await ContestModel.getStatus(domainId, tid, this.user._id);
+ +        const lectureAccess: Record<number, boolean> = {};
+ +        for (const node of this.tdoc.dag || []) {
+ +            lectureAccess[node._id] = canViewCourseLecture(this, this.tdoc, node, tsdoc);
+ +        }
+ +
+ +        this.response.template = 'course_detail.html';
+ +        this.response.body = {
+ +            tdoc: this.tdoc, tsdoc, udict, lectureAccess,
+ +            feedbackUrl: await canManageFeedback(this, this.tdoc) ? this.url('course_feedback', { tid }) : null,
+ +        };
+++=======
++         const assessmentResults = await updateAllowedNodes(domainId, tid, this.user._id, this.tdoc, tsdoc);
++         if (tsdoc) {
++             tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
++         }
++ 
++         this.response.template = 'course_detail.html';
++         this.response.body = { tdoc: this.tdoc, tsdoc, udict };
++         const assessments: Record<number, any> = {};
++         for (const node of this.tdoc.dag || []) {
++             if (node.kind !== 'assessment' || !node.assessment?.contestTid) continue;
++             const atid = new ObjectId(node.assessment.contestTid);
++             const assessmentContest = await ContestModel.get(domainId, atid);
++             if ((assessmentContest as any)?.sourceType !== 'course_assessment'
++                 || (assessmentContest as any)?.sourceCourseTid?.toString() !== tid.toString()) continue;
++             const own = await ContestModel.getStatus(domainId, atid, this.user._id);
++             assessments[node._id] = {
++                 tid: atid,
++                 beginAt: assessmentContest.beginAt,
++                 endAt: assessmentContest.endAt,
++                 rule: assessmentContest.rule,
++                 score: assessmentResults[node._id]?.score ?? null,
++                 attend: !!own?.attend,
++                 completed: assessmentResults[node._id]?.completed ?? false,
++             };
++         }
++         this.response.body.assessments = assessments;
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/handler/course.ts
+  
+          // 查看学生列表（仅管理员）
+          if ((checkstu || uid) && (this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF) || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK))) {
+@@@ -1232,19 -907,9 +1348,21 @@@ export class CourseEditHandler extends 
+  
+          const endAt = moment.tz(endAtStr, 'YYYY-M-D H:mm', this.user.timeZone);
+          if (!endAt.isValid()) throw new ValidationError('endAt');
+ +        const normalizedLessonDurationHours = Number.isFinite(+lessonDurationHours) && +lessonDurationHours > 0
+ +            ? +lessonDurationHours
+ +            : DEFAULT_COURSE_LESSON_DURATION_HOURS;
+ +        const lessonBeginAt = lessonBeginAtStr
+ +            ? moment.tz(lessonBeginAtStr, 'YYYY-M-D H:mm', this.user.timeZone)
+ +            : beginAt.clone();
+ +        if (!lessonBeginAt.isValid()) throw new ValidationError('lessonBeginAt');
+ +        const lessonEndAt = lessonEndAtStr
+ +            ? moment.tz(lessonEndAtStr, 'YYYY-M-D H:mm', this.user.timeZone)
+ +            : lessonBeginAt.clone().add(normalizedLessonDurationHours, 'hours');
+ +        if (!lessonEndAt.isValid()) throw new ValidationError('lessonEndAt');
+ +        if (lessonBeginAt.isSameOrAfter(lessonEndAt)) throw new ValidationError('lessonBeginAt', 'lessonEndAt');
+  
++         await validateAssessmentPlan(domainId, dag, this.tdoc, beginAt.toDate(), endAt.toDate());
++ 
+          const editor = this.user._id;
+          const updateAt = new Date();
+          const editingTemplate = !!this.tdoc?.assign?.includes('teachers');
+@@@ -1278,154 -934,61 +1396,182 @@@
+              const group = await ClassModel.getGroupByName(domainId, assign[0]);
+              if (!group) throw new BadRequestError('班级不存在');
+              if (group.archive) throw new BadRequestError('班级已归档');
+ +            targetClassGroup = group;
+          }
+  
+ -        if ((!tid || saveAsTemplate) && assignGroup) {
+ -            await ensureCourseTitleAvailable(domainId, title, assignGroup, undefined, (this as any).translate?.bind(this));
+ +        const classGroups = new Map<string, { _id: ObjectId, name: string }>();
+ +        if (targetClassGroup) classGroups.set(targetClassGroup._id.toHexString(), targetClassGroup);
+ +        const sourceAssignGroup = this.tdoc
+ +            ? (this.tdoc.assign?.includes('teachers') ? 'teachers' : getAssignGroup(this.tdoc))
+ +            : '';
+ +        let lockedSourceAssign = [...(this.tdoc?.assign || [])];
+ +        if (sourceAssignGroup && sourceAssignGroup !== targetClassGroup?.name) {
+ +            const sourceClassGroup = await ClassModel.getGroupByName(domainId, sourceAssignGroup);
+ +            if (sourceClassGroup) classGroups.set(sourceClassGroup._id.toHexString(), sourceClassGroup);
+          }
+  
+ -        if (tid && !saveAsTemplate) {
+ -            await ContestModel.edit(domainId, tid, {
+ -                title,
+ -                content,
+ -                pids,
+ -                beginAt: beginAt.toDate(),
+ -                endAt: endAt.toDate(),
+ -                editor,
+ -                updateAt,
+ -            });
+ -            await ContestModel.recalcStatus(domainId, tid);
+ -        } else {
+ -            tid = await ContestModel.add(
+ -                domainId,
+ -                title,
+ -                content,
+ -                this.user._id,
+ -                'course',
+ -                beginAt.toDate(),
+ -                endAt.toDate(),
+ -                pids,
+ -            );
+ +        const classGroupsToLock = [...classGroups.values()]
+ +            .sort((a, b) => a._id.toHexString().localeCompare(b._id.toHexString()));
+ +        const classEditToken = classGroupsToLock.length ? new ObjectId().toHexString() : undefined;
+ +        const lockedClassGroups: Array<{ _id: ObjectId, name: string }> = [];
+ +
+ +        try {
+ +            for (const group of classGroupsToLock) {
+ +                // eslint-disable-next-line no-await-in-loop
+ +                const lock = await ClassModel.acquireEditLock(domainId, group._id, group.name, classEditToken!);
+ +                if (!lock.matchedCount) {
+ +                    throw new BadRequestError('Class is being edited. Please refresh and try again.');
+ +                }
+ +                lockedClassGroups.push(group);
+ +            }
+ +            await Promise.all(lockedClassGroups.map(async (group) => {
+ +                const refreshed = await ClassModel.refreshEditLock(domainId, group._id, classEditToken!);
+ +                if (!refreshed.matchedCount) throw new BadRequestError('The class edit lock was lost.');
+ +            }));
+ +            if (tid) {
+ +                const lockedCourse = await ContestModel.get(domainId, tid) as CourseTdoc;
+ +                const lockedSourceAssignGroup = lockedCourse.assign?.includes('teachers')
+ +                    ? 'teachers'
+ +                    : getAssignGroup(lockedCourse);
+ +                if (lockedSourceAssignGroup !== sourceAssignGroup) {
+ +                    throw new BadRequestError('Course assignment changed. Please refresh and try again.');
+ +                }
+ +                lockedSourceAssign = [...(lockedCourse.assign || [])];
+ +            }
+ +            if (targetClassGroup) {
+ +                const lockedGroup = await ClassModel.getGroupById(domainId, targetClassGroup._id);
+ +                if (!lockedGroup) throw new BadRequestError('班级不存在');
+ +                if (lockedGroup.archive) throw new BadRequestError('班级已归档');
+ +                if (!tid || saveAsTemplate) {
+ +                    await ensureCourseTitleAvailable(
+ +                        domainId,
+ +                        title,
+ +                        assignGroup,
+ +                        undefined,
+ +                        (this as any).translate?.bind(this),
+ +                    );
+ +                }
+ +            }
+ +            // 合并 extraStudents 到 assign（转为字符串）
+ +            // 先过滤掉 assign 中旧的数字字符串（之前的 extraStudents），再添加新的
+ +            const nonDigitAssign = isTemplate
+ +                ? []
+ +                : assign.filter((g: string) => !/^\d+$/.test(g));
+ +            const finalAssign = isTemplate
+ +                ? (templateCategory ? ['teachers', templateCategory] : ['teachers'])
+ +                : [...nonDigitAssign, ...extraStudents.map((s) => s.toString())];
+ +            const copiedLecture = copyLectureForTemplate(sourceCourseForTemplate, dag);
+ +            const finalDag = copiedLecture.dag;
+ +            const finalLecture = copiedLecture.lecture;
+ +            const finalLectureMeta = copiedLecture.lectureMeta;
+ +            let structure: ReturnType<typeof nextStructure>;
+ +            try {
+ +                const current = tid && !saveAsTemplate ? this.tdoc : undefined;
+ +                const historicalMax = current ? await courseNodeHighWatermark(domainId, current) : 0;
+ +                structure = nextStructure(current, finalDag, current ? dagRevision : 0, historicalMax);
+ +                if (saveAsTemplate && sourceCourseForTemplate) {
+ +                    structure.problemNodeIds = problemNodeIds({ dag: finalDag, problemNodeIds: problemNodeIds(sourceCourseForTemplate) });
+ +                    structure.problemAccessNodeIds = problemAccessNodeIds({
+ +                        dag: finalDag, problemAccessNodeIds: problemAccessNodeIds(sourceCourseForTemplate),
+ +                    });
+ +                }
+ +            } catch (error) {
+ +                throw new BadRequestError(error.message);
+ +            }
+ +
+ +            if (tid && !saveAsTemplate) {
+ +                const updated = await ContestModel.editIfAssigned(domainId, tid, lockedSourceAssign, {
+ +                    title,
+ +                    content,
+ +                    pids,
+ +                    beginAt: beginAt.toDate(),
+ +                    endAt: endAt.toDate(),
+ +                    lessonDurationHours: normalizedLessonDurationHours,
+ +                    lessonBeginAt: lessonBeginAt.toDate(),
+ +                    lessonEndAt: lessonEndAt.toDate(),
+ +                    editor,
+ +                    updateAt,
+ +                    publicScoreboard,
+ +                    enablePenalty,
+ +                    ...structure,
+ +                    assign: finalAssign,
+ +                    ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
+ +                    ...(Object.keys(finalLectureMeta).length ? { lectureMeta: finalLectureMeta } : {}),
+ +                }, { dagRevision: this.tdoc.dagRevision ?? { $exists: false } });
+ +                if (!updated) {
+ +                    throw new BadRequestError('Course assignment changed. Please refresh and try again.');
+ +                }
+ +                await ContestModel.recalcStatus(domainId, tid);
+ +            } else {
+ +                tid = await ContestModel.add(
+ +                    domainId,
+ +                    title,
+ +                    content,
+ +                    this.user._id,
+ +                    'course',
+ +                    beginAt.toDate(),
+ +                    endAt.toDate(),
+ +                    pids,
+ +                );
+ +                await ContestModel.edit(domainId, tid, {
+ +                    ...structure,
+ +                    assign: finalAssign,
+ +                    editor,
+ +                    updateAt,
+ +                    publicScoreboard,
+ +                    enablePenalty,
+ +                    lessonDurationHours: normalizedLessonDurationHours,
+ +                    lessonBeginAt: lessonBeginAt.toDate(),
+ +                    lessonEndAt: lessonEndAt.toDate(),
+ +                    ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
+ +                    ...(Object.keys(finalLectureMeta).length ? { lectureMeta: finalLectureMeta } : {}),
+ +                    ...(sourceCourseForTemplate?.files?.length ? { files: sourceCourseForTemplate.files } : {}),
+ +                });
+ +            }
+ +            if (sourceCourseForTemplate?.files?.length && sourceTid) {
+ +                await Promise.all(sourceCourseForTemplate.files.map((f) => StorageModel.copy(
+ +                    `contest/${domainId}/${sourceTid}/public/${f.name}`,
+ +                    `contest/${domainId}/${tid}/public/${f.name}`,
+ +                )));
+ +            }
+ +            // 清除旧的 extraStudents 字段（已合并到 assign）
+ +            await DocumentModel.set(domainId, DocumentModel.TYPE_CONTEST, tid, undefined, { extraStudents: '' as any });
+ +        } finally {
+ +            if (classEditToken) {
+ +                await Promise.allSettled(lockedClassGroups.map(
+ +                    (group) => ClassModel.releaseEditLock(domainId, group._id, classEditToken),
+ +                ));
+ +            }
+          }
+  
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/handler/course.ts
+++=======
++         // 合并 extraStudents 到 assign（转为字符串）
++         // 先过滤掉 assign 中旧的数字字符串（之前的 extraStudents），再添加新的
++         const nonDigitAssign = isTemplate
++             ? []
++             : assign.filter((g: string) => !/^\d+$/.test(g));
++         const finalAssign = isTemplate
++             ? (templateCategory ? ['teachers', templateCategory] : ['teachers'])
++             : [...nonDigitAssign, ...extraStudents.map((s) => s.toString())];
++ 
++         // Retry-safe: the binding index and lookup reuse an existing contest after interrupted saves.
++         if (!isTemplate) await syncAssessmentContests(domainId, tid, dag, title, this.user._id, finalAssign);
++         else for (const node of dag) {
++             if (node.kind === 'assessment' && node.assessment) delete node.assessment.contestTid;
++         }
++         await ContestModel.edit(domainId, tid, {
++             dag,
++             assign: finalAssign,
++             editor,
++             updateAt,
++         });
++         // Complete the cleanup only after the parent no longer references the removed test.
++         if (!isTemplate) await cleanupInactiveAssessments(domainId, tid, dag);
++         // 清除旧的 extraStudents 字段（已合并到 assign）
++         await DocumentModel.set(domainId, DocumentModel.TYPE_CONTEST, tid, undefined, { extraStudents: '' as any });
++ 
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/handler/course.ts
+          this.response.body = { tid };
+          this.response.redirect = this.url('course_detail', { tid });
+      }
+@@@ -1437,41 -1000,14 +1583,52 @@@
+          } else {
+              this.checkPerm(PERM.PERM_EDIT_HOMEWORK);
+          }
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/handler/course.ts
+ +        const currentCourse = await ContestModel.get(domainId, tid) as CourseTdoc;
+ +        let expectedAssign = currentCourse.assign || [];
+ +        const assignGroup = currentCourse.assign?.includes('teachers')
+ +            ? 'teachers'
+ +            : getAssignGroup(currentCourse);
+ +        const classGroup = assignGroup ? await ClassModel.getGroupByName(domainId, assignGroup) : null;
+ +        const editToken = classGroup ? new ObjectId().toHexString() : undefined;
+ +        if (classGroup) {
+ +            const lock = await ClassModel.acquireEditLock(domainId, classGroup._id, classGroup.name, editToken!);
+ +            if (!lock.matchedCount) {
+ +                throw new BadRequestError('Class is being edited. Please refresh and try again.');
+ +            }
+ +        }
+ +        try {
+ +            if (classGroup) {
+ +                const lockedCourse = await ContestModel.get(domainId, tid) as CourseTdoc;
+ +                const lockedAssignGroup = lockedCourse.assign?.includes('teachers')
+ +                    ? 'teachers'
+ +                    : getAssignGroup(lockedCourse);
+ +                if (lockedAssignGroup !== classGroup.name) {
+ +                    throw new BadRequestError('Course assignment changed. Please refresh and try again.');
+ +                }
+ +                expectedAssign = lockedCourse.assign || [];
+ +            }
+ +            const deleted = await ContestModel.delIfAssignUnchanged(domainId, tid, expectedAssign);
+ +            if (!deleted) {
+ +                throw new BadRequestError('Course assignment changed. Please refresh and try again.');
+ +            }
+ +        } finally {
+ +            if (classGroup && editToken) {
+ +                try {
+ +                    await ClassModel.releaseEditLock(domainId, classGroup._id, editToken);
+ +                } catch { }
+ +            }
+ +        }
+++=======
++         const linked = await ContestModel.getMulti(domainId, {
++             sourceType: 'course_assessment', sourceCourseTid: tid,
++         }).toArray();
++         if (linked.some((exam) => exam.beginAt <= new Date() || exam.attend > 0)) {
++             throw new ForbiddenError('课堂测试已有考试记录，请先归档课程，不可直接删除。');
++         }
++         for (const exam of linked) await ContestModel.del(domainId, exam.docId);
++         await ContestModel.del(domainId, tid);
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/handler/course.ts
+          this.response.redirect = this.url('course_main');
+      }
+  }
+@@@ -1946,23 -1568,20 +2103,31 @@@ export class CourseScoreboardHandler ex
+          const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
+          const tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
+  
+ -        // 权限检查：学生（非编辑权限）禁止查看成绩板
+ -        if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+ -            && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
+ -            throw new ForbiddenError('无权限查看成绩板');
+ +        const isEditor = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+ +            || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+ +        if (!isEditor) {
+ +            if (tdoc.publicScoreboard === false) {
+ +                throw new ForbiddenError((this as any).translate('You are not allowed to view the scoreboard.'));
+ +            }
+ +            if (!this.user.hasPerm(PERM.PERM_VIEW_HOMEWORK_SCOREBOARD)) {
+ +                throw new ForbiddenError((this as any).translate('You are not allowed to view the scoreboard.'));
+ +            }
+ +            if (!tsdoc?.attend) {
+ +                throw new ForbiddenError((this as any).translate('You are not allowed to view the scoreboard.'));
+ +            }
+ +            if (ContestModel.isNotStarted(tdoc)) {
+ +                throw new ForbiddenError((this as any).translate('This course is not live.'));
+ +            }
+          }
+  
++         const assessmentNode = tdoc.dag.find((node) => node._id === id);
++         if (assessmentNode?.kind === 'assessment' && assessmentNode.assessment?.contestTid) {
++             const contestTid = new ObjectId(assessmentNode.assessment.contestTid);
++             this.response.redirect = ext
++                 ? this.url('contest_scoreboard_view', { tid: contestTid, view: ext })
++                 : this.url('contest_scoreboard', { tid: contestTid });
++             return;
++         }
+          if (ext) {
+              await this.exportScoreboard(domainId, tid, id, ext);
+              return;
+diff --cc packages/hydrooj/src/builtin/course-management/index.ts
+index 81c8716d,3163122e..00000000
+--- a/packages/hydrooj/src/builtin/course-management/index.ts
++++ b/packages/hydrooj/src/builtin/course-management/index.ts
+@@@ -23,7 -23,24 +23,28 @@@ export const Config = Schema.object(
+      enable: Schema.boolean().default(true),
+  });
+  
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/index.ts
+ +export async function apply(ctx: Context, config: any) {
+++=======
++ export async function apply(ctx: Context, config: typeof Config) {
++     // Keep one contest per course chapter even if a save is retried or interrupted.
++     await ctx.db.ensureIndexes(DocumentModel.coll, {
++         key: { domainId: 1, docType: 1, sourceType: 1, sourceCourseTid: 1, sourceNodeId: 1 },
++         name: 'classroomAssessmentBinding',
++         unique: true,
++         partialFilterExpression: { sourceType: 'course_assessment' },
++     });
++     // Classroom tests require a separate certification workflow before contributing to public Rating.
++     ctx.on('contest/before-edit', (tdoc, changes) => {
++         if (tdoc.sourceType !== 'course_assessment') return;
++         if (changes.rated === true) throw new ForbiddenError('Classroom test rating requires certification');
++         if ((changes.sourceType && changes.sourceType !== tdoc.sourceType)
++             || (changes.sourceCourseTid && changes.sourceCourseTid.toString() !== tdoc.sourceCourseTid?.toString())
++             || (changes.sourceNodeId !== undefined && changes.sourceNodeId !== tdoc.sourceNodeId)) {
++             throw new ForbiddenError('Classroom test bindings cannot be changed');
++         }
++     });
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/index.ts
+      // i18n 翻译
+      ctx.i18n.load('zh', {
+          // 页面标题
+diff --cc packages/hydrooj/src/builtin/course-management/model/course.ts
+index ff584350,cef93566..00000000
+--- a/packages/hydrooj/src/builtin/course-management/model/course.ts
++++ b/packages/hydrooj/src/builtin/course-management/model/course.ts
+@@@ -105,7 -96,13 +115,17 @@@ export const courseRule: ContestRule<Co
+          const detail: Record<number, CourseDetail> = {};
+  
+          // 建立题目到章节的映射
+++<<<<<<< HEAD:packages/hydrooj/src/builtin/course-management/model/course.ts
+ +        const pidToNode = problemNodeIds(tdoc);
+++=======
++         const pidToNode: Record<number, number> = {};
++         for (const node of tdoc.dag) {
++             if (node.kind === 'assessment') continue;
++             for (const pid of node.pids) {
++                 pidToNode[pid] = node._id;
++             }
++         }
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/model/course.ts
+  
+          const score: Record<number, number> = { 0: 0 };
+          const accept: Record<number, number> = { 0: 0 };
+diff --cc packages/hydrooj/src/handler/contest.ts
+index 7d272b02,9d1f7943..00000000
+--- a/packages/hydrooj/src/handler/contest.ts
++++ b/packages/hydrooj/src/handler/contest.ts
+@@@ -6,20 -6,15 +6,26 @@@ import { escapeRegExp, pick } from 'lod
+  import moment from 'moment-timezone';
+  import { ObjectId } from 'mongodb';
+  import {
+ -    Counter, diffArray, getAlphabeticId, randomstring, sortFiles, Time, yaml,
+ +    Counter, getAlphabeticId, randomstring, sortFiles, Time, yaml,
+  } from '@hydrooj/utils/lib/utils';
+  import { Context, Service } from '../context';
+ +import { ContestMonitorHandler, apply as applyContestMonitor } from './contest-monitor';
+  import {
+++<<<<<<< HEAD
+ +    BadRequestError, ContestAlreadyStartedError, ContestNotAttendedError, ContestNotEndedError,
+ +    ContestNotFoundError, ContestNotLiveError, ContestScoreboardHiddenError, FileLimitExceededError, FileUploadError,
+ +    InvalidTokenError, MethodNotAllowedError, NotAssignedError, NotFoundError, PermissionError, TeamMemberLimitError,
+ +    ValidationError,
+++=======
++     BadRequestError, ContestNotAttendedError, ContestNotEndedError, ContestNotFoundError, ContestNotLiveError,
++     ContestScoreboardHiddenError, FileLimitExceededError, FileUploadError, ForbiddenError,
++     InvalidTokenError, MethodNotAllowedError, NotAssignedError, NotFoundError, PermissionError, ValidationError,
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e
+  } from '../error';
+ -import { FileInfo, ScoreboardConfig, Tdoc } from '../interface';
+ +import { ContestStatusDoc, FileInfo, ScoreboardConfig, Tdoc } from '../interface';
+ +import {
+ +    canManagePractice, canReadPractice, canSubmitPractice, getPracticeResults, grantPracticeAccess, isPracticeOpen, supportsPractice,
+ +} from '../lib/contest-practice';
+  import { PERM, PRIV, STATUS } from '../model/builtin';
+  import * as contest from '../model/contest';
+  import * as discussion from '../model/discussion';
+@@@ -93,22 -83,39 +100,54 @@@ export class ContestDetailBaseHandler e
+      @param('tid', Types.ObjectId, true)
+      async __prepare(domainId: string, tid: ObjectId) {
+          if (!tid) return; // ProblemDetailHandler also extends from ContestDetailBaseHandler
+++<<<<<<< HEAD
+ +        this.tdoc = await contest.get(domainId, tid);
+ +        if (!contest.canAccessAssignedContest(this.user, this.tdoc)) {
+ +            throw new NotAssignedError('contest', tid);
+ +        }
+ +        if (this.tdoc.allowTeam) {
+ +            this.team = await contest.getTeamVid(domainId, tid, this.user._id) || undefined;
+ +        }
+ +        this.tsdoc = await contest.getStatus(domainId, tid, this.team ?? this.user._id);
+++=======
++         [this.tdoc, this.tsdoc] = await Promise.all([
++             contest.get(domainId, tid),
++             contest.getStatus(domainId, tid, this.user._id),
++         ]);
++         if (this.tdoc.assign?.length && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)) {
++             const groups = await user.listGroup(domainId, this.user._id);
++             if (!Set.intersection(this.tdoc.assign, [...groups.map((i) => i.name), String(this.user._id)]).size) {
++                 throw new NotAssignedError('contest', tid);
++             }
++         }
++         if (this.tdoc.sourceType === 'course_assessment') {
++             const courseId = this.tdoc.sourceCourseTid;
++             if (!courseId || typeof this.tdoc.sourceNodeId !== 'number') throw new NotAssignedError('contest', tid);
++             const course = await contest.get(domainId, courseId);
++             const node = (course.dag || []).find((n: any) => n._id === this.tdoc.sourceNodeId) as any;
++             if (course.rule !== 'course' || node?.kind !== 'assessment'
++                 || node.assessment?.contestTid !== tid.toString()) throw new NotAssignedError('contest', tid);
++             const teacher = this.user.own(course) || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
++                 || (course.maintainer?.includes(this.user._id) && this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF));
++             if (!teacher) {
++                 const groups = await user.listGroup(domainId, this.user._id);
++                 const assigned = (course.assign || []).some((g) => g === String(this.user._id)
++                     || groups.some((item) => item.name === g));
++                 const courseStatus = await contest.getStatus(domainId, courseId, this.user._id);
++                 if (!assigned || !courseStatus?.attend || courseStatus.allow?.[this.tdoc.sourceNodeId] !== true) {
++                     throw new NotAssignedError('contest', tid);
++                 }
++             }
++         }
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e
+          if (this.tdoc.duration && this.tsdoc?.startAt) {
+ -            const endAt = moment(this.tsdoc.startAt).add(this.tdoc.duration, 'hours').toDate();
+ -            this.tsdoc.endAt = endAt < this.tdoc.endAt ? endAt : this.tdoc.endAt;
+ +            this.tsdoc.endAt = moment.min([
+ +                moment(this.tsdoc.startAt).add(this.tdoc.duration, 'hours'),
+ +                moment(this.tdoc.endAt),
+ +                ...(this.tsdoc.endAt ? [moment(this.tsdoc.endAt)] : []),
+ +            ]).toDate();
+          }
+ +        if (isPracticeOpen(this.tdoc)) this.practiceReady = await canSubmitPractice(this.user, this.tdoc);
+      }
+  
+      tsdocAsPublic() {
+diff --cc packages/ui-default/pages/course_edit.page.ts
+index 9ae3b76c,fbee8152..00000000
+--- a/packages/ui-default/pages/course_edit.page.ts
++++ b/packages/ui-default/pages/course_edit.page.ts
+@@@ -323,17 -246,47 +328,60 @@@ const page = new NamedPage(['course_edi
+          const $completeType = $section.find('.dag-complete-type');
+          const $completeValue = $section.find('.dag-complete-value');
+          const $lecture = $section.find('.dag-lecture');
+ -
+ +        const $lectureRulePids = $section.find('.dag-lecture-rule-pids');
+ +        const $lectureRulePidsRow = $section.find('.dag-lecture-rule-pids-row');
+ +        const $lectureRuleRow = $section.find('.dag-lecture-rule-row');
+ +        const $lectureRuleType = $section.find('.dag-lecture-rule-type');
+ +        const $lectureRuleValue = $section.find('.dag-lecture-rule-value');
+ +        const $moveUp = $section.find('.dag-move-up');
+ +        const $moveDown = $section.find('.dag-move-down');
+ +
+++<<<<<<< HEAD:packages/ui-default/pages/course_edit.page.ts
+ +        $headerTitle.text(`课时 ${nodeIndex + 1}. ${node.title}`);
+ +        $moveUp.prop('disabled', nodeIndex === 0);
+ +        $moveDown.prop('disabled', nodeIndex === nodes.length - 1);
+++=======
++         $headerTitle.text(`章节 ${node._id}. ${node.title}`);
++         const $kind = $section.find('.dag-kind');
++         const $assessmentRows = $section.find('.dag-assessment-row');
++         const $rule = $section.find('.dag-assessment-rule');
++         const $begin = $section.find('.dag-assessment-begin');
++         const $end = $section.find('.dag-assessment-end');
++         const $pass = $section.find('.dag-assessment-pass');
++         $kind.val(node.kind || 'lesson');
++         $rule.val(node.assessment?.rule || 'oi');
++         const toLocalTime = (value: string) => {
++           if (!value) return '';
++           const date = new Date(value);
++           if (!Number.isFinite(date.getTime())) return '';
++           return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
++         };
++         const toIsoTime = (value: any) => {
++           const date = new Date(String(value || ''));
++           return Number.isFinite(date.getTime()) ? date.toISOString() : '';
++         };
++         $begin.val(toLocalTime(node.assessment?.beginAt || ''));
++         $end.val(toLocalTime(node.assessment?.endAt || ''));
++         $pass.val(node.assessment?.passScore ?? 0);
++         function syncAssessment() {
++           node.kind = String($kind.val());
++           $assessmentRows.toggle(node.kind === 'assessment');
++           if (node.kind === 'assessment') {
++             node.assessment = {
++               ...(node.assessment || {}), rule: String($rule.val()),
++               beginAt: toIsoTime($begin.val()), endAt: toIsoTime($end.val()), rated: false,
++               passScore: Math.max(0, Number($pass.val()) || 0),
++             };
++           } else delete node.assessment;
++           commit({ source: 'assessment' });
++         }
++         $kind.on('change', syncAssessment);
++         $rule.on('change', syncAssessment);
++         $begin.on('change blur', syncAssessment);
++         $end.on('change blur', syncAssessment);
++         $pass.on('change blur', syncAssessment);
++         $assessmentRows.toggle((node.kind || 'lesson') === 'assessment');
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/frontend/course_edit.page.ts
+          $title.val(node.title);
+          $title.on('input', () => {
+            const nextTitle = String($title.val() || '').trim();
+diff --cc packages/ui-default/templates/course_detail.html
+index d53b7599,64d004c8..00000000
+--- a/packages/ui-default/templates/course_detail.html
++++ b/packages/ui-default/templates/course_detail.html
+@@@ -34,11 -35,12 +34,17 @@@
+        </div>
+        {% else %}
+        {%- for node in tdoc['dag'] -%}
+ -        {% set _canView = pdict and (isTeacherEditor or (not isTemplate and (tsdoc.allow[node['_id']] or tsdoc.lectureAllow[node['_id']]))) %}
+          {% set _hasLecture = node['lecture'] %}
+          {% set _hasProblems = node['pids'] and node['pids']|length > 0 %}
+++<<<<<<< HEAD:packages/ui-default/templates/course_detail.html
+ +        {% set _canViewLecture = isTeacherEditor or (not isTemplate and lectureAccess and lectureAccess[node['_id']]) %}
+ +        {% set _canViewProblems = isTeacherEditor or (not isTemplate and tsdoc and tsdoc.allow[node['_id']]) %}
+ +        {% set _shouldShow = pdict and ((_hasLecture and _canViewLecture) or (_hasProblems and _canViewProblems)) %}
+++=======
++         {% set _assessment = node.kind == 'assessment' %}
++         {% set _canViewProblems = isTeacherEditor or (not isTemplate and tsdoc.allow[node['_id']]) %}
++         {% set _shouldShow = _canView and (_assessment or _hasLecture or (_hasProblems and _canViewProblems)) %}
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/templates/course_detail.html
+          {% if _shouldShow %}
+          <div data-heading-extract-to="#menu-item-course_detail" class="training__section expanded">
+            <div class="section__header clearfix">
+@@@ -50,24 -52,8 +56,29 @@@
+                <li>
+                  <a href="javascript:;" name="training__section__expand" class="expanded--hidden"><span class="icon icon-expand_more"></span> {{ _('expand') }}</a>
+                  <a href="javascript:;" name="training__section__collapse" class="collapsed--hidden"><span class="icon icon-expand_less"></span> {{ _('collapse') }}</a>
+++<<<<<<< HEAD:packages/ui-default/templates/course_detail.html
+ +                {% if not isTemplate %}
+ +                  {% set hasViewPerm = handler.user.hasPerm(perm.PERM_VIEW_HOMEWORK_SCOREBOARD) %}
+ +                  {% set tsAttend = tsdoc and tsdoc.attend %}
+ +                  {% set isNotStarted = model.contest.isNotStarted(tdoc) %}
+ +                  {% set canViewScoreboard = isTeacherEditor or (not isNotStarted and tsAttend and (tdoc.publicScoreboard !== false) and hasViewPerm) %}
+ +                  <span style="display:none"
+ +                    data-debug="course-scoreboard-link"
+ +                    data-is-template="{{ isTemplate }}"
+ +                    data-is-teacher-editor="{{ isTeacherEditor }}"
+ +                    data-public-scoreboard="{{ tdoc.publicScoreboard|default(true) }}"
+ +                    data-has-view-perm="{{ hasViewPerm }}"
+ +                    data-tsdoc-exists="{{ (tsdoc is not none) }}"
+ +                    data-tsdoc-attend="{{ tsAttend|default(false) }}"
+ +                    data-can-view-scoreboard="{{ canViewScoreboard }}"
+ +                  ></span>
+ +                  {% if canViewScoreboard %}
+ +                    <a href="{{ url('course_scoreboard', tid=tdoc.docId, id=node._id)}}"><span class="icon icon-statistics"></span> {{ _('Scoreboard') }}</a>
+ +                  {% endif %}
+++=======
++                 {% if not isTemplate and (not _assessment or isTeacherEditor) %}
++                 <a href="{{ url('course_scoreboard', tid=tdoc.docId, id=node._id)}}"><span class="icon icon-statistics"></span> {{ _('Scoreboard') }}</a>
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/templates/course_detail.html
+                  {% endif %}
+                </li>
+              </ul>
+@@@ -128,6 -126,8 +151,11 @@@
+                    </tbody>
+                  </table>
+                </div>
+++<<<<<<< HEAD:packages/ui-default/templates/course_detail.html
+++=======
++               {% endif %}
++             {% endif %}
+++>>>>>>> 7e90aa00cb4f1c8ae86de317f412ed2d8033752e:packages/course-management/templates/course_detail.html
+            </div>
+          </div>
+          {% endif %}
+* Unmerged path packages/course-management/README.md
+* Unmerged path packages/course-management/handler/class.ts
+* Unmerged path packages/hydrooj/src/builtin/course-management/model/assessment.ts

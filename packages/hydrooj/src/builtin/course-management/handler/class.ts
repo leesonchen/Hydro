@@ -3,6 +3,7 @@ import {
     BadRequestError, ContestModel, DomainModel, Handler, moment, NotFoundError, ObjectId, param, PERM, PermissionError,
     ProblemModel, StorageModel, Types, UserModel, ValidationError,
 } from '../../../plugin-api';
+import { cleanupInactiveAssessments, validateAssessmentPlan } from '../model/assessment';
 import { ClassModel } from '../model/class';
 import type { CourseTdoc } from '../model/course';
 import { DEFAULT_COURSE_LESSON_DURATION_HOURS } from '../model/course';
@@ -470,7 +471,12 @@ export class ClassEditHandler extends Handler {
                 assign: { $in: [gdoc.name] },
             }).toArray();
 
-            await Promise.all(tdocs.map((t) => ContestModel.delIfAssigned(domainId, t._id, gdoc.name)));
+            // Validate the whole class before deleting any parent courses or test history.
+            await Promise.all(tdocs.map((t) => validateAssessmentPlan(domainId, [], t as CourseTdoc, t.beginAt, t.endAt)));
+            await Promise.all(tdocs.map(async (t) => {
+                const deleted = await ContestModel.delIfAssigned(domainId, t._id, gdoc.name);
+                if (deleted) await cleanupInactiveAssessments(domainId, t.docId, []);
+            }));
             await ClassModel.delGroup(domainId, id, editToken);
         } finally {
             try {
@@ -813,9 +819,18 @@ export class ClassEditHandler extends Handler {
                 const finalDag = copiedLecture.dag;
                 const newLecture = copiedLecture.lecture;
                 const newLectureMeta = copiedLecture.lectureMeta;
-                const allPids = Array.from(new Set(finalDag.flatMap((node) => node.pids)));
+                const allPids = Array.from(new Set(finalDag.filter((node) => node.kind !== 'assessment').flatMap((node) => node.pids)));
 
                 const { beginAt, endAt } = calcCourseTimeRange(nextBaseBeginAt, classEndAt);
+                const shiftMs = beginAt.valueOf() - new Date(template.beginAt).getTime();
+                for (const node of finalDag) {
+                    if (node.kind !== 'assessment' || !node.assessment) continue;
+                    delete node.assessment.contestTid;
+                    node.assessment.rated = false;
+                    node.assessment.beginAt = new Date(new Date(node.assessment.beginAt).getTime() + shiftMs).toISOString();
+                    node.assessment.endAt = new Date(new Date(node.assessment.endAt).getTime() + shiftMs).toISOString();
+                }
+                await validateAssessmentPlan(domainId, finalDag, undefined, beginAt.toDate(), endAt.toDate());
                 const lessonWindow = calcLessonTimeRange(beginAt, getLessonDurationHours(template));
 
                 const classPublicScoreboard = gdoc.publicScoreboard !== false;
