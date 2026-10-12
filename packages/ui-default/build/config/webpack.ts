@@ -300,6 +300,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
       new CopyWebpackPlugin({
         patterns: [
           { from: root('static') },
+          { from: root('misc/fonts/OFL.txt'), to: 'misc/fonts/OFL.txt' },
           { from: root('components/navigation/nav-logo-small_dark.png'), to: 'components/navigation/nav-logo-small_dark.png' },
           { from: root(`${dirname(require.resolve('streamsaver/package.json'))}/mitm.html`), to: 'streamsaver/mitm.html' },
           { from: root(`${dirname(require.resolve('streamsaver/package.json'))}/sw.js`), to: 'streamsaver/sw.js' },
