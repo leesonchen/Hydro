@@ -167,7 +167,7 @@ if (!app.logger) app.plugin(LoggerService, { console: { enabled: false } });
 app.inject(['logger'], (ctx) => {
     ctx.logger.exporter({
         levels: { default: process.env.DEV ? 3 : 2 },
-        export: ({ name, type, body }) => (new Logger(name)[type] as (...args: any[]) => void)('%s', body),
+        export: ({ name, type, args }) => (new Logger(name)[type] as (...values: any[]) => void)(...args),
     });
 });
 app.plugin(ApiMixin);

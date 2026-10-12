@@ -16,8 +16,8 @@ import { BundleAnalyzerPlugin } from 'webpack-bundle-analyzer';
 import { WebpackManifestPlugin } from 'webpack-manifest-plugin';
 import WebpackBar from 'webpackbar';
 import { version } from '../../package.json';
-import root from '../utils/root';
 import prepareXiaolaiFont from '../downloadXiaolaiFont';
+import root from '../utils/root';
 
 const {
   list,
