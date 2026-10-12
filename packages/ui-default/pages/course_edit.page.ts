@@ -1,3 +1,4 @@
+import flatpickr from 'flatpickr';
 import $ from 'jquery';
 import CustomSelectAutoComplete from 'vj/components/autocomplete/CustomSelectAutoComplete';
 import ProblemSelectAutoComplete from 'vj/components/autocomplete/ProblemSelectAutoComplete';
@@ -65,23 +66,24 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     }
   })().catch(() => undefined);
 
-  // Local datetime picker to avoid touching ui-default
-  const flatpickr = (window as any).flatpickr;
-  if (flatpickr) {
-    $('[data-pick-datetime]').each(function () {
-      const $input = $(this);
-      if ($input.data('fp-initialized')) {
-        return;
-      }
+  const initDateTimePickers = ($inputs: JQuery) => {
+    $inputs.each(function () {
+      if ((this as HTMLInputElement & { _flatpickr?: unknown })._flatpickr) return;
       flatpickr(this, {
         allowInput: true,
         enableTime: true,
         time_24hr: true,
         dateFormat: 'Y-m-d H:i',
       });
-      $input.data('fp-initialized', true);
     });
-  }
+  };
+  initDateTimePickers($('[data-pick-datetime]'));
+
+  const setDateTimeValue = ($input: JQuery, value: string) => {
+    const picker = ($input[0] as HTMLInputElement & { _flatpickr?: flatpickr.Instance })?._flatpickr;
+    if (picker) picker.setDate(value, false);
+    else $input.val(value);
+  };
 
   const parseLocalDateTime = (value: any) => {
     const match = String(value || '').trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
@@ -123,8 +125,8 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       if (lessonWindowEdited) return;
       const next = getDefaultLessonWindow();
       if (!next) return;
-      $lessonBeginAt.val(next.begin);
-      $lessonEndAt.val(next.end);
+      setDateTimeValue($lessonBeginAt, next.begin);
+      setDateTimeValue($lessonEndAt, next.end);
     };
     $lessonBeginAt.add($lessonEndAt).on('input change', () => {
       lessonWindowEdited = true;
@@ -248,6 +250,9 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     };
 
     render = () => {
+      $list.find('[data-pick-datetime]').each(function () {
+        (this as HTMLInputElement & { _flatpickr?: flatpickr.Instance })._flatpickr?.destroy();
+      });
       $list.empty();
       nodes = normalizeNodes(nodes);
       if (!nodes.length) {
@@ -278,10 +283,10 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
               + '<option value="oi">OI</option><option value="ioi">IOI</option><option value="strictioi">Strict IOI</option>'
               + '<option value="acm">ACM</option></select></label></div></div>'
               + '<div class="row dag-assessment-row"><div class="columns">'
-              + '<label>开始时间（浏览器本地时间）<input type="datetime-local" step="1" class="textbox dag-assessment-begin" /></label></div>'
+              + '<label>开始时间（浏览器本地时间）<input data-pick-datetime placeholder="YYYY-mm-dd HH:MM" class="textbox dag-assessment-begin" /></label></div>'
               + '</div>'
               + '<div class="row dag-assessment-row"><div class="columns">'
-              + '<label>结束时间（浏览器本地时间）<input type="datetime-local" step="1" class="textbox dag-assessment-end" /></label></div></div>'
+              + '<label>结束时间（浏览器本地时间）<input data-pick-datetime placeholder="YYYY-mm-dd HH:MM" class="textbox dag-assessment-end" /></label></div></div>'
               + '<div class="row dag-assessment-row"><div class="columns"><label>'
               + '<span class="dag-assessment-pass-label">达标分数</span>（默认 0，须在考试结束且有提交记录后完成）'
               + '<input class="textbox dag-assessment-pass" type="number" min="0" step="1" />'
@@ -372,11 +377,10 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           if (!value) return '';
           const date = new Date(value);
           if (!Number.isFinite(date.getTime())) return '';
-          return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+          return formatLocalDateTime(date);
         };
         const toIsoTime = (value: any) => {
-          const date = new Date(String(value || ''));
-          return Number.isFinite(date.getTime()) ? date.toISOString() : '';
+          return parseLocalDateTime(value)?.toISOString() || '';
         };
         $begin.val(toLocalTime(node.assessment?.beginAt || ''));
         $end.val(toLocalTime(node.assessment?.endAt || ''));
@@ -394,7 +398,13 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           updateAssessmentMetric();
           commit({ source: 'assessment' });
         }
-        $kind.on('change', syncAssessment);
+        $kind.on('change', () => {
+          if ($kind.val() === 'assessment' && node.kind !== 'assessment') {
+            if (!$begin.val()) setDateTimeValue($begin, String($lessonBeginAt.val() || ''));
+            if (!$end.val()) setDateTimeValue($end, String($lessonEndAt.val() || ''));
+          }
+          syncAssessment();
+        });
         $rule.on('change', syncAssessment);
         $begin.on('change blur', syncAssessment);
         $end.on('change blur', syncAssessment);
@@ -541,6 +551,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           updateCompleteVisibility();
         };
         $list.append($section);
+        initDateTimePickers($section.find('[data-pick-datetime]'));
         const depsSelect = CustomSelectAutoComplete.getOrConstruct<CustomSelectAutoComplete<true>>($deps, {
           multi: true,
           data: nodeOptions.filter((n) => `${n._id}` !== `${node._id}`),
