@@ -32,12 +32,13 @@ beforeEach(async () => {
     }
 });
 
-async function fixture() {
+async function fixture(problemOverrides: Record<string, unknown> = {}) {
     const tid = new ObjectId();
     await db.collection('document').insertOne({
         docType: 10, docId: 1, domainId: 'd', owner: 99, hidden: false, content: 'question',
         config: 'subtasks:\n  - score: 200\n    cases:\n      - input: a.in\n        output: a.out',
         data: [{ name: 'a.in', etag: 'in-v1' }, { name: 'a.out', etag: 'out-v1' }],
+        ...problemOverrides,
     });
     const evidence = await resolveProblemEvidence(db, 'd', 1);
     const contest: any = {
@@ -57,7 +58,7 @@ async function fixture() {
         submittedAt: new Date(beginAt.getTime() + uid * 1000), judgeAt,
         submissionKind: 'normal', participationMode: 'official', ingressVersion: 'record-v1',
         submissionContext: { domainId: 'd', uid, pid: 1, contestId: tid.toString() },
-        ...evidence, status: score === 200 ? 1 : 2, score, ...extra,
+        ...evidence, status: score === evidence.problemFullScore ? 1 : 2, score, ...extra,
     });
     return { contest, record, evidence };
 }
@@ -100,7 +101,8 @@ test('certified policy checks frozen configuration, manual result release and va
 });
 
 test('certification CLI authorizes an administrator and freezes future facts without publishing a ranking', async () => {
-    const { contest, record } = await fixture();
+    const { contest, record } = await fixture({ config: 'time: 1s\nmemory: 256m',
+        data: [{ name: '1.in', etag: 'in-v1' }, { name: '1.out', etag: 'out-v1' }] });
     const tid = contest.docId;
     await db.collection('document').updateOne({ docId: tid }, { $set: {
         beginAt, endAt,
@@ -155,7 +157,7 @@ test('certification CLI authorizes an administrator and freezes future facts wit
         keepScoreboardHidden: false, 'ratingPolicy.contestSignature': contestSignature(saved),
     } });
     await assert.rejects(exports.run({ ...options, operation: 'release' }, () => {}), ValidationError);
-    await db.collection('record').insertMany([record(2, 200), record(3, 50)]);
+    await db.collection('record').insertMany([record(2, 100), record(3, 50)]);
     await exports.run({ ...options, operation: 'release' }, () => {});
     saved = await db.collection('document').findOne({ docId: tid });
     assert(saved.ratingPolicy.resultsReleasedAt instanceof Date);
@@ -244,6 +246,26 @@ test('formal difficulty uses the frozen question list and actual full score for 
     assert.equal(observations.find((o) => o.uid === 2).solved, true);
     assert.equal(observations.find((o) => o.uid === 3).solved, false);
     assert(observations.every((o) => typeof o.pid === 'string' && o.pid.startsWith('d/1@sha256:')));
+});
+
+test('case-weighted full score drives certified solve evidence and partial achievement normalization', async () => {
+    const { record } = await fixture({ config: { cases: [
+        { input: '1.in', output: '1.out', score: 20 }, { input: '2.in', output: '2.out', score: 30 },
+    ] }, data: ['1.in', '1.out', '2.in', '2.out'].map((name) => ({ name, etag: 'v1' })) });
+    const accepted = record(2, 50);
+    // A record captured before the case-score fix keeps its immutable but incorrect full-score field.
+    const partial = record(3, 20, { problemFullScore: 100 });
+    await db.collection('record').insertMany([accepted, partial]);
+    await db.collection('document.status').insertOne({ docType: 10, domainId: 'd', uid: 3, docId: 1, rid: partial._id });
+    const result = await runShadowReplay(db, {
+        eligibilityMode: 'certified', poolId: 'certified-test', difficultyMinPriorEvents: 0, write: true,
+    });
+    assert.equal(result.contests.processed, 1);
+    const observations = await db.collection('ratingv2_shadow').find({ kind: 'observation' }).toArray();
+    assert.equal(observations.find((o) => o.uid === 2).solved, true);
+    assert.equal(observations.find((o) => o.uid === 3).solved, false);
+    assert.equal((await db.collection('ratingv2_shadow').findOne({ kind: 'projection', uid: 3 })).a, 0.2);
+    assert.equal((await db.collection('record').findOne({ _id: partial._id })).problemFullScore, 100);
 });
 
 test('certified achievements deduplicate references, exclude owners/private questions, and use actual full scores', async () => {

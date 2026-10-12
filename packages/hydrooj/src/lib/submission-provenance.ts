@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { load } from 'js-yaml';
 import type { ProblemConfigFile } from '@hydrooj/common';
+import { normalizeSubtasks, readSubtasksFromFiles } from '@hydrooj/common/subtask';
 
 /** The version of the server-side submission ingress which writes these facts. */
 export const SUBMISSION_INGRESS_VERSION = 'record-v1';
@@ -65,8 +66,11 @@ function parseConfig(config: unknown): ProblemConfigFile | undefined {
     return cfg;
 }
 
-function fullScore(cfg: ProblemConfigFile | undefined): number | undefined {
+function fullScore(cfg: ProblemConfigFile | undefined, data: unknown): number | undefined {
     if (!cfg) return undefined;
+    const files = Array.isArray(data) ? data.map((file) => file?.name).filter((name) => typeof name === 'string') : [];
+    // The judge reads config.ini itself, but its contents are not mirrored in the problem document.
+    if (files.includes('config.ini') && !files.includes('config.yaml') && !files.includes('config.yml')) return undefined;
     if (cfg.answers && typeof cfg.answers === 'object') {
         const score = Object.values(cfg.answers).reduce((sum, answer) => sum + scoreOfAnswer(answer), 0);
         return Number.isFinite(score) && score > 0 ? score : undefined;
@@ -74,15 +78,29 @@ function fullScore(cfg: ProblemConfigFile | undefined): number | undefined {
     if (cfg.cases !== undefined && !Array.isArray(cfg.cases)) return undefined;
     if (cfg.subtasks !== undefined && !Array.isArray(cfg.subtasks)) return undefined;
     // readYamlCases gives top-level cases precedence over any subtasks field.
-    const subtasks: any[] = cfg.cases?.length ? [{ cases: cfg.cases, type: 'sum' as const }] : cfg.subtasks;
-    if (!subtasks?.length) return undefined;
-    if (subtasks.some((subtask) => !subtask || typeof subtask !== 'object'
-        || (subtask.score !== undefined && (number(subtask.score) === undefined || subtask.score < 0)))) return undefined;
-    const explicit = subtasks.reduce((sum, subtask) => sum + (number(subtask.score) || 0), 0);
-    const missing = subtasks.filter((subtask) => !number(subtask.score)).length;
-    const remainder = Math.max(100 - explicit, 0);
-    if (!missing) return explicit > 0 ? explicit : undefined;
-    return explicit + remainder;
+    // Both shared helpers mutate their input; the revision hash must retain the raw config.
+    const config = structuredClone(cfg);
+    let subtasks: any[] = config.cases?.length ? [{ cases: config.cases, type: 'sum' as const }] : config.subtasks || [];
+    try {
+        if (!subtasks.some((subtask) => subtask.cases?.length)) {
+            subtasks = readSubtasksFromFiles(files, config);
+        }
+        if (!subtasks.length || subtasks.some((subtask) => !subtask || typeof subtask !== 'object'
+            || !Array.isArray(subtask.cases) || !subtask.cases.length
+            || (subtask.type && !['min', 'max', 'sum'].includes(subtask.type))
+            || [subtask, ...subtask.cases].some((item) => !item || typeof item !== 'object'
+                || (item.score !== undefined && (number(item.score) === undefined || item.score < 0))))) return undefined;
+        const normalized = normalizeSubtasks(subtasks, (file) => file, config.time, config.memory);
+        const score = normalized.reduce((sum, subtask) => {
+            const scores = subtask.cases.map((c) => c.score);
+            if (subtask.type === 'sum') return sum + scores.reduce((total, value) => total + value, 0);
+            if (subtask.type === 'max') return sum + Math.max(0, ...scores);
+            return sum + Math.min(subtask.score, ...scores);
+        }, 0);
+        return Number.isFinite(score) && score > 0 ? score : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 function hasValidFileFingerprints(doc: RawProblem, cfg: ProblemConfigFile | undefined) {
@@ -159,7 +177,7 @@ export async function resolveProblemEvidence(
         canonicalProblemKey: `${canonical.domainId}/${canonical.docId}`,
         problemOwner: typeof canonical.owner === 'number' ? canonical.owner : undefined,
         problemReleased: docs.every((doc) => doc.hidden === false),
-        problemFullScore: fullScore(canonicalConfig),
+        problemFullScore: fullScore(canonicalConfig, canonical.data),
     };
     const revision = canonicalConfig && hasValidFileFingerprints(canonical, canonicalConfig)
         && docs.every((doc) => doc.data === undefined || hasValidFileFingerprints(doc, parseConfig(doc.config)))

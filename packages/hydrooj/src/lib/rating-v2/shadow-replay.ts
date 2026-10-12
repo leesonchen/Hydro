@@ -432,7 +432,7 @@ export async function runShadowReplay(
             const problem = await resolveProblemEvidence(dbh, s.domainId, s.docId);
             const eligibility = isAchievementEligible({
                 released: problem.problemReleased, owner: record?.problemOwner, uid: s.uid,
-                canonicalProblemKey: record?.canonicalProblemKey, fullScore: record?.problemFullScore,
+                canonicalProblemKey: record?.canonicalProblemKey, fullScore: problem.problemFullScore,
             });
             if (!record || record.submissionKind !== 'normal' || record.ingressVersion !== 'record-v1'
                 || !record.problemRevisionId || !isFinalJudgement(record)
@@ -445,7 +445,7 @@ export async function runShadowReplay(
                 continue;
             }
             key = record.canonicalProblemKey;
-            units = achievementUnits({ accepted: record.status === STATUS_ACCEPTED, score: record.score, fullScore: record.problemFullScore });
+            units = achievementUnits({ accepted: record.status === STATUS_ACCEPTED, score: record.score, fullScore: problem.problemFullScore });
         } else if (s.status === STATUS_ACCEPTED) units = 1;
         else if (Number.isFinite(s.score) && s.score > 0) units = 0.5 * Math.min(1, s.score / 100);
         else {

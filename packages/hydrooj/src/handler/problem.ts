@@ -64,12 +64,16 @@ function canBypassCourseDagLimit(tdoc: any, udoc: User) {
 
 function submissionParticipationMode(handler: {
     user: User; team?: number; pdoc?: ProblemDoc; tdoc?: { owner: number, maintainer?: number[] };
+    problemFileUser?: User | null; problemFilePdoc?: ProblemDoc;
 }, practice = false, pretest = false) {
     if (practice || pretest) return 'practice' as const;
     if (handler.team !== undefined || handler.user._id < 0) return 'team' as const;
     if ((handler.pdoc && handler.user.own(handler.pdoc))
         || (handler.tdoc && (handler.user.own(handler.tdoc) || handler.user.hasPerm(PERM.PERM_EDIT_CONTEST)))
-        || handler.user.hasPerm(PERM.PERM_EDIT_PROBLEM)) return 'staff' as const;
+        || handler.user.hasPerm(PERM.PERM_EDIT_PROBLEM)
+        || (handler.pdoc?.reference && handler.problemFileUser && handler.problemFilePdoc
+            && (handler.problemFileUser.own(handler.problemFilePdoc)
+                || handler.problemFileUser.hasPerm(PERM.PERM_EDIT_PROBLEM)))) return 'staff' as const;
     return 'official' as const;
 }
 

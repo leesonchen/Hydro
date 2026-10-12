@@ -1,3 +1,4 @@
+require('@hydrooj/register');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -112,6 +113,84 @@ test('malformed scoring config stays unknown and top-level cases match the judge
         cases: [{ input: 'a.in', output: 'a.out' }], subtasks: [{ score: 200, cases: [] }],
     } } });
     assert.equal((await resolveProblemEvidence(db, 'd', 1)).problemFullScore, 100);
+});
+
+test('full scores follow sum, min and max case aggregation without changing revision inputs', async () => {
+    const cases = [{ input: '1.in', output: '1.out', score: 20 }, { input: '2.in', output: '2.out', score: 30 }];
+    for (const [config, expected] of [
+        [{ cases }, 50],
+        [{ subtasks: [{ type: 'sum', score: 100, cases }] }, 50],
+        [{ subtasks: [{ type: 'min', score: 100, cases }] }, 20],
+        [{ subtasks: [{ type: 'max', score: 100, cases }] }, 30],
+        [{ subtasks: [{ type: 'sum', score: 80, cases: [cases[0], { input: '2.in', output: '2.out' }] }] }, 80],
+    ]) {
+        await db.collection('document').deleteMany({});
+        await db.collection('document').insertOne({ docType: 10, domainId: 'd', docId: 1,
+            owner: 7, hidden: false, content: 'scored cases', config,
+            data: ['1.in', '1.out', '2.in', '2.out'].map((name) => ({ name, etag: 'v1' })) });
+        const first = await resolveProblemEvidence(db, 'd', 1);
+        assert.equal(first.problemFullScore, expected);
+        assert.equal((await resolveProblemEvidence(db, 'd', 1)).problemRevisionId, first.problemRevisionId);
+        assert.deepEqual((await db.collection('document').findOne({ docId: 1 })).config, config);
+    }
+});
+
+test('automatic file recognition provides a full score only for recognized testcases', async () => {
+    for (const config of ['', 'time: 1s\nmemory: 256m', { subtasks: [] }]) {
+        await db.collection('document').deleteMany({});
+        await db.collection('document').insertOne({ docType: 10, domainId: 'd', docId: 1,
+            owner: 7, hidden: false, config,
+            data: ['1.in', '1.out', '2.in', '2.out'].map((name) => ({ name, etag: 'v1' })) });
+        assert.equal((await resolveProblemEvidence(db, 'd', 1)).problemFullScore, 100);
+        await db.collection('document').updateOne({ docId: 1 }, { $push: { data: { name: 'config.ini', etag: 'v1' } } });
+        assert.equal((await resolveProblemEvidence(db, 'd', 1)).problemFullScore, undefined);
+        await db.collection('document').updateOne({ docId: 1 }, { $set: { data: [{ name: 'notes.txt', etag: 'v1' }] } });
+        assert.equal((await resolveProblemEvidence(db, 'd', 1)).problemFullScore, undefined);
+    }
+});
+
+test('the submission handler persists source-domain maintainers as staff while preserving ordinary modes', async () => {
+    const source = ts.createSourceFile('problem.ts', fs.readFileSync(path.resolve(__dirname,
+        '../packages/hydrooj/src/handler/problem.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
+    const helper = source.statements.find((s) => ts.isFunctionDeclaration(s) && s.name?.text === 'submissionParticipationMode');
+    const handler = source.statements.find((s) => ts.isClassDeclaration(s) && s.name?.text === 'ProblemSubmitHandler');
+    const post = handler.members.find((s) => s.name?.getText(source) === 'post');
+    const { PERM } = load('packages/common/permission.ts');
+    const tid = new ObjectId();
+    const tdoc = { docId: tid, owner: 99, rule: 'oi', pids: [1] };
+    const user = (perms = []) => ({ _id: 2,
+        own: (doc) => doc.owner === 2 || doc.maintainer?.includes(2), hasPerm: (p) => perms.includes(p) });
+    const context = {
+        exports: {}, PERM, param: () => () => {}, Types: { ArrayOf: () => {} },
+        record: { add: (domainId, pid, uid, lang, code, _addTask, args) => recordModel.add(domainId, pid, uid, lang, code, false, args) },
+        contest: { get: async () => tdoc, canAccessAssignedContest: () => true, isOngoing: () => true,
+            updateStatus: async () => {}, canShowSelfRecord: () => true },
+        canSubmitPractice: async () => false,
+        setting: { langs: { cpp: { pretest: 'cpp' } } }, system: { get: () => 1000 },
+    };
+    vm.runInNewContext(ts.transpileModule(`${helper.getText(source)}\nclass Submit { ${post.getText(source)} }\nexports.Submit = Submit;`, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, experimentalDecorators: true },
+    }).outputText, context);
+    for (const [sourceUser, sourcePdoc, expected] of [
+        [user([PERM.PERM_EDIT_PROBLEM]), { owner: 99 }, 'staff'],
+        [user(), { owner: 2 }, 'staff'],
+        [user(), { owner: 99, maintainer: [2] }, 'staff'],
+        [user([PERM.PERM_EDIT_PROBLEM_SELF]), { owner: 99 }, 'official'],
+        [user(), { owner: 99 }, 'official'],
+    ]) {
+        const h = new context.exports.Submit();
+        Object.assign(h, { user: user(), pdoc: { docId: 1, owner: 99, config: {}, reference: { domainId: 'source', pid: 1 } },
+            problemFileUser: sourceUser, problemFilePdoc: sourcePdoc, response: {}, request: {},
+            limitRate: async () => {}, url: () => '/record' });
+        await h.post('d', 'cpp', 'code', false, [], tid);
+        assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, expected);
+        h.response.body = { pdoc: { config: { type: 'default' } } };
+        await h.post('d', 'cpp', 'code', true, ['input'], tid);
+        assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'practice');
+        h.team = -10;
+        await h.post('d', 'cpp', 'code', false, [], tid);
+        assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'team');
+    }
 });
 
 test('record creation, reset and linked rejudge preserve immutable provenance', async () => {
