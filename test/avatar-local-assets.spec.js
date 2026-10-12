@@ -126,3 +126,55 @@ test('optional XiaoLai build never requires a network request by default', () =>
   assert.doesNotMatch(styl, /raw\.githubusercontent\.com/);
   assert.match(license, /SIL OPEN FONT LICENSE Version 1\.1/);
 });
+
+test('XiaoLai preparation stays offline and generates CSS only for a verified local font', async () => {
+  const source = read('packages/ui-default/build/downloadXiaolaiFont.ts');
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      esModuleInterop: true,
+    },
+  }).outputText;
+
+  async function prepare(hasLocalFont) {
+    let fetchCount = 0;
+    const writes = [];
+    const fakeFs = {
+      existsSync(name) { return hasLocalFont && name.endsWith('Xiaolai-Regular.ttf'); },
+      readFileSync(name) {
+        assert.match(name, /Xiaolai-Regular\.ttf$/);
+        return { length: 22220806 };
+      },
+      writeFileSync(name, content) { writes.push({ name, content }); },
+    };
+    const sandbox = {
+      exports: {},
+      process: { env: {} },
+      require(id) {
+        if (id === 'node:crypto') {
+          return { createHash: () => ({
+            update: () => ({ digest: () => 'e2f68daf0e72777a8cf58bc83de1b98634b251e537ddbfca24b0ae50d1802da2' }),
+          }) };
+        }
+        if (id === 'node:fs') return fakeFs;
+        if (id === 'node:path') return path;
+        if (id === './utils/root') return { __esModule: true, default: (name) => name };
+        throw new Error('Unexpected dependency: ' + id);
+      },
+      fetch() { fetchCount++; throw new Error('Unexpected network dependency'); },
+    };
+    vm.runInNewContext(compiled, sandbox);
+    await sandbox.exports.default();
+    assert.equal(fetchCount, 0);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].name, 'misc/xiaolai-font.generated.styl');
+    return writes[0].content;
+  }
+
+  const absent = await prepare(false);
+  assert.doesNotMatch(absent, /@font-face/);
+  const present = await prepare(true);
+  assert.match(present, /@font-face/);
+  assert.match(present, /url\('\.\/fonts\/Xiaolai-Regular\.ttf'\)/);
+});
