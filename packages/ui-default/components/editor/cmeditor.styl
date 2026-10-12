@@ -73,5 +73,7 @@
     background-color: unset !important
     color: unset !important
 
-.md-editor-scrn pre.syntax-hl code
-  padding-left: unset !important
+// Plain pre/code previews must not inherit inline-code or line-number padding:
+// an inline code element applies the leading padding only to its first line.
+.md-editor .md-editor-preview pre > code
+  padding: 0 !important
