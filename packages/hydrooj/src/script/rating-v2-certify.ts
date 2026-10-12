@@ -1,0 +1,114 @@
+/* eslint-disable no-await-in-loop -- Frozen problem revisions are resolved in contest order. */
+import { ObjectId } from 'mongodb';
+import Schema from 'schemastery';
+import { ValidationError } from '../error';
+import {
+    blocksCertifiedResult, ContestRatingPolicy, contestSignature, isOfficialRecordEligible, isRatingContestEligible,
+} from '../lib/rating-v2/eligibility';
+import { resolveProblemEvidence } from '../lib/submission-provenance';
+import { PRIV } from '../model/builtin';
+import * as contest from '../model/contest';
+import UserModel from '../model/user';
+import db from '../service/db';
+
+declare module '../service/db' {
+    interface Collections {
+        ratingv2_certification_lock: { _id: string, token: ObjectId, createdAt: Date };
+    }
+}
+
+export const description = 'Freeze an explicit future contest for certified shadow replay, or mark its results released';
+
+interface CertificationOptions {
+    domainId: string; tid: string; operation: 'certify' | 'release'; approvedBy: number;
+    poolId?: string; minParticipants?: number;
+}
+
+async function runLocked(options: CertificationOptions, report: (message: any) => void) {
+    const approver = await UserModel.getById(options.domainId, options.approvedBy);
+    if (!approver?.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) throw new ValidationError('approvedBy');
+    const tdoc = await contest.get(options.domainId, new ObjectId(options.tid));
+    const now = new Date();
+    let policy: ContestRatingPolicy;
+    const poolId = options.operation === 'certify' ? options.poolId : tdoc.ratingPolicy?.poolId;
+    if (!poolId) throw new ValidationError('poolBinding');
+    const policies = db.collection('document');
+    if (await policies.findOne({ docType: 30, domainId: { $ne: options.domainId },
+        'ratingPolicy.enabled': true, 'ratingPolicy.poolId': poolId })
+    || await policies.findOne({ docType: 30, domainId: options.domainId,
+        'ratingPolicy.enabled': true, 'ratingPolicy.poolId': { $ne: poolId } })) {
+        throw new ValidationError('poolBinding');
+    }
+    if (await policies.findOne({ docType: 30, docId: { $ne: tdoc.docId },
+        'ratingPolicy.enabled': true, 'ratingPolicy.poolId': poolId,
+        beginAt: { $lt: tdoc.endAt }, endAt: { $gt: tdoc.beginAt } })) throw new ValidationError('overlappingContest');
+    if (options.operation === 'certify') {
+        if (tdoc.beginAt <= now || !tdoc.rated || tdoc.allowTeam || tdoc.duration
+            || !['acm', 'oi'].includes(tdoc.rule) || !tdoc.pids.length
+            || !options.poolId || !Number.isSafeInteger(options.minParticipants) || options.minParticipants < 2) {
+            throw new ValidationError('certification');
+        }
+        const problemRevisions: Record<number, string> = {};
+        for (const pid of tdoc.pids) {
+            const evidence = await resolveProblemEvidence(db, options.domainId, pid);
+            if (!evidence.problemRevisionId || !evidence.canonicalProblemKey || !evidence.problemFullScore) {
+                throw new ValidationError('problemRevision', pid);
+            }
+            problemRevisions[pid] = evidence.problemRevisionId;
+        }
+        if (tdoc.beginAt <= new Date()) throw new ValidationError('certification');
+        policy = {
+            enabled: true, eventKind: 'timed_individual_contest', mode: 'synchronous',
+            poolId: options.poolId, ruleVersion: 'hydro-local-cf-v1', eligibilityVersion: 'timed-contest-v1',
+            approvedBy: approver._id, approvedAt: now, minParticipants: options.minParticipants,
+            resultRelease: 'manual', contestSignature: contestSignature(tdoc), problemRevisions,
+        };
+    } else if (options.operation === 'release') {
+        if (!tdoc.ratingPolicy?.enabled || tdoc.endAt > now || tdoc.keepScoreboardHidden
+            || tdoc.ratingPolicy.contestSignature !== contestSignature(tdoc)) throw new ValidationError('resultRelease');
+        const records = await db.collection('record').find({ domainId: options.domainId, contest: tdoc.docId }).toArray();
+        const decisions = records.map((record) => isOfficialRecordEligible(tdoc, record));
+        if (decisions.some((d) => blocksCertifiedResult(d.reasonCodes))) {
+            throw new ValidationError('unfinishedJudgement');
+        }
+        policy = { ...tdoc.ratingPolicy, resultsReleasedAt: now };
+        const participants = new Set(records.filter((_, i) => decisions[i].allowed).map((record) => record.uid));
+        const eligibility = isRatingContestEligible({ ...tdoc, ratingPolicy: policy }, participants.size, policy.poolId, now);
+        if (!eligibility.allowed) throw new ValidationError('resultRelease', eligibility.reasonCodes.join(','));
+        for (const pid of tdoc.pids) {
+            const evidence = await resolveProblemEvidence(db, options.domainId, pid);
+            if (evidence.problemRevisionId !== policy.problemRevisions[pid]) throw new ValidationError('problemRevision', pid);
+        }
+    } else throw new ValidationError('operation');
+    await contest.edit(options.domainId, tdoc.docId, { ratingPolicy: policy }, tdoc, [
+        'domainId', 'rule', 'rated', 'beginAt', 'endAt', 'pids', 'score', 'duration', 'assign', 'allowTeam',
+        'langs', 'content', 'autoHide', 'allowPrint', 'allowViewCode', 'monitorMode', 'lockAt', 'keepScoreboardHidden', 'unlocked',
+    ]);
+    report({ message: `${options.operation}: ${tdoc.docId} (${policy.poolId}); public rankings unchanged` });
+    return true;
+}
+
+export async function run(options: CertificationOptions, report: (message: any) => void) {
+    const lock = db.collection('ratingv2_certification_lock');
+    const token = new ObjectId();
+    try {
+        await lock.insertOne({ _id: 'policy-write', token, createdAt: new Date() });
+    } catch (error) {
+        if (error.code === 11000) throw new ValidationError('certificationBusy');
+        throw error;
+    }
+    try {
+        return await runLocked(options, report);
+    } finally {
+        await lock.deleteOne({ _id: 'policy-write', token });
+    }
+}
+
+export const apply = (ctx) => ctx.addScript('rating-v2-certify', description, Schema.object({
+    domainId: Schema.string().required(),
+    tid: Schema.string().required(),
+    operation: Schema.union(['certify', 'release']).required(),
+    approvedBy: Schema.number().min(1).required().description('System administrator approving this operation'),
+    poolId: Schema.string().description('Explicit certified shadow pool'),
+    minParticipants: Schema.number().min(2).description('Minimum distinct eligible participants; required to certify'),
+}), run);

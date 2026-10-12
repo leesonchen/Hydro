@@ -204,6 +204,19 @@ test('active classroom tests cannot change questions, times, or rules, or enter 
     await assert.rejects(contest.edit('test', exam.docId, { rated: true }), errors.ForbiddenError);
     assert.deepEqual((await contest.get('test', course.docId)).dag[0].pids, [1]);
 });
+test('certification rejects a concurrent frozen configuration change before writing the policy', async () => {
+    const tid = await monitoredContest({ langs: ['cpp'] });
+    const expected = await contest.get('test', tid);
+    await contest.edit('test', tid, { langs: ['python'] });
+    await assert.rejects(
+        contest.edit('test', tid, { ratingPolicy: { enabled: true } }, expected, ['langs', 'keepScoreboardHidden']),
+        errors.BadRequestError,
+    );
+    assert.equal((await contest.get('test', tid)).ratingPolicy, undefined);
+    const current = await contest.get('test', tid);
+    await contest.edit('test', tid, { ratingPolicy: { enabled: true } }, current, ['langs', 'keepScoreboardHidden']);
+    assert.equal((await contest.get('test', tid)).ratingPolicy.enabled, true);
+});
 test('removing an unused future test deletes its contest and monitor data', async () => {
     const { course, exam } = await courseFixture();
     await monitor.recordEvent(input('paste_detected', 1, { contestTid: exam.docId }));

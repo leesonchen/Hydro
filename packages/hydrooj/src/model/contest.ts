@@ -865,7 +865,7 @@ export async function add(
 }
 
 export async function edit(
-    domainId: string, tid: ObjectId, $set: Partial<Tdoc>, expected?: Tdoc,
+    domainId: string, tid: ObjectId, $set: Partial<Tdoc>, expected?: Tdoc, expectedFields: (keyof Tdoc)[] = [],
 ) {
     if ($set.rule && !RULES[$set.rule]) throw new ValidationError('rule');
     const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
@@ -881,6 +881,7 @@ export async function edit(
     const condition: Filter<Tdoc> = {};
     const conditionKeys = new Set<keyof Tdoc>([
         ...(Object.keys($set) as (keyof Tdoc)[]),
+        ...expectedFields,
         'rule', 'rated', 'allowTeam',
     ]);
     for (const key of conditionKeys) {

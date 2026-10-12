@@ -236,6 +236,23 @@ export type RecordDoc = {
     _id: ObjectId;
     notify?: boolean;
     practiceContest?: ObjectId;
+    submittedAt?: Date;
+    submissionKind?: 'normal' | 'rejudge' | 'pretest' | 'hack' | 'generate';
+    participationMode?: 'official' | 'virtual' | 'practice' | 'staff' | 'team' | 'unknown';
+    problemRevisionId?: string;
+    ingressVersion?: string;
+    canonicalProblemKey?: string;
+    problemOwner?: number;
+    problemReleased?: boolean;
+    problemFullScore?: number;
+    originalRid?: ObjectId;
+    submissionContext?: {
+        domainId: string;
+        uid: number;
+        pid: number;
+        contestId?: string;
+        practiceContestId?: string;
+    };
 };
 
 export interface RecordHistoryDoc extends RecordJudgeInfo {
@@ -285,6 +302,7 @@ export interface Tdoc extends Document {
     rule: string;
     pids: number[];
     rated?: boolean;
+    ratingPolicy?: import('./lib/rating-v2/eligibility').ContestRatingPolicy;
     /** Opt-in browser activity monitoring; telemetry is advisory, not proof of misconduct. */
     monitorMode?: 'off' | 'browser';
     _code?: string;

@@ -8,6 +8,9 @@ import { ProblemConfigFile, STATUS_TEXTS } from '@hydrooj/common';
 import { Context } from '../context';
 import { ProblemNotFoundError, ValidationError } from '../error';
 import { JudgeMeta, RecordDoc, RecordStatDoc } from '../interface';
+import {
+    ProblemEvidence, resolveProblemEvidence,
+    SUBMISSION_INGRESS_VERSION } from '../lib/submission-provenance';
 import db from '../service/db';
 import { MaybeArray, NumberKeys } from '../typeutils';
 import { ArgMethod, buildProjection, Time } from '../utils';
@@ -17,6 +20,21 @@ import MessageModel from './message';
 import problem from './problem';
 import SystemModel from './system';
 import task from './task';
+
+const IMMUTABLE_RECORD_FIELDS = [
+    'submittedAt', 'submissionKind', 'participationMode', 'problemRevisionId',
+    'ingressVersion', 'canonicalProblemKey', 'problemOwner', 'problemReleased',
+    'problemFullScore', 'originalRid', 'submissionContext',
+];
+
+function isImmutableRecordField(key: string) {
+    return IMMUTABLE_RECORD_FIELDS.some((field) => key === field || key.startsWith(`${field}.`));
+}
+
+function filterRecordUpdate<T extends Record<string, any>>(fields?: T) {
+    if (!fields) return fields;
+    return Object.fromEntries(Object.entries(fields).filter(([key]) => !isImmutableRecordField(key))) as T;
+}
 
 export default class RecordModel {
     static coll = db.collection('record');
@@ -135,13 +153,29 @@ export default class RecordModel {
             input?: string[];
             files?: Record<string, string>;
             hackTarget?: ObjectId;
+            originalRid?: ObjectId;
+            participationMode?: RecordDoc['participationMode'];
             type: 'judge' | 'rejudge' | 'pretest' | 'hack' | 'generate';
             notify?: boolean;
         } = { type: 'judge' },
     ) {
+        const submittedAt = new Date();
         if (args.practiceContest && (args.contest || !['judge', 'rejudge'].includes(args.type))) {
             throw new ValidationError('practiceContest');
         }
+        const originalType = args.type;
+        const candidateOriginal = originalType === 'rejudge' && args.originalRid
+            ? await RecordModel.coll.findOne({ _id: args.originalRid, domainId })
+            : null;
+        const original = candidateOriginal && candidateOriginal.uid === uid
+            && candidateOriginal.pid === pid && candidateOriginal.domainId === domainId
+            ? candidateOriginal : null;
+        const evidence: ProblemEvidence = original ? pick(original, [
+            'problemRevisionId', 'canonicalProblemKey', 'problemOwner', 'problemReleased', 'problemFullScore',
+        ]) : await resolveProblemEvidence(db, domainId, pid);
+        const participationMode = original
+            ? original.participationMode || 'unknown'
+            : (args.practiceContest || originalType === 'pretest' ? 'practice' : args.participationMode || 'unknown');
         const data: RecordDoc = {
             status: STATUS.STATUS_WAITING,
             _id: new ObjectId(),
@@ -159,6 +193,22 @@ export default class RecordModel {
             judger: null,
             judgeAt: null,
             rejudged: false,
+            ...(original ? original.submittedAt ? { submittedAt: original.submittedAt } : {} : { submittedAt }),
+            submissionKind: originalType === 'judge' ? 'normal' : originalType,
+            participationMode,
+            ...(original
+                ? original.ingressVersion ? { ingressVersion: original.ingressVersion } : {}
+                : { ingressVersion: SUBMISSION_INGRESS_VERSION }),
+            ...(original ? original.submissionContext ? { submissionContext: original.submissionContext } : {} : {
+                submissionContext: {
+                    domainId,
+                    uid,
+                    pid,
+                    ...(args.contest ? { contestId: args.contest.toHexString() } : {}),
+                    ...(args.practiceContest ? { practiceContestId: args.practiceContest.toHexString() } : {}),
+                },
+            }),
+            ...evidence,
         };
         let isContest = !!args.contest;
         if (args.contest) data.contest = args.contest;
@@ -169,6 +219,7 @@ export default class RecordModel {
         if (args.type === 'rejudge') {
             args.type = 'judge';
             data.rejudged = true;
+            if (original) data.originalRid = original._id;
         } else if (args.type === 'pretest') {
             data.input = args.input || [];
             isContest = false;
@@ -231,11 +282,16 @@ export default class RecordModel {
         $inc?: Partial<Record<NumberKeys<RecordDoc>, number>>,
     ): Promise<RecordDoc | null> {
         const $update: UpdateFilter<RecordDoc> = {};
-        if ($set && Object.keys($set).length) $update.$set = $set;
-        if ($push && Object.keys($push).length) $update.$push = $push;
-        if ($unset && Object.keys($unset).length) $update.$unset = $unset;
-        if ($inc && Object.keys($inc).length) $update.$inc = $inc;
+        const set = filterRecordUpdate($set as any);
+        const push = filterRecordUpdate($push as any);
+        const unset = filterRecordUpdate($unset as any);
+        const inc = filterRecordUpdate($inc as any);
+        if (set && Object.keys(set).length) $update.$set = set;
+        if (push && Object.keys(push).length) $update.$push = push;
+        if (unset && Object.keys(unset).length) $update.$unset = unset;
+        if (inc && Object.keys(inc).length) $update.$inc = inc;
         if (_id instanceof Array) {
+            if (!Object.keys($update).length) return null;
             await RecordModel.coll.updateMany({ _id: { $in: _id }, domainId }, $update);
             return null;
         }
@@ -256,9 +312,13 @@ export default class RecordModel {
         $unset?: OnlyFieldsOfType<RecordDoc, any, true | '' | 1>,
     ) {
         const $update: UpdateFilter<RecordDoc> = {};
-        if ($set && Object.keys($set).length) $update.$set = $set;
-        if ($push && Object.keys($push).length) $update.$push = $push;
-        if ($unset && Object.keys($unset).length) $update.$unset = $unset;
+        const set = filterRecordUpdate($set as any);
+        const push = filterRecordUpdate($push as any);
+        const unset = filterRecordUpdate($unset as any);
+        if (set && Object.keys(set).length) $update.$set = set;
+        if (push && Object.keys(push).length) $update.$push = push;
+        if (unset && Object.keys(unset).length) $update.$unset = unset;
+        if (!Object.keys($update).length) return 0;
         const res = await RecordModel.coll.updateMany({ domainId, ...$match }, $update);
         return res.modifiedCount;
     }

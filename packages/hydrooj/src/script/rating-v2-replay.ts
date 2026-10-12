@@ -18,8 +18,10 @@ export const apply = (ctx) => ctx.addScript(
     'rating-v2-replay',
     description,
     Schema.object({
+        eligibilityMode: Schema.union(['trial', 'certified']).default('trial')
+            .description('Trial preserves legacy sampling; certified requires frozen policy and submission facts'),
         rules: Schema.array(String).description('Contest rules considered').default(['acm', 'oi', 'ioi', 'strictioi']),
-        minParticipants: numberOpt('Minimum distinct in-window participants', 1),
+        minParticipants: numberOpt('Minimum distinct in-window participants; rating also requires at least two', 1),
         includeDuration: Schema.boolean().description('Include personal-duration contests').default(true),
         includeAssign: Schema.boolean().description('Include contests assigned to courses').default(true),
         provisionalEvents: numberOpt('Rated events before a player leaves provisional status', 5),

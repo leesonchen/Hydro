@@ -62,6 +62,17 @@ function canBypassCourseDagLimit(tdoc: any, udoc: User) {
         || udoc.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
 }
 
+function submissionParticipationMode(handler: {
+    user: User; team?: number; pdoc?: ProblemDoc; tdoc?: { owner: number, maintainer?: number[] };
+}, practice = false, pretest = false) {
+    if (practice || pretest) return 'practice' as const;
+    if (handler.team !== undefined || handler.user._id < 0) return 'team' as const;
+    if ((handler.pdoc && handler.user.own(handler.pdoc))
+        || (handler.tdoc && (handler.user.own(handler.tdoc) || handler.user.hasPerm(PERM.PERM_EDIT_CONTEST)))
+        || handler.user.hasPerm(PERM.PERM_EDIT_PROBLEM)) return 'staff' as const;
+    return 'official' as const;
+}
+
 function getCourseNodeIdByPid(tdoc: any, pid: number) {
     return problemAccessNodeIds(tdoc)[pid] ?? null;
 }
@@ -749,8 +760,13 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
         }
         const rid = await record.add(
             domainId, this.pdoc.docId, this.user._id, lang, code, true,
-            pretest ? { input, type: 'pretest' }
-                : practice ? { practiceContest: tid, files, type: 'judge' } : { contest: tid, files, type: 'judge' },
+            pretest ? { input, type: 'pretest', participationMode: submissionParticipationMode(this, false, true) }
+                : practice
+                    ? { practiceContest: tid, files, type: 'judge', participationMode: submissionParticipationMode(this, true) }
+                    : {
+                        contest: tid, files, type: 'judge',
+                        participationMode: submissionParticipationMode(this),
+                    },
         );
         if (!pretest && !practice) {
             if (tid) await contest.updateStatus(domainId, tid, this.team ?? this.user._id, rid, this.pdoc.docId);
@@ -828,6 +844,7 @@ export class ProblemHackHandler extends ProblemDetailHandler {
             {
                 contest: tid,
                 type: 'hack',
+                participationMode: submissionParticipationMode(this),
                 hackTarget: this.rdoc._id,
                 files: { hack: `${id}#input.txt` },
             },
@@ -1050,6 +1067,7 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
         if (!this.pdoc.data?.find((i) => i.name === gen)) throw new BadRequestError();
         const rid = await record.add(domainId, this.pdoc.docId, this.user._id, '_', `${gen}\n${std}`, true, {
             type: 'generate',
+            participationMode: submissionParticipationMode(this),
         });
         this.response.redirect = this.url('record_detail', { rid });
     }

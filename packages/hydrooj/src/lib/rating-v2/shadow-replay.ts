@@ -5,10 +5,16 @@
 // ratingv2_shadow.* when options.write is enabled.
 
 import { ObjectId } from 'mongodb';
+import { resolveProblemEvidence } from '../submission-provenance';
+import { achievementUnits } from './achievement';
 import { calibratedProbability, evaluateCalibration, fitSolveCalibration } from './calibration';
 import { averageRanks, updateContest } from './cf-local';
 import { compositeScore, publicRating, tierForRating } from './composite';
 import { fitDifficulty } from './difficulty';
+import {
+    blocksCertifiedResult, EligibilityReason, isAchievementEligible, isFinalJudgement, isOfficialRecordEligible,
+    isRatingContestEligible, RatingContestInput,
+} from './eligibility';
 
 const DOC_TYPE_PROBLEM = 10;
 const DOC_TYPE_CONTEST = 30;
@@ -17,6 +23,7 @@ const INITIAL_MU = 1500;
 const ACM_WRONG_PENALTY = 20;
 
 export interface ShadowOptions {
+    eligibilityMode?: 'trial' | 'certified';
     rules?: string[];
     minParticipants?: number;
     includeDuration?: boolean;
@@ -39,7 +46,7 @@ export interface DbHandle {
 
 type Report = (message: any) => void;
 
-interface ContestDoc {
+interface ContestDoc extends RatingContestInput {
     _id: any;
     domainId: string;
     rule: string;
@@ -58,11 +65,12 @@ interface Standing {
 
 /** Build standings (best first) plus per-user full-solve sets for one contest. */
 function buildStandings(
-    rule: string, records: any[], beginAt: Date,
+    rule: string, records: any[], beginAt: Date, certified = false,
+    fullScores = new Map<number, number>(), weights: Record<number, number> = {},
 ): { standings: Standing[], fullSolve: Map<number, Set<number>> } {
     const isAcm = rule === 'acm';
     const byUser = new Map<number, Map<number, {
-        lastScore: number; ac: boolean; acTime: number; wrong: number;
+        lastScore: number; lastStatus: number; ac: boolean; acTime: number; wrong: number;
     }>>();
     for (const r of records) {
         if (!r.pid || !r.uid || r.uid <= 0) continue;
@@ -73,16 +81,17 @@ function buildStandings(
         }
         let p = m.get(r.pid);
         if (!p) {
-            p = { lastScore: 0, ac: false, acTime: 0, wrong: 0 };
+            p = { lastScore: 0, lastStatus: 0, ac: false, acTime: 0, wrong: 0 };
             m.set(r.pid, p);
         }
         p.lastScore = r.score || 0;
+        p.lastStatus = r.status;
         if (r.status === STATUS_ACCEPTED) {
             if (!p.ac) {
                 p.ac = true;
-                p.acTime = r._id.getTimestamp().getTime();
+                p.acTime = certified ? r.submittedAt.getTime() : r._id.getTimestamp().getTime();
             }
-        } else if (!p.ac) {
+        } else if (!p.ac && (!certified || r.status !== 7)) {
             p.wrong++;
         }
     }
@@ -102,8 +111,9 @@ function buildStandings(
                 }
             } else {
                 // OI family: the final scoring result is the last in-window submission.
-                total += p.lastScore;
-                if (p.lastScore >= 100) solvedSet.add(pid);
+                total += p.lastScore * (certified ? (weights[pid] || 100) / 100 : 1);
+                if (certified ? p.lastStatus === STATUS_ACCEPTED && p.lastScore >= fullScores.get(pid)
+                    : p.lastScore >= 100) solvedSet.add(pid);
             }
         }
         if (!isAcm) solved = solvedSet.size;
@@ -117,9 +127,9 @@ function buildStandings(
 }
 
 function observe(
-    observations: Map<number, { mu: number, solved: boolean }[]>,
-    raw: { uid: number, pid: number, mu: number, solved: boolean, contestId: any }[],
-    seen: Set<string>, uid: number, pid: number, mu: number, solved: boolean, contestId: any,
+    observations: Map<string | number, { mu: number, solved: boolean }[]>,
+    raw: { uid: number, pid: string | number, mu: number, solved: boolean, contestId: any }[],
+    seen: Set<string>, uid: number, pid: string | number, mu: number, solved: boolean, contestId: any,
 ) {
     const key = `${uid}:${pid}`;
     if (seen.has(key)) return;
@@ -136,6 +146,14 @@ function observe(
 export async function runShadowReplay(
     dbh: DbHandle, options: ShadowOptions = {}, report: Report = () => {},
 ): Promise<any> {
+    const eligibilityMode = options.eligibilityMode ?? 'trial';
+    if (!['trial', 'certified'].includes(eligibilityMode)) throw new Error('Invalid rating eligibility mode');
+    const certified = eligibilityMode === 'certified';
+    const asOf = new Date();
+    const exclusions: Record<string, number> = {};
+    const exclude = (reasons: EligibilityReason[]) => {
+        for (const reason of reasons) exclusions[reason] = (exclusions[reason] || 0) + 1;
+    };
     const rules = options.rules ?? ['acm', 'oi', 'ioi', 'strictioi'];
     const minParticipants = options.minParticipants ?? 1;
     const includeDuration = options.includeDuration ?? true;
@@ -156,7 +174,11 @@ export async function runShadowReplay(
     // 1. candidates ------------------------------------------------------------
     const tdocs = await docColl.find(
         { docType: DOC_TYPE_CONTEST, rated: true, rule: { $in: rules } },
-        { projection: { beginAt: 1, endAt: 1, duration: 1, assign: 1, allowTeam: 1, domainId: 1, rule: 1 } },
+        { projection: {
+            docId: 1, rated: 1, pids: 1, beginAt: 1, endAt: 1, duration: 1, assign: 1,
+            allowTeam: 1, domainId: 1, rule: 1, ratingPolicy: 1, keepScoreboardHidden: 1, score: 1,
+            langs: 1, content: 1, autoHide: 1, allowPrint: 1, allowViewCode: 1, monitorMode: 1, lockAt: 1, unlocked: 1,
+        } },
     ).toArray() as any[];
     const contests: ContestDoc[] = [];
     let teamExcluded = 0;
@@ -165,6 +187,7 @@ export async function runShadowReplay(
         if (!(t.beginAt instanceof Date) || !(t.endAt instanceof Date)) continue;
         if (t.allowTeam) {
             teamExcluded++;
+            if (certified) exclude(['TEAM_CONTEST']);
             continue;
         }
         const teamStatus = await statusColl.findOne({
@@ -177,10 +200,13 @@ export async function runShadowReplay(
         if (teamStatus) {
             teamExcluded++;
             teamFlagMismatch++;
+            if (certified) exclude(['TEAM_CONTEST']);
             report(`[replay] contest ${t._id} excluded: team status exists while allowTeam is false`);
             continue;
         }
         contests.push({
+            ...t,
+            docId: t.docId || t._id,
             _id: t._id,
             domainId: t.domainId,
             rule: t.rule,
@@ -192,6 +218,18 @@ export async function runShadowReplay(
     }
     contests.sort((a, b) => (a.beginAt.getTime() - b.beginAt.getTime())
         || (a._id.toString().localeCompare(b._id.toString())));
+    const certifiedContests = certified ? contests.filter((c) => c.ratingPolicy?.enabled && c.ratingPolicy.poolId === poolId) : [];
+    const poolDomains = new Set(certifiedContests.map((c) => c.domainId));
+    if (poolDomains.size > 1) throw new Error('Certified pool cannot mix domains');
+    const overlaps = new Set<string>();
+    let previous: ContestDoc;
+    for (const current of certifiedContests) {
+        if (previous && current.beginAt < previous.endAt) {
+            overlaps.add(String(previous.docId));
+            overlaps.add(String(current.docId));
+        }
+        if (!previous || current.endAt > previous.endAt) previous = current;
+    }
     report(`[replay] ${contests.length} rated contests loaded; team-excluded=${teamExcluded}`);
 
     // 2. sequential replay -----------------------------------------------------
@@ -205,14 +243,19 @@ export async function runShadowReplay(
         return s;
     };
     const observationSeen = new Set<string>();
-    const observationRaw: { uid: number, pid: number, mu: number, solved: boolean, contestId: any }[] = [];
-    const observations = new Map<number, { mu: number, solved: boolean }[]>();
+    const observationRaw: { uid: number, pid: string | number, mu: number, solved: boolean, contestId: any }[] = [];
+    const observations = new Map<string | number, { mu: number, solved: boolean }[]>();
     let processed = 0;
     let skipped = 0;
     let frozenContests = 0;
     let failedContests = 0;
     for (const contest of contests) {
-        if (!includeDuration && contest.duration) {
+        if (overlaps.has(String(contest.docId))) {
+            exclude(['OVERLAPPING_CONTESTS']);
+            skipped++;
+            continue;
+        }
+        if (!certified && !includeDuration && contest.duration) {
             skipped++;
             continue;
         }
@@ -220,24 +263,65 @@ export async function runShadowReplay(
             skipped++;
             continue;
         }
-        const records = await recordColl.find(
+        let records = await recordColl.find(
             {
-                contest: contest._id, uid: { $gt: 0 },
-                _id: {
+                contest: contest.docId, uid: { $gt: 0 },
+                ...(certified ? { domainId: contest.domainId } : { _id: {
                     $gte: ObjectId.createFromTime(Math.floor(contest.beginAt.getTime() / 1000)),
                     $lt: ObjectId.createFromTime(Math.ceil(contest.endAt.getTime() / 1000)),
-                },
+                } }),
             },
-            { projection: { pid: 1, uid: 1, status: 1, score: 1, _id: 1 } },
+            { projection: {
+                pid: 1, uid: 1, status: 1, score: 1, _id: 1,
+                ...(certified ? {
+                    contest: 1, practiceContest: 1, submittedAt: 1, submissionKind: 1, participationMode: 1,
+                    problemRevisionId: 1, ingressVersion: 1, judgeAt: 1, submissionContext: 1,
+                } : {}),
+            } },
         ).toArray();
+        const problemKeys = new Map<number, string>();
+        const fullScores = new Map<number, number>();
+        if (certified) {
+            let unfinished = false;
+            records = records.filter((record) => {
+                const eligibility = isOfficialRecordEligible(contest, record);
+                if (!eligibility.allowed) exclude(eligibility.reasonCodes);
+                if (blocksCertifiedResult(eligibility.reasonCodes)) unfinished = true;
+                return eligibility.allowed;
+            }).sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime()
+                || String(a._id).localeCompare(String(b._id)));
+            if (unfinished) {
+                skipped++;
+                continue;
+            }
+            const eligibility = isRatingContestEligible(contest, new Set(records.map((r) => r.uid)).size, poolId, asOf, rules);
+            if (!eligibility.allowed) {
+                exclude(eligibility.reasonCodes);
+                skipped++;
+                continue;
+            }
+            for (const pid of contest.pids) {
+                const evidence = await resolveProblemEvidence(dbh, contest.domainId, pid);
+                if (!evidence.canonicalProblemKey || evidence.problemRevisionId !== contest.ratingPolicy.problemRevisions[pid]) {
+                    exclude(['PROBLEM_REVISION_MISMATCH']);
+                    break;
+                }
+                problemKeys.set(pid, `${evidence.canonicalProblemKey}@${evidence.problemRevisionId}`);
+                fullScores.set(pid, evidence.problemFullScore);
+            }
+            if (problemKeys.size !== contest.pids.length) {
+                skipped++;
+                continue;
+            }
+        }
         const participants = new Set(records.map((r) => r.uid));
         if (participants.size < Math.max(2, minParticipants)) {
             skipped++;
             continue;
         }
-        const tdoc = await docColl.findOne({ _id: contest._id }, { projection: { pids: 1 } });
+        const tdoc = certified ? contest : await docColl.findOne({ _id: contest._id }, { projection: { pids: 1 } });
         const pids: number[] = tdoc?.pids?.length ? tdoc.pids : [...new Set(records.map((r) => r.pid))];
-        const { standings, fullSolve } = buildStandings(contest.rule, records, contest.beginAt);
+        const { standings, fullSolve } = buildStandings(contest.rule, records, contest.beginAt, certified, fullScores, contest.score);
         if (standings.length < 2) {
             skipped++;
             continue;
@@ -263,7 +347,8 @@ export async function runShadowReplay(
             if (st.ratedEvents < difficultyMinPriorEvents) continue;
             const solvedSet = fullSolve.get(standings[i].uid) ?? new Set<number>();
             for (const pid of pids) {
-                observe(observations, observationRaw, observationSeen, st.uid, pid, st.mu, solvedSet.has(pid), contest._id);
+                observe(observations, observationRaw, observationSeen, st.uid,
+                    certified ? problemKeys.get(pid) : pid, st.mu, solvedSet.has(pid), contest._id);
             }
         }
         if (!result.frozen) {
@@ -304,7 +389,8 @@ export async function runShadowReplay(
         for (const o of obs) {
             calibObs.push({
                 mu: o.mu, d: fit.d, solved: o.solved,
-                slot: ((o.mu * 73856093) ^ (pid * 19349663)) % 2 === 0 ? 0 : 1,
+                slot: ((o.mu * 73856093) ^ ((typeof pid === 'number' ? pid
+                    : [...pid].reduce((hash, ch) => (hash * 31 + ch.charCodeAt(0)) | 0, 0)) * 19349663)) % 2 === 0 ? 0 : 1,
             });
         }
     }
@@ -331,15 +417,36 @@ export async function runShadowReplay(
 
     // 4. achievements ------------------------------------------------------------
     const achievementByUser = new Map<string, { domainId: string, uid: number, a: number, problems: number }>();
-    const perUser = new Map<string, Map<number, number>>();
+    const perUser = new Map<string, Map<string | number, number>>();
     let anomalies = 0;
     const statusCursor = statusColl.find(
-        { docType: DOC_TYPE_PROBLEM, rid: { $ne: null }, uid: { $gt: 0 } },
-        { projection: { domainId: 1, uid: 1, docId: 1, score: 1, status: 1 } },
+        { docType: DOC_TYPE_PROBLEM, rid: { $ne: null }, uid: { $gt: 0 },
+            ...(certified ? { domainId: { $in: [...poolDomains] } } : {}) },
+        { projection: { domainId: 1, uid: 1, docId: 1, score: 1, status: 1, ...(certified ? { rid: 1 } : {}) } },
     );
     for await (const s of statusCursor) {
         let units: number;
-        if (s.status === STATUS_ACCEPTED) units = 1;
+        let key: number | string = s.docId;
+        if (certified) {
+            const record = await recordColl.findOne({ _id: s.rid, domainId: s.domainId, uid: s.uid, pid: s.docId });
+            const problem = await resolveProblemEvidence(dbh, s.domainId, s.docId);
+            const eligibility = isAchievementEligible({
+                released: problem.problemReleased, owner: record?.problemOwner, uid: s.uid,
+                canonicalProblemKey: record?.canonicalProblemKey, fullScore: record?.problemFullScore,
+            });
+            if (!record || record.submissionKind !== 'normal' || record.ingressVersion !== 'record-v1'
+                || !record.problemRevisionId || !isFinalJudgement(record)
+                || record.problemRevisionId !== problem.problemRevisionId
+                || record.canonicalProblemKey !== problem.canonicalProblemKey
+                || record.submissionContext?.domainId !== s.domainId || record.submissionContext?.uid !== s.uid
+                || record.submissionContext?.pid !== s.docId) eligibility.reasonCodes.push('MISSING_PROBLEM_EVIDENCE');
+            if (eligibility.reasonCodes.length) {
+                exclude([...new Set(eligibility.reasonCodes)]);
+                continue;
+            }
+            key = record.canonicalProblemKey;
+            units = achievementUnits({ accepted: record.status === STATUS_ACCEPTED, score: record.score, fullScore: record.problemFullScore });
+        } else if (s.status === STATUS_ACCEPTED) units = 1;
         else if (Number.isFinite(s.score) && s.score > 0) units = 0.5 * Math.min(1, s.score / 100);
         else {
             if (s.score !== undefined && !Number.isFinite(s.score)) anomalies++;
@@ -351,7 +458,7 @@ export async function runShadowReplay(
             m = new Map();
             perUser.set(ukey, m);
         }
-        if (!m.has(s.docId) || m.get(s.docId) < units) m.set(s.docId, units);
+        if (!m.has(key) || m.get(key) < units) m.set(key, units);
     }
     for (const [ukey, m] of perUser) {
         const [domainId, uidStr] = ukey.split('|');
@@ -412,6 +519,8 @@ export async function runShadowReplay(
 
     const summary = {
         generatedAt: new Date().toISOString(),
+        eligibilityMode,
+        exclusions,
         poolId,
         contests: {
             total: contests.length,
@@ -468,7 +577,7 @@ export async function runShadowReplay(
         const docs: any[] = [];
         for (const [uid, s] of states) {
             if (s.events === 0) continue;
-            docs.push({ poolId, kind: 'rating_state', uid, ...s });
+            docs.push({ poolId, kind: 'rating_state', uid, ...s, ...(certified ? { domainId: [...poolDomains][0] } : {}) });
         }
         for (const f of fits) docs.push({ poolId, kind: 'difficulty', ...f });
         for (const o of observationRaw) docs.push({ poolId, kind: 'observation', ...o });
