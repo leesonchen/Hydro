@@ -24,7 +24,7 @@ import task from './task';
 const IMMUTABLE_RECORD_FIELDS = [
     'submittedAt', 'submissionKind', 'participationMode', 'problemRevisionId',
     'ingressVersion', 'canonicalProblemKey', 'problemOwner', 'problemReleased',
-    'problemFullScore', 'originalRid', 'submissionContext',
+    'problemFullScore', 'originalRid', 'submissionContext', 'classroomSession',
 ];
 
 function isImmutableRecordField(key: string) {
@@ -155,6 +155,7 @@ export default class RecordModel {
             hackTarget?: ObjectId;
             originalRid?: ObjectId;
             participationMode?: RecordDoc['participationMode'];
+            classroomSession?: RecordDoc['classroomSession'];
             type: 'judge' | 'rejudge' | 'pretest' | 'hack' | 'generate';
             notify?: boolean;
         } = { type: 'judge' },
@@ -209,6 +210,8 @@ export default class RecordModel {
                 },
             }),
             ...evidence,
+            ...((original ? original.classroomSession : args.classroomSession)
+                ? { classroomSession: structuredClone(original ? original.classroomSession : args.classroomSession) } : {}),
         };
         let isContest = !!args.contest;
         if (args.contest) data.contest = args.contest;

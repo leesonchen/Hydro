@@ -2,11 +2,11 @@ import { createHash } from 'crypto';
 
 export interface ContestRatingPolicy {
     enabled: boolean;
-    eventKind: 'timed_individual_contest';
+    eventKind: 'timed_individual_contest' | 'classroom_assessment';
     mode: 'synchronous';
     poolId: string;
     ruleVersion: 'hydro-local-cf-v1';
-    eligibilityVersion: 'timed-contest-v1';
+    eligibilityVersion: 'timed-contest-v1' | 'classroom-assessment-v1';
     approvedBy: number;
     approvedAt: Date;
     minParticipants: number;
@@ -14,6 +14,10 @@ export interface ContestRatingPolicy {
     resultsReleasedAt?: Date;
     contestSignature: string;
     problemRevisions: Record<number, string>;
+    classroom?: {
+        courseId: string; nodeId: number; courseSignature: string;
+        sessionId: string; participantUids: number[];
+    };
 }
 
 export interface RatingContestInput {
@@ -38,6 +42,9 @@ export interface RatingContestInput {
     lockAt?: Date;
     unlocked?: boolean;
     ratingPolicy?: ContestRatingPolicy;
+    sourceType?: 'course_assessment';
+    sourceCourseTid?: unknown;
+    sourceNodeId?: number;
 }
 
 export type EligibilityReason =
@@ -48,7 +55,7 @@ export type EligibilityReason =
     | 'NON_NORMAL_SUBMISSION' | 'CONTEST_MISMATCH' | 'PROBLEM_MISMATCH'
     | 'MISSING_PROBLEM_REVISION' | 'PROBLEM_REVISION_MISMATCH' | 'MISSING_INGRESS_VERSION' | 'UNFINALIZED_JUDGEMENT'
     | 'PRIVATE_NOT_RELEASED' | 'PROBLEM_OWNER' | 'MISSING_PROBLEM_EVIDENCE'
-    | 'OVERLAPPING_CONTESTS' | 'INVALID_SCORE';
+    | 'OVERLAPPING_CONTESTS' | 'INVALID_SCORE' | 'CLASSROOM_BINDING_CHANGED' | 'CLASSROOM_SESSION_MISMATCH';
 
 export interface EligibilityDecision {
     allowed: boolean;
@@ -70,6 +77,9 @@ export function contestSignature(contest: RatingContestInput): string {
         langs: [...(contest.langs || [])].sort(), content: contest.content || '',
         autoHide: !!contest.autoHide, allowPrint: !!contest.allowPrint, allowViewCode: !!contest.allowViewCode,
         monitorMode: contest.monitorMode || 'off', lockAt: Number.isFinite(time(contest.lockAt)) ? time(contest.lockAt) : null,
+        ...(contest.sourceType ? {
+            sourceType: contest.sourceType, sourceCourseTid: String(contest.sourceCourseTid), sourceNodeId: contest.sourceNodeId,
+        } : {}),
     })).digest('hex');
 }
 
@@ -79,20 +89,27 @@ export function isRatingContestEligible(
 ): EligibilityDecision {
     const reasons: EligibilityReason[] = [];
     const policy = contest.ratingPolicy;
-    if (!contest.rated) reasons.push('NOT_RATED');
+    const classroom = contest.sourceType === 'course_assessment';
+    if (!contest.rated && !classroom) reasons.push('NOT_RATED');
     if (!['acm', 'oi'].includes(contest.rule) || !allowedRules.includes(contest.rule)) reasons.push('UNSUPPORTED_RULE');
     if (contest.duration) reasons.push('PERSONAL_START_MODE');
     if (contest.allowTeam) reasons.push('TEAM_CONTEST');
     const begin = time(contest.beginAt);
     const end = time(contest.endAt);
     if (!Number.isFinite(begin) || !Number.isFinite(end) || begin >= end) reasons.push('INVALID_WINDOW');
-    if (!policy?.enabled || policy.eventKind !== 'timed_individual_contest' || policy.mode !== 'synchronous'
-        || policy.ruleVersion !== 'hydro-local-cf-v1' || policy.eligibilityVersion !== 'timed-contest-v1'
+    if (!policy?.enabled || policy.eventKind !== (classroom ? 'classroom_assessment' : 'timed_individual_contest')
+        || policy.mode !== 'synchronous' || policy.ruleVersion !== 'hydro-local-cf-v1'
+        || policy.eligibilityVersion !== (classroom ? 'classroom-assessment-v1' : 'timed-contest-v1')
         || policy.resultRelease !== 'manual' || !Number.isSafeInteger(policy.approvedBy) || policy.approvedBy <= 0
         || !Number.isSafeInteger(policy.minParticipants) || policy.minParticipants < 2
         || !contest.pids?.length || !contest.pids.every((pid) => !!policy.problemRevisions?.[pid])) {
         reasons.push('NOT_CERTIFIED');
     }
+    if (classroom && (contest.rated || !policy?.classroom?.sessionId || !policy.classroom.courseSignature
+        || policy.classroom.courseId !== String(contest.sourceCourseTid) || policy.classroom.nodeId !== contest.sourceNodeId
+        || !Array.isArray(policy.classroom.participantUids) || policy.classroom.participantUids.length < policy.minParticipants
+        || !policy.classroom.participantUids.every((uid) => Number.isSafeInteger(uid) && uid > 0)
+        || new Set(policy.classroom.participantUids).size !== policy.classroom.participantUids.length)) reasons.push('NOT_CERTIFIED');
     if (policy) {
         if (!Number.isFinite(time(policy.approvedAt)) || time(policy.approvedAt) >= begin) {
             reasons.push('POLICY_NOT_FROZEN_BEFORE_START');
@@ -121,6 +138,7 @@ export function isOfficialRecordEligible(contest: RatingContestInput, record: {
     practiceContest?: unknown;
     domainId?: string;
     submissionContext?: { domainId: string, uid: number, pid: number, contestId?: string };
+    classroomSession?: { courseId: string, nodeId: number, sessionId: string };
 }): EligibilityDecision {
     const reasons: EligibilityReason[] = [];
     const submittedAt = time(record.submittedAt);
@@ -130,6 +148,12 @@ export function isOfficialRecordEligible(contest: RatingContestInput, record: {
         reasons.push('NON_OFFICIAL_ENTRY');
     }
     if (record.submissionKind !== 'normal') reasons.push('NON_NORMAL_SUBMISSION');
+    if (contest.sourceType === 'course_assessment') {
+        const session = contest.ratingPolicy?.classroom;
+        if (!session || !session.participantUids?.includes(record.uid)
+            || record.classroomSession?.courseId !== session.courseId || record.classroomSession?.nodeId !== session.nodeId
+            || record.classroomSession?.sessionId !== session.sessionId) reasons.push('CLASSROOM_SESSION_MISMATCH');
+    }
     if (!record.contest || String(record.contest) !== String(contest.docId)) reasons.push('CONTEST_MISMATCH');
     if (!record.submissionContext || record.submissionContext.domainId !== contest.domainId
         || record.submissionContext.uid !== record.uid || record.submissionContext.pid !== record.pid
@@ -146,6 +170,10 @@ export function isOfficialRecordEligible(contest: RatingContestInput, record: {
 /** An otherwise eligible official record must finish judging before replay/release. */
 export function blocksCertifiedResult(reasons: EligibilityReason[]): boolean {
     return reasons.length > 0 && reasons.every((reason) => ['UNFINALIZED_JUDGEMENT', 'INVALID_SCORE'].includes(reason));
+}
+
+export function isScoreWithinFullScore(score: number, fullScore: number): boolean {
+    return Number.isFinite(score) && score >= 0 && Number.isFinite(fullScore) && fullScore > 0 && score <= fullScore;
 }
 
 export function isAchievementEligible(input: {

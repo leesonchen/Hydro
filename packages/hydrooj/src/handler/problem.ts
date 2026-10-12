@@ -21,9 +21,10 @@ import {
     ProblemNotFoundError, ProblemReferencedByDomainError, RecordNotFoundError, SolutionNotFoundError, ValidationError,
 } from '../error';
 import {
-    ProblemDoc, ProblemSearchOptions, ProblemStatusDoc, RecordDoc, User,
+    ProblemDoc, ProblemSearchOptions, ProblemStatusDoc, RecordDoc, Tdoc, User,
 } from '../interface';
 import { canSubmitPractice, isPracticeOpen } from '../lib/contest-practice';
+import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
 import { REFERENCE_CODE_TITLE } from '../lib/referenceCode';
 import { Logger } from '../logger';
 import { PERM, PRIV, STATUS } from '../model/builtin';
@@ -63,17 +64,20 @@ function canBypassCourseDagLimit(tdoc: any, udoc: User) {
 }
 
 function submissionParticipationMode(handler: {
-    user: User; team?: number; pdoc?: ProblemDoc; tdoc?: { owner: number, maintainer?: number[] };
+    user: User; team?: number; pdoc?: ProblemDoc;
+    tdoc?: Pick<Tdoc, 'owner' | 'maintainer' | 'sourceType' | 'ratingPolicy'>;
     problemFileUser?: User | null; problemFilePdoc?: ProblemDoc;
-}, practice = false, pretest = false) {
+}, practice = false, pretest = false, classroomTeacher = false) {
     if (practice || pretest) return 'practice' as const;
     if (handler.team !== undefined || handler.user._id < 0) return 'team' as const;
-    if ((handler.pdoc && handler.user.own(handler.pdoc))
+    if (classroomTeacher || (handler.pdoc && handler.user.own(handler.pdoc))
         || (handler.tdoc && (handler.user.own(handler.tdoc) || handler.user.hasPerm(PERM.PERM_EDIT_CONTEST)))
         || handler.user.hasPerm(PERM.PERM_EDIT_PROBLEM)
         || (handler.pdoc?.reference && handler.problemFileUser && handler.problemFilePdoc
             && (handler.problemFileUser.own(handler.problemFilePdoc)
                 || handler.problemFileUser.hasPerm(PERM.PERM_EDIT_PROBLEM)))) return 'staff' as const;
+    if (handler.tdoc?.sourceType === 'course_assessment' && handler.tdoc.ratingPolicy?.enabled
+        && !handler.tdoc.ratingPolicy.classroom?.participantUids?.includes(handler.user._id)) return 'unknown' as const;
     return 'official' as const;
 }
 
@@ -751,8 +755,12 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
             if (code.length > lengthLimit) throw new ValidationError('code');
         }
         let practice = false;
+        let classroomTeacher = false;
         if (tid) {
             const tdoc = await contest.get(domainId, tid);
+            classroomTeacher = await assertCourseAssessmentAccess(this.user, tdoc);
+            if (tdoc.sourceType === 'course_assessment' && !classroomTeacher
+                && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) throw new ContestNotAttendedError(tid);
             if (!tdoc.pids.includes(this.pdoc.docId) || !contest.canAccessAssignedContest(this.user, tdoc)) {
                 throw new ContestNotFoundError(domainId, tid);
             }
@@ -769,7 +777,13 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
                     ? { practiceContest: tid, files, type: 'judge', participationMode: submissionParticipationMode(this, true) }
                     : {
                         contest: tid, files, type: 'judge',
-                        participationMode: submissionParticipationMode(this),
+                        participationMode: submissionParticipationMode(this, false, false, classroomTeacher),
+                        ...(this.tdoc?.sourceType === 'course_assessment' && this.tdoc.ratingPolicy?.enabled
+                            && this.tdoc.ratingPolicy.classroom ? { classroomSession: {
+                                courseId: this.tdoc.ratingPolicy.classroom.courseId,
+                                nodeId: this.tdoc.ratingPolicy.classroom.nodeId,
+                                sessionId: this.tdoc.ratingPolicy.classroom.sessionId,
+                            } } : {}),
                     },
         );
         if (!pretest && !practice) {

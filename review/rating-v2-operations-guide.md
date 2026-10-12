@@ -2,7 +2,7 @@
 
 - **日期**：2026-09-19
 - **适用对象**：需要在生产环境（hydro2 容器）运行评分计算与验证的管理员
-- **前提**：只读安全——所有脚本对源集合（`document`/`record`/`document.status`/`domain.user`）**只读**；唯一写入目标是独立集合 **`ratingv2_shadow`**（`write:true` 时），可用 `db.ratingv2_shadow.drop({poolId:...})` 全量撤销，不影响线上任何功能。
+- **前提**：audit/replay 对源集合（`document`/`record`/`document.status`/`domain.user`）**只读**；replay 在 `write:true` 时仅写独立集合 **`ratingv2_shadow`**。certify 显式写入比赛认证策略及独立操作锁，不修改公开 Rating/RP。撤销影子结果可用 `db.ratingv2_shadow.deleteMany({poolId:...})`。
 
 ---
 
@@ -12,6 +12,7 @@
 |---|---|---|
 | `rating-v2-audit` | P0 盘点：比赛供给、成熟选手、题目暴露、难度字段、A 分布（只读、不写库） | 定期体检、闸门复核 |
 | `rating-v2-replay` | 影子回放：按时间顺序重放合格比赛 → 能力 Rating → 难度拟合 → 学习成就 → P/C/RP 投影（`write:true` 写影子集合） | 每次评分更新、试运行发布前 |
+| `rating-v2-certify` | 开赛前冻结比赛或课堂测验政策；结束后显式检查并标记成绩释放 | 管理员认证未来场次 |
 
 代码位置：`packages/hydrooj/src/lib/rating-v2/*`（纯计算）+ `src/script/rating-v2-{audit,replay}.ts`（注册入口）。参数全部可配置并带默认值（试验口径：`minParticipants=1`、全部 rated 赛制、含个人计时）。配置门槛可为 1，但 Rating 更新算法至少需要两名有效参与者；单人比赛不会更新 Rating。
 
@@ -133,7 +134,7 @@ rating-v2-certify {domainId:"YOUR_DOMAIN", tid:"CONTEST_ID", operation:"certify"
 域与认证池不能交叉混用，同池比赛窗口不得重叠；不同配置的 trial 和 certified 结果应使用不同 poolId。
 
 比赛结束并确认成绩可见后，管理员可执行 `operation:"release"`。它检查有效参与人数、当前题目版本、
-所有可计入的正式提交是否已完成评测、冻结签名及结果可见性，之后仅标记该比赛可供认证影子回放。
+所有可计入的正式提交是否已完成评测、分数是否在当前已验证的题目满分范围内、冻结签名及结果可见性，之后仅标记该比赛可供认证影子回放。
 成绩仍隐藏、封榜未解锁、评测未完成或有效人数不足时拒绝；该操作不会发布榜单。
 
 ```text
@@ -160,3 +161,35 @@ rating-v2-replay {eligibilityMode:"certified", poolId:"YOUR_CERTIFIED_POOL", wri
 当前回放读取当时有效的最终判定，重评后的新回放会反映新结果。
 这不提供历史评测快照或全库事务快照，也未实现代际发布和公开榜切换。
 需要留存某次证据时保存报告；线上认证、历史迁移和部署属于独立操作，本轮未执行。
+
+## 8. 显式认证课堂测验（Issue #17）
+
+课程 DAG 的 `assessment` 节点所关联的独立课堂测验可以纳入认证影子池。课程整体、讲义学习、普通作业仍不构成认证比赛。
+课堂测验继续保持 `rated:false`；必须通过系统管理员的显式认证，才会被 `eligibilityMode:"certified"` 读取。
+默认 trial 口径和旧公开 RP 计算不因课堂认证而新增这些场次。
+
+开赛前先确认学生已加入课程、满足节点解锁条件，并已报名该独立测验。管理员提供正式学生 UID 名单：
+
+```bash
+hydrooj script rating-v2-certify '{"domainId":"YOUR_DOMAIN","tid":"ASSESSMENT_CONTEST_ID","operation":"certify","approvedBy":ADMIN_UID,"poolId":"YOUR_CERTIFIED_POOL","minParticipants":2,"participantUids":[STUDENT_UID_1,STUDENT_UID_2]}'
+```
+
+上面的 UID 占位符应替换为整数。仅支持同步个人 ACM/OI 测验；教师、缺失账号、已归档班级成员、未加入课程、
+节点未解锁或未报名测验的学生不能进入正式名单。人数门槛必须至少为 2，名单不能重复。
+同池普通比赛与课堂测验共用域绑定和时间重叠门槛。
+
+认证冻结课程与 DAG 节点绑定、课程答题条件、题目版本、测验窗口、正式名单及独立场次标识。
+服务器在提交时重新检查课程准入和测验报名，把场次标识存入不可变 `classroomSession`；客户端传入的同名字段不会被采纳。
+教师提交标记为 staff；正式名单外的提交标记为 unknown。缺失或不匹配场次事实的旧记录不补造证据。
+原记录重评保留场次、提交时间和来源，新建的重评记录不能充作新的正式答卷。
+
+测验结束后使用第 7 节相同的 release/replay 命令。释放检查最终评测、题目版本、比分范围、成绩可见性和有效人数；
+认证回放再次检查这些门槛。任何可计入记录超过可信满分时，拒绝释放并跳过整场回放；认证成就也排除此类分数。
+报告用 `CLASSROOM_SESSION_MISMATCH` 标记场次或名单不匹配，用 `CLASSROOM_BINDING_CHANGED` 标记课程绑定或条件变化。
+
+课程分配、维护教师或 DAG 答题条件改变时，旧认证将失效；开赛前可以重新认证，开赛后不能补认证。
+修改课程标题不会单独使课程条件签名失效。课程同步保留认证策略和 `rated:false`，因此改动条件后必须重新核验。
+策略写入检查测验字段的原子条件，但不提供课程、用户、题目和判题记录的跨文档事务快照；回放会重新核验当前证据。
+
+该功能只是未来正式评分的资格准备。公开 Rating/RP 发布、历史迁移、代际快照和线上启用仍需独立处理；
+本轮没有执行发布、部署、线上认证或公开榜切换。

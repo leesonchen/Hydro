@@ -246,6 +246,7 @@ export type RecordDoc = {
     problemReleased?: boolean;
     problemFullScore?: number;
     originalRid?: ObjectId;
+    classroomSession?: { courseId: string, nodeId: number, sessionId: string };
     submissionContext?: {
         domainId: string;
         uid: number;

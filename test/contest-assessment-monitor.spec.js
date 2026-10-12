@@ -195,6 +195,20 @@ test('course synchronization is idempotent and updates class assignment and invi
     assert.equal(synced.rated, false);
     assert.equal(await document.coll.countDocuments({ sourceType: 'course_assessment' }), 1);
 });
+test('course synchronization preserves explicit certification and invalidates changed classroom conditions', async () => {
+    const { course, exam } = await courseFixture();
+    const { resolveClassroomBinding, isClassroomBindingCurrent } = load('packages/hydrooj/src/lib/rating-v2/classroom.ts');
+    const binding = await resolveClassroomBinding(db, exam);
+    const ratingPolicy = { enabled: true, classroom: { courseSignature: binding.courseSignature } };
+    await contest.edit('test', exam.docId, { ratingPolicy }, exam, ['sourceType', 'sourceCourseTid', 'sourceNodeId']);
+    assert.equal(await isClassroomBindingCurrent(db, await contest.get('test', exam.docId)), true);
+    await contest.edit('test', course.docId, { assign: ['class-b'] });
+    const synced = await contest.get('test', exam.docId);
+    assert.equal(synced.rated, false);
+    assert.deepEqual(synced.ratingPolicy, ratingPolicy);
+    assert.equal(await isClassroomBindingCurrent(db, synced), false);
+    await assert.rejects(contest.edit('test', exam.docId, { rated: true }), errors.ForbiddenError);
+});
 test('active classroom tests cannot change questions, times, or rules, or enter Rating', async () => {
     const { course, exam } = await courseFixture('oi', false);
     const changed = structuredClone(course.dag); changed[0].pids = [2];

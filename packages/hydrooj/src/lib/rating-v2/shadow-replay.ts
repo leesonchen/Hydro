@@ -9,11 +9,12 @@ import { resolveProblemEvidence } from '../submission-provenance';
 import { achievementUnits } from './achievement';
 import { calibratedProbability, evaluateCalibration, fitSolveCalibration } from './calibration';
 import { averageRanks, updateContest } from './cf-local';
+import { isClassroomBindingCurrent } from './classroom';
 import { compositeScore, publicRating, tierForRating } from './composite';
 import { fitDifficulty } from './difficulty';
 import {
     blocksCertifiedResult, EligibilityReason, isAchievementEligible, isFinalJudgement, isOfficialRecordEligible,
-    isRatingContestEligible, RatingContestInput,
+    isRatingContestEligible, isScoreWithinFullScore, RatingContestInput,
 } from './eligibility';
 
 const DOC_TYPE_PROBLEM = 10;
@@ -173,11 +174,14 @@ export async function runShadowReplay(
 
     // 1. candidates ------------------------------------------------------------
     const tdocs = await docColl.find(
-        { docType: DOC_TYPE_CONTEST, rated: true, rule: { $in: rules } },
+        { docType: DOC_TYPE_CONTEST, rule: { $in: rules }, ...(certified ? {
+            $or: [{ rated: true }, { sourceType: 'course_assessment', 'ratingPolicy.enabled': true }],
+        } : { rated: true }) },
         { projection: {
             docId: 1, rated: 1, pids: 1, beginAt: 1, endAt: 1, duration: 1, assign: 1,
             allowTeam: 1, domainId: 1, rule: 1, ratingPolicy: 1, keepScoreboardHidden: 1, score: 1,
             langs: 1, content: 1, autoHide: 1, allowPrint: 1, allowViewCode: 1, monitorMode: 1, lockAt: 1, unlocked: 1,
+            sourceType: 1, sourceCourseTid: 1, sourceNodeId: 1,
         } },
     ).toArray() as any[];
     const contests: ContestDoc[] = [];
@@ -263,6 +267,11 @@ export async function runShadowReplay(
             skipped++;
             continue;
         }
+        if (certified && !await isClassroomBindingCurrent(dbh, contest)) {
+            exclude(['CLASSROOM_BINDING_CHANGED']);
+            skipped++;
+            continue;
+        }
         let records = await recordColl.find(
             {
                 contest: contest.docId, uid: { $gt: 0 },
@@ -275,7 +284,7 @@ export async function runShadowReplay(
                 pid: 1, uid: 1, status: 1, score: 1, _id: 1,
                 ...(certified ? {
                     contest: 1, practiceContest: 1, submittedAt: 1, submissionKind: 1, participationMode: 1,
-                    problemRevisionId: 1, ingressVersion: 1, judgeAt: 1, submissionContext: 1,
+                    problemRevisionId: 1, ingressVersion: 1, judgeAt: 1, submissionContext: 1, classroomSession: 1,
                 } : {}),
             } },
         ).toArray();
@@ -317,7 +326,7 @@ export async function runShadowReplay(
         // Compare judged scores against the re-resolved, revision-verified full score.
         // Do not trust the historical record.problemFullScore field: older ingress
         // versions may contain stale normalization evidence.
-        if (certified && records.some((record) => record.score > (fullScores.get(record.pid) ?? NaN))) {
+        if (certified && records.some((record) => !isScoreWithinFullScore(record.score, fullScores.get(record.pid)))) {
             exclude(['INVALID_SCORE']);
             skipped++;
             continue;
@@ -446,6 +455,7 @@ export async function runShadowReplay(
                 || !record.problemRevisionId || !isFinalJudgement(record)
                 || record.problemRevisionId !== problem.problemRevisionId
                 || record.canonicalProblemKey !== problem.canonicalProblemKey
+                || !isScoreWithinFullScore(record.score, problem.problemFullScore)
                 || record.submissionContext?.domainId !== s.domainId || record.submissionContext?.uid !== s.uid
                 || record.submissionContext?.pid !== s.docId) eligibility.reasonCodes.push('MISSING_PROBLEM_EVIDENCE');
             if (eligibility.reasonCodes.length) {

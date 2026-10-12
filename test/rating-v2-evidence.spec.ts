@@ -7,6 +7,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { after, before, beforeEach, test } from 'node:test';
 import ts from 'typescript';
 import { contestSignature, isOfficialRecordEligible, isRatingContestEligible } from '../packages/hydrooj/src/lib/rating-v2/eligibility';
+import { isClassroomBindingCurrent, resolveClassroomBinding } from '../packages/hydrooj/src/lib/rating-v2/classroom';
 import { runShadowReplay } from '../packages/hydrooj/src/lib/rating-v2/shadow-replay';
 import { resolveProblemEvidence } from '../packages/hydrooj/src/lib/submission-provenance';
 
@@ -119,6 +120,8 @@ test('certification CLI authorizes an administrator and freezes future facts wit
     const exports: any = {};
     const mocks = {
         '../error': { ValidationError },
+        '../lib/course-assessment-access': { assertCourseAssessmentAccess: async () => false },
+        '../lib/rating-v2/classroom': { isClassroomBindingCurrent, resolveClassroomBinding },
         '../model/builtin': { PRIV: { PRIV_EDIT_SYSTEM: 1 } },
         '../model/user': { getById: async () => ({ _id: 99, hasPriv: () => administrator }) },
         '../model/contest': {
@@ -158,10 +161,171 @@ test('certification CLI authorizes an administrator and freezes future facts wit
     } });
     await assert.rejects(exports.run({ ...options, operation: 'release' }, () => {}), ValidationError);
     await db.collection('record').insertMany([record(2, 100), record(3, 50)]);
+    await db.collection('record').updateOne({ uid: 3 }, { $set: { score: 101 } });
+    await assert.rejects(exports.run({ ...options, operation: 'release' }, () => {}), ValidationError);
+    await db.collection('record').updateOne({ uid: 3 }, { $set: { score: 50 } });
     await exports.run({ ...options, operation: 'release' }, () => {});
     saved = await db.collection('document').findOne({ docId: tid });
     assert(saved.ratingPolicy.resultsReleasedAt instanceof Date);
     assert.equal(await db.collection('ratingv2_shadow').countDocuments({}), 0);
+});
+
+async function classroomFixture() {
+    const { contest, record } = await fixture();
+    const courseId = new ObjectId();
+    await db.collection('document').insertOne({ docType: 30, domainId: 'd', docId: courseId, rule: 'course', owner: 99,
+        beginAt: new Date(beginAt.getTime() - 3600000), endAt: new Date(endAt.getTime() + 3600000), assign: ['class'],
+        dag: [{ _id: 1, kind: 'assessment', pids: [1], assessment: {
+            contestTid: String(contest.docId), rule: 'oi', beginAt: beginAt.toISOString(), endAt: endAt.toISOString(),
+        } }] });
+    await db.collection('document').updateOne({ docId: contest.docId }, { $set: {
+        rated: false, sourceType: 'course_assessment', sourceCourseTid: courseId, sourceNodeId: 1,
+    }, $unset: { ratingPolicy: '' } });
+    await db.collection('document.status').insertMany([2, 3].flatMap((uid) => [
+        { docType: 30, domainId: 'd', docId: courseId, uid, attend: 1, allow: { 1: true } },
+        { docType: 30, domainId: 'd', docId: contest.docId, uid, attend: 1, startAt: beginAt },
+    ]));
+    const { PERM, PRIV } = require('../packages/common/permission');
+    let teacher = false;
+    let archived = false;
+    let clock = beginAt.getTime() - 1000;
+    const users = { getById: async (_domain, uid) => [2, 3, 99].includes(uid) ? {
+        _id: uid, own: (doc) => doc.owner === uid || doc.maintainer?.includes(uid),
+        hasPriv: (priv) => priv === PRIV.PRIV_USER_PROFILE || uid === 99,
+        hasPerm: (perm) => teacher && uid === 3 && perm === PERM.PERM_EDIT_HOMEWORK,
+    } : null, listGroup: async () => [{ name: 'class', archive: archived }] };
+    const contests = {
+        get: async (_domain, tid) => db.collection('document').findOne({ domainId: 'd', docId: tid }),
+        getStatus: async (_domain, tid, uid) => db.collection('document.status').findOne({ domainId: 'd', docId: tid, uid }),
+        edit: async (_domain, tid, update, _expected, fields) => {
+            assert(fields.includes('sourceCourseTid') && fields.includes('sourceNodeId'));
+            return db.collection('document').updateOne({ docId: tid }, { $set: update });
+        },
+    };
+    const load = (file, mocks, globals = {}) => {
+        const exports: any = {};
+        const code = ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: {
+            module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true,
+        } }).outputText;
+        vm.runInNewContext(code, { exports, require: (name) => mocks[name] || require(name), ...globals });
+        return exports;
+    };
+    class ValidationError extends Error {}
+    const access = load('packages/hydrooj/src/lib/course-assessment-access.ts', {
+        '../error': { NotAssignedError: ValidationError }, '../model/builtin': { PERM },
+        '../model/contest': contests, '../model/user': users,
+    });
+    class TestDate extends Date { constructor() { super(clock); } }
+    const cli = load('packages/hydrooj/src/script/rating-v2-certify.ts', {
+        '../error': { ValidationError }, '../model/builtin': { PRIV }, '../model/user': users,
+        '../model/contest': contests, '../service/db': db, '../lib/course-assessment-access': access,
+        '../lib/rating-v2/classroom': { isClassroomBindingCurrent, resolveClassroomBinding },
+        '../lib/submission-provenance': { resolveProblemEvidence },
+        '../lib/rating-v2/eligibility': require('../packages/hydrooj/src/lib/rating-v2/eligibility'),
+    }, { Date: TestDate });
+    const options = { domainId: 'd', tid: String(contest.docId), approvedBy: 99, operation: 'certify',
+        poolId: 'certified-test', minParticipants: 2, participantUids: [2, 3] };
+    return { contest, record, courseId, options, cli, get: () => contests.get('d', contest.docId),
+        finish: () => { clock = endAt.getTime() + 1000; }, setTeacher: (value) => { teacher = value; },
+        setArchived: (value) => { archived = value; }, ValidationError };
+}
+
+test('classroom certification freezes an admitted student session and releases only finalized valid results', async () => {
+    const f = await classroomFixture();
+    for (const participantUids of [undefined, [2, 2], [2, 99], [2, 42]]) {
+        await assert.rejects(f.cli.run({ ...f.options, participantUids }, () => {}));
+    }
+    f.setTeacher(true);
+    await assert.rejects(f.cli.run(f.options, () => {}));
+    f.setTeacher(false); f.setArchived(true);
+    await assert.rejects(f.cli.run(f.options, () => {}));
+    f.setArchived(false);
+    await db.collection('document.status').updateOne({ docId: f.courseId, uid: 3 }, { $set: { 'allow.1': false } });
+    await assert.rejects(f.cli.run(f.options, () => {}));
+    await db.collection('document.status').updateOne({ docId: f.courseId, uid: 3 }, { $set: { 'allow.1': true } });
+    await f.cli.run(f.options, () => {});
+    const saved = await f.get();
+    assert.equal(saved.rated, false);
+    assert.equal(saved.ratingPolicy.eventKind, 'classroom_assessment');
+    const session = saved.ratingPolicy.classroom;
+    assert.deepEqual(session.participantUids, [2, 3]);
+    const classroomSession = { courseId: session.courseId, nodeId: session.nodeId, sessionId: session.sessionId };
+    await db.collection('record').insertMany([
+        f.record(2, 200, { classroomSession, rejudged: true }), f.record(3, 50, { classroomSession }),
+        f.record(4, 200, { classroomSession }), f.record(3, 100),
+    ]);
+    let replay = await runShadowReplay(db, { eligibilityMode: 'certified', poolId: 'certified-test' });
+    assert.equal(replay.contests.processed, 0);
+    assert(replay.exclusions.RESULTS_NOT_RELEASED);
+    f.finish();
+    await db.collection('record').updateOne({ uid: 2 }, { $set: { status: 0, judgeAt: null } });
+    await assert.rejects(f.cli.run({ ...f.options, operation: 'release' }, () => {}));
+    await db.collection('record').updateOne({ uid: 2 }, { $set: { status: 1, judgeAt } });
+    await f.cli.run({ ...f.options, operation: 'release' }, () => {});
+    replay = await runShadowReplay(db, { eligibilityMode: 'certified', poolId: 'certified-test', write: true });
+    assert.equal(replay.contests.processed, 1);
+    assert.equal(replay.ratingUsers, 2);
+    assert(replay.exclusions.CLASSROOM_SESSION_MISMATCH >= 2);
+    assert.equal((await runShadowReplay(db)).contests.processed, 0);
+    assert.equal(await db.collection('domain.user').countDocuments({}), 0);
+    assert.equal((await f.get()).rated, false);
+});
+
+test('classroom binding changes, forged sessions and insufficient fields fail closed', async () => {
+    const f = await classroomFixture();
+    await f.cli.run(f.options, () => {});
+    const saved = await f.get();
+    const session = saved.ratingPolicy.classroom;
+    const classroomSession = { courseId: session.courseId, nodeId: session.nodeId, sessionId: session.sessionId };
+    await db.collection('record').insertMany([
+        f.record(2, 200, { classroomSession }), f.record(3, 50, { classroomSession: { ...classroomSession, sessionId: 'forged' } }),
+    ]);
+    f.finish();
+    await assert.rejects(f.cli.run({ ...f.options, operation: 'release' }, () => {}));
+    const known = isOfficialRecordEligible(saved, f.record(3, 50, { classroomSession }));
+    assert.equal(known.allowed, true);
+    await db.collection('document').updateOne({ docId: f.courseId }, { $set: { assign: ['changed-class'] } });
+    assert.notEqual((await resolveClassroomBinding(db, saved)).courseSignature, session.courseSignature);
+    await assert.rejects(f.cli.run({ ...f.options, operation: 'release' }, () => {}));
+    let replay = await runShadowReplay(db, { eligibilityMode: 'certified', poolId: 'certified-test' });
+    assert(replay.exclusions.CLASSROOM_BINDING_CHANGED);
+    await db.collection('document').updateOne({ docId: f.courseId }, { $set: { 'dag.0.assessment.contestTid': String(new ObjectId()) } });
+    assert.equal(await resolveClassroomBinding(db, saved), null);
+    replay = await runShadowReplay(db, { eligibilityMode: 'certified', poolId: 'certified-test' });
+    assert.equal(replay.contests.processed, 0);
+    assert.equal(await db.collection('ratingv2_certification_lock').countDocuments({}), 0);
+});
+
+test('certified classroom and ordinary contests share a pool without admitting courses or unsupported assessment modes', async () => {
+    const f = await classroomFixture();
+    for (const patch of [{ rule: 'course' }, { rule: 'homework' }, { rule: 'ioi' }, { allowTeam: true }, { duration: 1 }]) {
+        const before = await f.get();
+        await db.collection('document').updateOne({ docId: f.contest.docId }, { $set: patch });
+        await assert.rejects(f.cli.run(f.options, () => {}));
+        await db.collection('document').replaceOne({ docId: f.contest.docId }, before);
+    }
+    await f.cli.run(f.options, () => {});
+    const session = (await f.get()).ratingPolicy.classroom;
+    const classroomSession = { courseId: session.courseId, nodeId: session.nodeId, sessionId: session.sessionId };
+    await db.collection('record').insertMany([f.record(2, 200, { classroomSession }), f.record(3, 50, { classroomSession })]);
+    f.finish();
+    await assert.rejects(f.cli.run(f.options, () => {})); // No certification after the start.
+    await f.cli.run({ ...f.options, operation: 'release' }, () => {});
+    const ordinary = await fixture();
+    ordinary.contest.beginAt = new Date(endAt.getTime() + 3600000);
+    ordinary.contest.endAt = new Date(endAt.getTime() + 7200000);
+    ordinary.contest.ratingPolicy.resultsReleasedAt = new Date(ordinary.contest.endAt.getTime() + 1000);
+    ordinary.contest.ratingPolicy.contestSignature = contestSignature(ordinary.contest);
+    await db.collection('document').replaceOne({ docId: ordinary.contest.docId }, ordinary.contest);
+    await db.collection('record').insertMany([2, 3].map((uid) => ordinary.record(uid, 100, {
+        submittedAt: new Date(ordinary.contest.beginAt.getTime() + uid * 1000),
+        judgeAt: ordinary.contest.ratingPolicy.resultsReleasedAt,
+    })));
+    const replay = await runShadowReplay(db, { eligibilityMode: 'certified', poolId: 'certified-test', write: true });
+    assert.equal(replay.contests.processed, 2);
+    assert.equal(replay.ratingUsers, 2);
+    assert.equal((await f.get()).rated, false);
+    assert.equal(await db.collection('domain.user').countDocuments({}), 0);
 });
 
 test('certified replay uses server timestamps instead of ObjectId time and records exclusion reasons', async () => {
@@ -304,4 +468,14 @@ test('certified achievements deduplicate references, exclude owners/private ques
     assert(result.exclusions.PROBLEM_OWNER);
     assert(result.exclusions.PRIVATE_NOT_RELEASED);
     assert.equal(await db.collection('ratingv2_shadow').findOne({ kind: 'projection', domainId: 'other' }), null);
+});
+
+test('an achievement score exceeding verified full score cannot earn certified credit', async () => {
+    const { record } = await fixture();
+    const rdoc = record(2, 201, { submissionContext: { domainId: 'd', uid: 2, pid: 1 } });
+    await db.collection('record').insertOne(rdoc);
+    await db.collection('document.status').insertOne({ docType: 10, domainId: 'd', uid: 2, docId: 1, rid: rdoc._id, score: 201 });
+    const result = await runShadowReplay(db, { eligibilityMode: 'certified', poolId: 'certified-test', write: true });
+    assert(result.exclusions.MISSING_PROBLEM_EVIDENCE);
+    assert.equal(await db.collection('ratingv2_shadow').findOne({ kind: 'projection', uid: 2 }), null);
 });

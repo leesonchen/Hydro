@@ -158,13 +158,17 @@ test('the submission handler persists source-domain maintainers as staff while p
     const { PERM } = load('packages/common/permission.ts');
     const tid = new ObjectId();
     const tdoc = { docId: tid, owner: 99, rule: 'oi', pids: [1] };
+    let classroomTeacher = false;
+    let attended = true;
     const user = (perms = []) => ({ _id: 2,
         own: (doc) => doc.owner === 2 || doc.maintainer?.includes(2), hasPerm: (p) => perms.includes(p) });
     const context = {
         exports: {}, PERM, param: () => () => {}, Types: { ArrayOf: () => {} },
         record: { add: (domainId, pid, uid, lang, code, _addTask, args) => recordModel.add(domainId, pid, uid, lang, code, false, args) },
         contest: { get: async () => tdoc, canAccessAssignedContest: () => true, isOngoing: () => true,
-            updateStatus: async () => {}, canShowSelfRecord: () => true },
+            updateStatus: async () => {}, canShowSelfRecord: () => true, getStatus: async () => ({ attend: attended }) },
+        assertCourseAssessmentAccess: async () => classroomTeacher,
+        ContestNotAttendedError: class extends Error {},
         canSubmitPractice: async () => false,
         setting: { langs: { cpp: { pretest: 'cpp' } } }, system: { get: () => 1000 },
     };
@@ -191,6 +195,25 @@ test('the submission handler persists source-domain maintainers as staff while p
         await h.post('d', 'cpp', 'code', false, [], tid);
         assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'team');
     }
+    Object.assign(tdoc, { sourceType: 'course_assessment', ratingPolicy: { enabled: true, classroom: {
+        courseId: new ObjectId().toString(), nodeId: 1, sessionId: 'frozen-session', participantUids: [2],
+    } } });
+    const h = new context.exports.Submit();
+    Object.assign(h, { user: user(), pdoc: { docId: 1, owner: 99, config: {} }, response: {}, request: {},
+        args: { classroomSession: { sessionId: 'forged' } }, limitRate: async () => {}, url: () => '/record' });
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    const saved = await recordModel.get('d', h.response.body.rid);
+    assert.equal(saved.participationMode, 'official');
+    assert.equal(saved.classroomSession.sessionId, 'frozen-session');
+    assert.equal(saved.classroomSession.courseId, tdoc.ratingPolicy.classroom.courseId);
+    tdoc.ratingPolicy.classroom.participantUids = [3];
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'unknown');
+    classroomTeacher = true;
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'staff');
+    classroomTeacher = false; attended = false;
+    await assert.rejects(h.post('d', 'cpp', 'code', false, [], tid), context.ContestNotAttendedError);
 });
 
 test('record creation, reset and linked rejudge preserve immutable provenance', async () => {
@@ -202,6 +225,7 @@ test('record creation, reset and linked rejudge preserve immutable provenance', 
     const contest = new ObjectId();
     const rid = await recordModel.add('d', 3, 2, 'cpp', 'code', false, {
         type: 'judge', contest, participationMode: 'official',
+        classroomSession: { courseId: 'course', nodeId: 1, sessionId: 'session' },
     });
     const saved = await recordModel.get('d', rid);
     assert.equal(saved.submissionKind, 'normal');
@@ -217,6 +241,9 @@ test('record creation, reset and linked rejudge preserve immutable provenance', 
     assert.equal(reset.submittedAt.getTime(), submittedAt.getTime());
     assert.equal(reset.submissionKind, 'normal');
     assert.equal(reset.rejudged, true);
+    assert.deepEqual(reset.classroomSession, saved.classroomSession);
+    await recordModel.update('d', rid, { 'classroomSession.sessionId': 'forged' }, undefined, { classroomSession: '' });
+    assert.deepEqual((await recordModel.get('d', rid)).classroomSession, saved.classroomSession);
     const rejudge = await recordModel.add('d', 3, 2, 'cpp', 'code', false, {
         type: 'rejudge', originalRid: rid,
     });
@@ -225,6 +252,7 @@ test('record creation, reset and linked rejudge preserve immutable provenance', 
     assert.equal(rejudged.originalRid.toHexString(), rid.toHexString());
     assert.equal(rejudged.submittedAt.getTime(), submittedAt.getTime());
     assert.deepEqual(rejudged.submissionContext, saved.submissionContext);
+    assert.deepEqual(rejudged.classroomSession, saved.classroomSession);
 });
 
 test('legacy linked rejudge keeps missing facts unknown and special kinds are classified', async () => {

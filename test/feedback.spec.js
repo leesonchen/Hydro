@@ -175,6 +175,7 @@ describe('Private content feedback', () => {
         ProblemDetail = loadSource('packages/hydrooj/src/handler/problem.ts', {
             '../builtin/course-management/model/structure': courseStructure,
             '../lib/contest-practice': { isPracticeOpen: () => false, canSubmitPractice: async () => false },
+            '../lib/course-assessment-access': { assertCourseAssessmentAccess: async () => false },
             '@hydrooj/utils/lib/search': {}, '@hydrooj/utils/lib/utils': {},
             '../context': {}, '../logger': { Logger }, '../error': errors,
             '../lib/referenceCode': {}, '../model/builtin': { PERM, PRIV, STATUS: {} },
