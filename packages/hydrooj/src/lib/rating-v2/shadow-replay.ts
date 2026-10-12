@@ -314,6 +314,14 @@ export async function runShadowReplay(
                 continue;
             }
         }
+        // Compare judged scores against the re-resolved, revision-verified full score.
+        // Do not trust the historical record.problemFullScore field: older ingress
+        // versions may contain stale normalization evidence.
+        if (certified && records.some((record) => record.score > (fullScores.get(record.pid) ?? NaN))) {
+            exclude(['INVALID_SCORE']);
+            skipped++;
+            continue;
+        }
         const participants = new Set(records.map((r) => r.uid));
         if (participants.size < Math.max(2, minParticipants)) {
             skipped++;
