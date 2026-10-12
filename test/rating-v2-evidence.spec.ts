@@ -210,6 +210,15 @@ test('changed problem evidence invalidates certification instead of mixing revis
     assert(result.exclusions.MISSING_PROBLEM_EVIDENCE);
 });
 
+test('scores above the verified problem full score cannot affect certified replay', async () => {
+    const { record } = await fixture();
+    await db.collection('record').insertMany([record(2, 200), record(3, 50), record(4, 201)]);
+    const result = await runShadowReplay(db, { eligibilityMode: 'certified', poolId: 'certified-test' });
+    assert.equal(result.contests.processed, 0);
+    assert(result.exclusions.INVALID_SCORE);
+    assert.equal(result.ratingUsers, 0);
+});
+
 test('pending or invalid official scores block the whole contest even with enough other participants', async () => {
     const { record } = await fixture();
     await db.collection('record').insertMany([record(2, 200), record(3, 50), record(4, 100, { status: 0, judgeAt: null })]);
