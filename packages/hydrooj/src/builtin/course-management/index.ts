@@ -16,6 +16,7 @@ import { ClassEditHandler, ClassHandler } from './handler/class';
 import {
     CourseDetailHandler, CourseEditHandler, CourseFileDownloadHandler,
     CourseLectureHandler, CourseMainHandler, CourseManageHandler, CourseProblemReferenceHandler, CourseScoreboardHandler,
+    projectCourseResponse,
 } from './handler/course';
 import { cleanupInactiveAssessments, syncAssessmentContests, validateAssessmentPlan } from './model/assessment';
 import type { CourseTdoc } from './model/course';
@@ -352,6 +353,7 @@ export async function apply(ctx: Context, config: any) {
 
     // 注册事件处理
     ctx.on('handler/after', async (handler) => {
+        handler.response.body = projectCourseResponse(handler.response.body, handler);
         if (handler.response.body?.overrideNav && (handler as any).tdoc?.rule === 'course') {
             delete handler.response.body.overrideNav;
         }

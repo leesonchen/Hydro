@@ -83,15 +83,16 @@ docker exec hydro2 sh -c 'timeout 550 /root/.nix-profile/bin/node /tmp/rating-v2
 db.ratingv2_shadow.countDocuments({poolId:'shadow-trial', kind:'difficulty', status:'nonconverged'})
 // ② provisional 难度题数（Mode 3 闸门 ≥50）
 db.ratingv2_shadow.countDocuments({poolId:'shadow-trial', kind:'difficulty', provisionalLike:true})
-// ③ 校准斜率与留出指标（SUMMARY.calibrationSlope / calibrationHeldOut）
+// ③ 条件校准诊断（SUMMARY.difficulty.calibrationSlope / calibrationDiagnostic）
 //    - slope ≈ 1：模型标尺自洽；明显偏离 1 说明学生-题目匹配度仍在演化
-//    - brierCalibrated 应 ≤ brierRaw；meanAbsDevCalibrated 越小越自洽
+//    - 难度与回放能力使用全量结果，诊断集仅未参与 slope 拟合，不是独立预测验证
+//    - brier / meanAbsDev 仅用于条件校准诊断，不可用作样本外性能或上线闸门证据
 // ④ 单题期望 vs 实际（人工抽查模板）：
 //    期望解出率 = Σ sigmoid(k·a·(μ−D)) / n，与 pos/students 对比，偏差 >25pp 的题已在 SUMMARY.m15Anomalies
 // ⑤ 用户一致性：observations 按 uid 聚合，比较 expRate vs actRate（抽查报告 §二 的方法）
 ```
 
-**验收基线（2026-09-19 实测）**：nonconverged=0；provisional=172；slope=0.8868；留出 Brier 0.1521（raw 0.1512）；分桶 MAD 0.0127（raw 0.0200）；M15 异常 0。若复跑结果显著劣化（nonconverged>10、MAD>0.03、M15>10），先检查是否有新的大规模比赛/批量改分，再报告。
+**历史诊断参考（2026-09-19 实测）**：nonconverged=0；provisional=172；slope=0.8868；条件诊断 Brier 0.1521（raw 0.1512）；分桶 MAD 0.0127（raw 0.0200）；M15 异常 0。若复跑结果显著劣化（nonconverged>10、MAD>0.03、M15>10），先检查是否有新的大规模比赛/批量改分，再报告。
 
 ## 5. 常见操作场景
 

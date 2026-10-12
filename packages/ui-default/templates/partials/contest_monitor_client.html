@@ -26,7 +26,12 @@
   if (!Array.isArray(pending)) pending = [];
   var inFlight = false;
   var stopped = false;
-  var last = {};
+  var states = {};
+  var stateGroups = {
+    page_hidden: 'visibility', page_visible: 'visibility',
+    window_blur: 'focus', window_focus: 'focus',
+    fullscreen_enter: 'fullscreen', fullscreen_exit: 'fullscreen'
+  };
   function show(message) { if (status) status.textContent = message; }
   function persist() { save(queueKey, JSON.stringify(pending.slice(-120))); }
   function transmit() {
@@ -59,8 +64,11 @@
   function emit(eventType) {
     if (stopped) return;
     var now = Date.now();
-    if (last[eventType] && now - last[eventType] < 1000) return;
-    last[eventType] = now;
+    var group = stateGroups[eventType];
+    if (group) {
+      if (states[group] === eventType) return;
+      states[group] = eventType;
+    }
     // Keep anomalous events before heartbeat samples if the network is down.
     if (eventType === 'heartbeat' && pending.some(function (item) { return item.eventType === 'heartbeat'; })) return;
     pending.push({ eventType: eventType, sessionId: session, pageInstanceId: pageInstanceId, sequence: ++sequence, clientAt: now });

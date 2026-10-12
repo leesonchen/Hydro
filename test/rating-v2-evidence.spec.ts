@@ -479,3 +479,21 @@ test('an achievement score exceeding verified full score cannot earn certified c
     assert(result.exclusions.MISSING_PROBLEM_EVIDENCE);
     assert.equal(await db.collection('ratingv2_shadow').findOne({ kind: 'projection', uid: 2 }), null);
 });
+
+test('shadow calibration explicitly reports conditional diagnostics, including empty samples', async () => {
+    const empty = await runShadowReplay(db);
+    assert.equal(empty.difficulty.calibrationDiagnostic.kind, 'conditional_calibration');
+    assert.equal(empty.difficulty.calibrationDiagnostic.independentPredictionValidation, false);
+    assert.equal(empty.difficulty.calibrationDiagnostic.observationN, 0);
+    assert.equal(empty.difficulty.calibrationDiagnostic.n, 0);
+    assert.equal('calibrationHeldOut' in empty.difficulty, false);
+    const { record } = await fixture();
+    await db.collection('record').insertMany([record(2, 200), record(3, 150)]);
+    const result = await runShadowReplay(db, {
+        eligibilityMode: 'certified', poolId: 'certified-test', difficultyMinPriorEvents: 0,
+    });
+    assert.equal(result.difficulty.calibrationDiagnostic.difficultyFit, 'all_observations');
+    assert.equal(result.difficulty.calibrationDiagnostic.observationN, 2);
+    assert(result.difficulty.calibrationDiagnostic.n + result.difficulty.calibrationDiagnostic.slopeFitN
+        + result.difficulty.calibrationDiagnostic.unavailableDifficultyN <= 2);
+});

@@ -86,6 +86,39 @@ exports.register = () => describe('Local feedback', () => {
         await global.app.get('db').db.collection('opcount').deleteMany({ op: 'global' });
     });
 
+    it('course HTTP responses hide unreleased lectures and attachment writes enforce ownership', async () => {
+        const model = global.Hydro.model;
+        const tid = await model.contest.add(domainId, 'Lecture access regression', '', teacherUid, 'course',
+            new Date(Date.now() - 60000), new Date(Date.now() + 3600000), [pid], false, {
+                assign: [String(uid)],
+                dag: [{ _id: 1, title: 'Open', lecture: 'Open', pids: [pid] },
+                    { _id: 2, title: 'Closed', lecture: 'Closed', pids: [] }],
+                lecture: { 1: 'ALLOWED_LECTURE_CONTENT', 2: 'UNRELEASED_LECTURE_SECRET' },
+            });
+        await model.contest.attend(domainId, tid, uid);
+        await model.contest.setStatus(domainId, tid, uid, { allow: { 1: true, 2: false }, startAt: new Date() });
+        const root = `/d/${domainId}/course/${tid}`;
+        for (const url of [root, `${root}?noTemplate=1`, `${root}/lecture/1`,
+            `${root}/lecture/1?noTemplate=1`, `/d/${domainId}/p/${pid}?tid=${tid}`, `/d/${domainId}/p/${pid}`]) {
+            const response = await get(student, url).expect(200);
+            assert(!JSON.stringify(response.body).includes('UNRELEASED_LECTURE_SECRET'));
+        }
+        const lecture = await get(student, `${root}/lecture/1`).expect(200);
+        assert.equal(lecture.body.lecture, 'ALLOWED_LECTURE_CONTENT');
+        await get(student, `${root}/lecture/2`).expect(403);
+        await get(outsider, `${root}/lecture/2?edit=true`).expect(403);
+        const edit = await get(teacher, `${root}/lecture/2?edit=true`).expect(200);
+        assert.equal(edit.body.lecture, 'UNRELEASED_LECTURE_SECRET');
+        const before = await model.contest.get(domainId, tid);
+        for (const agent of [student, outsider]) {
+            for (const operation of ['upload_file', 'delete_files']) {
+                await post(agent, `${root}/lecture/1`, { operation, filename: 'unauthorized.txt', files: ['unauthorized.txt'] }).expect(403);
+            }
+        }
+        assert.deepEqual((await model.contest.get(domainId, tid)).files, before.files);
+        assert(!await model.storage.getMeta(`contest/${domainId}/${tid}/public/unauthorized.txt`));
+    });
+
     it('practice rating trial is restricted to opted-in system administrators, not teachers or domain owners', async () => {
         const database = global.app.get('db').db;
         const model = global.Hydro.model;
@@ -245,13 +278,19 @@ exports.register = () => describe('Local feedback', () => {
         for (const agent of [teacher, peer, manager]) {
             const response = await get(agent, coursePage).expect(200);
             assert.equal(response.body.feedbackUrl, courseUrl());
-            assert.equal((await get(agent, coursePage + '/scoreboard/0').expect(200)).body.feedbackUrl, courseUrl());
+            if (agent === peer) await get(agent, coursePage + '/scoreboard/0').expect(403);
+            else assert.equal((await get(agent, coursePage + '/scoreboard/0').expect(200)).body.feedbackUrl, courseUrl());
         }
-        for (const agent of [student, outsider]) {
+        await get(student, coursePage + '/scoreboard/0').expect(403);
+        await global.Hydro.model.contest.attend(domainId, courseId, uid);
+        {
+            const agent = student;
             const response = await get(agent, coursePage).expect(200);
             assert.equal(response.body.feedbackUrl, null);
             assert.equal((await get(agent, coursePage + '/scoreboard/0').expect(200)).body.feedbackUrl, null);
         }
+        await get(outsider, coursePage).expect(403);
+        await get(outsider, coursePage + '/scoreboard/0').expect(403);
         const recordPage = `/d/${domainId}/record/${validRid}`;
         const response = await get(teacher, recordPage).expect(200);
         assert(response.body.feedbackUrl.includes(courseUrl()));

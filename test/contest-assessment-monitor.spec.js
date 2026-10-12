@@ -300,9 +300,9 @@ function clientHarness() {
         fetch: (_, opts) => new Promise((resolve, reject) => requests.push({ body: JSON.parse(opts.body), resolve, reject })),
         setInterval: (fn) => { intervals.set(++timer, fn); return timer; }, clearInterval: (id) => intervals.delete(id),
     });
-    const emit = (name, event = {}) => { tick += 1100; for (const fn of [...(listeners.get(name) || [])]) fn(event); };
+    const emit = (name, event = {}, elapsed = 1100) => { tick += elapsed; for (const fn of [...(listeners.get(name) || [])]) fn(event); };
     const queue = () => JSON.parse([...storage].find(([key]) => key.startsWith('hydro-monitor-queue:'))[1]);
-    return { emit, queue, requests, intervals, listeners, window };
+    return { emit, queue, requests, intervals, listeners, window, document };
 }
 const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 test('a delayed ACK removes only its matching event after bounded queue overflow', async () => {
@@ -334,3 +334,27 @@ test('class schedule updates shift future assessment windows and keep their bind
     assert.equal(after.endAt.getTime(), exam.endAt.getTime() + 3600000);
     assert.equal((await contest.get('test', course.docId)).dag[0].assessment.contestTid, exam.docId.toString());
 });
+
+for (const [name, first, second, setState] of [
+    ['visibilitychange', 'page_hidden', 'page_visible', (h, active) => { h.document.hidden = active; }],
+    ['blur', 'window_blur', 'window_focus', () => {}],
+    ['fullscreenchange', 'fullscreen_enter', 'fullscreen_exit', (h, active) => { h.document.fullscreenElement = active ? {} : null; }],
+]) {
+    test(`subsecond ${first} transitions survive retries and adjacent duplicates are ignored`, async () => {
+        const h = clientHarness();
+        const opposite = name === 'blur' ? 'focus' : name;
+        setState(h, true); h.emit(name, {}, 0); h.emit(name, {}, 10);
+        setState(h, false); h.emit(opposite, {}, 90);
+        setState(h, true); h.emit(name, {}, 100);
+        setState(h, false); h.emit(opposite, {}, 30000);
+        assert.deepEqual(h.queue().filter((e) => e.eventType !== 'heartbeat').map((e) => e.eventType), [first, second, first, second]);
+        h.requests[0].reject(new Error('offline')); await flush();
+        for (const fn of h.intervals.values()) fn();
+        assert.deepEqual(h.requests[1].body, h.requests[0].body);
+        const queued = h.queue().filter((e) => e.eventType === first || e.eventType === second);
+        for (const event of queued) await monitor.recordEvent(input(event.eventType, event.sequence, { clientAt: new Date(event.clientAt) }));
+        const final = await monitor.events.findOne({ sequence: queued[3].sequence });
+        if (first !== 'fullscreen_enter') assert.equal(final.durationMs, 30000);
+        h.window.__contestMonitorCleanup();
+    });
+}

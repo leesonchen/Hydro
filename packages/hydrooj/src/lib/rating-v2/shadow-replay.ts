@@ -398,7 +398,9 @@ export async function runShadowReplay(
     // 3b. prediction-layer calibration and M15 residual diagnostics -------------
     // One global slope multiplier keeps ability and difficulty on a single
     // shared scale while flattening the tail overconfidence found by the
-    // 2026-09-19 spot check. Fit on half A, report on held-out half B.
+    // 2026-09-19 spot check. Split only the slope fit and its diagnostics:
+    // difficulty and replayed ability already use all observations. These are
+    // conditional calibration diagnostics, NOT independent prediction validation.
     const calibObs: { mu: number, d: number, solved: boolean, slot: number }[] = [];
     for (const [pid, obs] of observations) {
         const fit = fits.find((f) => f.pid === pid);
@@ -428,7 +430,7 @@ export async function runShadowReplay(
         .filter((r) => Math.abs(r.residual) >= 0.25)
         .sort((x, y) => Math.abs(y.residual) - Math.abs(x.residual))
         .slice(0, 10);
-    report(`[replay] calibration slope=${calibFit.slope.toFixed(4)} (fit n=${calibFit.used}, held-out n=${evalSet.length}) `
+    report(`[replay] calibration slope=${calibFit.slope.toFixed(4)} (slope fit n=${calibFit.used}, conditional diagnostic n=${evalSet.length}) `
         + `brier raw=${rawReport.brier.toFixed(4)} -> cal=${calReport.brier.toFixed(4)}; `
         + `m15 anomalies=${m15Anomalies.length}`);
 
@@ -564,7 +566,13 @@ export async function runShadowReplay(
             degenerate: fits.filter((f) => f.status === 'degenerate').length,
             nonconverged: fits.filter((f) => f.status === 'nonconverged').length,
             calibrationSlope: Math.round(calibFit.slope * 10000) / 10000,
-            calibrationHeldOut: {
+            calibrationDiagnostic: {
+                kind: 'conditional_calibration',
+                independentPredictionValidation: false,
+                difficultyFit: 'all_observations',
+                slopeFitN: calibFit.used,
+                observationN: [...observations.values()].reduce((sum, obs) => sum + obs.length, 0),
+                unavailableDifficultyN: [...observations.values()].reduce((sum, obs) => sum + obs.length, 0) - calibObs.length,
                 n: evalSet.length,
                 brierRaw: Math.round(rawReport.brier * 10000) / 10000,
                 brierCalibrated: Math.round(calReport.brier * 10000) / 10000,

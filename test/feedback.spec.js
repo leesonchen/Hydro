@@ -198,6 +198,9 @@ describe('Private content feedback', () => {
             _: require('lodash'), ObjectId, Handler, Types, PRIV, PERM, STATUS: { STATUS_ACCEPTED: 1 },
             param: () => identityDecorator, post: () => identityDecorator,
             ContestModel: contest, UserModel: user,
+            DocumentModel: { TYPE_CONTEST: 30, collStatus: {
+                updateOne: async (_filter, update) => { Object.assign(courseStatus, update.$set); },
+            } },
         }, { get: (target, name) => Object.hasOwn(target, name) ? target[name] : errors[name] });
         CourseLecture = loadSource('packages/hydrooj/src/builtin/course-management/handler/course.ts', {
             '../../../lib/referenceCode': {}, '../../../model/feedback': Feedback,

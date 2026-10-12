@@ -218,8 +218,8 @@ export function handleMailLower(mail: string) {
     return `${name.replace(/\./g, '')}@${d === 'googlemail.com' ? 'gmail.com' : d}`;
 }
 
-async function initAndCache(udoc: Udoc, dudoc, scope: bigint = PERM.PERM_ALL) {
-    const res = await new User(udoc, dudoc, scope).init();
+async function initAndCache(udoc: Udoc, dudoc) {
+    const res = await new User(udoc, dudoc).init();
     cache.set(`id/${udoc._id}/${dudoc.domainId}`, res);
     cache.set(`name/${udoc.unameLower}/${dudoc.domainId}`, res);
     cache.set(`mail/${udoc.mailLower}/${dudoc.domainId}`, res);
@@ -254,16 +254,21 @@ class UserModel {
 
     @ArgMethod
     static async getById(domainId: string, _id: number, scope: bigint | string = PERM.PERM_ALL): Promise<User> {
-        if (cache.has(`id/${_id}/${domainId}`)) return cache.get(`id/${_id}/${domainId}`) || null;
-        const udoc = await (_id < -999 ? collV : coll).findOne({ _id });
-        if (!udoc) return null;
-        const [dudoc, groups] = await Promise.all([
-            domain.getDomainUser(domainId, udoc),
-            UserModel.listGroup(domainId, _id),
-        ]);
-        dudoc.group = groups.map((i) => i.name);
-        if (typeof scope === 'string') scope = BigInt(scope);
-        return initAndCache(udoc, dudoc, scope);
+        let user = cache.get(`id/${_id}/${domainId}`);
+        if (!user) {
+            const udoc = await (_id < -999 ? collV : coll).findOne({ _id });
+            if (!udoc) return null;
+            const [dudoc, groups] = await Promise.all([
+                domain.getDomainUser(domainId, udoc),
+                UserModel.listGroup(domainId, _id),
+            ]);
+            dudoc.group = groups.map((i) => i.name);
+            user = await initAndCache(udoc, dudoc);
+        }
+        // Cache only the full-scope base; each caller gets its own scoped view.
+        return Object.assign(Object.create(User.prototype), user, {
+            scope: typeof scope === 'string' ? BigInt(scope) : scope,
+        });
     }
 
     static async getList(domainId: string, uids: number[]): Promise<Udict> {

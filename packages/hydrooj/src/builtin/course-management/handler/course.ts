@@ -109,10 +109,27 @@ async function getCourseStudentUids(domainId: string, tdoc: CourseTdoc) {
     return Array.from(new Set([...(group?.students || []), ...getExtraStudentUids(tdoc)].filter(Boolean)));
 }
 
-function canEditCourse(handler: Handler, tdoc: CourseTdoc) {
-    return handler.user.own(tdoc)
-        || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-        || handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+export function canEditCourse(handler: Handler, tdoc: CourseTdoc) {
+    return handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+        || (handler.user.own(tdoc) && handler.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF));
+}
+
+// Apply to every response exit, including nested lists and problem-page hooks.
+export function projectCourseResponse(value: any, handler: Handler): any {
+    if (!value || typeof value !== 'object') return value;
+    const prototype = Object.getPrototypeOf(value);
+    if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) return value;
+    const hideLectures = value.rule === 'course' && !canEditCourse(handler, value);
+    let result = value;
+    for (const [key, item] of Object.entries(value)) {
+        const hidden = hideLectures && ['lecture', 'lectureMeta'].includes(key);
+        const projected = hidden ? undefined : projectCourseResponse(item, handler);
+        if (!hidden && projected === item) continue;
+        if (result === value) result = Array.isArray(value) ? [...value] : Object.assign(Object.create(prototype), value);
+        if (hidden) delete result[key];
+        else result[key] = projected;
+    }
+    return result;
 }
 
 function studentCanViewCourseLecture(node: DagNode, tsdoc: any) {
@@ -222,8 +239,8 @@ export async function updateAllowedNodes(
     const assessmentResults = await getAssessmentResults(domainId, tdoc, uid);
     if (!tsdoc?.attend) return assessmentResults;
 
-    const allow = tsdoc?.allow || {};
-    let updated = false;
+    const allow = { ...tsdoc.allow };
+    const opened: number[] = [];
 
     // 如果没有DAG，所有章节默认开放（如果被手工禁止则需要手工允许）
     if (!tdoc.dag || tdoc.dag.length === 0) {
@@ -246,7 +263,7 @@ export async function updateAllowedNodes(
         if (!node.requireNids || !node.requireNids.length) {
             console.log(`[updateAllowedNodes] node ${node._id} has no requirements, setting to true`);
             allow[node._id] = true;
-            updated = true;
+            opened.push(node._id);
             continue;
         }
 
@@ -259,7 +276,7 @@ export async function updateAllowedNodes(
         if (allRequirementsMet) {
             console.log(`[updateAllowedNodes] setting node ${node._id} to true`);
             allow[node._id] = true;
-            updated = true;
+            opened.push(node._id);
         }
     }
 
@@ -276,11 +293,21 @@ export async function updateAllowedNodes(
     const progress = totalUnits
         ? Math.floor(((tsdoc.accept?.[0] || 0) + completedAssessments) * 100 / totalUnits)
         : 0;
-    if (updated || tsdoc.progress !== progress
+    const statusFilter = {
+        _id: tsdoc._id, domainId, docType: DocumentModel.TYPE_CONTEST, docId: tid, uid, attend: tsdoc.attend,
+        accept: tsdoc.accept ?? { $exists: false },
+    };
+    // Each automatic grant only fills an unset node. Manual allow/deny always wins.
+    await Promise.all(opened.map((nodeId) => DocumentModel.collStatus.updateOne({
+        ...statusFilter, [`allow.${nodeId}`]: { $exists: false },
+    }, { $set: { [`allow.${nodeId}`]: true } })));
+    if (tsdoc.progress !== progress
         || JSON.stringify(tsdoc.assessmentResults || {}) !== JSON.stringify(snapshot)) {
-        await ContestModel.setStatus(domainId, tid, uid, {
-            allow, attend: true, progress, assessmentResults: snapshot,
-        });
+        await DocumentModel.collStatus.updateOne({
+            ...statusFilter,
+            assessmentResults: tsdoc.assessmentResults ?? { $exists: false },
+            progress: tsdoc.progress ?? { $exists: false },
+        }, { $set: { progress, assessmentResults: snapshot } });
     }
     return assessmentResults;
 }
@@ -1039,11 +1066,8 @@ export class CourseDetailHandler extends Handler {
             throw new ContestNotFoundError(domainId, tid);
         }
         const isTemplate = this.tdoc.assign?.includes('teachers');
-        const canBypassAssign = this.user.hasPerm(
-            PERM.PERM_EDIT_HOMEWORK,
-            PERM.PERM_EDIT_HOMEWORK_SELF,
-            PERM.PERM_VIEW_HIDDEN_HOMEWORK,
-        );
+        const canBypassAssign = canEditCourse(this, this.tdoc)
+            || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
         if (!isTemplate && this.tdoc.assign?.length && !this.user.own(this.tdoc)
             && !isAssignedToCourse(this.tdoc, this.user)
             && !canBypassAssign) {
@@ -1091,7 +1115,7 @@ export class CourseDetailHandler extends Handler {
         };
 
         // 查看学生列表（仅管理员）
-        if ((checkstu || uid) && (this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF) || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK))) {
+        if ((checkstu || uid) && canEditCourse(this, this.tdoc)) {
             const group = await ClassModel.getGroupByName(domainId, this.tdoc.assign[0]);
             this.response.body.students = await UserModel.getListForRender(
                 domainId,
@@ -1103,7 +1127,7 @@ export class CourseDetailHandler extends Handler {
         // 检查是否可查看题目
         if (!isTemplate && !canViewAllProblems
             && !this.user.hasPerm(PERM.PERM_VIEW_HOMEWORK_HIDDEN_SCOREBOARD)
-            && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_EDIT_HOMEWORK_SELF)
+            && !canEditCourse(this, this.tdoc)
             && (ContestModel.isNotStarted(this.tdoc) || (!tsdoc?.attend && !ContestModel.isDone(this.tdoc)))) {
             return;
         }
@@ -1119,7 +1143,9 @@ export class CourseDetailHandler extends Handler {
         const psdict: Record<number, any> = {};
         if (tsdoc) {
             if (tsdoc.attend && !tsdoc.startAt) {
-                await ContestModel.setStatus(domainId, tid, this.user._id, { startAt: new Date() });
+                await DocumentModel.collStatus.updateOne({
+                    _id: tsdoc._id, domainId, docType: DocumentModel.TYPE_CONTEST, docId: tid, uid: this.user._id, attend: tsdoc.attend,
+                }, { $set: { startAt: new Date() } });
                 tsdoc.startAt = new Date();
             }
             for (const j of tsdoc.journal || []) {
@@ -1678,11 +1704,8 @@ export class CourseLectureHandler extends Handler {
             throw new ContestNotFoundError(domainId, tid);
         }
         const isTemplate = tdoc.assign?.includes('teachers');
-        const canBypassAssign = this.user.hasPerm(
-            PERM.PERM_EDIT_HOMEWORK,
-            PERM.PERM_EDIT_HOMEWORK_SELF,
-            PERM.PERM_VIEW_HIDDEN_HOMEWORK,
-        );
+        const canBypassAssign = canEditCourse(this, tdoc)
+            || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
         if (!isTemplate && tdoc.assign?.length && !this.user.own(tdoc)
             && !isAssignedToCourse(tdoc, this.user)
             && !canBypassAssign) {
@@ -1701,9 +1724,7 @@ export class CourseLectureHandler extends Handler {
         }
 
         // 权限检查
-        if (!this.user.own(tdoc)
-            && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-            && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
+        if (!canEditCourse(this, tdoc)) {
             if (edit) throw new ForbiddenError();
             if (!canViewCourseLecture(this, tdoc, node, tsdoc)) throw new ForbiddenError('讲义尚未开放。');
         }
@@ -1785,15 +1806,7 @@ export class CourseLectureHandler extends Handler {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
         const user = (this as any).user;
 
-        if (user.own(tdoc)) {
-            if (!user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF) && !user.hasPerm(PERM.PERM_EDIT_HOMEWORK)) {
-                throw new ForbiddenError();
-            }
-        } else {
-            if (!user.hasPerm(PERM.PERM_EDIT_HOMEWORK)) {
-                throw new ForbiddenError();
-            }
-        }
+        if (!canEditCourse(this, tdoc)) throw new ForbiddenError();
 
         await ContestModel.edit(domainId, tid, {
             [`lecture.${id}`]: lecture,
@@ -1806,15 +1819,17 @@ export class CourseLectureHandler extends Handler {
     @post('filename', Types.Filename, true)
     async postUploadFile(domainId: string, tid: ObjectId, filename: string) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
+        if (!canEditCourse(this, tdoc)) throw new ForbiddenError();
 
-        if ((tdoc.files?.length || 0) >= SystemModel.get('limit.contest_files')) {
+        const remainingFiles = (tdoc.files || []).filter((file) => file.name !== filename);
+        if (remainingFiles.length >= SystemModel.get('limit.contest_files')) {
             throw new ForbiddenError('文件数量已达上限');
         }
 
         const file = this.request.files?.file;
         if (!file) throw new ValidationError('file');
 
-        const totalSize = Math.sum((tdoc.files || []).map((f) => f.size)) + file.size;
+        const totalSize = remainingFiles.reduce((sum, f) => sum + f.size, 0) + file.size;
         if (totalSize >= SystemModel.get('limit.contest_files_size')) {
             throw new ForbiddenError('文件总大小已达上限');
         }
@@ -1831,7 +1846,7 @@ export class CourseLectureHandler extends Handler {
         };
 
         await ContestModel.edit(domainId, tid, {
-            files: [...(tdoc.files || []), fileDoc],
+            files: [...remainingFiles, fileDoc],
         });
 
         this.back();
@@ -1841,6 +1856,7 @@ export class CourseLectureHandler extends Handler {
     @post('files', Types.ArrayOf(Types.Filename))
     async postDeleteFiles(domainId: string, tid: ObjectId, files: string[]) {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
+        if (!canEditCourse(this, tdoc)) throw new ForbiddenError();
 
         await Promise.all([
             StorageModel.del(files.map((f) => `contest/${domainId}/${tid}/public/${f}`), this.user._id),
@@ -2002,8 +2018,7 @@ export class CourseScoreboardHandler extends Handler {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
         const tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
 
-        const isEditor = this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-            || this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF);
+        const isEditor = canEditCourse(this, tdoc);
         if (!isEditor) {
             if (tdoc.publicScoreboard === false) {
                 throw new ForbiddenError((this as any).translate('You are not allowed to view the scoreboard.'));
@@ -2066,8 +2081,7 @@ export class CourseScoreboardHandler extends Handler {
         const tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
 
         // 权限检查：学生（非编辑权限）禁止导出成绩板
-        if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-            && !this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)) {
+        if (!canEditCourse(this, tdoc)) {
             throw new ForbiddenError((this as any).translate('Students are not allowed to export the scoreboard.'));
         }
 

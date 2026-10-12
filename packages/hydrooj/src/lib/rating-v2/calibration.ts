@@ -44,8 +44,9 @@ export function calibratedProbability(mu: number, d: number, slope = 1): number 
 
 /**
  * Fit the single slope multiplier by Newton on log-loss, slope constrained to
- * (0, 5]. Fitting on one deterministic half of the data and evaluating on the
- * other half (caller's job) keeps the reported gain honest.
+ * (0, 5]. Independent prediction validation requires the caller to also fit
+ * ability and difficulty without the evaluation labels; splitting only this
+ * slope fit yields conditional calibration diagnostics.
  */
 export function fitSolveCalibration(obs: CalibrationObservation[], opts: { maxSlope?: number, maxIterations?: number } = {}): CalibrationFit {
     const maxSlope = opts.maxSlope ?? 5;
