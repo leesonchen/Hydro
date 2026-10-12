@@ -1,10 +1,7 @@
 import { DOMWindow, JSDOM } from 'jsdom';
-import proxy from 'superagent-proxy';
 import { Logger } from '@hydrooj/utils';
 import { superagent } from 'hydrooj';
 import { RemoteAccount } from './interface';
-
-proxy(superagent);
 
 interface FetchOptions {
     headers?: { [key: string]: string };

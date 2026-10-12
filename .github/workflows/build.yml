@@ -1,11 +1,18 @@
 name: CI
 
+# Run automated checks on pushed commits and pull requests; no daily schedule.
 on:
-- push
-- pull_request
+  push:
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+# Cancel obsolete builds for the same branch/PR. Keep the latest verification run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CI: true

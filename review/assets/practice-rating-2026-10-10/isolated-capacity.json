@@ -1,0 +1,133 @@
+{
+  "at": "2026-10-09T15:26:23.804Z",
+  "records": 200000,
+  "first": {
+    "ms": 5205.300076,
+    "peakRss": 738697216,
+    "maxEventLoopMs": 271.319039,
+    "p99EventLoopMs": 14.368767,
+    "result": {
+      "runId": "6ac90797f51b3502c559f9d1",
+      "scope": "capacity",
+      "asOf": 1791559573105,
+      "modelVersion": "practice-rating-1pl-v1",
+      "status": "ok",
+      "iterations": 3,
+      "components": 1,
+      "users": 1000,
+      "problems": 200,
+      "diagnostics": {
+        "unknownRevisionEpisodes": 200000,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 0,
+        "totalEpisodes": 200000,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 200000,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {},
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 200000,
+        "trainingObservations": 200000
+      },
+      "activated": true,
+      "write": true
+    },
+    "bytes": 52142436,
+    "chunks": 782
+  },
+  "second": {
+    "ms": 4907.281601000001,
+    "peakRss": 1063665664,
+    "maxEventLoopMs": 278.659071,
+    "p99EventLoopMs": 14.311423,
+    "result": {
+      "runId": "6ac9079cf51b3502c559f9d2",
+      "scope": "capacity",
+      "asOf": 1791559578287,
+      "modelVersion": "practice-rating-1pl-v1",
+      "status": "ok",
+      "iterations": 3,
+      "components": 1,
+      "users": 1000,
+      "problems": 200,
+      "diagnostics": {
+        "unknownRevisionEpisodes": 200000,
+        "openEpisodes": 0,
+        "pendingEpisodes": 0,
+        "missingEpisodes": 0,
+        "outsideRecentWindow": 0,
+        "totalEpisodes": 200000,
+        "unknownRevisionEpisodeRatio": 1,
+        "unknownRevisionTrainingObservations": 200000,
+        "unknownRevisionTrainingRatio": 1,
+        "excludedByReason": {},
+        "metadataUnavailable": 0,
+        "resultTimeMissing": 0,
+        "scannedRecords": 200000,
+        "trainingObservations": 200000
+      },
+      "activated": true,
+      "write": true
+    },
+    "bytes": 52142436,
+    "chunks": 782
+  },
+  "limitPlusOneRejected": true,
+  "stats": {
+    "executionSuccess": true,
+    "nReturned": 200000,
+    "executionTimeMillis": 127,
+    "totalKeysExamined": 200000,
+    "totalDocsExamined": 200000
+  },
+  "plan": {
+    "isCached": false,
+    "stage": "LIMIT",
+    "limitAmount": 200001,
+    "inputStage": {
+      "stage": "PROJECTION_SIMPLE",
+      "transformBy": {
+        "_id": 1,
+        "domainId": 1,
+        "pid": 1,
+        "uid": 1,
+        "status": 1,
+        "judgeAt": 1,
+        "contest": 1,
+        "practiceContest": 1
+      },
+      "inputStage": {
+        "stage": "FETCH",
+        "inputStage": {
+          "stage": "IXSCAN",
+          "keyPattern": {
+            "domainId": 1,
+            "_id": 1
+          },
+          "indexName": "practiceRatingScan",
+          "isMultiKey": false,
+          "multiKeyPaths": {
+            "domainId": [],
+            "_id": []
+          },
+          "isUnique": false,
+          "isSparse": false,
+          "isPartial": false,
+          "indexVersion": 2,
+          "direction": "forward",
+          "indexBounds": {
+            "domainId": [
+              "[\"capacity\", \"capacity\"]"
+            ],
+            "_id": [
+              "[ObjectId('000000000000000000000000'), ObjectId('6ac90794f51b3502c559f9d0'))"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

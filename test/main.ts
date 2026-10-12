@@ -37,9 +37,9 @@ describe('App', () => {
     }, { timeout: 30000 });
 
     beforeEach(async () => {
-        // Transport and login quotas apply within each case, not across unrelated fixtures.
-        // Feature-specific limits remain active, including classroom_feedback.
-        await global.app.get('db').db.collection('opcount').deleteMany({ op: { $in: ['global', 'user_login'] } });
+        // Each case starts with fresh transport/login quotas. Production limits
+        // remain active within a case, including password and feedback limits.
+        await global.app.get('db').db.collection('opcount').deleteMany({ op: { $in: ['global', 'user_login', 'user_login_id'] } });
     });
 
     it('enforces the global HTTP quota within a case and recovers after its counter is cleared', async () => {
@@ -96,6 +96,31 @@ describe('App', () => {
     });
 
     require('./contest-assessment-http').register(() => agent);
+
+    it('enforces IP and account login quotas within a case and recovers after counters are cleared', async () => {
+        const counters = global.app.get('db').db.collection('opcount');
+        const freshLogin = () => supertest.agent(require('hydrooj').httpServer).post('/login')
+            .set('Accept', 'application/json').send({ uname: Root.username, password: Root.password });
+        // Quota requests mutate shared counters and must complete sequentially.
+        /* eslint-disable no-await-in-loop */
+        for (const [op, limit] of [['user_login', 30], ['user_login_id', 5]] as const) {
+            await counters.deleteMany({ op: { $in: ['user_login', 'user_login_id'] } });
+            await freshLogin().expect(200);
+            const counter = await counters.findOne({ op });
+            assert(counter);
+            const now = Date.now();
+            const windowEnd = now - now % 60000 + 60000;
+            for (const expireAt of [new Date(windowEnd), new Date(windowEnd + 60000)]) {
+                await counters.updateOne({ op, ident: counter.ident, expireAt }, { $set: { opcount: limit } }, { upsert: true });
+            }
+            const denied = await freshLogin().expect(403);
+            assert.equal(denied.body.error.name, 'OpcountExceededError');
+            assert.equal(denied.body.error.params[0], op);
+            await counters.deleteMany({ op: { $in: ['user_login', 'user_login_id'] } });
+            await freshLogin().expect(200);
+        }
+        /* eslint-enable no-await-in-loop */
+    });
 
     it('Rejects session IDs supplied through the query string', async () => {
         const sid = /(?:^|;\s*)sid=([^;]+)/.exec(Root.creditionals[0])?.[1];
@@ -634,10 +659,12 @@ describe('App', () => {
         const otherDomainId = `feedback-other-${suffix}`;
         const actors: Record<string, { uid: number, client: any }> = {};
         const createdUids: number[] = [];
+        const originalRootPriv = (await UserModel.coll.findOne({ _id: 2 })).priv;
         let pid: number;
         let tid: ObjectId;
         let unassignedTid: ObjectId;
         try {
+            await UserModel.setPriv(2, originalRootPriv | PRIV.PRIV_EDIT_SYSTEM);
             for (const role of ['student', 'other', 'owner', 'outside', 'sys']) {
                 const uname = `fb${role}${suffix}`;
                 const uid = await UserModel.create(`${uname}@example.com`, uname, '123456');
@@ -651,7 +678,10 @@ describe('App', () => {
             await DomainModel.add(otherDomainId, actors.outside.uid, 'Other feedback domain', '');
             const studentPerm = PERM.PERM_VIEW | PERM.PERM_VIEW_PROBLEM | PERM.PERM_VIEW_HOMEWORK | PERM.PERM_ATTEND_HOMEWORK;
             await DomainModel.edit(domainId, { roles: { student: studentPerm.toString() }, enableCourse: true });
-            await Promise.all([actors.student.uid, actors.other.uid].map((uid) => DomainModel.setUserRole(domainId, uid, 'student', true)));
+            await Promise.all([
+                DomainModel.setUserRole(domainId, actors.student.uid, 'student', true),
+                DomainModel.setUserRole(domainId, actors.other.uid, 'student', true),
+            ]);
             pid = await ProblemModel.add(domainId, '', 'Feedback source', 'Original statement', actors.owner.uid);
             const beginAt = new Date(Date.now() - 3600000);
             const endAt = new Date(Date.now() + 3600000);
@@ -694,6 +724,9 @@ describe('App', () => {
                 operation: 'delete_message', messageId: initialMessage._id,
             }).expect(403);
 
+            // Personal inbox permission errors must remain 403 without system membership.
+            await DomainModel.setJoin('system', actors.outside.uid, false);
+            assert(!(await UserModel.getById('system', actors.outside.uid))._dudoc.join);
             for (const role of ['other', 'outside']) {
                 assert.equal(await FeedbackModel.canAccess(feedbackDoc, actors[role].uid), false);
                 await actors[role].client.get(`/home/messages?feedback=${feedbackId}`).set('Accept', 'application/json').expect(403);
@@ -725,6 +758,10 @@ describe('App', () => {
             const hiddenProblem = await ProblemModel.get(domainId, pid);
             assert.equal(ProblemModel.canViewBy(hiddenProblem, await UserModel.getById(domainId, actors.student.uid)), false);
             await submitFeedback(sourceUrl).expect(403);
+            const joinResponse = await actors.outside.client.get(sourceUrl).expect(302);
+            const joinUrl = new URL(joinResponse.headers.location, 'http://hydro.test');
+            assert.equal(joinUrl.pathname, '/domain/join');
+            assert.equal(joinUrl.searchParams.get('target'), domainId);
             await ProblemModel.edit(domainId, pid, { hidden: false });
             await submitFeedback(`${sourceUrl}?tid=${unassignedTid}`).expect(403);
             await submitFeedback(`/d/${domainId}/course/${unassignedTid}/lecture/1`).expect(403);
@@ -744,6 +781,7 @@ describe('App', () => {
             const limited = await submitFeedback(sourceUrl).expect(403);
             assert.equal(limited.body.error.name, 'OpcountExceededError');
         } finally {
+            await UserModel.setPriv(2, originalRootPriv);
             const feedbackDocs = await FeedbackModel.coll.find({ domainId: { $in: [domainId, otherDomainId] } }).toArray();
             if (tid) await ContestModel.del(domainId, tid);
             if (unassignedTid) await ContestModel.del(domainId, unassignedTid);
@@ -753,6 +791,7 @@ describe('App', () => {
                 FeedbackModel.coll.deleteMany({ domainId: { $in: [domainId, otherDomainId] } }),
                 DomainModel.coll.deleteMany({ _id: { $in: [domainId, otherDomainId] } }),
                 DomainModel.collUser.deleteMany({ domainId: { $in: [domainId, otherDomainId] } }),
+                DomainModel.collUser.deleteMany({ domainId: 'system', uid: { $in: createdUids } }),
                 UserModel.coll.deleteMany({ _id: { $in: createdUids } }),
             ]);
         }

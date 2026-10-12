@@ -36,7 +36,9 @@ config({
     mdit.linkify.tlds('.py', false);
     mdit.linkify.tlds('.zip', false);
     mdit.linkify.tlds('.mov', false);
-    mdit.use(Media);
+    // The editor bundles MarkdownIt 14; Media also supports the main renderer's
+    // MarkdownIt 15, whose declarations expose additional parser internals.
+    mdit.use(Media as unknown as Parameters<typeof mdit.use>[0]);
     mdit.use(Footnote);
     mdit.use(Mark);
     mdit.use(Imsize);

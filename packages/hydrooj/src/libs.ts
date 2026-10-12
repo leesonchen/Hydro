@@ -7,6 +7,14 @@ import superagent from 'superagent';
 import proxy from 'superagent-proxy';
 import { Context } from './context';
 
+// The proxy package can resolve a separate @types/superagent installation.
+// Declare the method on the client Hydro exports and patches at runtime.
+declare module 'superagent' {
+    interface Request {
+        proxy(url: string): this;
+    }
+}
+
 proxy(superagent as unknown as Parameters<typeof proxy>[0]);
 
 export * from './interface';
