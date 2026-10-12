@@ -1,0 +1,371 @@
+.page--contest_edit, .page--contest_create
+  .contest-edit__layout
+    max-width: 1100px
+
+  .contest-edit__intro
+    margin: 8px 0 24px
+
+    h1
+      font-size: 1.75rem
+      line-height: 1.3
+      margin: 4px 0 7px
+
+  .contest-edit__eyebrow
+    color: #71849a
+    font-size: .83rem
+    font-weight: 650
+    letter-spacing: .04em
+    margin: 0
+
+  .contest-edit__lead
+    color: #718096
+    font-size: .9rem
+    margin: 0
+
+  .contest-edit__card
+    border: 1px solid #e7ebf1
+    border-radius: 12px
+    box-shadow: 0 3px 18px rgba(25, 39, 59, .035)
+    margin-bottom: 18px
+    overflow: visible
+
+  .contest-edit__section-heading
+    align-items: center
+    border-bottom: 1px solid #edf0f4
+    display: flex
+    gap: 15px
+    padding: 21px 28px
+
+    h2
+      font-size: 1.12rem
+      font-weight: 650
+      line-height: 1.4
+      margin: 0 0 4px
+
+    p
+      color: #8993a3
+      font-size: .83rem
+      line-height: 1.5
+      margin: 0
+
+  .contest-edit__step
+    align-items: center
+    background: #eef4fd
+    border-radius: 9px
+    color: #487bbd
+    display: inline-flex
+    flex: 0 0 43px
+    font-size: .86rem
+    font-weight: 700
+    height: 43px
+    justify-content: center
+
+  .contest-edit__section-body
+    padding: 24px 28px 26px
+
+    > .form__item
+      float: none
+      padding: 0
+      width: 100%
+
+    > .form__item + .form__item
+      margin-top: 20px
+
+  .contest-edit__field-grid
+    display: grid
+    gap: 16px 20px
+    margin-bottom: 20px
+
+    .form__item
+      float: none
+      min-width: 0
+      padding: 0
+      width: 100%
+
+  .contest-edit__field-grid--identity
+    grid-template-columns: minmax(180px, 1fr) minmax(0, 3fr)
+
+  .contest-edit__field-grid--schedule
+    grid-template-columns: repeat(4, minmax(0, 1fr))
+
+  .contest-edit__field-grid--access
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  .contest-edit__conditional-access
+    margin-bottom: 20px
+
+    .form__item
+      float: none
+      padding: 0
+      width: 100%
+
+  .form__item > label
+    color: #354254
+    display: block
+    font-size: .88rem
+    font-weight: 550
+
+  .textbox, .select
+    border-radius: 7px
+
+  .help-text
+    color: #7e8a9b
+    font-size: .78rem
+    margin: 6px 0 0
+
+  .contest-edit__toggle-grid
+    display: grid
+    gap: 12px
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  .contest-edit__toggle-grid--single
+    grid-template-columns: minmax(0, 1fr)
+
+  .contest-edit__toggle
+    align-items: center
+    background: #fbfcfe
+    border: 1px solid #e7ecf3
+    border-radius: 9px
+    cursor: pointer
+    display: flex
+    gap: 18px
+    justify-content: space-between
+    margin: 0
+    min-height: 78px
+    padding: 16px 18px
+    transition: border-color .15s, background-color .15s
+
+    &:hover
+      background: #f6f9ff
+      border-color: #cad9ee
+
+  .contest-edit__toggle-copy
+    display: flex
+    flex: 1 1 auto
+    flex-direction: column
+    gap: 5px
+    min-width: 0
+
+  .contest-edit__toggle-name
+    color: #303d4d
+    font-size: .9rem
+    font-weight: 600
+    line-height: 1.5
+
+  .contest-edit__toggle-description
+    color: #8591a2
+    font-size: .8rem
+    font-weight: 400
+    line-height: 1.5
+
+  .contest-edit__switch
+    flex: 0 0 39px
+    height: 23px
+    position: relative
+
+    input
+      cursor: pointer
+      height: 100%
+      left: 0
+      margin: 0
+      opacity: 0
+      position: absolute
+      top: 0
+      width: 100%
+      z-index: 1
+
+  .contest-edit__switch-track
+    background: #c7cfd9
+    border-radius: 30px
+    display: block
+    height: 23px
+    position: relative
+    transition: background-color .16s
+    width: 39px
+
+    &:after
+      background: #fff
+      border-radius: 50%
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .15)
+      content: ''
+      height: 17px
+      left: 3px
+      position: absolute
+      top: 3px
+      transition: transform .16s
+      width: 17px
+
+  .contest-edit__switch input:checked + .contest-edit__switch-track
+    background: #5193de
+
+    &:after
+      transform: translateX(16px)
+
+  .contest-edit__switch input:focus-visible + .contest-edit__switch-track
+    outline: 3px solid rgba(64, 140, 230, .4)
+    outline-offset: 2px
+
+  .contest-edit__toggle--disabled
+    cursor: not-allowed
+    opacity: .62
+
+    &:hover
+      background: #fbfcfe
+      border-color: #e7ecf3
+
+    .contest-edit__switch input
+      cursor: not-allowed
+
+  .contest-edit__subsection
+    border-top: 1px solid #eef0f4
+    margin-top: 24px
+    padding-top: 22px
+
+    h3
+      color: #404d5d
+      font-size: .96rem
+      font-weight: 650
+      margin: 0 0 13px
+
+    > p
+      color: #8993a3
+      font-size: .8rem
+      margin: -5px 0 15px
+
+  .contest-edit__subsection--first
+    border: 0
+    margin-top: 0
+    padding-top: 0
+
+  .contest-edit__rule-fields
+    display: grid
+    gap: 18px
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  .contest-edit__rule-field .form__item
+    float: none
+    padding: 0
+    width: 100%
+
+  .contest-edit__markdown-help
+    border-top: 1px solid #eef0f4
+    margin-top: 20px
+    padding-top: 15px
+
+    summary
+      color: #477db7
+      cursor: pointer
+      font-size: .84rem
+      width: fit-content
+
+    .section.side
+      background: transparent
+      box-shadow: none
+      font-size: .8rem
+      margin: 12px 0 0
+
+    .section__body
+      padding: 12px 0 0
+
+    dl
+      display: grid
+      gap: 10px
+      grid-template-columns: repeat(2, minmax(0, 1fr))
+
+    dd, dt
+      margin: 0
+
+    dd
+      margin-bottom: 6px
+
+    pre
+      max-width: 100%
+      overflow-x: auto
+
+  .contest-edit__actions
+    align-items: center
+    display: flex
+    flex-wrap: wrap
+    gap: 12px
+    justify-content: space-between
+    margin: 4px 0 24px
+
+  .contest-edit__main-actions
+    display: flex
+    flex-wrap: wrap
+    gap: 10px
+
+  .contest-edit__actions .button
+    margin: 0
+
+  .contest-edit__delete
+    color: #c64f5c
+
+  .contest-edit__files
+    border: 1px solid #e7ebf1
+    border-radius: 10px
+    overflow: hidden
+
+  @media (max-width: 760px)
+    .contest-edit__section-heading
+      padding: 17px 18px
+
+    .contest-edit__section-body
+      padding: 18px
+
+    .contest-edit__field-grid--schedule
+      grid-template-columns: repeat(2, minmax(0, 1fr))
+
+    .contest-edit__field-grid--access
+      grid-template-columns: minmax(0, 1fr)
+
+  @media (max-width: 520px)
+    .contest-edit__field-grid--identity
+      grid-template-columns: minmax(0, 1fr)
+
+    .contest-edit__toggle-grid
+      grid-template-columns: minmax(0, 1fr)
+
+    .contest-edit__rule-fields
+      grid-template-columns: minmax(0, 1fr)
+
+    .contest-edit__markdown-help dl
+      grid-template-columns: minmax(0, 1fr)
+
+    .contest-edit__toggle
+      min-height: 70px
+      padding: 13px
+
+    .contest-edit__actions
+      align-items: stretch
+
+.theme--dark.page--contest_edit,
+.theme--dark.page--contest_create
+  .contest-edit__lead, .contest-edit__eyebrow
+    color: #abb8ca
+
+  .contest-edit__card, .contest-edit__files
+    border-color: #444a55
+
+  .contest-edit__section-heading, .contest-edit__subsection, .contest-edit__markdown-help
+    border-color: #444a55
+
+  .contest-edit__step
+    background: #253954
+    color: #a9cefd
+
+  .contest-edit__section-heading p, .contest-edit__subsection > p
+    color: #a6b1bf
+
+  .contest-edit__toggle
+    background: #262b34
+    border-color: #444a55
+
+    &:hover
+      background: #303949
+
+  .contest-edit__toggle-name, .contest-edit__subsection h3, .form__item > label
+    color: #e4e8f0
+
+  .contest-edit__toggle-description, .help-text
+    color: #abb6c5

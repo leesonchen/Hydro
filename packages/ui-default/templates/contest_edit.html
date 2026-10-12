@@ -1,16 +1,39 @@
 {% extends "layout/basic.html" %}
+{% macro setting_toggle(name, label, description, checked, disabled=false) %}
+<label class="contest-edit__toggle{% if disabled %} contest-edit__toggle--disabled{% endif %}">
+  <span class="contest-edit__toggle-copy">
+    <span class="contest-edit__toggle-name">{{ _(label) }}</span>
+    {% if description %}
+    <span class="contest-edit__toggle-description" id="contest-setting-{{ name }}">{{ _(description) }}</span>
+    {% endif %}
+  </span>
+  <span class="contest-edit__switch">
+    <input type="checkbox" name="{{ name }}"{% if checked %} checked{% endif %}{% if disabled %} disabled{% endif %}{% if description %} aria-describedby="contest-setting-{{ name }}"{% endif %}>
+    <span class="contest-edit__switch-track" aria-hidden="true"></span>
+  </span>
+</label>
+{% endmacro %}
 {% block content %}
-<div class="row responsive-sidebar-layout">
-  <div class="medium-9 columns">
-    <div class="section">
-      <form method="post">
-        <div class="section__header">
-          <h2 class="section__title">{{ _('Basic Info') }}</h2>
-        </div>
-        <div class="section__body">
-          <div class="row">
+<div class="row contest-edit__layout">
+  <div class="columns">
+    <header class="contest-edit__intro">
+      <p class="contest-edit__eyebrow">{{ _('Contest Settings') }}</p>
+      <h1>{{ _(page_name) }}</h1>
+      <p class="contest-edit__lead">{{ _('Manage contest details, access, and visibility in one place.') }}</p>
+    </header>
+    <form method="post" class="contest-edit__form">
+      <section class="section contest-edit__card">
+        <header class="contest-edit__section-heading">
+          <span class="contest-edit__step" aria-hidden="true">01</span>
+          <div>
+            <h2>{{ _('Basic Info') }}</h2>
+            <p>{{ _('Set the contest rule, schedule, and problem list.') }}</p>
+          </div>
+        </header>
+        <div class="contest-edit__section-body">
+          <div class="contest-edit__field-grid contest-edit__field-grid--identity">
             {{ form.form_select({
-              columns:3,
+              columns:12,
               label:'Rule',
               name:'rule',
               options:rules,
@@ -18,7 +41,7 @@
               row:false
             }) }}
             {{ form.form_text({
-              columns:9,
+              columns:12,
               label:'Title',
               name:'title',
               placeholder:_('title'),
@@ -27,9 +50,9 @@
               row:false
             }) }}
           </div>
-          <div class="row">
+          <div class="contest-edit__field-grid contest-edit__field-grid--schedule">
             {{ form.form_text({
-              columns:3,
+              columns:12,
               label:'Begin Date',
               name:'beginAtDate',
               placeholder:'YYYY-mm-dd',
@@ -38,7 +61,7 @@
               row:false
             }) }}
             {{ form.form_text({
-              columns:3,
+              columns:12,
               label:'Begin Time',
               name:'beginAtTime',
               placeholder:'HH:MM',
@@ -47,18 +70,18 @@
               row:false
             }) }}
             {{ form.form_text({
-              columns:2,
+              columns:12,
               label:'Duration (hours)',
               name:'duration',
               value:duration|default('3'),
               row:false
             }) }}
             {{ form.form_text({
-              columns:4,
+              columns:12,
               label:'End Time',
               name:'endAt',
               placeholder:'YYYY-mm-dd HH:MM',
-              value:beginAt.add(duration, 'hours').format('YYYY-M-D HH:mm'),
+              value:beginAt.clone().add(duration, 'hours').format('YYYY-M-D HH:mm'),
               disabled:true,
               row:false
             }) }}
@@ -69,30 +92,43 @@
             name:'pids',
             value:pids,
             placeholder:_("Seperated with ','"),
-            row:true
+            row:false
           }) }}
           {{ form.form_textarea({
-            columns:null,
+            columns:12,
             label:'Description',
             name:'content',
             value:tdoc['content']|default(''),
-            markdown:true
+            markdown:true,
+            row:false
           }) }}
+          <details class="contest-edit__markdown-help">
+            <summary>{{ _('Markdown formatting help') }}</summary>
+            {% include 'components/md_hint.html' %}
+          </details>
         </div>
-        <div style="padding-top: 0" class="section__header">
-          <h2 class="section__title">{{ _('Permission Control') }}</h2>
-        </div>
-        <div class="section__body">
-          {{ form.form_text({
-            columns:12,
-            label:'Contest Maintainer',
-            name:'maintainer',
-            help_text:_('Allow to maintain this {0}').format(_('contest')),
-            value:tdoc.maintainer|default('')
-          }) }}
-          <div class="row">
+      </section>
+
+      <section class="section contest-edit__card">
+        <header class="contest-edit__section-heading">
+          <span class="contest-edit__step" aria-hidden="true">02</span>
+          <div>
+            <h2>{{ _('Participation and access') }}</h2>
+            <p>{{ _('Choose who can join and who can manage the contest.') }}</p>
+          </div>
+        </header>
+        <div class="contest-edit__section-body">
+          <div class="contest-edit__field-grid contest-edit__field-grid--access">
+            {{ form.form_text({
+              columns:12,
+              label:'Contest Maintainer',
+              name:'maintainer',
+              help_text:_('Allow to maintain this {0}').format(_('contest')),
+              value:tdoc.maintainer|default(''),
+              row:false
+            }) }}
             {{ form.form_select({
-              columns:3,
+              columns:12,
               label:'Permission Control',
               name:'permission',
               options:{
@@ -104,9 +140,10 @@
               disabled:true,
               row:false
             }) }}
-            <div style="display: none" data-perm="assign">
+          </div>
+          <div class="contest-edit__conditional-access" data-perm="assign" style="display: none">
             {{ form.form_text({
-              columns:9,
+              columns:12,
               label:'Assign',
               name:'assign',
               placeholder:_('Group / UID'),
@@ -114,10 +151,10 @@
               disabled:true,
               row:false
             }) }}
-            </div>
-            <div style="display: none" data-perm="invite">
+          </div>
+          <div class="contest-edit__conditional-access" data-perm="invite" style="display: none">
             {{ form.form_text({
-              columns:9,
+              columns:12,
               label:'Invitation Code',
               name:'code',
               placeholder:_('(leave blank if none)'),
@@ -125,19 +162,35 @@
               disabled:true,
               row:false
             }) }}
-            </div>
+          </div>
+          <div class="contest-edit__toggle-grid contest-edit__toggle-grid--single">
+            {{ setting_toggle(
+              'allowTeam',
+              'Allow Team',
+              'Team participation cannot be rated. Once enabled, it cannot be disabled for this contest.',
+              tdoc.allowTeam|default(false),
+              tdoc.allowTeam|default(false)
+            ) }}
           </div>
         </div>
-        <div style="padding-top: 0" class="section__header">
-          <h2 class="section__title">{{ _('Contest Settings') }}</h2>
-        </div>
-        <div class="section__body">
+      </section>
+
+      <section class="section contest-edit__card">
+        <header class="contest-edit__section-heading">
+          <span class="contest-edit__step" aria-hidden="true">03</span>
+          <div>
+            <h2>{{ _('During the contest') }}</h2>
+            <p>{{ _('Configure language limits, printing, and rule-specific timing.') }}</p>
+          </div>
+        </header>
+        <div class="contest-edit__section-body">
           {{ form.form_select({
-            columns:6,
+            columns:12,
             label:'考试监控模式',
             name:'monitorMode',
             options:{'off':'关闭', 'browser':'浏览器切屏提醒与记录'},
-            value:tdoc.monitorMode|default('off')
+            value:tdoc.monitorMode|default('off'),
+            row:false
           }) }}
           {{ form.form_text({
             columns:12,
@@ -145,140 +198,147 @@
             name:'langs',
             value:tdoc.langs|default(''),
             placeholder:_("Seperated with ','"),
-            row:true
+            row:false
           }) }}
-          <input type="hidden" name="allowPractice" value="false">
-          {{ form.form_checkbox({
-            columns:12,
-            label:'Allow post-contest practice',
-            name:'allowPractice',
-            value:tdoc.allowPractice === true,
-            row:true
-          }) }}
-          <div class="row">
-            {{ form.form_checkbox({
-              columns:12,
-              label:'Hide from top banners',
-              name:'hideInBanner',
-              placeholder:_('Hide from top banners'),
-              help_text:_('The contest will still appear in the All Contests list'),
-              value:tdoc.hideInBanner|default(false),
-              row:false
-            }) }}
+          <div class="contest-edit__toggle-grid contest-edit__toggle-grid--single">
+            {{ setting_toggle(
+              'allowPrint',
+              'Allow Print',
+              'Allow user to print during contest',
+              tdoc.allowPrint|default(false)
+            ) }}
           </div>
-          <div class="row">
-            {{ form.form_checkbox({
-              columns:2,
-              label:'Rated',
-              name:'rated',
-              placeholder:_('Is rated'),
-              value:tdoc.rated === true,
-              row:false
-            }) }}
-            {{ form.form_checkbox({
-              columns:3,
-              label:'Auto hide-and show',
-              name:'autoHide',
-              placeholder:_('Auto show problems after the contest'),
-              value:handler.user.hasPerm(perm.PERM_EDIT_PROBLEM) and (tdoc.autoHide === true),
-              disabled:not handler.user.hasPerm(perm.PERM_EDIT_PROBLEM),
-              row:false
-            }) }}
-            {{ form.form_checkbox({
-              columns:3,
-              label:'Allow View Code',
-              name:'allowViewCode',
-              placeholder:_('Allow user view others code after contest'),
-              value:tdoc.allowViewCode === true,
-              row:false
-            }) }}
-            {{ form.form_checkbox({
-              columns:4,
-              label:'Allow Print',
-              name:'allowPrint',
-              placeholder:_('Allow user to print during contest'),
-              value:tdoc.allowPrint|default(false),
-              row:false
-            }) }}
-            {{ form.form_checkbox({
-              columns:4,
-              label:'Allow Team',
-              name:'allowTeam',
-              placeholder:_('Allow team participation'),
-              help_text:_('Team participation cannot be rated. Once enabled, it cannot be disabled for this contest.'),
-              value:tdoc.allowTeam|default(false),
-              row:false,
-              disabled:tdoc.allowTeam|default(false)
-            }) }}
-            <div style="display: none" class="contest-rule-settings contest-rule--oi contest-rule--strictioi">
-            {{ form.form_checkbox({
-              columns:4,
-              label:'Keep Scoreboard Hidden',
-              name:'keepScoreboardHidden',
-              placeholder:_('Keep scoreboard hidden even after contest ends'),
-              value:tdoc.keepScoreboardHidden|default(false),
-              disabled:true,
-              row:false
-            }) }}
-            </div>
-            <div style="display: none" class="contest-rule-settings contest-rule--acm contest-rule--ioi">
-            {{ form.form_text({
-              columns:4,
-              label:'Lock (minutes)',
-              name:'lock',
-              placeholder:_('(leave blank if none)'),
-              value:(((tdoc.endAt - tdoc.lockAt)/60000)|int) if tdoc.lockAt else '',
-              help_text:_('Freeze scoreboard with N minutes remaining'),
-              disabled:true,
-              row:false
-            }) }}
-            </div>
-            <div style="display: none" class="contest-rule-settings contest-rule--oi contest-rule--ioi contest-rule--ledo contest-rule--strictioi">
-            {{ form.form_text({
-              columns:4,
-              label:'Flexible Duration',
-              name:'contestDuration',
-              placeholder:_('(leave blank if none)'),
-              value:tdoc.duration|default(''),
-              help_text:_('Limit user to finish contest within N hours'),
-              disabled:true,
-              row:false
-            }) }}
+          <div class="contest-edit__subsection">
+            <h3>{{ _('Rule-specific settings') }}</h3>
+            <p>{{ _('Only settings supported by the selected rule are shown.') }}</p>
+            <div class="contest-edit__rule-fields">
+              <div class="contest-rule-settings contest-rule--acm contest-rule--ioi contest-edit__rule-field" style="display: none">
+                {{ form.form_text({
+                  columns:12,
+                  label:'Lock (minutes)',
+                  name:'lock',
+                  placeholder:_('(leave blank if none)'),
+                  value:(((tdoc.endAt - tdoc.lockAt)/60000)|int) if tdoc.lockAt else '',
+                  help_text:_('Freeze scoreboard with N minutes remaining'),
+                  disabled:true,
+                  row:false
+                }) }}
+              </div>
+              <div class="contest-rule-settings contest-rule--oi contest-rule--ioi contest-rule--ledo contest-rule--strictioi contest-edit__rule-field" style="display: none">
+                {{ form.form_text({
+                  columns:12,
+                  label:'Flexible Duration',
+                  name:'contestDuration',
+                  placeholder:_('(leave blank if none)'),
+                  value:tdoc.duration|default(''),
+                  help_text:_('Limit user to finish contest within N hours'),
+                  disabled:true,
+                  row:false
+                }) }}
+              </div>
             </div>
           </div>
-          <div class="row">
-            <div class="columns">
-              {% if page_name == 'contest_edit' %}
-                <button name="operation" value="update" type="submit" class="rounded primary button">
-                  {{ _('Update') }}
-                </button>
-                <button name="operation" value="update" type="submit" formaction="{{ url('contest_create') }}" class="rounded button">
-                  {{ _('Clone') }}
-                </button>
-                {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST) %}
-                  <button name="operation" value="delete" type="submit" class="rounded button">
-                    {{ _('Delete') }}
-                  </button>
-                {% endif %}
-              {% else %}
-                <button name="operation" value="update" type="submit" class="rounded primary button">
-                  {{ _('Create') }}
-                </button>
-              {% endif %}
-              <button type="button" class="rounded button" onclick="window.history.go(-1)">
-                {{ _('Cancel') }}
-              </button>
+        </div>
+      </section>
+
+      <section class="section contest-edit__card">
+        <header class="contest-edit__section-heading">
+          <span class="contest-edit__step" aria-hidden="true">04</span>
+          <div>
+            <h2>{{ _('Results and visibility') }}</h2>
+            <p>{{ _('Control rankings, scoreboards, and post-contest access.') }}</p>
+          </div>
+        </header>
+        <div class="contest-edit__section-body">
+          <div class="contest-edit__subsection contest-edit__subsection--first">
+            <h3>{{ _('Results and ranking') }}</h3>
+            <div class="contest-edit__toggle-grid">
+              {{ setting_toggle(
+                'rated',
+                'Is rated',
+                'Include this contest in rated rankings.',
+                tdoc.rated === true
+              ) }}
+              <div class="contest-rule-settings contest-rule--oi contest-rule--strictioi" style="display: none">
+                {{ setting_toggle(
+                  'keepScoreboardHidden',
+                  'Keep Scoreboard Hidden',
+                  'Keep scoreboard hidden even after contest ends',
+                  tdoc.keepScoreboardHidden|default(false),
+                  true
+                ) }}
+              </div>
             </div>
           </div>
-        </form>
+          <div class="contest-edit__subsection">
+            <h3>{{ _('After the contest') }}</h3>
+            <div class="contest-edit__toggle-grid">
+              {{ setting_toggle(
+                'autoHide',
+                'Auto hide-and show',
+                'Auto show problems after the contest',
+                handler.user.hasPerm(perm.PERM_EDIT_PROBLEM) and (tdoc.autoHide === true),
+                not handler.user.hasPerm(perm.PERM_EDIT_PROBLEM)
+              ) }}
+              {{ setting_toggle(
+                'allowViewCode',
+                'Allow View Code',
+                'Allow user view others code after contest',
+                tdoc.allowViewCode === true
+              ) }}
+              <input type="hidden" name="allowPractice" value="false">
+              {{ setting_toggle(
+                'allowPractice',
+                'Allow post-contest practice',
+                'Post-contest practice is personal and does not affect contest scores, problem statistics, or RP/Rating.',
+                tdoc.allowPractice === true
+              ) }}
+            </div>
+          </div>
+          <div class="contest-edit__subsection">
+            <h3>{{ _('Contest display') }}</h3>
+            <div class="contest-edit__toggle-grid">
+              {{ setting_toggle(
+                'hideInBanner',
+                'Hide from top banners',
+                'The contest will still appear in the All Contests list',
+                tdoc.hideInBanner|default(false)
+              ) }}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="contest-edit__actions">
+        <div class="contest-edit__main-actions">
+          {% if page_name == 'contest_edit' %}
+            <button name="operation" value="update" type="submit" class="rounded primary button">
+              {{ _('Update') }}
+            </button>
+            <button name="operation" value="update" type="submit" formaction="{{ url('contest_create') }}" class="rounded button">
+              {{ _('Clone') }}
+            </button>
+          {% else %}
+            <button name="operation" value="update" type="submit" class="rounded primary button">
+              {{ _('Create') }}
+            </button>
+          {% endif %}
+          <button type="button" class="rounded button" onclick="window.history.go(-1)">
+            {{ _('Cancel') }}
+          </button>
+        </div>
+        {% if page_name == 'contest_edit' and (handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST)) %}
+          <button name="operation" value="delete" type="submit" class="rounded button contest-edit__delete">
+            {{ _('Delete') }}
+          </button>
+        {% endif %}
       </div>
-    </div>
-  </div>
-  <div class="medium-3 columns">
+    </form>
+
     {% if tdoc %}
-    <div class="section side">
+    <section class="section contest-edit__files side" data-sidebar="true">
       <div class="section__header">
-        <h1 class="section__title">{{ _('Files') }}</h1>
+        <h2 class="section__title">{{ _('Files') }}</h2>
         <div class="section__tools">
           <button class="primary rounded button" name="upload_file" data-type="public" data-sidebar="true">{{ _('Upload') }}</button>
         </div>
@@ -287,9 +347,8 @@
       {% set files = tdoc.files %}
       {% set filetype = "public" %}
       {% include "partials/files.html" %}
-    </div>
+    </section>
     {% endif %}
-    {% include 'components/md_hint.html' %}
   </div>
 </div>
 {% endblock %}

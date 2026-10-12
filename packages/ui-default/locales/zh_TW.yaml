@@ -1268,3 +1268,29 @@ My Practice Submissions: 我的補題紀錄
 All Practice Submissions: 所有補題紀錄
 Post-contest practice is personal and does not affect contest scores, problem statistics, or RP/Rating.: 賽後補題按個人記錄，不計入正式比賽成績、題庫統計或 RP/Rating。
 Post-contest practice is not supported for courses or homework.: 課程和作業不支援比賽的賽後補題設定。
+Manage contest details, access, and visibility in one place.: 在一個頁面中管理比賽資訊、參賽權限與賽後展示。
+Set the contest rule, schedule, and problem list.: 設定賽制、比賽時間及題目。
+Participation and access: 參賽與權限
+Choose who can join and who can manage the contest.: 設定參賽範圍及比賽管理員。
+During the contest: 比賽過程
+Configure language limits, printing, and rule-specific timing.: 管理語言限制、列印及賽制專屬選項。
+Rule-specific settings: 賽制專屬設定
+Only settings supported by the selected rule are shown.: 僅顯示目前賽制支援的設定。
+Results and visibility: 成績與公開
+Control rankings, scoreboards, and post-contest access.: 管理排名、成績表及賽後存取。
+Results and ranking: 成績與排名
+Include this contest in rated rankings.: 將這場比賽計入排名。
+After the contest: 賽後操作
+Contest display: 比賽展示
+Markdown formatting help: Markdown 格式說明
+Allow Print: 允許比賽中列印
+Allow user to print during contest: 參賽者可在比賽期間提交列印任務。
+Allow Team: 允許組隊參賽
+Allow team participation: 允許參賽者以隊伍身分參加比賽。
+Team participation cannot be rated. Once enabled, it cannot be disabled for this contest.: 組隊比賽不計入排名；一旦開啟便無法關閉。
+Lock (minutes): 封榜時間（分鐘）
+Flexible Duration: 個人限時（小時）
+Rated: 計入排名
+Auto hide-and show: 賽後自動公開題目
+Allow View Code: 允許賽後查看其他人的程式碼
+Keep Scoreboard Hidden: 賽後繼續隱藏成績表

@@ -1274,3 +1274,29 @@ My Practice Submissions: 我的补题记录
 All Practice Submissions: 所有补题记录
 Post-contest practice is personal and does not affect contest scores, problem statistics, or RP/Rating.: 赛后补题按个人记录，不计入正式比赛成绩、题库统计或 RP/Rating。
 Post-contest practice is not supported for courses or homework.: 课程和作业不支持比赛的赛后补题设置。
+Manage contest details, access, and visibility in one place.: 在一个页面中管理比赛信息、参赛权限与赛后展示。
+Set the contest rule, schedule, and problem list.: 设置赛制、比赛时间和题目。
+Participation and access: 参赛与权限
+Choose who can join and who can manage the contest.: 设置参赛范围和比赛管理员。
+During the contest: 比赛过程
+Configure language limits, printing, and rule-specific timing.: 管理语言限制、打印和赛制专属选项。
+Rule-specific settings: 赛制专属设置
+Only settings supported by the selected rule are shown.: 仅显示当前赛制支持的设置。
+Results and visibility: 成绩与公开
+Control rankings, scoreboards, and post-contest access.: 管理排名、成绩表及赛后访问。
+Results and ranking: 成绩与排名
+Include this contest in rated rankings.: 将这场比赛计入排名。
+After the contest: 赛后操作
+Contest display: 比赛展示
+Markdown formatting help: Markdown 格式帮助
+Allow Print: 允许比赛中打印
+Allow user to print during contest: 参赛者可在比赛期间提交打印任务。
+Allow Team: 允许组队参赛
+Allow team participation: 允许参赛者以队伍身份参加比赛。
+Team participation cannot be rated. Once enabled, it cannot be disabled for this contest.: 组队比赛不计入排名；一旦开启便无法关闭。
+Lock (minutes): 封榜时间（分钟）
+Flexible Duration: 个人限时（小时）
+Rated: 计入排名
+Auto hide-and show: 赛后自动公开题目
+Allow View Code: 允许赛后查看他人代码
+Keep Scoreboard Hidden: 赛后继续隐藏成绩表

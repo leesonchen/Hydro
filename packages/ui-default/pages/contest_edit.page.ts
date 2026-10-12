@@ -19,6 +19,9 @@ const page = new NamedPage(['contest_edit', 'contest_create', 'homework_create',
     $('.contest-rule-settings').hide();
     $(`.contest-rule--${rule} input`).removeAttr('disabled');
     $(`.contest-rule--${rule}`).show();
+    $('.contest-edit__toggle').each(function () {
+      $(this).toggleClass('contest-edit__toggle--disabled', $(this).find('input').prop('disabled'));
+    });
   }).trigger('change');
   $('[name="beginAtDate"], [name="beginAtTime"], [name="duration"]').on('change', () => {
     const beginAtDate = $('[name="beginAtDate"]').val();
