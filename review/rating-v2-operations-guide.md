@@ -13,7 +13,7 @@
 | `rating-v2-audit` | P0 盘点：比赛供给、成熟选手、题目暴露、难度字段、A 分布（只读、不写库） | 定期体检、闸门复核 |
 | `rating-v2-replay` | 影子回放：按时间顺序重放合格比赛 → 能力 Rating → 难度拟合 → 学习成就 → P/C/RP 投影（`write:true` 写影子集合） | 每次评分更新、试运行发布前 |
 
-代码位置：`packages/hydrooj/src/lib/rating-v2/*`（纯计算）+ `src/script/rating-v2-{audit,replay}.ts`（注册入口）。参数全部可配置并带默认值（试验口径：`minParticipants=1`、全部 rated 赛制、含个人计时）。
+代码位置：`packages/hydrooj/src/lib/rating-v2/*`（纯计算）+ `src/script/rating-v2-{audit,replay}.ts`（注册入口）。参数全部可配置并带默认值（试验口径：`minParticipants=1`、全部 rated 赛制、含个人计时）。配置门槛可为 1，但 Rating 更新算法至少需要两名有效参与者；单人比赛不会更新 Rating。
 
 ## 2. 运行方式
 
@@ -56,8 +56,9 @@ docker exec hydro2 sh -c 'timeout 550 /root/.nix-profile/bin/node /tmp/rating-v2
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
+| `eligibilityMode` | trial | trial 保留既有影子口径；certified 使用预先冻结的认证政策及服务器提交事实，仅支持 ACM/OI |
 | `rules` | `[acm,oi,ioi,strictioi]` | 计入的 rated 赛制白名单 |
-| `minParticipants` | 1 | 合格比赛的最少窗口内有效参赛人数（D1：试验期放宽到 1） |
+| `minParticipants` | 1 | 配置门槛（D1：试验期放宽到 1）；实际 Rating 至少两人，certified 还须满足冻结政策的门槛 |
 | `includeDuration` | true | 是否纳入个人计时比赛（D3：转正式认证前建议 `false` 对照复跑） |
 | `includeAssign` | true | 是否纳入课程布置的比赛 |
 | `provisionalEvents` | 5 | 定级场次数；之前为暂定选手（零和豁免） |
@@ -109,8 +110,50 @@ db.ratingv2_shadow.countDocuments({poolId:'shadow-trial', kind:'difficulty', pro
 
 ## 6. 安全与纪律
 
-1. 所有脚本对源数据**只读**；`write:true` 只新增/清空 `ratingv2_shadow` 中对应 `poolId` 的文档。
+1. audit/replay 对源数据**只读**；replay 的 `write:true` 只新增/清空 `ratingv2_shadow` 中对应 `poolId` 的文档。certify 显式更新比赛认证策略及独立操作锁。
 2. **永远不要**直接改 `ratingv2_shadow` 里的单条评分——修正走"修订事实 → 重放"路径（计划 §13.5），影子阶段即重新跑脚本。
 3. 正式切榜前必须完成：`includeDuration=false` 对照报告（D3）、新旧榜差异公示、回退预案（保留上一代 `poolId` 即天然回退）。
 4. 若 mongosh 中对 `journal` 字段使用 `$ne:{}` 出现可疑结果（历史已知其查询计划不稳），改用 record 表口径或重跑一次核对。
 5. 校准斜率、难度状态等诊断随每次回放自动输出，无需手工维护；发现 `m15Anomalies` 非空时先人工复核该题的赛内证据再处置。
+
+## 7. 认证影子口径（2026-10-12）
+
+该入口用于未来正式发布的资格准备，不修改公开 Rating/RP、旧 difficulty 或榜单。
+默认 `eligibilityMode=trial` 保持原行为。认证模式不会自动认证历史比赛，也不会为旧记录补造时间、身份或题目版本。
+
+管理员可通过 `rating-v2-certify` 明确冻结尚未开始的同步个人 ACM/OI 比赛：
+
+```text
+rating-v2-certify {domainId:"YOUR_DOMAIN", tid:"CONTEST_ID", operation:"certify", approvedBy:ADMIN_UID, poolId:"YOUR_CERTIFIED_POOL", minParticipants:2}
+```
+
+`approvedBy` 必须是系统管理员；使用已有可信 CLI 管理入口。认证会保存题目版本、题单、分值、时间、
+语言、说明、监控、打印及相关答题条件的签名。题目证据不足时拒绝认证。
+策略写入使用冻结字段的原子条件更新；检查期间比赛配置发生改变时拒绝写入，需重新检查。
+域与认证池不能交叉混用，同池比赛窗口不得重叠；不同配置的 trial 和 certified 结果应使用不同 poolId。
+
+比赛结束并确认成绩可见后，管理员可执行 `operation:"release"`。它检查有效参与人数、当前题目版本、
+所有可计入的正式提交是否已完成评测、冻结签名及结果可见性，之后仅标记该比赛可供认证影子回放。
+成绩仍隐藏、封榜未解锁、评测未完成或有效人数不足时拒绝；该操作不会发布榜单。
+
+```text
+rating-v2-certify {domainId:"YOUR_DOMAIN", tid:"CONTEST_ID", operation:"release", approvedBy:ADMIN_UID}
+rating-v2-replay {eligibilityMode:"certified", poolId:"YOUR_CERTIFIED_POOL", write:false}
+```
+
+回放报告含 `eligibilityMode` 和 `exclusions` 原因计数。严格模式要求新记录的服务器时间、正式参赛身份、
+普通提交来源、不可变来源上下文和冻结题目版本，排除 virtual、practice、staff、team、特殊提交及来源未知记录。
+正常重评保留原始提交事实，新生成的重评记录不会被当成新的正式作答。
+未完成或异常分数会阻断整场处理；跨域池混用直接拒绝，同池窗口重叠的比赛跳过。
+
+认证成就只统计该池所绑定域的公开题目、非题主的合格记录。显式引用关系按规范题目去重，取最高证据；
+部分分按保存的题目满分归一化。当前题目版本不匹配、引用失效、无可靠文件指纹或旧记录事实缺失时明确排除。
+没有标题/题面相似度推断，不将独立题目误合并。
+
+认证/标记可见操作由独立集合 `ratingv2_certification_lock` 的唯一键串行化，完成或失败会释放锁。
+若进程被强制终止，锁保留以阻止并发错误认证；管理员确认没有在运行的认证进程后，方可按锁 token 清理。
+锁不自动过期，避免旧进程与新进程同时写入政策。
+
+当前回放读取当时有效的最终判定，重评后的新回放会反映新结果。
+这不提供历史评测快照或全库事务快照，也未实现代际发布和公开榜切换。
+需要留存某次证据时保存报告；线上认证、历史迁移和部署属于独立操作，本轮未执行。
