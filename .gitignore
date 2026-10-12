@@ -8710,3 +8710,8 @@ testuser.md
 .devin/
 .zcode/
 /test/testuser.txt
+
+# Pinned XiaoLai font fetched at build time (do not commit the 22 MiB binary).
+/packages/ui-default/misc/fonts/Xiaolai-Regular.ttf
+/packages/ui-default/misc/fonts/Xiaolai-Regular.ttf.*.tmp
+/packages/ui-default/misc/xiaolai-font.generated.styl

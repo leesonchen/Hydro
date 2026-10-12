@@ -11,7 +11,7 @@ const DomainSelectAutoComplete = forwardRef<AutoCompleteHandle<DomainDoc>, AutoC
     renderItem={(domain) => (
       <div className="media">
         <div className="media__left medium">
-          <img className="small domain-profile-avatar" src={domain.avatarUrl} alt="" width="30" height="30" />
+          <img data-avatar-fallback className="small domain-profile-avatar" src={domain.avatarUrl} alt="" width="30" height="30" />
         </div>
         <div className="media__body medium">
           <div className="domain-select__name">{domain.name}</div>

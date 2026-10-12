@@ -17,6 +17,7 @@ import { WebpackManifestPlugin } from 'webpack-manifest-plugin';
 import WebpackBar from 'webpackbar';
 import { version } from '../../package.json';
 import root from '../utils/root';
+import prepareXiaolaiFont from '../downloadXiaolaiFont';
 
 const {
   list,
@@ -33,6 +34,8 @@ const {
 fs.writeFileSync(root('__core-js.js'), `${list.map((i) => `import 'core-js/modules/${i}';`).join('\n')}\n`);
 
 export default async function (env: { watch?: boolean, production?: boolean, measure?: boolean } = {}) {
+  // Keep normal builds offline-safe; include the optional font only if locally available.
+  await prepareXiaolaiFont();
   if (env.production) console.log(targets);
   let createSentryRelease = !!(process.env.CI && process.env.SENTRY_AUTH_TOKEN);
   if (createSentryRelease) {
@@ -300,6 +303,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
       new CopyWebpackPlugin({
         patterns: [
           { from: root('static') },
+          { from: root('misc/fonts/OFL.txt'), to: 'misc/fonts/OFL.txt' },
           { from: root('components/navigation/nav-logo-small_dark.png'), to: 'components/navigation/nav-logo-small_dark.png' },
           { from: root(`${dirname(require.resolve('streamsaver/package.json'))}/mitm.html`), to: 'streamsaver/mitm.html' },
           { from: root(`${dirname(require.resolve('streamsaver/package.json'))}/sw.js`), to: 'streamsaver/sw.js' },
