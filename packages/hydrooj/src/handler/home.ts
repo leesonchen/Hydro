@@ -645,7 +645,7 @@ class HomeDomainCreateHandler extends Handler {
     async post(_: string, id: string, name: string, bulletin: string, avatar: string) {
         const doc = await domain.get(id);
         if (doc) throw new DomainAlreadyExistsError(id);
-        avatar ||= this.user.avatar || `gravatar:${this.user.mail}`;
+        avatar ||= this.user.avatar || '';
         const domainId = await domain.add(id, this.user._id, name, bulletin);
         // When this domain is deleted but previously added to user's list we shouldn't push it again
         const push = !this.user.pinnedDomains?.includes(domainId);

@@ -235,7 +235,7 @@ class UserModel {
         _id: 0,
         uname: 'Unknown User',
         unameLower: 'unknown user',
-        avatar: 'gravatar:unknown@hydro.local',
+        avatar: '',
         mail: 'unknown@hydro.local',
         mailLower: 'unknown@hydro.local',
         salt: '',
@@ -410,7 +410,7 @@ class UserModel {
                     loginat: new Date(),
                     loginip: regip,
                     priv,
-                    avatar: `gravatar:${mail}`,
+                    avatar: '',
                 });
                 // eslint-disable-next-line no-await-in-loop
                 await domain.collUser.updateOne(
@@ -530,7 +530,6 @@ class UserModel {
             udict[key].school ||= '';
             udict[key].studentId ||= '';
             udict[key].displayName ||= udict[key].uname;
-            udict[key].avatar ||= `gravatar:${udict[key].mail}`;
         }
         return udict as BaseUserDict;
     }

@@ -1,6 +1,8 @@
 import { Types } from '@hydrooj/framework/validator';
 import { md5 } from '../utils';
 
+export const DEFAULT_AVATAR_URL = '/img/avatar.png';
+
 type AvatarProvider = (src: string, size: number) => string;
 
 export const providers: Record<string, AvatarProvider> = {
@@ -18,9 +20,9 @@ function avatar(src: string, size = 64, fallback = '') {
         src = fallback;
         index = src.indexOf(':');
     }
-    if (index === -1) return providers.gravatar('', size);
+    if (index === -1) return DEFAULT_AVATAR_URL;
     const [provider, str] = [src.substring(0, index), src.substring(index + 1, src.length)];
-    if (!providers[provider] || !str) return providers.gravatar('', size);
+    if (!providers[provider] || !str) return DEFAULT_AVATAR_URL;
     return providers[provider](str, size);
 }
 

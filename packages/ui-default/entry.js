@@ -1,4 +1,5 @@
 import './polyfill';
+import './components/avatarFallback';
 
 import $ from 'jquery';
 
