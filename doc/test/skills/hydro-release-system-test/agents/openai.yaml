@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hydro Release System Test"
+  short_description: "Compare Hydro releases and test changes in a browser"
+  default_prompt: "Use $hydro-release-system-test to compare these Hydro deployments and produce a browser-tested release report."

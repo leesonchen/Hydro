@@ -1,0 +1,431 @@
+[
+  {
+    "id": "AUTH-01",
+    "area": "登录回归",
+    "title": "管理员浏览器登录",
+    "role": "admin",
+    "steps": "填写本地管理员凭据并提交登录表单",
+    "expected": "进入登录后的页面，显示管理员身份"
+  },
+  {
+    "id": "AUTH-02",
+    "area": "登录回归",
+    "title": "学生浏览器登录",
+    "role": "student",
+    "steps": "填写本地学生凭据并提交登录表单",
+    "expected": "进入登录后的页面，显示学生身份"
+  },
+  {
+    "id": "UI-01",
+    "area": "在线编程与样例",
+    "title": "现有 exam 在线编辑器与补题提示",
+    "role": "admin",
+    "steps": "进入现有 Test1 题目，点击进入在线编程模式",
+    "expected": "Monaco 编辑器加载，已结束比赛显示补题不计成绩提示"
+  },
+  {
+    "id": "UI-02",
+    "area": "头像",
+    "title": "失效头像与动态头像回退",
+    "role": "admin",
+    "steps": "在实际页面令已渲染头像请求失效，再为带回退标记的动态头像模拟失效",
+    "expected": "头像使用同源 /img/avatar.png，srcset 被移除，页面可继续操作"
+  },
+  {
+    "id": "UI-03",
+    "area": "字体与离线兼容",
+    "title": "无外网字体回退",
+    "role": "admin",
+    "steps": "Chrome 屏蔽外网访问后打开题目与比赛设置页面",
+    "expected": "中文与本地图标正常显示；不请求外部 XiaoLai；当前未打包 XiaoLai 时使用正常回退"
+  },
+  {
+    "id": "UI-04",
+    "area": "Markdown与样例",
+    "title": "公式、代码和样例首行渲染",
+    "role": "student",
+    "steps": "浏览临时题目的公式、代码块与输入输出样例",
+    "expected": "KaTeX 公式正常渲染；样例首行没有模板缩进；代码内容正确"
+  },
+  {
+    "id": "UI-05",
+    "area": "内容反馈",
+    "title": "题目反馈弹窗与空内容校验",
+    "role": "student",
+    "steps": "点击题目反馈入口，提交空内容，再取消",
+    "expected": "显示题目来源和收件人说明，空内容被浏览器拦截，不发送消息"
+  },
+  {
+    "id": "UI-06",
+    "area": "内容反馈",
+    "title": "讲义标记与引用反馈入口",
+    "role": "student",
+    "steps": "打开讲义，选中一段文本并调用页面标记工具的反馈入口",
+    "expected": "显示引用内容与讲义来源；取消后回到讲义"
+  },
+  {
+    "id": "MD-01",
+    "area": "Markdown讲义",
+    "title": "完整外层包装按展示规则解包",
+    "role": "student",
+    "steps": "夹具保存带CRLF、标题和Mermaid的完整markdown外层围栏，学生在浏览器打开讲义",
+    "expected": "标题作为标题显示，外层围栏不作为代码显示，数据库原文保持不变"
+  },
+  {
+    "id": "MD-02",
+    "area": "Markdown讲义",
+    "title": "普通代码围栏保留",
+    "role": "student",
+    "steps": "夹具保存只有标题而无Mermaid的markdown示例代码，学生在浏览器打开讲义",
+    "expected": "仍作为代码展示，不误拆为普通标题"
+  },
+  {
+    "id": "FB-SEND",
+    "area": "内容反馈",
+    "title": "真实收件人送达与回复",
+    "role": "student/admin",
+    "steps": "提交内容反馈并由收件人回复",
+    "expected": "收件人能收到反馈且回复对话更新",
+    "constraint": "用户已明确授权发送并清理给 xingchen、leesonchen、codex_verify_20260610 的测试反馈及回复"
+  },
+  {
+    "id": "CON-01",
+    "area": "比赛设置",
+    "title": "分组设置与开启保存",
+    "role": "admin",
+    "steps": "打开临时比赛编辑页，检查四组设置，开启可用布尔开关并保存，再打开编辑页",
+    "expected": "所有可用开关保存并正确回显，比赛规则和时间保留"
+  },
+  {
+    "id": "CON-02",
+    "area": "比赛设置",
+    "title": "关闭设置与 banner 可见性",
+    "role": "admin",
+    "steps": "关闭可用开关保存，验证回显，再检查开启 hideInBanner 后比赛列表",
+    "expected": "可编辑开关关闭状态持久化；已开启的团队模式保持只读；隐藏 banner 不移除列表条目"
+  },
+  {
+    "id": "CON-03",
+    "area": "比赛权限",
+    "title": "学生不能编辑比赛",
+    "role": "student",
+    "steps": "在地址栏访问临时比赛编辑页",
+    "expected": "403 权限页面，不显示编辑表单"
+  },
+  {
+    "id": "TEAM-01",
+    "area": "团队UI",
+    "title": "创建、重命名与退出测试团队",
+    "role": "student",
+    "steps": "在临时域团队页创建团队、打开重命名表单保存、退出团队",
+    "expected": "团队卡片、成员与新名称更新，退出后不再显示该团队"
+  },
+  {
+    "id": "COUR-01",
+    "area": "课程编辑",
+    "title": "可视化章节编辑与稳定编号",
+    "role": "admin",
+    "steps": "新增章节、保存、删除新增章节、再新增并保存",
+    "expected": "新增章节可保存；已删除编号不复用；原测评绑定保留"
+  },
+  {
+    "id": "COUR-02",
+    "area": "课程参与",
+    "title": "学生认领与初始门禁",
+    "role": "student",
+    "steps": "打开课程，点击认领，查看课程章节及后续题目的直接链接",
+    "expected": "第一章和测评可见，依赖测评的第二章不可访问"
+  },
+  {
+    "id": "COUR-03",
+    "area": "课程管理",
+    "title": "管理分组与破坏操作确认",
+    "role": "admin",
+    "steps": "切换三个管理标签；对第一章关闭题目操作先取消，再确认执行",
+    "expected": "确认面板展示课程、课时和学生范围；取消不改变权限，确认显示逐项成功"
+  },
+  {
+    "id": "COUR-04",
+    "area": "课程门禁",
+    "title": "手工关闭阻止 SELF 越权",
+    "role": "student",
+    "steps": "教师关闭第一章后，学生直接访问其题目和提交页面",
+    "expected": "题目与提交页面均显示403，不因 SELF 权限绕过"
+  },
+  {
+    "id": "COUR-05",
+    "area": "课程管理",
+    "title": "手工开放与恢复访问规则",
+    "role": "admin/student",
+    "steps": "教师开放第一章，手工开放未达标第二章，学生访问；教师恢复第二章规则，学生再次访问",
+    "expected": "手工开放即时生效；恢复规则后第二章重新锁定"
+  },
+  {
+    "id": "COUR-06",
+    "area": "课程权限",
+    "title": "学生不能管理或编辑课程",
+    "role": "student",
+    "steps": "分别直接访问课程 manage 和 edit 路由",
+    "expected": "两个页面均显示403，不提供管理或编辑控件"
+  },
+  {
+    "id": "CF-01",
+    "area": "课堂反馈",
+    "title": "教师入口、过滤与录入门槛",
+    "role": "admin",
+    "steps": "打开课程反馈，切换三个标签；未选择课时题目时检查动作；选择课时和题目",
+    "expected": "名单、历史、待复测可切换；范围未确定时不能录入，选择范围后学生行可录入"
+  },
+  {
+    "id": "CF-02",
+    "area": "课堂反馈",
+    "title": "指导观察、备注与细项",
+    "role": "admin",
+    "steps": "展开学生备注，填写备注和指导细项，点击指导过，刷新页面",
+    "expected": "观察保存并回显，备注和细项进入详情，刷新不产生重复观察"
+  },
+  {
+    "id": "CF-03",
+    "area": "课堂反馈",
+    "title": "需复测与待跟进计数",
+    "role": "admin",
+    "steps": "对同一学生记录需复测，切换待复测标签",
+    "expected": "显示待跟进事件，计数为1，关联正确学生、题目和课时"
+  },
+  {
+    "id": "CF-04",
+    "area": "课堂反馈",
+    "title": "Accepted 不自动完成跟进",
+    "role": "student/admin",
+    "steps": "学生通过浏览器向课程提交正确答案，教师等待判题并刷新待复测列表",
+    "expected": "真实 Accepted 后观察仍待跟进，计数不自动归零"
+  },
+  {
+    "id": "CF-05",
+    "area": "课堂反馈",
+    "title": "完成跟进与撤销处理",
+    "role": "admin",
+    "steps": "在待复测中点击完成跟进，然后撤销这次处理",
+    "expected": "完成后待跟进计数归零，撤销后恢复为1，历史保留操作记录"
+  },
+  {
+    "id": "CF-06",
+    "area": "课堂反馈",
+    "title": "观察详情、撤销与历史过滤",
+    "role": "admin",
+    "steps": "打开观察详情，撤销观察，按学生和课时过滤历史",
+    "expected": "详情包含创建与处理记录；撤销后不再待跟进，历史可追溯"
+  },
+  {
+    "id": "CF-07",
+    "area": "课堂反馈",
+    "title": "复用题目需明确课时",
+    "role": "admin",
+    "steps": "选择在两章复用的题目而不选课时，然后选择其中一章",
+    "expected": "未选课时不能录入；明确课时后可录入，不把两章观察混淆"
+  },
+  {
+    "id": "CF-08",
+    "area": "课堂反馈权限",
+    "title": "普通学生无权查看教师观察",
+    "role": "student",
+    "steps": "直接访问课程反馈路由及观察详情",
+    "expected": "403，不泄露名单、备注或观察历史"
+  },
+  {
+    "id": "PR-01",
+    "area": "管理员评分试用",
+    "title": "默认关闭",
+    "role": "admin",
+    "steps": "尚未启用时访问课程 practice-rating 页面",
+    "expected": "403且课程无试用入口"
+  },
+  {
+    "id": "PR-02",
+    "area": "管理员评分试用",
+    "title": "临时域启用后的只读与样本不足",
+    "role": "admin",
+    "steps": "通过夹具仅启用临时域 adminTrial，点击课程侧栏试用入口，选择学生和题目后查看",
+    "expected": "管理员只读页面显示样本不足及无配对概率，明示模型范围，没有编辑分数功能"
+  },
+  {
+    "id": "PR-03",
+    "area": "管理员评分试用权限",
+    "title": "学生及越界参数拒绝",
+    "role": "student/admin",
+    "steps": "学生直接访问试用页面；管理员输入不在课程名单的UID或PID访问",
+    "expected": "均显示403，不展示其他人的评分数据"
+  },
+  {
+    "id": "PRA-01",
+    "area": "赛后练习",
+    "title": "比赛结束后开启个人练习",
+    "role": "student",
+    "steps": "打开允许练习的临时已结束比赛，从UI进入开始练习，再打开客观题答题页",
+    "expected": "显示个人赛后练习说明、个人练习记录入口和题目上下文"
+  },
+  {
+    "id": "PRA-02",
+    "area": "赛后练习",
+    "title": "浏览器提交与正式成绩隔离",
+    "role": "student/admin",
+    "steps": "通过浏览器提交正确答案，查看个人练习记录，再查看正式比赛页面和榜单",
+    "expected": "个人练习 Accepted；正式报名、提交和成绩没有新增；补充证据带practice归属和服务器提交事实"
+  },
+  {
+    "id": "PRA-03",
+    "area": "赛后练习",
+    "title": "关闭练习后拒绝继续提交",
+    "role": "student",
+    "steps": "夹具将临时比赛 allowPractice 关闭，学生重新访问练习提交地址",
+    "expected": "不再提供可用练习提交入口，直接地址被拒绝；已有练习历史仍可见"
+  },
+  {
+    "id": "SCR-01",
+    "area": "在线编程与样例",
+    "title": "C++在线编程与样例自测",
+    "role": "student",
+    "steps": "在临时A+B题进入在线编程，输入C++17代码，点击样例运行自测",
+    "expected": "样例输入1 5进入自测面板，显示 Accepted 和输出6，无首行缩进"
+  },
+  {
+    "id": "YAML-01",
+    "area": "配置兼容",
+    "title": "YAML配置编辑器加载",
+    "role": "admin",
+    "steps": "打开临时题目的配置编辑页面，查看其配置与表单",
+    "expected": "已上传配置正常解析，页面无YAML模块或worker错误"
+  },
+  {
+    "id": "ROLE-01",
+    "area": "域角色",
+    "title": "角色增删与默认优先级保存",
+    "role": "admin",
+    "steps": "创建临时角色，调整默认项和优先级保存，验证guest/root边界",
+    "expected": "保存成功，恰好一个默认邀请角色，guest首位root末位"
+  },
+  {
+    "id": "ROLE-02",
+    "area": "域角色",
+    "title": "保留名称拒绝",
+    "role": "admin",
+    "steps": "尝试创建__proto__角色",
+    "expected": "提示非法角色名称，不新增保留角色"
+  },
+  {
+    "id": "CLASS-01",
+    "area": "班级管理",
+    "title": "班级设置显示与学生跨权拒绝",
+    "role": "admin/student",
+    "steps": "教师查看临时域班级新建表单，学生直接访问班级设置",
+    "expected": "教师可设置周期、教师/学生、公开榜单与罚时；学生被拒绝"
+  },
+  {
+    "id": "MSG-01",
+    "area": "消息UI",
+    "title": "无发信权限的消息只读界面",
+    "role": "admin",
+    "steps": "使用当前管理员打开消息页，核对只读标记与缺失的新建/输入控件，不发送消息",
+    "expected": "没有全站发信权限时不显示新建或输入区域；页面正常渲染；截图遮蔽私人对话"
+  },
+  {
+    "id": "MSG-02",
+    "area": "消息UI",
+    "title": "有发信权限时空输入不能发送",
+    "role": "student",
+    "steps": "使用具有发信权限的测试学生打开自己作为目标的新对话，保持内容为空",
+    "expected": "输入框为空时发送按钮禁用，不产生真实消息；截图遮蔽私人对话"
+  },
+  {
+    "id": "ASM-01",
+    "area": "课堂测评",
+    "title": "父课程准入与独立测评",
+    "role": "student/admin",
+    "steps": "未认领课程前访问子测评；认领后从课程进入子测评并报名",
+    "expected": "未认领拒绝；认领后可报名；试卷单独存在且默认不计Rating"
+  },
+  {
+    "id": "ASM-02",
+    "area": "课堂测评",
+    "title": "正常进入题目列表开始作答",
+    "role": "student",
+    "steps": "等待临时测评开赛，点击题目列表后打开私有题目",
+    "expected": "正常记录开始时间，隐藏题目可见，测评监控脚本启动"
+  },
+  {
+    "id": "MON-01",
+    "area": "浏览器监考",
+    "title": "真实失焦与粘贴事件上报",
+    "role": "student/admin",
+    "steps": "在学生测评页面触发浏览器焦点切换和粘贴动作，教师刷新监考记录",
+    "expected": "教师页面出现对应浏览器事件和会话，明示不能单独作为作弊结论"
+  },
+  {
+    "id": "MON-02",
+    "area": "浏览器监考权限",
+    "title": "学生无权查看监考记录",
+    "role": "student",
+    "steps": "直接访问测评monitor页面",
+    "expected": "403，不展示他人事件或会话"
+  },
+  {
+    "id": "ASM-03",
+    "area": "课堂测评",
+    "title": "真实判题与测评期间成绩隐藏",
+    "role": "student/admin",
+    "steps": "学生在客观题的输入控件作答并点击提交，教师从记录列表查看Accepted，学生查看记录与课程",
+    "expected": "教师看到100分Accepted；学生看不到结束前成绩，后续章节仍锁定"
+  },
+  {
+    "id": "ASM-04",
+    "area": "课堂测评",
+    "title": "结束后成绩与后续章节自动解锁",
+    "role": "student",
+    "steps": "测评结束后刷新课程，点击后续章题目",
+    "expected": "显示100分成绩，后续章节出现并可访问"
+  },
+  {
+    "id": "ASM-05",
+    "area": "课堂测评保护",
+    "title": "直接编辑子测评与删除已开赛课程拒绝",
+    "role": "admin",
+    "steps": "访问子测评编辑页；通过课程编辑页面点击删除并确认",
+    "expected": "均被拒绝，父课程与子测评仍存在"
+  },
+  {
+    "id": "CERT-01",
+    "area": "Rating认证",
+    "title": "题目版本冻结与释放门槛",
+    "role": "admin",
+    "steps": "使用实际认证CLI认证未来比赛并尝试提前释放；浏览器查看其公开比赛界面",
+    "expected": "CLI冻结版本且拒绝提前释放；公开榜单/普通rated开关不被认证策略替代",
+    "evidenceType": "supplemental-cli"
+  },
+  {
+    "id": "CERT-02",
+    "area": "课堂Rating认证",
+    "title": "教师不得进入学生认证名单",
+    "role": "admin",
+    "steps": "认证CLI提交含教师的临时课堂名单；浏览器再次查看课程",
+    "expected": "认证拒绝classroomParticipant，课程和测评正常且未生成错误政策",
+    "evidenceType": "supplemental-cli"
+  },
+  {
+    "id": "TPL-01",
+    "area": "课程模板与班级复制",
+    "title": "课程模板保存",
+    "role": "admin",
+    "setup": "独立临时域内由 fixture helper 准备一个含课堂测评节点的课程；管理员 Chrome 会话。",
+    "steps": "打开现有课程编辑页，点击显式 button[name=\"isTemplate\"][value=\"true\"]（Save as Template）。",
+    "expected": "保存出一个独立模板；模板保留 assessment.kind 与题目，但不带已实例化的 assessment.contestTid，原课程仍存在。"
+  },
+  {
+    "id": "TPL-02",
+    "area": "课程模板与班级复制",
+    "title": "班级复制含测评模板",
+    "role": "admin",
+    "setup": "同一独立临时域内由 helper/API 准备模板和两个班级；真实浏览器操作每个班级的 Add Course 对话框。",
+    "steps": "真实选择 sourceDomain、Autocomplete 中的模板，再确认 Add Course；为两个班级各复制一次并读取结果核对。",
+    "expected": "每个班级都出现复制课程；测评节点保留且各自获得不同的新 assessment.contestTid，题目 PID 对应有效目标题目，不引用源模板中的测评实例。"
+  }
+]

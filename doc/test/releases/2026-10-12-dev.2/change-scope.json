@@ -1,0 +1,257 @@
+{
+  "baseline": {
+    "previous": {
+      "hydrooj": "5.0.7-dev.1",
+      "@hydrooj/ui-default": "4.58.4-dev.41",
+      "releaseDirectory": "20261004051256"
+    },
+    "current": {
+      "hydrooj": "5.0.7-dev.2",
+      "@hydrooj/ui-default": "4.58.5-dev.2",
+      "releaseDirectory": "20261012110535"
+    },
+    "authority": "evidence/release-comparison.json; releaseDirectory values 20261004051256 and 20261012110535 are release directories. This upgrade backup is 20261012110531. Both gitHead values are null, so package snapshots are the comparison baseline.",
+    "upgradeBackup": "20261012110531"
+  },
+  "features": [
+    {
+      "id": "course-assessment",
+      "title": "课程测评节点与成绩前置条件",
+      "kind": "新增·核心",
+      "userImpact": "教师可在课程结构中安排独立测评、参与范围、题目和规则；测评完成与成绩可参与后续章节开放条件。成绩在测评结束前可能隐藏。",
+      "evidenceBefore": "previous package: hydrooj/src/builtin/course-management/handler/course.ts (no assessment model in previous package; previous course handler has only lesson/homework nodes)",
+      "evidenceAfter": "current package: hydrooj/src/builtin/course-management/handler/course.ts; current package: hydrooj/src/builtin/course-management/model/assessment.ts; current package: hydrooj/src/builtin/course-management/model/structure.ts; current package: hydrooj/src/lib/course-assessment-access.ts; current package: @hydrooj/ui-default/templates/course_detail.html",
+      "browserSurface": "课程编辑/管理、课程详情的测评时间/入口/成绩、测评详情和问题列表、学生课程章节状态。",
+      "testIdeas": [
+        "教师创建并配置测评节点，学生按报名和测评规则进入",
+        "验证 all/score 等完成条件对后续章节的影响",
+        "测评结束前检查成绩隐藏；结束后检查授权结果",
+        "检查未报名、章节禁止和非教师访问边界"
+      ],
+      "defaultOrBoundary": "测评入口受课程教师、报名状态和活动规则约束；未结束时隐藏成绩是预期行为。"
+    },
+    {
+      "id": "course-assessment-race-gate",
+      "title": "课程章节门禁与测评并发保护",
+      "kind": "修复·核心",
+      "userImpact": "默认学生权限不再绕过教师设置的章节禁止；测评更新期间不会以过期成绩新增课程授权，也不会覆盖并发形成的新进度。",
+      "evidenceBefore": "previous package: hydrooj/src/builtin/course-management/handler/course.ts; previous package: hydrooj/src/handler/problem.ts",
+      "evidenceAfter": "current package: hydrooj/src/builtin/course-management/handler/course.ts; current package: hydrooj/src/builtin/course-management/model/assessment.ts; current package: hydrooj/src/handler/problem.ts; current package: hydrooj/src/interface.ts; current package: hydrooj/src/model/contest.ts",
+      "browserSurface": "课程章节目录、课程题目详情、提交页和提交操作；教师章节准入配置与学生课程进度。",
+      "testIdeas": [
+        "学生访问教师明确禁止章节的详情、提交页和提交入口",
+        "检查合法章节编号 0 的允许与禁止行为",
+        "测评状态写入前后检查章节授权和已有手工决定",
+        "检查普通比赛页面不受课堂写入标记影响"
+      ],
+      "defaultOrBoundary": "自管理权限须与当前课程归属相符；历史合法授权和教师手工决定按既定规则保留。"
+    },
+    {
+      "id": "classroom-feedback",
+      "title": "本地课堂反馈与跟进",
+      "kind": "新增·核心",
+      "userImpact": "教师可在课程/作业活动中查看名册摘要、待处理反馈和历史，记录观察、撤回观察、处理完成或撤销处理。",
+      "evidenceBefore": "previous package: hydrooj/src/handler/ (no classroom-feedback handler or classroomFeedback model); previous package: @hydrooj/ui-default/templates/ (no classroom_feedback.html)",
+      "evidenceAfter": "current package: hydrooj/src/handler/classroom-feedback.ts; current package: hydrooj/src/lib/classroomFeedback.ts; current package: hydrooj/src/model/classroomFeedback.ts; current package: @hydrooj/ui-default/components/classroom-feedback.tsx; current package: @hydrooj/ui-default/templates/classroom_feedback.html",
+      "browserSurface": "课程或作业反馈页、名册/待处理/历史视图、观察详情与操作确认。",
+      "testIdeas": [
+        "按教师身份记录观察并检查名册摘要和待处理计数",
+        "撤回观察、完成跟进、撤销完成并刷新页面",
+        "并发更新时确认冲突提示和最新状态",
+        "检查学生及无权教师不能读取或修改反馈"
+      ],
+      "defaultOrBoundary": "域设置 classroomFeedback 默认 false；仅授权活动教师可管理。反馈是教学记录，不自动形成学生评分。"
+    },
+    {
+      "id": "contest-monitor",
+      "title": "浏览器比赛监控",
+      "kind": "新增·核心",
+      "userImpact": "配置为 browser 监控模式的比赛可呈现会话和监控事件，便于授权人员查看活动状态。",
+      "evidenceBefore": "previous package: hydrooj/src/handler/ (no contest-monitor handler or contestMonitor model)",
+      "evidenceAfter": "current package: hydrooj/src/handler/contest-monitor.ts; current package: hydrooj/src/model/contestMonitor.ts; current package: @hydrooj/ui-default/templates/contest_monitor.html; current package: @hydrooj/ui-default/templates/partials/contest_monitor_client.html",
+      "browserSurface": "比赛监控页面、监控状态和浏览器会话列表。",
+      "testIdeas": [
+        "授权比赛管理员打开监控页并查看会话",
+        "监控模式关闭时确认入口不可用",
+        "普通参赛者尝试打开管理视图",
+        "检查活动结束或无会话时的空状态"
+      ],
+      "defaultOrBoundary": "监控模式必须配置为 browser，且读取和上报受比赛权限、参赛状态和速率限制约束。"
+    },
+    {
+      "id": "contest-practice",
+      "title": "比赛赛后练习",
+      "kind": "新增·核心",
+      "userImpact": "比赛可开放赛后练习入口，参赛者继续访问相关题目并提交练习；练习记录和代码按比赛及团队权限可见。",
+      "evidenceBefore": "previous package: hydrooj/src/handler/contest.ts (no contest-practice access path)",
+      "evidenceAfter": "current package: hydrooj/src/lib/contest-practice.ts; current package: hydrooj/src/handler/contest.ts; current package: hydrooj/src/model/record.ts; current package: @hydrooj/ui-default/templates/contest_detail.html; current package: @hydrooj/ui-default/templates/contest_problemlist.html",
+      "browserSurface": "比赛详情、结束后的题目列表、题目提交及练习提交记录。",
+      "testIdeas": [
+        "比赛结束后参赛者打开赛后练习并提交",
+        "比赛进行中检查练习专用操作状态",
+        "非参赛用户与管理者分别检查访问边界",
+        "团队比赛检查队友练习记录和代码权限"
+      ],
+      "defaultOrBoundary": "受活动练习配置、活动状态、参赛身份和团队身份约束；练习提交不等同于比赛正式得分。"
+    },
+    {
+      "id": "contest-team-ui",
+      "title": "团队参赛与团队管理交互",
+      "kind": "调整·核心",
+      "userImpact": "报名对话框支持个人/团队模式和团队选择；团队页面提供邀请成员与重命名入口。",
+      "evidenceBefore": "previous package: @hydrooj/ui-default/components/contest/contest.page.ts; evidence/release-comparison.json: @hydrooj/ui-default/templates/contest_team.html is absent from the previous package file manifest.",
+      "evidenceAfter": "current package: @hydrooj/ui-default/components/contest/contest.page.ts; current package: @hydrooj/ui-default/templates/contest_team.html; current package: @hydrooj/ui-default/templates/contest_edit.html; current package: hydrooj/src/handler/contest.ts",
+      "browserSurface": "比赛报名弹窗、团队列表、邀请/接受流程和团队名称编辑。",
+      "testIdeas": [
+        "分别报名个人与团队模式",
+        "发送团队邀请并由受邀用户处理",
+        "重命名团队后刷新验证持久化",
+        "在团队未开放或邀请码缺失时检查禁用和校验提示"
+      ],
+      "defaultOrBoundary": "可选模式由比赛团队设置决定；团队报名要求选定团队并遵循邀请码和成员限制。团队设置页中一旦启用 allowTeam，开关禁用且文案说明不能关闭；团队赛不能计入个人 Rating。"
+    },
+    {
+      "id": "contest-settings",
+      "title": "比赛设置页四组重构与设置回显",
+      "kind": "调整·核心",
+      "userImpact": "contest_edit 全页重组为基础信息、参赛与权限、比赛过程、成绩与公开四组；开关增加解释，规则专属字段按规则显示，编辑时回显已保存配置。",
+      "evidenceBefore": "previous package: @hydrooj/ui-default/templates/contest_edit.html (flat form sections and old checkbox controls)",
+      "evidenceAfter": "current package: @hydrooj/ui-default/templates/contest_edit.html; current package: hydrooj/src/handler/contest.ts",
+      "browserSurface": "比赛新建/编辑页四组设置、切换规则后的条件字段、保存后重开时的配置回显。",
+      "testIdeas": [
+        "核对四组标题及基础信息、参赛权限、比赛过程、成绩公开字段归类",
+        "编辑并回显 rule、title、起止时间/时长、题目列表、描述、maintainer 和 public/assign/invite 权限",
+        "切换 ACM/OI 等规则检查 lock、灵活时长和隐藏榜单等条件字段",
+        "分别保存/重开 rated、autoHide、allowViewCode、allowPrint、allowPractice、hideInBanner、monitorMode，核对配置回显",
+        "启用团队参赛后检查开关 disabled、提示不能关闭，并检查团队赛与个人 Rated 的互斥约束"
+      ],
+      "defaultOrBoundary": "allowTeam 开启后不能关闭；团队参赛不能计入个人 Rating。Keep Scoreboard Hidden 仅在适用规则下出现。"
+    },
+    {
+      "id": "course-management-structure",
+      "title": "课程结构、复制与管理界面",
+      "kind": "调整·核心",
+      "userImpact": "课程结构节点化后，管理界面可编辑并呈现结构；从模板复制课程时识别测评节点、题目映射和课程时间。",
+      "evidenceBefore": "previous package: hydrooj/src/builtin/course-management/handler/course.ts; previous package: hydrooj/src/builtin/course-management/handler/class.ts; previous package: @hydrooj/ui-default/templates/course_manage.html",
+      "evidenceAfter": "current package: hydrooj/src/builtin/course-management/model/structure.ts; current package: hydrooj/src/builtin/course-management/handler/course.ts; current package: hydrooj/src/builtin/course-management/handler/class.ts; current package: @hydrooj/ui-default/templates/course_manage.html",
+      "browserSurface": "课程编辑器、章节树、模板选择/复制和课程管理页。",
+      "testIdeas": [
+        "增删重排章节并保存后重载",
+        "复制含讲义、题目和测评节点的课程模板",
+        "验证无权用户的讲义字段不出现在响应页面",
+        "在窄屏打开课程管理并横向检查表格"
+      ],
+      "defaultOrBoundary": "课程内容投影和复制受课程所有权、编辑权限及跨域共享配置约束。"
+    },
+    {
+      "id": "feedback-conversations",
+      "title": "题目/讲义标记引用入口与反馈消息会话",
+      "kind": "新增·次要",
+      "userImpact": "从题目描述或课程讲义的标记/引用入口打开页面内反馈对话框，可附带选中文本；之后在站内消息会话查看交流。源码收件规则面向当前域 owner 和全站系统管理员（排除发送者）。没有独立 Feedback 页面。",
+      "evidenceBefore": "evidence/release-comparison.json: hydrooj/src/model/feedback.ts is absent from the previous package file manifest; previous package: @hydrooj/ui-default/components/messagepad/index.jsx",
+      "evidenceAfter": "current package: hydrooj/src/model/feedback.ts; current package: hydrooj/src/handler/home.ts; current package: @hydrooj/ui-default/components/feedback/feedback.page.ts; current package: @hydrooj/ui-default/components/message/index.page.ts; current package: @hydrooj/ui-default/components/messagepad/index.jsx; current package: @hydrooj/ui-default/templates/partials/problem_description.html; current package: @hydrooj/ui-default/templates/course_lecture.html",
+      "browserSurface": "题目描述标记/选区引用、课程讲义标记/选区引用、站内消息反馈会话。",
+      "testIdeas": [
+        "分别从题目和讲义打开标记入口并检查选区引用内容",
+        "提交空内容检查校验",
+        "检查系统账号禁发",
+        "按已获授权执行一次内容反馈送达与会话回复，清理本次创建的数据"
+      ],
+      "defaultOrBoundary": "页面内对话框而非独立 Feedback 页面；当前域 owner 和全站系统管理员为收件人（排除发送者）。本轮已授权发送和清理。"
+    },
+    {
+      "id": "rating-admin-trial",
+      "title": "练习评分管理员只读试用与认证工具边界",
+      "kind": "新增·次要",
+      "userImpact": "系统管理员可查看课程/作业范围内的练习评分结果和运行状态；CLI 可显式运行评分或认证流程。",
+      "evidenceBefore": "previous package: hydrooj/src/handler/ (no practice-rating handler); previous package: @hydrooj/ui-default/templates/ (no practice_rating_trial.html)",
+      "evidenceAfter": "current package: hydrooj/src/handler/practice-rating.ts; current package: hydrooj/src/lib/practice-rating/; current package: hydrooj/src/script/practice-rating.ts; current package: hydrooj/src/script/rating-v2-certify.ts; current package: @hydrooj/ui-default/templates/practice_rating_trial.html",
+      "browserSurface": "课程/作业侧栏中的管理员试用入口和只读报告页。",
+      "testIdeas": [
+        "显式启用 adminTrial 后由系统管理员查看报告",
+        "关闭开关后检查页面不可访问",
+        "普通教师、域管理员、学生及仅有旧 teacherTrial 标记时检查拒绝",
+        "报告含估计、日期、失败/样本不足状态时检查解释"
+      ],
+      "defaultOrBoundary": "adminTrial 默认关闭；仅系统管理员可读。认证、回放和练习评分脚本是 CLI 功能，不能表述成浏览器内认证，也不自动公开排名。"
+    },
+    {
+      "id": "offline-avatar-font",
+      "title": "头像失败回退和本地字体",
+      "kind": "调整·次要",
+      "userImpact": "头像源失效时显示站内占位头像。小赖字体未打包，使用已安装字体或普通回退；Source Code Pro 字体仍以本地 WOFF 随包提供。",
+      "evidenceBefore": "previous package: hydrooj/src/lib/avatar.ts; previous package: @hydrooj/ui-default/misc/typography.styl",
+      "evidenceAfter": "current package: hydrooj/src/lib/avatar.ts; current package: @hydrooj/ui-default/components/avatarFallback.js; current package: @hydrooj/ui-default/misc/typography.styl; current package: @hydrooj/ui-default/misc/xiaolai-font.generated.styl (contains only the comment 'XiaoLai font not bundled; use installed font or normal fallback.'); evidence/release-comparison.json current package file manifest includes public/fonts/source-code-pro-latin-400-normal.woff",
+      "browserSurface": "头像组件、用户资料/列表、个人设置头像预览及页面中文字体。",
+      "testIdeas": [
+        "断开远程头像源检查本地占位图",
+        "检查上传头像和可用远程头像不被回退覆盖",
+        "屏蔽外网加载页面，确认正常显示且不请求外部 XiaoLai 字体",
+        "检查 Source Code Pro 本地 WOFF 与系统字体回退"
+      ],
+      "defaultOrBoundary": "自定义头像优先；头像源不可达才回退。XiaoLai WOFF 不在当前包中；离线回退依赖已安装字体或系统字体。Source Code Pro 有本地 WOFF。"
+    },
+    {
+      "id": "markdown-editor-runtime",
+      "title": "Markdown 讲义与媒体渲染边界修复",
+      "kind": "修复·次要",
+      "userImpact": "符合特定结构的整篇讲义外层 markdown 围栏可在展示时正确剥除；媒体 token 缺少属性时不会因对空值调用字符串方法而中断渲染。",
+      "evidenceBefore": "previous package: @hydrooj/ui-default/backendlib/lecture-markdown.ts; previous package: @hydrooj/ui-default/components/editor/mdeditor.ts",
+      "evidenceAfter": "current package: @hydrooj/ui-default/backendlib/lecture-markdown.ts; current package: @hydrooj/ui-default/backendlib/markdown-it-media.ts; current package: @hydrooj/ui-default/components/editor/mdeditor.ts",
+      "browserSurface": "课程讲义展示、Markdown 编辑器和预览中的媒体/代码围栏。",
+      "testIdeas": [
+        "标题加 Mermaid 的完整 markdown 外层包装检查显示",
+        "普通 fenced code 和只有标题/只有 Mermaid 的正文保持原样",
+        "CRLF 与首尾空白场景检查",
+        "检查常见媒体和缺属性媒体 token 的页面渲染"
+      ],
+      "defaultOrBoundary": "外层包装剥除只用于展示且要求完整围栏、标题和 Mermaid；不改存储正文。MarkdownIt 类型声明/强制转换只是构建兼容，不作为用户可见修复；不新增任意 Markdown 代码运行能力。"
+    },
+    {
+      "id": "samples-formatting",
+      "title": "样例首行缩进、自测输入与编辑器兼容",
+      "kind": "调整·次要",
+      "userImpact": "样例和代码预览去除模板首行额外缩进，样例运行自测使用一致的输入文本提取；YAML 已关闭的格式化依赖有兼容占位模块，TypeScript 模块声明解析可处理单、双引号。",
+      "evidenceBefore": "previous package: @hydrooj/ui-default/components/highlighter/prismjs.js; previous package: @hydrooj/ui-default/components/monaco/languages/typescript.ts",
+      "evidenceAfter": "current package: @hydrooj/ui-default/components/highlighter/sample-input.ts; current package: @hydrooj/ui-default/components/highlighter/prismjs.js; current package: @hydrooj/ui-default/components/monaco/disabled-format.ts; current package: @hydrooj/ui-default/components/monaco/languages/typescript.ts",
+      "browserSurface": "题目描述中的样例输入区、Scratchpad/Monaco 编辑器格式化命令。",
+      "testIdeas": [
+        "检查样例及代码首行没有额外缩进",
+        "在在线编辑器输入C++17代码并点击样例自测，核对Accepted和输出",
+        "打开YAML配置编辑器检查模块/worker正常加载"
+      ],
+      "defaultOrBoundary": "格式化占位模块仅提供依赖兼容，不声称新增格式化能力；TypeScript声明解析为内部兼容变更，本次未单列类型提示的浏览器断言。"
+    },
+    {
+      "id": "course-views-settings",
+      "title": "课程、域、账户及比赛页面调整",
+      "kind": "调整·次要",
+      "userImpact": "页面按新增课程结构、监控、反馈、团队和权限信息调整导航、筛选、侧栏和摘要；个人设置接入头像回退。",
+      "evidenceBefore": "previous package: @hydrooj/ui-default/templates/home_settings.html; previous package: @hydrooj/ui-default/templates/course_sidebar.html; previous package: @hydrooj/ui-default/templates/partials/contest_sidebar.html",
+      "evidenceAfter": "current package: @hydrooj/ui-default/templates/home_settings.html; current package: @hydrooj/ui-default/templates/course_sidebar.html; current package: @hydrooj/ui-default/templates/partials/contest_sidebar.html; current package: @hydrooj/ui-default/templates/home_domain.html; current package: @hydrooj/ui-default/templates/manage_dashboard.html",
+      "browserSurface": "个人设置、域首页/仪表板、课程侧栏、比赛侧栏和管理页。",
+      "testIdeas": [
+        "各角色检查导航入口和页面标题",
+        "移动视口检查课程和比赛侧栏",
+        "检查用户设置头像显示及上传后状态",
+        "检查无权限功能不显示或访问被拒绝"
+      ],
+      "defaultOrBoundary": "多数改动是新功能入口或现有页布局/权限适配；不应概括成新增整套账户或管理设置。"
+    },
+    {
+      "id": "framework-and-dependency",
+      "title": "框架与依赖版本变化（运维信息）",
+      "kind": "运维限制·次要",
+      "userImpact": "用户界面没有可独立宣称的新增功能；变更用于包间 API/序列化/服务器兼容与依赖声明。",
+      "evidenceBefore": "evidence/release-comparison.json: @hydrooj/framework 0.3.2-dev.1; hydrooj dependency @hydrooj/common 0.0.11-dev.1; top-level @hydrooj/common 0.0.11-dev.1",
+      "evidenceAfter": "evidence/release-comparison.json: @hydrooj/framework 0.3.2; hydrooj dependency @hydrooj/common 0.0.11; top-level @hydrooj/common remains 0.0.11-dev.1; UI dependency changes 0.0.10 to 0.0.11",
+      "browserSurface": "无独立浏览器入口；只在包版本/运行兼容排查时核对。",
+      "testIdeas": [
+        "确认运行包版本与目标快照",
+        "对依赖 API 相关的页面执行受影响的正常浏览器路径"
+      ],
+      "defaultOrBoundary": "声明依赖变稳定版不等于实际顶层包已升级；common 顶层包 previous/current 都是 0.0.11-dev.1。"
+    }
+  ],
+  "textEvidence": "evidence/source-differences.patch (actual changed text from exported package files; public compiled bundle hashes remain in release-comparison.json)"
+}

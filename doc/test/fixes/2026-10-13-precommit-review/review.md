@@ -1,0 +1,30 @@
+# 未提交改动的提交前评审
+
+本次检查提交前的工作区差异，不发布开发版本。评审范围包括课堂反馈开关、课程题目门禁、课程编辑回归测试、依赖清单、发布授权规则，以及此前生成的发布说明、浏览器证据和复用脚本。
+
+## 代码结论
+
+- 课堂反馈开关接受布尔值 `true` 和域设置表单保存的 `on`。`false`、`off`、空值及其他字符串仍关闭功能；现有域、活动类型、教师权限和会话身份检查保留。
+- 课程题目门禁的 SELF 权限只适用于课程 owner/maintainer；全局编辑或隐藏作业查看权限沿用现有行为。编号为 0 的章节按正常编号处理，只有 `null` 表示题目不属于章节。
+- UI 的 `moment-timezone` 依赖与已提交的课程日期工具相符。新增课程编辑测试覆盖模板判定、时间精度、时区转换和重算失败后的重试表单。
+- 根目录 AGENTS.md 要求每次发布前获得用户对该次发布的明确同意；此前发布授权已撤销。
+
+本次评审修正了测试 README 对历史部署使用“当前”的表述，并在 `.gitignore` 中加入根目录 `/testuser.txt`。测试中的虚构活动 ID 改用不与本地测试口令数字片段重合的值，以消除凭据扫描的误报。
+
+## 验证结果
+
+| 检查 | 结果 | 证据 |
+| --- | --- | --- |
+| 安全回归 | 30/30 通过 | [security.tap](evidence/security.tap) |
+| 课程模板与日期 | 10/10 通过 | [course-template.tap](evidence/course-template.tap) |
+| 比赛设置 | 8/8 通过 | [contest-settings.tap](evidence/contest-settings.tap) |
+| 课堂反馈逻辑 | 49/49 通过 | [classroom-feedback.tap](evidence/classroom-feedback.tap) |
+| 课程反馈结构 | 7/7 通过 | [feedback-structure.tap](evidence/feedback-structure.tap) |
+| 从实际 TypeScript 源码提取的反馈开关检查 | 10/10 通过 | `true`/`on` 开启；8 种关闭或无效值关闭 |
+| 新增 JS/CJS 脚本语法 | 全部通过 | `node --check` |
+| 待提交资料凭据检查 | 179 个文本文件无口令匹配或非空敏感 JSON 字段 | 文件内容在内存中与本地凭据比对，未输出凭据 |
+| 差异空白检查 | 通过 | `git diff --check` |
+
+安全测试首次在沙箱中因本地 MongoDB/HTTP 监听返回 EPERM，尚未执行到产品断言；在允许隔离本地监听后重跑，30 项全部通过。未重跑全部浏览器系统用例；历史浏览器记录保留各自测试时的部署快照，不作为本次提交后的新执行结果。
+
+本次未发现阻止提交的代码问题。`testuser.txt` 保留在本地并排除提交。

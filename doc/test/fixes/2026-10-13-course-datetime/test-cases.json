@@ -1,0 +1,133 @@
+[
+  {
+    "id": "DATE-01",
+    "title": "达标分数及监控编辑保留时间精度",
+    "expected": "浏览器修改分数/监控并保存，开始结束的秒和毫秒完全保留。"
+  },
+  {
+    "id": "DATE-02",
+    "title": "单独修改结束时间",
+    "expected": "浏览器明确修改结束时间时仅该时间变化，开始时间保持完整精度。"
+  },
+  {
+    "id": "DATE-03",
+    "title": "已开始测评允许修改分数及监控",
+    "expected": "开始后修改分数/监控正常保存，无时间变化和403。"
+  },
+  {
+    "id": "DATE-04",
+    "title": "不同时区的默认测评时间",
+    "expected": "两个不同浏览器时区下将普通章节改成测评，默认值均对应用户时区的原始课时UTC时间。"
+  },
+  {
+    "id": "CSET-01",
+    "title": "原生比赛设置切换赛制及保存",
+    "expected": "OI→ACM→OI正确禁用/启用封榜控件并改变FormData；OI保存监控和封榜选项成功。"
+  },
+  {
+    "id": "COUR-01",
+    "area": "课程编辑",
+    "title": "可视化章节编辑与稳定编号",
+    "role": "admin",
+    "steps": "新增章节并通过题目 Autocomplete 选择有效题目、保存；删除并保存；再新增且选择有效题目后保存，核对编号及测评绑定",
+    "expected": "新增章节可保存；已删除编号不复用；原测评绑定保留"
+  },
+  {
+    "id": "COUR-02",
+    "area": "课程参与",
+    "title": "学生认领与初始门禁",
+    "role": "student",
+    "steps": "打开课程，点击认领，查看课程章节及后续题目的直接链接",
+    "expected": "第一章和测评可见，依赖测评的第二章不可访问"
+  },
+  {
+    "id": "COUR-03",
+    "area": "课程管理",
+    "title": "管理分组与破坏操作确认",
+    "role": "admin",
+    "steps": "切换三个管理标签；对第一章关闭题目操作先取消，再确认执行",
+    "expected": "确认面板展示课程、课时和学生范围；取消不改变权限，确认显示逐项成功"
+  },
+  {
+    "id": "COUR-04",
+    "area": "课程门禁",
+    "title": "手工关闭阻止 SELF 越权",
+    "role": "student",
+    "steps": "教师关闭第一章后，学生直接访问其题目和提交页面",
+    "expected": "题目与提交页面均显示403，不因 SELF 权限绕过"
+  },
+  {
+    "id": "COUR-05",
+    "area": "课程管理",
+    "title": "手工开放与恢复访问规则",
+    "role": "admin/student",
+    "steps": "教师开放第一章，手工开放未达标第二章，学生访问；教师恢复第二章规则，学生再次访问",
+    "expected": "手工开放即时生效；恢复规则后第二章重新锁定"
+  },
+  {
+    "id": "COUR-06",
+    "area": "课程权限",
+    "title": "学生不能管理或编辑课程",
+    "role": "student",
+    "steps": "分别直接访问课程 manage 和 edit 路由",
+    "expected": "两个页面均显示403，不提供管理或编辑控件"
+  },
+  {
+    "id": "ASM-01",
+    "area": "课堂测评",
+    "title": "父课程准入与独立测评",
+    "role": "student/admin",
+    "steps": "未认领课程前访问子测评；认领后从课程进入子测评并报名",
+    "expected": "未认领拒绝；认领后可报名；试卷单独存在且默认不计Rating"
+  },
+  {
+    "id": "TPL-01",
+    "area": "课程模板与班级复制",
+    "title": "课程模板保存",
+    "role": "admin",
+    "setup": "独立临时域内由 fixture helper 准备一个含课堂测评节点的课程；管理员 Chrome 会话。",
+    "steps": "打开现有课程编辑页，点击显式 button[name=\"isTemplate\"][value=\"true\"]（Save as Template）。",
+    "expected": "保存出一个独立模板；模板保留 assessment.kind 与题目，但不带已实例化的 assessment.contestTid，原课程仍存在。"
+  },
+  {
+    "id": "TPL-02",
+    "area": "课程模板与班级复制",
+    "title": "班级复制含测评模板",
+    "role": "admin",
+    "setup": "同一独立临时域内由 helper/API 准备模板和两个班级；真实浏览器操作每个班级的 Add Course 对话框。",
+    "steps": "真实选择 sourceDomain、Autocomplete 中的模板，再确认 Add Course；为两个班级各复制一次并读取结果核对。",
+    "expected": "每个班级都出现复制课程；测评节点保留且各自获得不同的新 assessment.contestTid，题目 PID 对应有效目标题目，不引用源模板中的测评实例。"
+  },
+  {
+    "id": "TPL-03",
+    "area": "课程模板编辑",
+    "title": "已有模板普通 Update",
+    "role": "admin",
+    "steps": "编辑真实浏览器保存出的模板标题，点击 Update",
+    "expected": "同一模板保存成功，保留 teachers 分类且不实例化测评；源课程测评保留"
+  },
+  {
+    "id": "ASM-02",
+    "area": "课堂测评",
+    "title": "正常进入题目列表开始作答",
+    "role": "student",
+    "steps": "等待临时测评开赛，点击题目列表后打开私有题目",
+    "expected": "正常记录开始时间，隐藏题目可见，测评监控脚本启动"
+  },
+  {
+    "id": "ASM-03",
+    "area": "课堂测评",
+    "title": "真实判题与测评期间成绩隐藏",
+    "role": "student/admin",
+    "steps": "学生在客观题的输入控件作答并点击提交，教师从记录列表查看Accepted，学生查看记录与课程",
+    "expected": "教师看到100分Accepted；学生看不到结束前成绩，后续章节仍锁定"
+  },
+  {
+    "id": "ASM-04",
+    "area": "课堂测评",
+    "title": "结束后成绩与后续章节自动解锁",
+    "role": "student",
+    "steps": "测评结束后刷新课程，点击后续章题目",
+    "expected": "显示100分成绩，后续章节出现并可访问"
+  }
+]
