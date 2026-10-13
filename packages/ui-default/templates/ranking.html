@@ -37,7 +37,7 @@
                 <th class="col--user">{{ _('Username') }}</th>
                 <th class="col--rp">{{ 'RP' if ratingAlgorithm == 'v2_trial' else _('RP') }}</th>
                 {% if ratingAlgorithm == 'v2_trial' %}
-                  <th>能力 Rating</th><th>参赛场次</th><th>成就 A</th><th>题目分 P</th><th>比赛分 C</th>
+                  <th>试用 Rating</th><th>比赛/测评场次</th><th>成就 A</th><th>题目分 P</th><th>比赛分 C</th>
                 {% else %}
                 {% for key, def in model.rp %}
                   {% if not def.hidden %}
