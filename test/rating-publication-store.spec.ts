@@ -200,7 +200,7 @@ test('write readback corruption is rejected before completion', async () => {
 
 test('ranking uses current profile privacy and current domain membership', async () => {
     await addDomain();
-    const { job } = await complete('exam', true, [row(2), row(3), row(4)]);
+    const { job } = await complete('exam', true, [row(2, { rp: 1600 }), row(3, { rp: 1400 }), row(4, { rp: 1400 })]);
     await db.collection('user').insertMany([
         { _id: 2, priv: PRIV.PRIV_USER_PROFILE },
         { _id: 3, priv: PRIV.PRIV_USER_PROFILE },
@@ -211,11 +211,17 @@ test('ranking uses current profile privacy and current domain membership', async
         { domainId: 'exam', uid: 3, join: true },
         { domainId: 'exam', uid: 4, join: true },
     ]);
-    assert.deepEqual((await (await store.ranking('exam')).cursor.toArray()).map((r) => r.uid), [2, 3, 4]);
+    const initially = await store.ranking('exam');
+    assert.deepEqual((await initially.cursor.toArray()).map((r) => r.uid), [2, 3, 4]);
+    assert.deepEqual([...initially.liveRanks], [[2, 1], [3, 2], [4, 2]]); // ties share rank
     await db.collection('user').updateOne({ _id: 2 }, { $set: { priv: 0 } });
     await db.collection('domain.user').updateOne({ domainId: 'exam', uid: 3 }, { $set: { join: false } });
-    assert.deepEqual((await (await store.ranking('exam')).cursor.toArray()).map((r) => r.uid), [4]);
-    assert.deepEqual((await (await store.ranking('exam', false)).cursor.toArray()).map((r) => r.uid), [3, 4]);
+    const current = await store.ranking('exam');
+    assert.deepEqual((await current.cursor.toArray()).map((r) => r.uid), [4]);
+    assert.deepEqual([...current.liveRanks], [[4, 1]]); // no gaps after live membership change
+    const withFormerMembers = await store.ranking('exam', false);
+    assert.deepEqual((await withFormerMembers.cursor.toArray()).map((r) => r.uid), [3, 4]);
+    assert.deepEqual([...withFormerMembers.liveRanks], [[3, 1], [4, 1]]);
     assert.equal((await store.active('exam'))?.runId, job._id);
 });
 

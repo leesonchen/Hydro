@@ -378,6 +378,7 @@ export class RatingPublicationStore {
     async ranking(domainId: string, joinedOnly = true) {
         const active = await this.active(domainId);
         let liveUids: number[];
+        let liveRanks: Map<number, number> | null = null;
         if (active) {
             const scored = await this.database.collection(RATING_COLLECTIONS.users).distinct('uid', { domainId, runId: active.runId, visible: true, rp: { $gt: 0 } });
             const live = await this.database.collection('user').find({ _id: { $in: scored },
@@ -386,13 +387,27 @@ export class RatingPublicationStore {
             liveUids = (await this.database.collection('domain.user').find({ domainId,
                 uid: { $in: liveUids }, ...(joinedOnly ? { join: true } : {}),
             }, { projection: { uid: 1 } }).toArray()).map((member) => member.uid);
+            // A snapshot's stored ranks cannot track users leaving/rejoining the domain.
+            // Resolve the current public rank (with ties) from the same visible population
+            // used by the cursor. Snapshot rows and scores remain immutable.
+            const eligible = await this.database.collection(RATING_COLLECTIONS.users).find({
+                domainId, runId: active.runId, uid: { $in: liveUids }, visible: true, rp: { $gt: 0 },
+            }, { projection: { uid: 1, rp: 1 } }).sort({ rp: -1, uid: 1 }).toArray();
+            liveRanks = new Map();
+            let rank = 0;
+            let lastRp = -1;
+            for (let i = 0; i < eligible.length; i++) {
+                if (eligible[i].rp !== lastRp) rank = i + 1;
+                liveRanks.set(eligible[i].uid, rank);
+                lastRp = eligible[i].rp;
+            }
         }
         const cursor = active ? this.database.collection(RATING_COLLECTIONS.users).find({
             domainId, runId: active.runId, uid: { $gt: 1, $in: liveUids }, visible: true, rp: { $gt: 0 },
         }).sort({ rp: -1, uid: 1 }) : this.database.collection('domain.user').find({
             domainId, uid: { $gt: 1 }, rp: { $gt: 0 }, ...(joinedOnly ? { join: true } : {}),
         }).sort({ rp: -1, uid: 1 });
-        return { active, cursor };
+        return { active, cursor, liveRanks };
     }
 
     async deleteDomain(domainId: string) {
