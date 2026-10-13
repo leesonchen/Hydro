@@ -297,6 +297,25 @@ export interface Tdoc extends Document {
     docType: document['TYPE_CONTEST'];
     beginAt: Date;
     endAt: Date;
+    /** Appended atomically with schedule edits; uid 0 denotes an automated change. */
+    timeChangeHistory?: {
+        uid: number;
+        at: Date;
+        before: { beginAt: Date, endAt: Date, duration: number | null };
+        after: { beginAt: Date, endAt: Date, duration: number | null };
+        state: 'upcoming' | 'ongoing' | 'ended';
+        attend: number;
+        ratingEnabled: boolean;
+    }[];
+    /** Missing revisions on legacy documents are interpreted as zero. */
+    statsRevision?: number;
+    statsRecalc?: {
+        revision: number;
+        token: ObjectId;
+        state: 'preparing' | 'pending' | 'running' | 'failed';
+        requestedAt: Date;
+        settingsSaved: boolean;
+    };
     attend: number;
     title: string;
     content: string;
@@ -335,6 +354,8 @@ export interface Tdoc extends Document {
     sourceType?: 'course_assessment';
     sourceCourseTid?: ObjectId;
     sourceNodeId?: number;
+    /** In-flight classroom status writes, keyed by actual participant uid. */
+    _assessmentStatusUpdates?: Record<number, ObjectId[]>;
 
     // For homework
     penaltySince?: Date;
@@ -539,6 +560,12 @@ export interface ContestStatusDoc extends StatusDocBase, ContestStat {
     startAt?: Date;
     endAt?: Date; // 灵活时间模式的结束时间，或者是提前结束比赛的时间
     rev?: number;
+    /** Configuration revision used to calculate these statistics. */
+    statsRevision?: number;
+    /** Status revision after the statistics write; detects a newer, unprocessed journal. */
+    statsJournalRevision?: number;
+    /** Invalidates course progress reads when an independently stored assessment changes. */
+    _assessmentRevision?: number;
     displayName?: string;
     members?: number[];
     participantUids?: number[];

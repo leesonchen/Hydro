@@ -26,7 +26,7 @@
   <div class="medium-9 columns">
     <div class="section">
       <div class="section__body">
-        <form method="post">
+        <form method="post" data-course-time-zone="{{ handler.user.timeZone }}">
           <input type="hidden" name="dagRevision" value="{{ tdoc.dagRevision|default(0) }}">
           <input type="hidden" name="nodeIdHighWatermark" value="{{ nodeIdHighWatermark|default(0) }}">
           <div class="row">
@@ -145,6 +145,9 @@
               </div>
             </div>
           </div>
+          {% if tdoc and not isTemplate %}
+          <p class="help-text" role="note">有编辑权限的教师可以修改课堂测试时间。修改可能影响成绩、罚时、课程达标状态、提交有效性和积分结果；修改记录保存在本页下方。</p>
+          {% endif %}
           <div class="row"><div class="columns">
             <label>
               {{ _('Plan') }}
@@ -176,6 +179,17 @@
             </button>
           </div></div>
         </form>
+        {% if tdoc and not isTemplate %}
+        {% for exam in assessmentTimeHistories %}
+          {% set recalcDoc = exam %}
+          {% set recalcUrl = url('course_edit', tid=tdoc.docId) %}
+          {% set recalcNodeId = exam.sourceNodeId %}
+          {% include "partials/contest_recalc_state.html" %}
+          {% set timeChangeHistory = exam.timeChangeHistory %}
+          {% set timeHistoryTitle = exam.title %}
+          {% include "partials/contest_time_history.html" %}
+        {% endfor %}
+        {% endif %}
       </div>
     </div>
   </div>

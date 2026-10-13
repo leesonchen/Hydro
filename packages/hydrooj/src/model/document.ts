@@ -431,8 +431,9 @@ export async function revInitStatus<T extends keyof DocStatusType>(
 export async function revSetStatus<T extends keyof DocStatusType>(
     domainId: string, docType: T, docId: DocStatusType[T]['docId'], uid: number,
     rev: number, args: Partial<DocStatusType[T]>,
+    condition: Filter<DocStatusType[T]> = {},
 ): Promise<any> {
-    const filter = { domainId, docType, docId, uid, rev };
+    const filter = { ...condition, domainId, docType, docId, uid, rev };
     const update = { $set: args, $inc: { rev: 1 } };
     return await collStatus.findOneAndUpdate(filter, update, { returnDocument: 'after' });
 }

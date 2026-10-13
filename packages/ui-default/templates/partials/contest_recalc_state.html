@@ -1,0 +1,21 @@
+{% if recalcDoc.statsRecalc %}
+<div class="contest-recalc-state section__body" role="status">
+  <p><strong>{{ recalcDoc.title }}</strong></p>
+  {% if not recalcDoc.statsRecalc.settingsSaved %}
+    <p>设置尚未保存，成绩更新准备未完成。请重新保存设置，或重试当前设置的成绩重算。</p>
+  {% elif recalcDoc.statsRecalc.state == 'failed' %}
+    <p>设置已保存，成绩重算失败。请由有编辑权限的管理者手动重试。</p>
+  {% else %}
+    <p>设置已保存，成绩更新尚未完成。若更新中断，请手动重试。</p>
+  {% endif %}
+  <p class="help-text">完成前，相关成绩与达标结果暂不确认，不用于解锁新的课程章节。已保存的时间修改记录会保留。</p>
+  {% if recalcUrl %}
+  <form method="post" action="{{ recalcUrl }}" data-retry-recalc>
+    <input type="hidden" name="operation" value="retry_recalc">
+    <input type="hidden" name="statsRevision" value="{{ recalcDoc.statsRevision|default(0) }}">
+    {% if recalcNodeId is defined %}<input type="hidden" name="nodeId" value="{{ recalcNodeId }}">{% endif %}
+    <button type="submit" class="rounded button">重试成绩重算</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}

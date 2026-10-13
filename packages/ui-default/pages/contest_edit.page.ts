@@ -35,6 +35,27 @@ const page = new NamedPage(['contest_edit', 'contest_create', 'homework_create',
     $(`[data-perm="${type}"]`).show();
   }).trigger('change');
   if (pagename.endsWith('edit')) {
+    if (pagename === 'contest_edit') {
+      const $form = $('[name="beginAtDate"]').closest('form');
+      const schedule = () => JSON.stringify([
+        moment(`${$('[name="beginAtDate"]').val()} ${$('[name="beginAtTime"]').val()}`).valueOf(),
+        Number($('[name="duration"]').val()),
+        $('[name="contestDuration"]').is(':disabled') ? null : Number($('[name="contestDuration"]').val()) || null,
+      ]);
+      const originalSchedule = schedule();
+      let confirmedSchedule: string;
+      $form.on('submit', async (ev) => {
+        const submitter = (ev.originalEvent as SubmitEvent)?.submitter as HTMLButtonElement;
+        if (submitter?.value === 'delete' || submitter?.hasAttribute('formaction')) return;
+        const currentSchedule = schedule();
+        if (currentSchedule === originalSchedule || currentSchedule === confirmedSchedule) return;
+        ev.preventDefault();
+        if (await confirm(i18n('修改时间可能影响成绩、罚时、提交有效性和积分结果。系统会保存修改记录，是否继续？'))) {
+          confirmedSchedule = currentSchedule;
+          ($form[0] as HTMLFormElement).requestSubmit(submitter || undefined);
+        }
+      });
+    }
     let confirmed = false;
     $(document).on('click', '[value="delete"]', (ev) => {
       ev.preventDefault();

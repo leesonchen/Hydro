@@ -12,7 +12,7 @@ import {
 import bus from '../../../service/bus';
 import type { AssessmentResult } from '../model/assessment';
 import {
-    cleanupInactiveAssessments, getAssessmentResults, validateAssessmentPlan,
+    cleanupInactiveAssessments, getAssessmentResults, syncAssessmentContests, validateAssessmentPlan,
 } from '../model/assessment';
 import { ClassModel } from '../model/class';
 import type { CourseTdoc, DagNode } from '../model/course';
@@ -298,6 +298,9 @@ export async function updateAllowedNodes(
         accept: tsdoc.accept ?? { $exists: false },
         // Score-based prerequisites can change without changing the AC count.
         score: tsdoc.score ?? { $exists: false },
+        // Assessment scores live in other status documents; their writers fence this read.
+        _assessmentRevision: tsdoc._assessmentRevision ?? { $exists: false },
+        assessmentResults: tsdoc.assessmentResults ?? { $exists: false },
     };
     // Each automatic grant only fills an unset node. Manual allow/deny always wins.
     await Promise.all(opened.map((nodeId) => DocumentModel.collStatus.updateOne({
@@ -305,11 +308,12 @@ export async function updateAllowedNodes(
     }, { $set: { [`allow.${nodeId}`]: true } })));
     if (tsdoc.progress !== progress
         || JSON.stringify(tsdoc.assessmentResults || {}) !== JSON.stringify(snapshot)) {
-        await DocumentModel.collStatus.updateOne({
-            ...statusFilter,
-            assessmentResults: tsdoc.assessmentResults ?? { $exists: false },
-            progress: tsdoc.progress ?? { $exists: false },
-        }, { $set: { progress, assessmentResults: snapshot } });
+        if (!Object.values(assessmentResults).some((result) => result.updating)) {
+            await DocumentModel.collStatus.updateOne({
+                ...statusFilter,
+                progress: tsdoc.progress ?? { $exists: false },
+            }, { $set: { progress, assessmentResults: snapshot } });
+        }
     }
     return assessmentResults;
 }
@@ -1243,6 +1247,13 @@ export class CourseEditHandler extends Handler {
             isTemplate: isTemplate || this.tdoc?.assign?.includes('teachers'),
         };
 
+        if (this.tdoc && !this.response.body.isTemplate) {
+            this.response.body.assessmentTimeHistories = await ContestModel.getMulti(domainId, {
+                sourceType: 'course_assessment', sourceCourseTid: this.tdoc.docId,
+                $or: [{ 'timeChangeHistory.0': { $exists: true } }, { statsRecalc: { $exists: true } }],
+            }).project({ title: 1, timeChangeHistory: 1, statsRecalc: 1, statsRevision: 1, sourceNodeId: 1 }).toArray();
+        }
+
         if (this.tdoc) {
             this.response.body.dag = JSON.stringify(this.tdoc.dag, null, 2);
             // 从 assign 中分离出纯数字字符串作为 extraStudents
@@ -1252,6 +1263,36 @@ export class CourseEditHandler extends Handler {
                 .filter((g) => /^\d+$/.test(g))
                 .map((s) => Number.parseInt(s, 10));
         }
+    }
+
+    @param('nodeId', Types.UnsignedInt)
+    @param('statsRevision', Types.UnsignedInt)
+    async postRetryRecalc(domainId: string, nodeId: number, statsRevision: number) {
+        const course = await ContestModel.get(domainId, this.tdoc.docId) as CourseTdoc;
+        if (!canEditCourse(this, course)) throw new ForbiddenError();
+        const node = course.dag.find((item) => item._id === nodeId && item.kind === 'assessment');
+        if (!node?.assessment?.contestTid) throw new BadRequestError('课堂测试不存在。');
+        const tid = new ObjectId(node.assessment.contestTid);
+        const exam = await ContestModel.get(domainId, tid);
+        if (exam.sourceType !== 'course_assessment' || !exam.sourceCourseTid?.equals(course.docId) || exam.sourceNodeId !== nodeId) {
+            throw new ForbiddenError('课堂测试绑定已改变，请刷新后重试。');
+        }
+        if ((exam.statsRevision || 0) !== statsRevision) throw new BadRequestError('测试设置已更新，请刷新后重试。');
+        await validateAssessmentPlan(domainId, course.dag, course, course.beginAt, course.endAt);
+        await syncAssessmentContests(domainId, course.docId, [node], course.title, course.owner,
+            course.assign || [], course.maintainer || [], this.user._id, false);
+        const current = await ContestModel.get(domainId, tid);
+        try {
+            await ContestModel.recalcStatus(domainId, tid, current.statsRevision || 0);
+        } catch {
+            // Preserve the recoverable state and show it on the editor rather than suggesting the time was rolled back.
+        }
+        this.response.redirect = this.url('course_edit', { tid: course.docId });
+    }
+
+    async post(args: Record<string, any>) {
+        if (!this.args.operation) return Reflect.apply(this.postUpdate, this, [args]);
+        return undefined;
     }
 
     @param('tid', Types.ObjectId, true)
@@ -1270,7 +1311,7 @@ export class CourseEditHandler extends Handler {
     @param('publicScoreboard', Types.Boolean, true)
     @param('enablePenalty', Types.Boolean, true)
     @param('dagRevision', Types.UnsignedInt, true)
-    async post(
+    async postUpdate(
         domainId: string,
         tid: ObjectId | undefined,
         title: string,
@@ -1289,7 +1330,6 @@ export class CourseEditHandler extends Handler {
         enablePenalty = true,
         dagRevision = 0,
     ) {
-        if (this.args.operation) return;
         assign = Array.from(new Set((assign || []).map((s) => (s || '').trim()).filter(Boolean)));
         templateCategory = (templateCategory || '').trim();
         const extraStudents = Array.from(new Set((extraStudentsStr || [])
@@ -1458,7 +1498,7 @@ export class CourseEditHandler extends Handler {
                     assign: finalAssign,
                     ...(Object.keys(finalLecture).length ? { lecture: finalLecture } : {}),
                     ...(Object.keys(finalLectureMeta).length ? { lectureMeta: finalLectureMeta } : {}),
-                }, { dagRevision: this.tdoc.dagRevision ?? { $exists: false } });
+                }, { dagRevision: this.tdoc.dagRevision ?? { $exists: false } }, this.user._id);
                 if (!updated) {
                     throw new BadRequestError('Course assignment changed. Please refresh and try again.');
                 }

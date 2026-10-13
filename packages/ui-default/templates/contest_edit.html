@@ -63,6 +63,9 @@
               row:false
             }) }}
           </div>
+          {% if page_name == 'contest_edit' %}
+          <p class="help-text" role="note">修改时间可能影响成绩、罚时、提交有效性和积分认证。修改记录将保存在本页的“时间修改记录”中。</p>
+          {% endif %}
           {{ form.form_text({
             columns:12,
             label:'Problems',
@@ -273,7 +276,15 @@
               </button>
             </div>
           </div>
+        </div>
         </form>
+        <div class="section__body">
+        {% set recalcDoc = tdoc %}
+        {% set recalcUrl = url('contest_edit', tid=tdoc.docId) if page_name == 'contest_edit' else none %}
+        {% include "partials/contest_recalc_state.html" %}
+        {% set timeChangeHistory = tdoc.timeChangeHistory %}
+        {% set timeHistoryTitle = tdoc.title %}
+        {% include "partials/contest_time_history.html" %}
       </div>
     </div>
   </div>

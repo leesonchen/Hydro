@@ -539,13 +539,20 @@ export class ContestEditHandler extends Handler {
             || this.tdoc.lockAt?.getTime() !== lockAt?.getTime()
             || this.tdoc.duration !== contestDuration
         );
-        if (tid) await contest.edit(domainId, tid, update, this.tdoc);
+        if (tid) await contest.edit(domainId, tid, update, this.tdoc, [], this.user._id);
         else {
             tid = await contest.add(
                 domainId, title, content, this.user._id, rule, beginAt, endAt, pids, rated, update,
             );
         }
-        if (needsRecalc) await contest.recalcStatus(domainId, tid);
+        let recalcFailed = false;
+        if (needsRecalc) {
+            try {
+                await contest.recalcStatus(domainId, tid);
+            } catch {
+                recalcFailed = true;
+            }
+        }
         const task = {
             type: 'schedule', subType: 'contest', domainId, tid,
         };
@@ -563,7 +570,18 @@ export class ContestEditHandler extends Handler {
             });
         }
         this.response.body = { tid };
-        this.response.redirect = this.url('contest_detail', { tid });
+        this.response.redirect = this.url(recalcFailed ? 'contest_edit' : 'contest_detail', { tid });
+    }
+
+    @param('tid', Types.ObjectId)
+    @param('statsRevision', Types.UnsignedInt)
+    async postRetryRecalc(domainId: string, tid: ObjectId, statsRevision: number) {
+        try {
+            await contest.recalcStatus(domainId, tid, statsRevision);
+        } catch {
+            // The durable recovery state is displayed on the editor.
+        }
+        this.response.redirect = this.url('contest_edit', { tid });
     }
 
     @param('tid', Types.ObjectId)

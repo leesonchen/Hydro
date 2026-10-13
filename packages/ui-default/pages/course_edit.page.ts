@@ -3,8 +3,10 @@ import $ from 'jquery';
 import CustomSelectAutoComplete from 'vj/components/autocomplete/CustomSelectAutoComplete';
 import ProblemSelectAutoComplete from 'vj/components/autocomplete/ProblemSelectAutoComplete';
 import UserSelectAutoComplete from 'vj/components/autocomplete/UserSelectAutoComplete';
+import { confirm } from 'vj/components/dialog';
 import { NamedPage } from 'vj/misc/Page';
 import { api } from 'vj/utils';
+import { assessmentDateTimeToIso, formatDateTime, parseDateTime } from 'vj/utils/course-datetime';
 
 const page = new NamedPage(['course_edit', 'course_create'], () => {
   const ensureAutocompleteMounted = (instance: any, retries = 4, delay = 80) => {
@@ -46,7 +48,8 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     }
 
     if ($assign.length) {
-      const isTemplate = $('[name="isTemplate"]').length > 0;
+      // The Save as Template submit button also exists on ordinary course pages.
+      const isTemplate = $('input[type="hidden"][name="isTemplate"]').val() === 'true';
       const currentValue = String($assign.val() || '').trim();
       if (isTemplate && !currentValue) {
         $assign.val('teachers');
@@ -69,11 +72,13 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
   const initDateTimePickers = ($inputs: JQuery) => {
     $inputs.each(function () {
       if ((this as HTMLInputElement & { _flatpickr?: unknown })._flatpickr) return;
+      const assessmentTime = $(this).hasClass('dag-assessment-begin') || $(this).hasClass('dag-assessment-end');
       flatpickr(this, {
         allowInput: true,
         enableTime: true,
         time_24hr: true,
-        dateFormat: 'Y-m-d H:i',
+        enableSeconds: assessmentTime,
+        dateFormat: assessmentTime ? 'Y-m-d H:i:S' : 'Y-m-d H:i',
       });
     });
   };
@@ -85,20 +90,8 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     else $input.val(value);
   };
 
-  const parseLocalDateTime = (value: any) => {
-    const match = String(value || '').trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
-    if (!match) return null;
-    const [, year, month, day, hour, minute] = match;
-    const date = new Date(+year, +month - 1, +day, +hour, +minute);
-    if (Number.isNaN(date.getTime())) return null;
-    return date;
-  };
-
-  const formatLocalDateTime = (date: Date) => {
-    const pad = (value: number) => `${value}`.padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  };
-
+  const courseTimeZone = $('[data-course-time-zone]').attr('data-course-time-zone')
+    || new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const $beginAt = $('[name="beginAt"]');
   const $lessonDuration = $('[name="lessonDurationHours"]');
   const $lessonBeginAt = $('[name="lessonBeginAt"]');
@@ -109,12 +102,12 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       return Number.isFinite(value) && value > 0 ? value : 3;
     };
     const getDefaultLessonWindow = () => {
-      const begin = parseLocalDateTime($beginAt.val());
+      const begin = parseDateTime($beginAt.val(), courseTimeZone);
       if (!begin) return null;
       const end = new Date(begin.getTime() + getDurationHours() * 60 * 60 * 1000);
       return {
-        begin: formatLocalDateTime(begin),
-        end: formatLocalDateTime(end),
+        begin: formatDateTime(begin, courseTimeZone),
+        end: formatDateTime(end, courseTimeZone),
       };
     };
     const initialDefaultWindow = getDefaultLessonWindow();
@@ -232,6 +225,11 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       .filter(Boolean) as any[];
 
     let nodes = normalizeNodes(parseDag() || []);
+    const originalAssessmentTimes = new Map(nodes
+      .filter((node) => node.kind === 'assessment' && node.assessment?.contestTid)
+      .map((node) => [node._id, {
+        beginAt: new Date(node.assessment.beginAt).getTime(), endAt: new Date(node.assessment.endAt).getTime(),
+      }]));
     let highWatermark = Math.max(Number($('[name="nodeIdHighWatermark"]').val()) || 0, ...nodes.map((node) => node._id));
 
     let render: () => void;
@@ -286,7 +284,8 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
               + '<label>开始时间（浏览器本地时间）<input data-pick-datetime placeholder="YYYY-mm-dd HH:MM" class="textbox dag-assessment-begin" /></label></div>'
               + '</div>'
               + '<div class="row dag-assessment-row"><div class="columns">'
-              + '<label>结束时间（浏览器本地时间）<input data-pick-datetime placeholder="YYYY-mm-dd HH:MM" class="textbox dag-assessment-end" /></label></div></div>'
+              + '<label>结束时间（浏览器本地时间）<input data-pick-datetime placeholder="YYYY-mm-dd HH:MM" class="textbox dag-assessment-end" />'
+              + '</label></div></div>'
               + '<div class="row dag-assessment-row"><div class="columns"><label>'
               + '<span class="dag-assessment-pass-label">达标分数</span>（默认 0，须在考试结束且有提交记录后完成）'
               + '<input class="textbox dag-assessment-pass" type="number" min="0" step="1" />'
@@ -377,13 +376,14 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           if (!value) return '';
           const date = new Date(value);
           if (!Number.isFinite(date.getTime())) return '';
-          return formatLocalDateTime(date);
+          return formatDateTime(date, undefined, true);
         };
-        const toIsoTime = (value: any) => {
-          return parseLocalDateTime(value)?.toISOString() || '';
-        };
-        $begin.val(toLocalTime(node.assessment?.beginAt || ''));
-        $end.val(toLocalTime(node.assessment?.endAt || ''));
+        const originalBegin = node.assessment?.beginAt || '';
+        const originalEnd = node.assessment?.endAt || '';
+        const initialBeginDisplay = toLocalTime(originalBegin);
+        const initialEndDisplay = toLocalTime(originalEnd);
+        $begin.val(initialBeginDisplay);
+        $end.val(initialEndDisplay);
         $pass.val(node.assessment?.passScore ?? 0);
         function syncAssessment() {
           node.kind = String($kind.val());
@@ -391,7 +391,8 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           if (node.kind === 'assessment') {
             node.assessment = {
               ...(node.assessment || {}), rule: String($rule.val()),
-              beginAt: toIsoTime($begin.val()), endAt: toIsoTime($end.val()), rated: false,
+              beginAt: assessmentDateTimeToIso($begin.val(), originalBegin, initialBeginDisplay),
+              endAt: assessmentDateTimeToIso($end.val(), originalEnd, initialEndDisplay), rated: false,
               passScore: Math.max(0, Number($pass.val()) || 0), monitorMode: String($monitor.val() || 'off'),
             };
           } else delete node.assessment;
@@ -400,8 +401,12 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         }
         $kind.on('change', () => {
           if ($kind.val() === 'assessment' && node.kind !== 'assessment') {
-            if (!$begin.val()) setDateTimeValue($begin, String($lessonBeginAt.val() || ''));
-            if (!$end.val()) setDateTimeValue($end, String($lessonEndAt.val() || ''));
+            const defaultTime = ($input: JQuery) => {
+              const date = parseDateTime($input.val(), courseTimeZone);
+              return date ? formatDateTime(date, undefined, true) : '';
+            };
+            if (!$begin.val()) setDateTimeValue($begin, defaultTime($lessonBeginAt));
+            if (!$end.val()) setDateTimeValue($end, defaultTime($lessonEndAt));
           }
           syncAssessment();
         });
@@ -724,7 +729,8 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     });
 
     const $form = $dag.closest('form');
-    $form.on('submit', (ev) => {
+    let confirmedAssessmentTimes: string;
+    $form.on('submit', async (ev) => {
       // 提交时以 JSON textarea 的内容为准，不覆盖用户直接编辑的 JSON
       const currentParsed = parseDag();
       if (!currentParsed) {
@@ -746,6 +752,22 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
       }
       // 同步到内存中的 nodes（但不写回 textarea）
       nodes = normalizeNodes(currentParsed);
+      const submitter = (ev.originalEvent as SubmitEvent)?.submitter as HTMLButtonElement;
+      if (submitter?.value === 'delete' || submitter?.name === 'isTemplate') return;
+      const timeChanged = nodes.some((node) => {
+        const original = originalAssessmentTimes.get(node._id);
+        return original && node.kind === 'assessment' && node.assessment
+          && (original.beginAt !== new Date(node.assessment.beginAt).getTime()
+            || original.endAt !== new Date(node.assessment.endAt).getTime());
+      });
+      const currentTimes = JSON.stringify(nodes.filter((node) => originalAssessmentTimes.has(node._id))
+        .map((node) => [node._id, node.assessment?.beginAt, node.assessment?.endAt]));
+      if (!timeChanged || confirmedAssessmentTimes === currentTimes) return;
+      ev.preventDefault();
+      if (await confirm('修改课堂测试时间可能影响成绩、罚时、课程达标状态、提交有效性和积分结果。系统会保存修改记录，是否继续？')) {
+        confirmedAssessmentTimes = currentTimes;
+        ($form[0] as HTMLFormElement).requestSubmit(submitter || undefined);
+      }
     });
 
     $dag.on('input', updateStatusFromRaw);

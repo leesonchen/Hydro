@@ -88,6 +88,9 @@
                     <p><a class="rounded primary button" href="{{ url('contest_detail', tid=exam.tid) }}">进入课堂测试</a></p>
                   {% endif %}
                   {% if exam.score != null %}<p>我的测试成绩：{{ exam.score }}{% if exam.metric == 'accepted' %} 题通过{% else %} 分{% endif %}</p>{% endif %}
+                  {% if exam.updating %}
+                  <p role="status">{% if exam.recalcState == 'failed' %}测试成绩重算失败，请教师在课程编辑页手动重试。{% else %}测试成绩更新尚未完成，达标结果待确认。{% endif %}</p>
+                  {% endif %}
                 {% else %}<p>课堂测试尚未生成，或此课程为模板。</p>{% endif %}
               </div>
               {% else %}

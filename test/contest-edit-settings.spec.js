@@ -27,6 +27,10 @@ function renderContestEdit(overrides = {}) {
         format: (...values) => (text || '').replace(/\{(\d+)\}/g, (_match, index) => values[index]),
     }));
     env.addFilter('assign', (target, source) => ({ ...target, ...source }));
+    env.addGlobal('datetimeSpan', (date, relative) => {
+        assert.equal(relative, false, 'audit records must show exact times, not relative labels');
+        return new Date(date).toISOString();
+    });
 
     const beginAt = {
         format: () => '2026-10-12',
@@ -81,6 +85,109 @@ function formData(html) {
     return { dom, form, data: new dom.window.FormData(form) };
 }
 
+function initializeContestEditor(dom) {
+    const $ = require('jquery')(dom.window);
+    let initialize;
+    const code = ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../packages/ui-default/pages/contest_edit.page.ts'), 'utf8'), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+    }).outputText;
+    vm.runInNewContext(code, {
+        exports: {}, document: dom.window.document, window: dom.window, setInterval: () => 0,
+        require: (name) => {
+            if (name === 'jquery') return $;
+            if (name === 'vj/misc/Page') return { NamedPage: class { constructor(_pages, callback) { initialize = callback; } } };
+            if (name.startsWith('vj/components/autocomplete/')) return { getOrConstruct() {} };
+            if (name === 'vj/components/dialog') return { confirm: async (message) => dom.window.confirm(message) };
+            if (name === 'vj/utils') return { i18n: (text) => text, request: {} };
+            return require(name);
+        },
+    });
+    $('[name="beginAtDate"]').val('2026-10-12');
+    $('[name="beginAtTime"]').val('08:00');
+    initialize('contest_edit');
+    return $;
+}
+
+test('contest time edits require confirmation but unchanged saves and clones do not', async () => {
+    const { dom, form } = formData(renderContestEdit());
+    try {
+        const $ = initializeContestEditor(dom);
+        let prompts = 0;
+        let accept = false;
+        dom.window.confirm = (message) => { prompts++; assert.match(message, /成绩、罚时/); return accept; };
+        let resubmitted;
+        form.requestSubmit = (submitter) => {
+            resubmitted = new dom.window.SubmitEvent('submit', { bubbles: true, cancelable: true, submitter });
+            form.dispatchEvent(resubmitted);
+        };
+        const save = async (submitter = form.querySelector('[value="update"]')) => {
+            resubmitted = undefined;
+            const event = new dom.window.SubmitEvent('submit', { bubbles: true, cancelable: true, submitter });
+            form.dispatchEvent(event);
+            await new Promise(setImmediate);
+            return resubmitted || event;
+        };
+        assert.equal((await save()).defaultPrevented, false);
+        assert.equal(prompts, 0);
+        $('[name="duration"]').val('4').trigger('change');
+        assert.equal((await save()).defaultPrevented, true);
+        assert.equal(prompts, 1);
+        accept = true;
+        assert.equal((await save()).defaultPrevented, false);
+        assert.equal(prompts, 2);
+        assert.equal((await save(form.querySelector('[formaction]'))).defaultPrevented, false);
+        assert.equal(prompts, 2);
+        $('[name="duration"]').val('3').trigger('change');
+        $('[name="beginAtTime"]').val('8:00');
+        assert.equal((await save()).defaultPrevented, false);
+        assert.equal(prompts, 2);
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('contest history is folded, newest first and marks rating impact', () => {
+    const window = { beginAt: new Date('2026-10-12T08:00:00Z'), endAt: new Date('2026-10-12T09:00:00Z'), duration: null };
+    const { dom } = formData(renderContestEdit({ timeChangeHistory: [
+        { uid: 7, at: new Date('2026-10-12T08:10:00Z'), before: window, after: window, state: 'ongoing', attend: 2, ratingEnabled: true },
+        { uid: 9, at: new Date('2026-10-12T08:20:00Z'), before: window, after: window, state: 'ongoing', attend: 2, ratingEnabled: false },
+    ] }));
+    try {
+        const details = dom.window.document.querySelector('.contest-time-history');
+        assert.ok(details);
+        assert.equal(details.open, false);
+        const rows = [...details.querySelectorAll('tbody tr')];
+        assert.equal(rows.length, 2);
+        assert.match(rows[0].textContent, /UID 9/);
+        assert.match(rows[1].textContent, /UID 7/);
+        assert.match(rows[1].textContent, /可能影响积分，需复核/);
+        assert.match(rows[1].textContent, /2026-10-12T08:00:00.000Z/);
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('manual retry is a separate form and distinguishes saved settings from interrupted preparation', () => {
+    for (const settingsSaved of [true, false]) {
+        const { dom, form, data } = formData(renderContestEdit({
+            statsRevision: 2,
+            statsRecalc: { state: 'failed', revision: 2, settingsSaved },
+        }));
+        try {
+            const retry = dom.window.document.querySelector('[data-retry-recalc]');
+            assert.ok(retry);
+            assert.equal(form.contains(retry), false, 'retry must not submit or validate the ordinary edit form');
+            const retryData = new dom.window.FormData(retry);
+            assert.equal(retryData.get('operation'), 'retry_recalc');
+            assert.equal(retryData.get('statsRevision'), '2');
+            assert.equal(retryData.get('title'), null);
+            assert.equal(data.get('statsRevision'), null);
+            assert.match(retry.parentElement.textContent, settingsSaved ? /设置已保存，成绩重算失败/ : /设置尚未保存/);
+            assert.match(retry.parentElement.textContent, /手动重试|重试当前设置/);
+        } finally { dom.window.close(); }
+    }
+});
+
 test('contest editor renders every persisted field and submits monitor mode', () => {
     const { dom, form, data } = formData(renderContestEdit());
     for (const name of [
@@ -101,8 +208,8 @@ test('contest editor renders every persisted field and submits monitor mode', ()
     dom.window.close();
 });
 
-test('rule changes keep switch disabled appearance aligned with actual form submission', () => {
-    const { dom } = formData(renderContestEdit());
+test('rule changes disable and omit conditional settings from form submission', () => {
+    const { dom, form } = formData(renderContestEdit());
     const $ = require('jquery')(dom.window);
     let initialize;
     const code = ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../packages/ui-default/pages/contest_edit.page.ts'), 'utf8'), {
@@ -122,15 +229,14 @@ test('rule changes keep switch disabled appearance aligned with actual form subm
     });
     initialize('contest_create');
     const field = dom.window.document.querySelector('[name="keepScoreboardHidden"]');
-    const toggle = field.closest('.contest-edit__toggle');
     assert.equal(field.disabled, false);
-    assert.equal(toggle.classList.contains('contest-edit__toggle--disabled'), false);
+    assert.equal(new dom.window.FormData(form).get('keepScoreboardHidden'), 'on');
     $('[name="rule"]').val('acm').trigger('change');
     assert.equal(field.disabled, true);
-    assert.equal(toggle.classList.contains('contest-edit__toggle--disabled'), true);
+    assert.equal(new dom.window.FormData(form).get('keepScoreboardHidden'), null);
     $('[name="rule"]').val('oi').trigger('change');
     assert.equal(field.disabled, false);
-    assert.equal(toggle.classList.contains('contest-edit__toggle--disabled'), false);
+    assert.equal(new dom.window.FormData(form).get('keepScoreboardHidden'), 'on');
     assert.equal(dom.window.document.querySelector('[name="allowTeam"]').disabled, true);
     dom.window.close();
 });

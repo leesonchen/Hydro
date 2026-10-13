@@ -1,0 +1,21 @@
+{% if timeChangeHistory|length %}
+<details class="contest-time-history" style="margin-top: 1em;">
+  <summary>时间修改记录：{{ timeHistoryTitle }}（{{ timeChangeHistory|length }}）</summary>
+  <p class="help-text">这些变更可能影响成绩、罚时和提交有效性。启用积分认证的比赛还需核对认证和结算结果。</p>
+  <div style="overflow-x: auto;">
+    <table class="data-table">
+      <thead><tr><th>操作时间 / 操作者</th><th>修改前</th><th>修改后</th><th>修改时状态</th></tr></thead>
+      <tbody>
+      {% for change in timeChangeHistory|reverse %}
+        <tr>
+          <td>{{ datetimeSpan(change.at, false)|safe }}<br>{% if change.uid %}UID {{ change.uid }}{% else %}系统自动调整{% endif %}</td>
+          <td>开始：{{ datetimeSpan(change.before.beginAt, false)|safe }}<br>结束：{{ datetimeSpan(change.before.endAt, false)|safe }}<br>个人限时：{{ change.before.duration if change.before.duration else '不限' }}{% if change.before.duration %} 小时{% endif %}</td>
+          <td>开始：{{ datetimeSpan(change.after.beginAt, false)|safe }}<br>结束：{{ datetimeSpan(change.after.endAt, false)|safe }}<br>个人限时：{{ change.after.duration if change.after.duration else '不限' }}{% if change.after.duration %} 小时{% endif %}</td>
+          <td>{{ {'upcoming': '未开始', 'ongoing': '进行中', 'ended': '已结束'}[change.state] }}<br>已报名：{{ change.attend }} 人{% if change.ratingEnabled %}<br>可能影响积分，需复核{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}

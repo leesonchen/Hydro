@@ -6,6 +6,8 @@
 
 {% block content %}
 <div class="row"><div class="{{ 'medium-9' if tdoc.rule == 'course' else 'medium-12' }} columns scoreboard--{{ tdoc.rule }}">
+  {% set recalcDoc = tdoc %}
+  {% include "partials/contest_recalc_state.html" %}
   {% if tdoc.rule == 'course' %}
     <p class="supplementary">同题在多个课时复用时，显示共享的“本课程该题”提交与成绩；不计为每课时独立完成。</p>
   {% endif %}

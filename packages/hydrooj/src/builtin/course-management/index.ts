@@ -43,7 +43,7 @@ export async function apply(ctx: Context, config: any) {
             }
         }
         if (tdoc.rule !== 'course') return;
-        // Class schedule changes shift unopened tests while keeping started exams immutable.
+        // Class schedule changes automatically shift only unopened tests.
         if (changes.beginAt && !changes.dag) {
             const shiftMs = changes.beginAt.getTime() - tdoc.beginAt.getTime();
             if (shiftMs) {
@@ -58,12 +58,12 @@ export async function apply(ctx: Context, config: any) {
         const next = { ...tdoc, ...changes } as CourseTdoc;
         await validateAssessmentPlan(tdoc.domainId, next.dag || [], tdoc as CourseTdoc, next.beginAt, next.endAt);
     });
-    ctx.on('contest/edit', async (tdoc) => {
+    ctx.on('contest/edit', async (tdoc, actorUid) => {
         if (tdoc.rule !== 'course' || tdoc.assign?.includes('teachers')) return;
         const course = tdoc as CourseTdoc;
         const dag = structuredClone(course.dag || []);
         await syncAssessmentContests(course.domainId, course.docId, dag, course.title, course.owner,
-            course.assign || [], course.maintainer || []);
+            course.assign || [], course.maintainer || [], actorUid);
         if (JSON.stringify(dag) !== JSON.stringify(course.dag || [])) {
             const updated = await ContestModel.editIfAssigned(course.domainId, course.docId, course.assign || [], { dag },
                 { dagRevision: course.dagRevision ?? { $exists: false } });

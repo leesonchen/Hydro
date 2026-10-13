@@ -1,10 +1,16 @@
 /* eslint-disable no-await-in-loop -- Binding writes and cleanup must be ordered and awaited. */
+import type { Tdoc } from '../../../plugin-api';
 import {
     BadRequestError, ContestModel, ForbiddenError, ObjectId,
 } from '../../../plugin-api';
 import type { CourseTdoc, DagNode } from './course';
 
 const rules = ['acm', 'oi', 'ioi', 'strictioi'];
+
+function hasStarted(exam: Tdoc) {
+    // Correcting a start time must not erase the protection for existing questions and records.
+    return exam.beginAt <= new Date() || exam.timeChangeHistory?.some((change) => change.state !== 'upcoming');
+}
 
 /** Verify all rules before changing the course document, including edits of already-started tests. */
 export async function validateAssessmentPlan(
@@ -29,16 +35,14 @@ export async function validateAssessmentPlan(
             throw new BadRequestError('课堂测试时间必须处于课程范围内，题目与达标门槛必须有效。');
         }
         const recorded = linked.find((exam) => exam.sourceNodeId === node._id);
-        if (recorded?.beginAt <= new Date() && (
+        if (recorded && hasStarted(recorded) && (
             recorded.rule !== assessment.rule
-            || recorded.beginAt.getTime() !== start.getTime()
-            || recorded.endAt.getTime() !== end.getTime()
             || JSON.stringify(recorded.pids) !== JSON.stringify(node.pids)
-        )) throw new ForbiddenError('已开赛的课堂测试不能修改赛制、题目或时间。');
+        )) throw new ForbiddenError('已开赛的课堂测试不能修改赛制或题目。');
     }
     for (const recorded of linked) {
         if (dag.some((node) => node.kind === 'assessment' && node._id === recorded.sourceNodeId)) continue;
-        if (recorded.beginAt <= new Date() || recorded.attend > 0) {
+        if (hasStarted(recorded) || recorded.attend > 0) {
             throw new ForbiddenError('课堂测试已开赛或已有参赛记录，不能删除章节。');
         }
     }
@@ -48,6 +52,8 @@ export async function validateAssessmentPlan(
 export async function syncAssessmentContests(
     domainId: string, courseTid: ObjectId, dag: DagNode[],
     title: string, owner: number, assign: string[], maintainer: number[] = [],
+    actorUid = 0,
+    recalculate = true,
 ) {
     for (const node of dag) {
         if (node.kind !== 'assessment' || !node.assessment) continue;
@@ -59,22 +65,27 @@ export async function syncAssessmentContests(
         if (matches.length > 1) throw new ForbiddenError('Multiple contests bound to one classroom test');
         const current = matches[0];
         if (current) {
-            if (current.beginAt <= new Date()) {
+            if (hasStarted(current)) {
                 if (current.rule !== assessment.rule
-                    || current.beginAt.getTime() !== new Date(assessment.beginAt).getTime()
-                    || current.endAt.getTime() !== new Date(assessment.endAt).getTime()
                     || JSON.stringify(current.pids) !== JSON.stringify(node.pids)) {
-                    throw new ForbiddenError('Started classroom test cannot be modified');
+                    throw new ForbiddenError('Started classroom test rules and problems cannot be modified');
                 }
-                // Enrollment may change, but the rated flag is never set automatically.
-                await ContestModel.edit(domainId, current.docId, { assign, maintainer, rated: false, monitorMode: assessment.monitorMode || 'off' });
-            } else {
-                await ContestModel.edit(domainId, current.docId, {
-                    title: `${title} - ${node.title}`, assign, maintainer, rule: assessment.rule,
-                    monitorMode: assessment.monitorMode || 'off',
-                    beginAt: new Date(assessment.beginAt), endAt: new Date(assessment.endAt),
-                    pids: node.pids, rated: false,
-                });
+            }
+            const beginAt = new Date(assessment.beginAt);
+            const endAt = new Date(assessment.endAt);
+            const timeChanged = current.beginAt.getTime() !== beginAt.getTime() || current.endAt.getTime() !== endAt.getTime();
+            // Enrollment and schedule may change, but rating still requires explicit certification.
+            const updated = await ContestModel.edit(domainId, current.docId, {
+                ...(!hasStarted(current) ? { title: `${title} - ${node.title}` } : {}),
+                assign, maintainer, rule: assessment.rule, monitorMode: assessment.monitorMode || 'off',
+                beginAt, endAt, pids: node.pids, rated: false,
+            }, current, ['beginAt', 'endAt', 'rule', 'pids'], actorUid);
+            if (recalculate && (timeChanged || (updated.statsRevision || 0) !== (current.statsRevision || 0))) {
+                try {
+                    await ContestModel.recalcStatus(domainId, current.docId);
+                } catch {
+                    // Settings are already durable. The editor exposes the pending attempt and its manual retry.
+                }
             }
             assessment.contestTid = current.docId.toString();
             continue;
@@ -105,7 +116,7 @@ export async function cleanupInactiveAssessments(domainId: string, courseTid: Ob
     }).toArray();
     for (const exam of exams) {
         if (dag.some((node) => node.kind === 'assessment' && node._id === exam.sourceNodeId)) continue;
-        if (exam.beginAt <= new Date() || exam.attend > 0) {
+        if (hasStarted(exam) || exam.attend > 0) {
             throw new ForbiddenError('Already-started classroom tests cannot be deleted');
         }
         await ContestModel.del(domainId, exam.docId);
@@ -116,6 +127,8 @@ export interface AssessmentResult {
     score: number | null;
     completed: boolean;
     finished: boolean;
+    updating: boolean;
+    recalcState?: Tdoc['statsRecalc']['state'];
     attend: boolean;
     tid: ObjectId;
     rule: string;
@@ -140,11 +153,15 @@ export async function getAssessmentResults(domainId: string, course: CourseTdoc,
             || exam.sourceCourseTid?.toString() !== course.docId.toString()
             || exam.sourceNodeId !== node._id) return;
         const finished = ContestModel.isDone(exam, tsdoc);
-        const score = finished && tsdoc?.attend ? Number((exam.rule === 'acm' ? tsdoc.accept : tsdoc.score) || 0) : null;
+        // A status write can span journal/statistics updates or delete/recreate enrollment.
+        // Its marker lives on the exam so replacing the status cannot lose it.
+        const updating = !!exam._assessmentStatusUpdates?.[uid]?.length || !ContestModel.isStatsReady(exam, tsdoc);
+        const score = finished && tsdoc?.attend && !updating ? Number((exam.rule === 'acm' ? tsdoc.accept : tsdoc.score) || 0) : null;
         const completed = !!(finished && tsdoc?.attend && tsdoc.journal?.length
             && score !== null && score >= (assessment.passScore ?? 0));
         results[node._id] = {
-            score, completed, finished, attend: !!tsdoc?.attend, tid, rule: exam.rule,
+            score, completed, finished, updating, recalcState: exam.statsRecalc?.state,
+            attend: !!tsdoc?.attend, tid, rule: exam.rule,
             beginAt: exam.beginAt, endAt: exam.endAt, metric: exam.rule === 'acm' ? 'accepted' : 'score',
         };
     }));

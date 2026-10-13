@@ -28,7 +28,7 @@ const bus = { on() {}, broadcast() {}, parallel: async () => {} };
 const utils = { ArgMethod: (_, __, descriptor) => descriptor,
     buildProjection: (fields) => Object.fromEntries(fields.map((field) => [field, 1])),
     Counter: () => new Proxy({}, { get: (obj, key) => obj[key] || 0 }), Time: { hour: 3600000, day: 86400000 } };
-let mongod, client, db, document, contest, users, handlers, hooks, api, assessmentBarrier;
+let mongod, client, db, document, contest, users, handlers, hooks, api, assessment, assessmentBarrier, statusWriteBarrier;
 let storageWrites;
 const actor = (uid, perm = 0n) => ({ _id: uid, group: [],
     own: (doc, checkPerm) => (!checkPerm || (perm & checkPerm) === checkPerm)
@@ -48,11 +48,22 @@ before(async () => {
     Math.sum ||= (values) => values.reduce((sum, value) => sum + value, 0);
     mongod = await MongoMemoryServer.create();
     client = await MongoClient.connect(mongod.getUri()); db = client.db('review-security');
-    const database = { collection: (name) => db.collection(name), ensureIndexes: (coll, ...indexes) => coll.createIndexes(indexes) };
+    const database = { collection: (name) => new Proxy(db.collection(name), { get: (target, prop) => {
+        if (name === 'document.status' && ['findOneAndUpdate', 'updateOne'].includes(prop)) return async (...args) => {
+            await statusWriteBarrier?.(...args);
+            return target[prop](...args);
+        };
+        return typeof target[prop] === 'function' ? target[prop].bind(target) : target[prop];
+    } }), ensureIndexes: (coll, ...indexes) => coll.createIndexes(indexes) };
     document = load('packages/hydrooj/src/model/document.ts', {
         '../service/db': database, '../service/bus': bus, '../error': errors, '../utils': utils,
     });
     users = load('packages/hydrooj/src/model/user.ts', {
+        '../lib/rating-publication-read': {
+            projectUserRating: async (_domain, value) => value,
+            projectUserRatings: async (_domain, values) => values,
+            publicRatingStore: { active: async () => null },
+        },
         '../service/db': database, '../service/bus': bus, '../error': errors, '../utils': utils,
         './builtin': { PERM, PRIV: {} }, '../lib/avatar': () => '', '../lib/hash.hydro': {},
         './domain': { getDomainUser: async (domainId) => ({ domainId, perm: PERM.PERM_ALL }), get: async () => null },
@@ -75,11 +86,16 @@ before(async () => {
     for (const key of ['ForbiddenError', 'NotAssignedError', 'ValidationError', 'ContestNotFoundError', 'BadRequestError', 'ContestAlreadyAttendedError']) api[key] = errors[key];
     const structure = load('packages/hydrooj/src/builtin/course-management/model/structure.ts');
     const courseModel = load('packages/hydrooj/src/builtin/course-management/model/course.ts', { '../../../plugin-api': api, './structure': structure });
+    assessment = load('packages/hydrooj/src/builtin/course-management/model/assessment.ts', { '../../../plugin-api': api });
     handlers = load('packages/hydrooj/src/builtin/course-management/handler/course.ts', {
         '../../../plugin-api': api, '../../../service/bus': bus,
         '../../../lib/classroomFeedbackAccess': { canManageFeedback: async () => false },
         '../../../lib/referenceCode': {}, '../../../model/classroomFeedback': { feedbackRepository: {} },
-        '../../../model/feedback': {}, '../model/assessment': { getAssessmentResults: async () => { await assessmentBarrier?.(); return {}; } },
+        '../../../model/feedback': {}, '../model/assessment': { ...assessment, getAssessmentResults: async (...args) => {
+            const results = await assessment.getAssessmentResults(...args);
+            await assessmentBarrier?.();
+            return results;
+        } },
         '../model/course': courseModel, '../model/structure': structure,
         '../model/class': { ClassModel: { getGroupByName: async () => ({ students: [] }) } },
     });
@@ -94,7 +110,7 @@ before(async () => {
 });
 after(async () => { await client?.close(); await mongod?.stop(); });
 beforeEach(async () => {
-    storageWrites = 0; assessmentBarrier = undefined; users.cache.clear();
+    storageWrites = 0; assessmentBarrier = undefined; statusWriteBarrier = undefined; users.cache.clear();
     for (const name of ['document', 'document.status', 'user', 'user.group']) await db.collection(name).deleteMany({});
 });
 async function courseFixture(extra = {}) {
@@ -301,6 +317,219 @@ test('a stale score prerequisite cannot unlock after a partial-score downgrade w
     assert.equal(status.score[1], 20);
     assert.equal(status.accept[0], 0);
     assert.equal(status.allow[2], undefined);
+});
+
+async function assessmentGatedCourseFixture(condition = { type: 'all' }, rule = 'oi') {
+    const examTid = new ObjectId();
+    const course = await courseFixture({ pids: [], dag: [
+        { _id: 1, kind: 'assessment', title: 'exam', pids: [10], assessment: {
+            contestTid: examTid.toString(), rule, passScore: rule === 'acm' ? 1 : 60,
+            beginAt: new Date(0).toISOString(), endAt: new Date(1).toISOString(),
+        } },
+        { _id: 2, title: 'gated lesson', pids: [], requireNids: [1], completeCondition: condition },
+    ] });
+    await document.coll.insertOne({ _id: examTid, docId: examTid, domainId: 'd', docType: 30,
+        rule, owner: 1, pids: [10], attend: 1, sourceType: 'course_assessment',
+        sourceCourseTid: course.docId, sourceNodeId: 1, beginAt: new Date(0), endAt: new Date(1) });
+    const rid = new ObjectId();
+    await document.collStatus.insertOne({ domainId: 'd', docType: 30, docId: examTid, uid: 2,
+        attend: 1, rev: 1, score: 80, accept: 1,
+        journal: [{ rid, pid: 10, score: 80, status: rule === 'acm' ? STATUS.STATUS_ACCEPTED : STATUS.STATUS_WRONG_ANSWER }] });
+    await contest.setStatus('d', course.docId, 2, {
+        allow: { 1: true }, progress: 100, assessmentResults: { 1: { score: rule === 'acm' ? 1 : 80, completed: true } },
+    });
+    return { course, examTid, rid };
+}
+
+function pauseNextAssessmentRead() {
+    let enter, release;
+    const entered = new Promise((resolve) => { enter = resolve; });
+    const resume = new Promise((resolve) => { release = resolve; });
+    assessmentBarrier = async () => { assessmentBarrier = undefined; enter(); await resume; };
+    return { entered, release };
+}
+
+for (const mutation of ['judge-all', 'judge-problem', 'judge-score', 'judge-acm', 'set-score', 'recalc', 'cancel', 'cancel-rejoin', 'reopen']) {
+    test(`a stale assessment prerequisite cannot grant access after ${mutation}`, async () => {
+        const type = mutation === 'judge-problem' ? 'problem' : mutation === 'judge-score' ? 'score' : 'all';
+        const condition = type === 'all' ? { type } : { type, value: type === 'score' ? 60 : 1 };
+        const { course, examTid, rid } = await assessmentGatedCourseFixture(condition, mutation === 'judge-acm' ? 'acm' : 'oi');
+        if (mutation === 'reopen') {
+            await contest.edit('d', examTid, { endAt: new Date(Date.now() + 3600000) });
+            await contest.recalcStatus('d', examTid);
+            await contest.setStatus('d', examTid, 2, { endAt: new Date(1) });
+        }
+        const barrier = pauseNextAssessmentRead();
+        const stale = handlers.updateAllowedNodes('d', course.docId, 2, course);
+        await barrier.entered;
+        try {
+            if (mutation.startsWith('judge')) await contest.updateStatus('d', examTid, 2, rid, 10, { score: 20, status: STATUS.STATUS_WRONG_ANSWER });
+            if (mutation === 'set-score') await contest.setStatus('d', examTid, 2, { score: 20 });
+            if (mutation === 'recalc') {
+                // A changed OI weight changes stats even though the journal itself is unchanged.
+                await contest.edit('d', examTid, { score: { 10: 25 } });
+                await contest.recalcStatus('d', examTid);
+            }
+            if (mutation.startsWith('cancel')) await contest.cancelAttend('d', examTid, 2);
+            if (mutation === 'cancel-rejoin') await contest.attend('d', examTid, 2);
+            if (mutation === 'reopen') {
+                await contest.setStatus('d', examTid, 2, {}, { endAt: '' });
+            }
+            // Also reproduce the case where a newer progress request has already recorded failure.
+            await handlers.updateAllowedNodes('d', course.docId, 2, course);
+        } finally {
+            barrier.release();
+            await stale;
+        }
+        const status = await contest.getStatus('d', course.docId, 2);
+        assert.equal(status.allow[2], undefined);
+        assert.equal(status.assessmentResults[1].completed, false);
+        assert.equal(status.progress, 0);
+    });
+}
+
+test('a source downgrade fences a stale unlock even without another progress request', async () => {
+    const { course, examTid, rid } = await assessmentGatedCourseFixture();
+    const barrier = pauseNextAssessmentRead();
+    const stale = handlers.updateAllowedNodes('d', course.docId, 2, course);
+    await barrier.entered;
+    try { await contest.updateStatus('d', examTid, 2, rid, 10, { score: 20, status: STATUS.STATUS_WRONG_ANSWER }); }
+    finally { barrier.release(); await stale; }
+    assert.equal((await contest.getStatus('d', course.docId, 2)).allow[2], undefined);
+    await handlers.updateAllowedNodes('d', course.docId, 2, course);
+    assert.equal((await contest.getStatus('d', course.docId, 2)).assessmentResults[1].score, 20);
+});
+
+test('a stale completed test cannot open a new chapter while its time update waits for recalculation', async () => {
+    const { course, examTid } = await assessmentGatedCourseFixture();
+    const barrier = pauseNextAssessmentRead();
+    const stale = handlers.updateAllowedNodes('d', course.docId, 2, course);
+    await barrier.entered;
+    let enter, release;
+    const entered = new Promise((resolve) => { enter = resolve; });
+    const resume = new Promise((resolve) => { release = resolve; });
+    const original = contest.recalcStatus;
+    contest.recalcStatus = async (...args) => { enter(); await resume; return original(...args); };
+    const dag = structuredClone(course.dag);
+    dag[0].assessment.endAt = new Date(Date.now() + 3600000).toISOString();
+    const saving = assessment.syncAssessmentContests('d', course.docId, dag, course.title, 1, course.assign, [], 1);
+    try {
+        await entered;
+        assert.equal(contest.isOngoing(await contest.get('d', examTid)), true);
+        barrier.release();
+        await stale;
+        assert.equal((await contest.getStatus('d', course.docId, 2)).allow[2], undefined);
+        const pending = await handlers.updateAllowedNodes('d', course.docId, 2, course);
+        assert.equal(pending[1].updating, true);
+        assert.equal(pending[1].score, null);
+        release();
+        await saving;
+        const result = await handlers.updateAllowedNodes('d', course.docId, 2, course);
+        assert.equal(result[1].completed, false);
+        assert.equal((await contest.getStatus('d', course.docId, 2)).allow[2], undefined);
+    } finally { barrier.release(); release(); contest.recalcStatus = original; await saving; }
+});
+
+test('classroom manual retries require editing permission and an authoritative chapter binding', async () => {
+    const { course, examTid } = await assessmentGatedCourseFixture();
+    const denied = handler(handlers.CourseEditHandler, actor(2, PERM.PERM_DEFAULT));
+    denied.tdoc = course;
+    await assert.rejects(denied.postRetryRecalc('d', 1, 0), errors.ForbiddenError);
+    const owner = handler(handlers.CourseEditHandler, actor(1, PERM.PERM_EDIT_HOMEWORK_SELF));
+    owner.tdoc = course;
+    owner.args.operation = 'retry_recalc';
+    // Operation dispatch must not require the ordinary course form's title, dates and DAG fields.
+    await owner.post({ domainId: 'd', operation: 'retry_recalc', nodeId: 1, statsRevision: 0 });
+    await owner.postRetryRecalc('d', 1, 0);
+    assert.equal((await contest.get('d', examTid)).statsRecalc, undefined);
+    const foreign = new ObjectId();
+    await document.coll.updateOne({ docId: examTid }, { $set: { sourceCourseTid: foreign } });
+    await assert.rejects(owner.postRetryRecalc('d', 1, 0), errors.ForbiddenError);
+});
+
+test('reads during a judgement cannot unlock from old stats, including a new parent enrollment', async () => {
+    const { course, examTid, rid } = await assessmentGatedCourseFixture();
+    let enter, release;
+    const entered = new Promise((resolve) => { enter = resolve; });
+    const resume = new Promise((resolve) => { release = resolve; });
+    statusWriteBarrier = async (filter) => {
+        if (!filter.docId.equals(examTid) || filter.rev === undefined) return;
+        statusWriteBarrier = undefined; enter(); await resume;
+    };
+    const judging = contest.updateStatus('d', examTid, 2, rid, 10, { score: 20, status: STATUS.STATUS_WRONG_ANSWER });
+    await entered;
+    try {
+        assert.equal((await contest.getStatus('d', examTid, 2)).score, 80);
+        for (const rejoin of [false, true]) {
+            if (rejoin) {
+                await contest.cancelAttend('d', course.docId, 2);
+                await contest.attend('d', course.docId, 2, { allow: { 1: true } });
+            }
+            const results = await handlers.updateAllowedNodes('d', course.docId, 2, course);
+            assert.equal(results[1].score, null);
+            assert.equal((await contest.getStatus('d', course.docId, 2)).allow[2], undefined);
+        }
+    } finally { release(); await judging; }
+    await handlers.updateAllowedNodes('d', course.docId, 2, course);
+    assert.equal((await contest.getStatus('d', course.docId, 2)).allow[2], undefined);
+    await contest.updateStatus('d', examTid, 2, rid, 10, { score: 80, status: STATUS.STATUS_WRONG_ANSWER });
+    await handlers.updateAllowedNodes('d', course.docId, 2, course);
+    const status = await contest.getStatus('d', course.docId, 2);
+    assert.equal(status.allow[2], true);
+    assert.equal(status.progress, 100);
+    // A grant committed against a valid prerequisite remains valid after later rejudging.
+    await contest.updateStatus('d', examTid, 2, rid, 10, { score: 20, status: STATUS.STATUS_WRONG_ANSWER });
+    await handlers.updateAllowedNodes('d', course.docId, 2, course);
+    assert.equal((await contest.getStatus('d', course.docId, 2)).allow[2], true);
+});
+
+test('overlapping assessment writes retain their own markers and preserve manual decisions', async () => {
+    const { course, examTid } = await assessmentGatedCourseFixture();
+    const releases = new Map();
+    let enter;
+    const entered = new Promise((resolve) => { enter = resolve; });
+    statusWriteBarrier = async (filter, update) => {
+        if (!filter.docId.equals(examTid) || update.$set?.score === undefined) return;
+        await new Promise((resolve) => { releases.set(update.$set.score, resolve); if (releases.size === 2) enter(); });
+    };
+    const writes = [80, 20].map((score) => contest.setStatus('d', examTid, 2, { score }));
+    await entered;
+    try {
+        assert.equal((await contest.get('d', examTid))._assessmentStatusUpdates[2].length, 2);
+        releases.get(80)(); await writes[0];
+        assert.equal((await assessment.getAssessmentResults('d', course, 2))[1].score, null);
+        await contest.setStatus('d', course.docId, 2, { 'allow.2': false });
+        await handlers.updateAllowedNodes('d', course.docId, 2, course);
+        assert.equal((await contest.getStatus('d', course.docId, 2)).allow[2], false);
+        await contest.setStatus('d', course.docId, 2, { 'allow.2': true });
+    } finally { for (const release of releases.values()) release(); await Promise.all(writes); }
+    assert.equal((await contest.get('d', examTid))._assessmentStatusUpdates[2], undefined);
+    await handlers.updateAllowedNodes('d', course.docId, 2, course);
+    assert.equal((await contest.getStatus('d', course.docId, 2)).allow[2], true);
+});
+
+test('a failed source write releases its marker and never recreates parent enrollment', async () => {
+    const { course, examTid } = await assessmentGatedCourseFixture();
+    await contest.cancelAttend('d', course.docId, 2);
+    await assert.rejects(contest.attend('d', examTid, 2), errors.ContestAlreadyAttendedError);
+    assert.equal(await contest.getStatus('d', course.docId, 2), null);
+    assert.equal((await contest.get('d', examTid))._assessmentStatusUpdates[2], undefined);
+    assert.equal((await assessment.getAssessmentResults('d', course, 2))[1].score, 80);
+});
+
+test('a failed final invalidation leaves uncertain assessment results unavailable', async () => {
+    const { course, examTid } = await assessmentGatedCourseFixture();
+    let invalidations = 0;
+    statusWriteBarrier = async (filter, update) => {
+        if (filter.docId.equals(course.docId) && update.$inc?._assessmentRevision && ++invalidations === 2) {
+            throw new Error('injected final invalidation failure');
+        }
+    };
+    await assert.rejects(contest.setStatus('d', examTid, 2, { score: 20 }), /injected final invalidation failure/);
+    assert.equal((await contest.getStatus('d', examTid, 2)).score, 20);
+    assert.equal((await assessment.getAssessmentResults('d', course, 2))[1].score, null);
+    await handlers.updateAllowedNodes('d', course.docId, 2, course);
+    assert.equal((await contest.getStatus('d', course.docId, 2)).allow[2], undefined);
 });
 
 test('HTTP attachment POSTs enforce the role matrix before storage and persist authorized replacement once', async () => {

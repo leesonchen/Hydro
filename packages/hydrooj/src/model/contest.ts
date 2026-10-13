@@ -1,5 +1,5 @@
 import { get as getPath, pick, sumBy } from 'lodash';
-import { Filter, ObjectId } from 'mongodb';
+import { Collection, Filter, ObjectId } from 'mongodb';
 import {
     Counter, formatSeconds, getAlphabeticId, sleep, Time,
 } from '@hydrooj/utils/lib/utils';
@@ -841,7 +841,7 @@ export function validateContestConfiguration(tdoc: Pick<Tdoc, 'allowTeam' | 'all
 const collBalloon = db.collection('contest.balloon');
 
 function _getStatusJournal(tsdoc: ContestStatusDoc): ContestJournalEntry[] {
-    return tsdoc.journal!.sort((a, b) => (a.rid.getTimestamp().getTime() - b.rid.getTimestamp().getTime()));
+    return (tsdoc.journal || []).sort((a, b) => (a.rid.getTimestamp().getTime() - b.rid.getTimestamp().getTime()));
 }
 
 export async function add(
@@ -864,8 +864,87 @@ export async function add(
     return docId;
 }
 
+function timeChange(tdoc: Tdoc, next: Tdoc, uid = 0): NonNullable<Tdoc['timeChangeHistory']>[number] | undefined {
+    if (tdoc.rule === 'course' || (tdoc.beginAt.getTime() === next.beginAt.getTime()
+        && tdoc.endAt.getTime() === next.endAt.getTime() && (tdoc.duration ?? null) === (next.duration ?? null))) return undefined;
+    const at = new Date();
+    const window = (doc: Tdoc) => ({ beginAt: doc.beginAt, endAt: doc.endAt, duration: doc.duration ?? null });
+    return {
+        uid, at, before: window(tdoc), after: window(next),
+        state: at < tdoc.beginAt ? 'upcoming' : at < tdoc.endAt ? 'ongoing' : 'ended',
+        attend: tdoc.attend || 0, ratingEnabled: !!(tdoc.rated || tdoc.ratingPolicy?.enabled || next.rated || next.ratingPolicy?.enabled),
+    };
+}
+
+const statsConfigurationKeys = [
+    'beginAt', 'endAt', 'duration', 'rule', 'pids', 'score', 'lockAt', 'unlocked', 'penaltySince', 'penaltyRules',
+] as const;
+
+function statsConfigurationChanged(before: Tdoc, after: Tdoc) {
+    return before.rule !== 'course' && statsConfigurationKeys.some((key) =>
+        JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null));
+}
+
+function revisionCondition(tdoc: Tdoc): Filter<Tdoc> {
+    return { statsRevision: tdoc.statsRevision === undefined ? { $exists: false } : tdoc.statsRevision };
+}
+
+async function invalidateAssessmentCourse(tdoc: Tdoc) {
+    if (tdoc.sourceType !== 'course_assessment' || !tdoc.sourceCourseTid) return;
+    await document.collStatus.updateMany({
+        domainId: tdoc.domainId, docType: document.TYPE_CONTEST, docId: tdoc.sourceCourseTid,
+    }, { $inc: { _assessmentRevision: 1 } });
+}
+
+/** Prepare the read fence before publishing changed settings; retain durable recovery state on failure. */
+async function writeContestConfiguration(
+    tdoc: Tdoc, next: Tdoc, condition: Filter<Tdoc>, $set: Partial<Tdoc>, change?: Tdoc['timeChangeHistory'][number],
+) {
+    const selector = { domainId: tdoc.domainId, docType: document.TYPE_CONTEST, docId: tdoc.docId };
+    if (!statsConfigurationChanged(tdoc, next)) {
+        return document.setIfCondition(
+            tdoc.domainId, document.TYPE_CONTEST, tdoc.docId, condition, $set, undefined,
+            change ? { timeChangeHistory: change } : undefined,
+        );
+    }
+    const token = new ObjectId();
+    const recalc: NonNullable<Tdoc['statsRecalc']> = {
+        token, revision: (tdoc.statsRevision || 0) + 1, state: 'preparing',
+        requestedAt: new Date(), settingsSaved: false,
+    };
+    const guarded = { $and: [condition, revisionCondition(tdoc)] };
+    const prepared = await (document.coll as Collection<Tdoc>).findOneAndUpdate(
+        { ...selector, ...guarded }, { $set: { statsRecalc: recalc } }, { returnDocument: 'after' },
+    );
+    if (!prepared) return null;
+    try {
+        // Every course reader that captured the old test must fail its conditional grant before the new time is visible.
+        await invalidateAssessmentCourse(tdoc);
+        const result = await document.setIfCondition(
+            tdoc.domainId, document.TYPE_CONTEST, tdoc.docId, { ...guarded, 'statsRecalc.token': token },
+            { ...$set, statsRevision: recalc.revision, statsRecalc: { ...recalc, state: 'pending', settingsSaved: true } },
+            undefined, change ? { timeChangeHistory: change } : undefined,
+        );
+        if (!result) throw new BadRequestError('Contest changed. Please refresh and try again.');
+        return result;
+    } catch (error) {
+        await (document.coll as Collection<Tdoc>).updateOne({ ...selector, 'statsRecalc.token': token }, {
+            $set: { 'statsRecalc.state': 'failed' },
+        });
+        throw error;
+    }
+}
+
+export function isStatsReady(tdoc: Tdoc, tsdoc?: ContestStatusDoc) {
+    return !tdoc.statsRecalc && (!tsdoc?.journal?.length || (
+        (tsdoc.statsRevision || 0) === (tdoc.statsRevision || 0)
+        && (tsdoc.statsJournalRevision === undefined || tsdoc.statsJournalRevision === (tsdoc.rev || 0))
+    ));
+}
+
 export async function edit(
     domainId: string, tid: ObjectId, $set: Partial<Tdoc>, expected?: Tdoc, expectedFields: (keyof Tdoc)[] = [],
+    actorUid = 0,
 ) {
     if ($set.rule && !RULES[$set.rule]) throw new ValidationError('rule');
     const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
@@ -888,9 +967,15 @@ export async function edit(
         const value = getPath(source, key);
         condition[key] = value === undefined ? { $exists: false } as any : value as any;
     }
-    const res = await document.setIfCondition(domainId, document.TYPE_CONTEST, tid, condition, $set);
+    const change = timeChange(tdoc, next, actorUid);
+    if (change) {
+        for (const key of ['beginAt', 'endAt', 'duration'] as const) {
+            if (!Object.hasOwn(condition, key)) condition[key] = source[key] === undefined ? { $exists: false } as any : source[key] as any;
+        }
+    }
+    const res = await writeContestConfiguration(tdoc, next, condition, $set, change);
     if (!res) throw new BadRequestError('Contest changed. Please refresh and try again.');
-    await bus.parallel('contest/edit', res);
+    await bus.parallel('contest/edit', res, actorUid);
     return res;
 }
 
@@ -900,6 +985,7 @@ export async function editIfAssigned(
     assignGroup: string | string[],
     $set: Partial<Tdoc>,
     expected: Filter<Tdoc> = {},
+    actorUid = 0,
 ) {
     if ($set.rule && !RULES[$set.rule]) throw new ValidationError('rule');
     const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
@@ -915,19 +1001,16 @@ export async function editIfAssigned(
     for (const key of ['rule', 'rated', 'allowTeam'] as const) {
         configurationCondition[key] = tdoc[key] === undefined ? { $exists: false } as any : tdoc[key] as any;
     }
-    const res = await document.coll.findOneAndUpdate(
-        {
-            ...expected,
-            ...configurationCondition,
-            domainId,
-            docType: document.TYPE_CONTEST,
-            docId: tid,
-            assign: assignGroup,
-        },
-        { $set },
-        { returnDocument: 'after' },
-    );
-    if (res) await bus.parallel('contest/edit', res as Tdoc);
+    const change = timeChange(tdoc, next, actorUid);
+    if (change) {
+        Object.assign(configurationCondition, {
+            beginAt: tdoc.beginAt, endAt: tdoc.endAt, duration: tdoc.duration === undefined ? { $exists: false } : tdoc.duration,
+        });
+    }
+    const res = await writeContestConfiguration(tdoc, next, {
+        $and: [expected, configurationCondition], assign: assignGroup,
+    }, $set, change);
+    if (res) await bus.parallel('contest/edit', res as Tdoc, actorUid);
     return res as Tdoc | null;
 }
 
@@ -1092,6 +1175,76 @@ export async function validateTeamParticipants(domainId: string, tdoc: Tdoc, mem
     return participantUids.sort((a, b) => a - b);
 }
 
+/** Fence course grants around every classroom status mutation, without requiring MongoDB transactions. */
+async function withAssessmentStatusUpdate<T>(tdoc: Tdoc | null, uid: number, update: () => Promise<T>): Promise<T> {
+    if (tdoc?.sourceType !== 'course_assessment' || !tdoc.sourceCourseTid) return update();
+    const exams = document.coll as Collection<Tdoc>;
+    const examFilter = { domainId: tdoc.domainId, docType: document.TYPE_CONTEST, docId: tdoc.docId };
+    const field = `_assessmentStatusUpdates.${uid}`;
+    const token = new ObjectId();
+    // The exam survives enrollment cancellation, including concurrent cancellation/rejoin.
+    const marked = await exams.updateOne(examFilter, { $addToSet: { [field]: token } });
+    if (!marked.matchedCount) throw new ContestNotFoundError(tdoc.domainId, tdoc.docId);
+    const invalidate = () => document.collStatus.updateOne({
+        domainId: tdoc.domainId, docType: document.TYPE_CONTEST, docId: tdoc.sourceCourseTid, uid,
+    }, { $inc: { _assessmentRevision: 1 } });
+    try {
+        // Old readers must fail their conditional grant before any source state changes.
+        await invalidate();
+        return await update();
+    } finally {
+        // Also fence readers/enrollments that appeared during the write. Until this succeeds,
+        // leave the marker in place so a failed cleanup cannot expose uncertain scores.
+        await invalidate();
+        await exams.updateOne(examFilter, { $pull: { [field]: { $eq: token } } });
+        await exams.updateOne({ ...examFilter, [field]: [] }, { $unset: { [field]: '' } });
+    }
+}
+
+/** Both configuration and journal versions are inputs to a statistics write. */
+async function calculateStatus(domainId: string, tid: ObjectId, uid: number, expectedRevision?: number) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        // eslint-disable-next-line no-await-in-loop -- Refresh both inputs after a conditional write conflict.
+        const [tdoc, tsdoc] = await Promise.all([get(domainId, tid), getStatus(domainId, tid, uid)]);
+        if (!tsdoc) return null; // Enrollment was cancelled while the caller was running.
+        if (tdoc.rule === 'course' && !tsdoc.journal) return tsdoc;
+        const revision = tdoc.statsRevision || 0;
+        if (expectedRevision !== undefined && revision !== expectedRevision) {
+            throw new BadRequestError('比赛设置已更新，请刷新后重试成绩重算。');
+        }
+        const journal = _getStatusJournal(tsdoc);
+        const stats = RULES[tdoc.rule].stat(tdoc, journal);
+        // eslint-disable-next-line no-await-in-loop -- Writes must remain ordered with their input snapshots.
+        const result = await document.revSetStatus(
+            domainId, document.TYPE_CONTEST, tid, uid, tsdoc.rev,
+            { journal, ...stats, statsRevision: revision, statsJournalRevision: (tsdoc.rev || 0) + 1 },
+            { _id: tsdoc._id, $or: [{ statsRevision: { $exists: false } }, { statsRevision: { $lte: revision } }] },
+        );
+        if (!result) continue;
+        // A configuration edit can span different documents. A stale result stays hidden and is recomputed from the latest inputs.
+        // eslint-disable-next-line no-await-in-loop -- Verify that the accepted result still belongs to the current configuration.
+        const current = await get(domainId, tid);
+        if ((current.statsRevision || 0) === revision) return result;
+    }
+    throw new BadRequestError('成绩统计发生并发变更，请重试成绩重算。');
+}
+
+async function markStatsFailed(tdoc: Tdoc) {
+    const selector = {
+        domainId: tdoc.domainId, docType: document.TYPE_CONTEST, docId: tdoc.docId, ...revisionCondition(tdoc),
+    };
+    // A failed concurrent judge must prevent an in-progress bulk recalculation from claiming completion.
+    await (document.coll as Collection<Tdoc>).updateOne({
+        ...selector, 'statsRecalc.state': 'running', 'statsRecalc.revision': tdoc.statsRevision || 0,
+    }, { $set: { 'statsRecalc.state': 'failed' } });
+    await (document.coll as Collection<Tdoc>).updateOne({
+        ...selector, statsRecalc: { $exists: false },
+    }, { $set: { statsRecalc: {
+        revision: tdoc.statsRevision || 0, token: new ObjectId(), state: 'failed',
+        requestedAt: new Date(), settingsSaved: true,
+    } } });
+}
+
 export async function updateStatus(
     domainId: string, tid: ObjectId, uid: number, rid: ObjectId, pid: number,
     {
@@ -1103,12 +1256,17 @@ export async function updateStatus(
 ) {
     const tdoc = await get(domainId, tid);
     if (tdoc.balloon && status === STATUS.STATUS_ACCEPTED && !isLocked(tdoc)) await addBalloon(domainId, tid, uid, rid, pid);
-    const tsdoc = await document.revPushStatus(tdoc.domainId, document.TYPE_CONTEST, tdoc.docId, uid, 'journal', {
-        rid, pid, status, score, subtasks, lang,
-    }, 'rid');
-    const journal = _getStatusJournal(tsdoc);
-    const stats = RULES[tdoc.rule].stat(tdoc, journal);
-    return await document.revSetStatus(tdoc.domainId, document.TYPE_CONTEST, tdoc.docId, uid, tsdoc.rev, { journal, ...stats });
+    return withAssessmentStatusUpdate(tdoc, uid, async () => {
+        await document.revPushStatus(tdoc.domainId, document.TYPE_CONTEST, tdoc.docId, uid, 'journal', {
+            rid, pid, status, score, subtasks, lang,
+        }, 'rid');
+        try {
+            return await calculateStatus(domainId, tid, uid);
+        } catch (error) {
+            await markStatsFailed(await get(domainId, tid));
+            throw error;
+        }
+    });
 }
 
 export async function getListStatus(domainId: string, uid: number, tids: ObjectId[]) {
@@ -1138,28 +1296,34 @@ export async function attend(domainId: string, tid: ObjectId, uid: number, paylo
         statusPayload.members = participantUids;
         statusPayload.participantUids = participantUids;
     } else if (uid > 0) statusPayload.participantUids = [uid];
-    try {
-        await document.cappedIncStatus(
-            domainId, document.TYPE_CONTEST, tid, uid, 'attend', 1, 0, 1, statusPayload,
-        );
-    } catch (e) {
-        if (e?.code === 11000) throw new ContestAlreadyAttendedError(tid, uid);
-        throw e;
-    }
-    await document.inc(domainId, document.TYPE_CONTEST, tid, 'attend', 1);
-    return {};
+    return withAssessmentStatusUpdate(tdoc, uid, async () => {
+        try {
+            await document.cappedIncStatus(
+                domainId, document.TYPE_CONTEST, tid, uid, 'attend', 1, 0, 1, statusPayload,
+            );
+        } catch (e) {
+            if (e?.code === 11000) throw new ContestAlreadyAttendedError(tid, uid);
+            throw e;
+        }
+        await document.inc(domainId, document.TYPE_CONTEST, tid, 'attend', 1);
+        return {};
+    });
 }
 
 export async function cancelAttend(domainId: string, tid: ObjectId, uid: number) {
-    const tsdoc = await document.collStatus.findOneAndDelete({
-        domainId, docType: document.TYPE_CONTEST, docId: tid, uid,
+    const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
+    return withAssessmentStatusUpdate(tdoc, uid, async () => {
+        const tsdoc = await document.collStatus.findOneAndDelete({
+            domainId, docType: document.TYPE_CONTEST, docId: tid, uid,
+        });
+        if (tsdoc?.attend > 0) await document.inc(domainId, document.TYPE_CONTEST, tid, 'attend', -1);
+        return {};
     });
-    if (tsdoc?.attend > 0) await document.inc(domainId, document.TYPE_CONTEST, tid, 'attend', -1);
-    return {};
 }
 
-export function setStatus(domainId: string, tid: ObjectId, uid: number, $set?: any, $unset?: any) {
-    return document.setStatus(domainId, document.TYPE_CONTEST, tid, uid, $set, $unset);
+export async function setStatus(domainId: string, tid: ObjectId, uid: number, $set?: any, $unset?: any) {
+    const tdoc = await document.get(domainId, document.TYPE_CONTEST, tid);
+    return withAssessmentStatusUpdate(tdoc, uid, () => document.setStatus(domainId, document.TYPE_CONTEST, tid, uid, $set, $unset));
 }
 
 export function count(domainId: string, query: any) {
@@ -1184,25 +1348,41 @@ export async function getAndListStatus(domainId: string, tid: ObjectId): Promise
     return [tdoc, tsdocs];
 }
 
-export async function recalcStatus(domainId: string, tid: ObjectId) {
-    const [tdoc, tsdocs] = await Promise.all([
-        document.get(domainId, document.TYPE_CONTEST, tid),
-        document.getMultiStatus(domainId, document.TYPE_CONTEST, { docId: tid }).toArray(),
-    ]);
-    const tasks = [];
-    for (const tsdoc of tsdocs || []) {
-        if (tsdoc.journal) {
-            const journal = _getStatusJournal(tsdoc);
-            const stats = RULES[tdoc.rule].stat(tdoc, journal);
-            tasks.push(
-                document.revSetStatus(
-                    domainId, document.TYPE_CONTEST, tid,
-                    tsdoc.uid, tsdoc.rev, { journal, ...stats },
-                ),
-            );
-        }
+export async function recalcStatus(domainId: string, tid: ObjectId, expectedRevision?: number) {
+    const tdoc = await get(domainId, tid);
+    const revision = tdoc.statsRevision || 0;
+    if (expectedRevision !== undefined && revision !== expectedRevision) {
+        throw new BadRequestError('比赛设置已更新，请刷新后重试成绩重算。');
     }
-    return await Promise.all(tasks);
+    const token = new ObjectId();
+    const selector = { domainId, docType: document.TYPE_CONTEST, docId: tid };
+    const claimed = await (document.coll as Collection<Tdoc>).findOneAndUpdate({ ...selector, ...revisionCondition(tdoc) }, {
+        $set: { statsRecalc: {
+            revision, token, state: 'running', requestedAt: tdoc.statsRecalc?.requestedAt || new Date(),
+            settingsSaved: tdoc.statsRecalc?.settingsSaved ?? true,
+        } },
+    }, { returnDocument: 'after' });
+    if (!claimed) throw new BadRequestError('比赛设置已更新，请刷新后重试成绩重算。');
+    const ownAttempt = { ...selector, ...revisionCondition(claimed), 'statsRecalc.token': token };
+    try {
+        await invalidateAssessmentCourse(claimed);
+        const tsdocs = await document.getMultiStatus(domainId, document.TYPE_CONTEST, { docId: tid }).toArray();
+        // The durable attempt fences the entire test. Do not create per-user tokens that could be orphaned by a process crash.
+        const tasks = tsdocs.map((tsdoc) => calculateStatus(domainId, tid, tsdoc.uid, revision));
+        // Wait for every writer to finish even when one fails, before recording the attempt's outcome.
+        const results = await Promise.allSettled(tasks);
+        const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+        if (failure) throw failure.reason;
+        await invalidateAssessmentCourse(claimed);
+        const complete = await (document.coll as Collection<Tdoc>).updateOne({
+            ...ownAttempt, 'statsRecalc.state': 'running',
+        }, { $unset: { statsRecalc: '' } });
+        if (!complete.matchedCount) throw new BadRequestError('另一请求已更新比赛设置或开始重算，请刷新查看。');
+        return results.map((result) => (result as PromiseFulfilledResult<any>).value);
+    } catch (error) {
+        await (document.coll as Collection<Tdoc>).updateOne(ownAttempt, { $set: { 'statsRecalc.state': 'failed' } });
+        throw error;
+    }
 }
 
 export async function unlockScoreboard(domainId: string, tid: ObjectId) {
@@ -1295,13 +1475,31 @@ export async function getScoreboard(
 ): Promise<[Tdoc, ScoreboardRow[], BaseUserDict, ProblemDict]> {
     const tdoc = await get(domainId, tid);
     if (!canShowScoreboard.call(this, tdoc)) throw new ContestScoreboardHiddenError(tid);
-    const tsdocsCursor = getMultiStatus(domainId, { docId: tid }).sort(RULES[tdoc.rule].statusSort);
     const pdict = await problem.getList(domainId, tdoc.pids, true, true, problem.PROJECTION_CONTEST_DETAIL);
+    if (tdoc.statsRecalc) {
+        if (config.isExport) throw new BadRequestError('成绩重算尚未完成，请完成重算后再导出。');
+        return [tdoc, [], {}, pdict];
+    }
+    const revision = tdoc.statsRevision || 0;
+    const tsdocsCursor = getMultiStatus(domainId, {
+        docId: tid,
+        $and: [
+            revision ? { statsRevision: revision } : { $or: [{ statsRevision: 0 }, { statsRevision: { $exists: false } }] },
+            { $or: [{ statsJournalRevision: { $exists: false } }, {
+                $expr: { $eq: ['$statsJournalRevision', { $ifNull: ['$rev', 0] }] },
+            }] },
+        ],
+    }).sort(RULES[tdoc.rule].statusSort);
     const [rows, udict] = await RULES[tdoc.rule].scoreboard(
         { ...config, viewer: this.user }, this.translate.bind(this),
         tdoc, pdict, tsdocsCursor,
     );
     await bus.parallel('contest/scoreboard', tdoc, rows, udict, pdict);
+    const current = await get(domainId, tid);
+    if (current.statsRecalc || (current.statsRevision || 0) !== revision) {
+        if (config.isExport) throw new BadRequestError('成绩重算尚未完成，请完成重算后再导出。');
+        return [current, [], {}, pdict];
+    }
     return [tdoc, rows, udict, pdict];
 }
 
@@ -1444,6 +1642,7 @@ global.Hydro.model.contest = {
     setStatus,
     getAndListStatus,
     recalcStatus,
+    isStatsReady,
     unlockScoreboard,
     getBalloon,
     addBalloon,

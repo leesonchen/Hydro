@@ -34,6 +34,14 @@ const bus = { parallel: async (name, ...args) => {
     for (const fn of listeners[name] || []) await fn(...args);
 } };
 const userModel = { listGroup: async () => groups };
+function reloadContestModel() {
+    return load('packages/hydrooj/src/model/contest.ts', {
+        '../error': errors, '../service/db': { collection: (name) => db.collection(name) }, '../service/bus': bus, './document': document,
+        './builtin': { PERM, STATUS, STATUS_SHORT_TEXTS: {} }, './user': userModel,
+        '../lib/avatar': () => '', '../lib/contest-participation': { hasTeamParticipation: async () => false },
+        './problem': {}, './record': {}, './message': {}, '@hydrooj/utils/lib/utils': utils,
+    });
+}
 const actor = (uid, perms = []) => ({ _id: uid, group: groups.map((g) => g.name),
     own: (doc) => doc.owner === uid, hasPerm: (...items) => items.some((p) => perms.includes(p)) });
 
@@ -209,7 +217,7 @@ test('course synchronization preserves explicit certification and invalidates ch
     assert.equal(await isClassroomBindingCurrent(db, synced), false);
     await assert.rejects(contest.edit('test', exam.docId, { rated: true }), errors.ForbiddenError);
 });
-test('active classroom tests cannot change questions, times, or rules, or enter Rating', async () => {
+test('active classroom tests cannot change questions or rules, or enter Rating without certification', async () => {
     const { course, exam } = await courseFixture('oi', false);
     const changed = structuredClone(course.dag); changed[0].pids = [2];
     await assert.rejects(contest.edit('test', course.docId, { dag: changed }), errors.ForbiddenError);
@@ -217,6 +225,303 @@ test('active classroom tests cannot change questions, times, or rules, or enter 
     await assert.rejects(contest.edit('test', course.docId, { endAt: new Date(Date.now() - 700000) }), errors.BadRequestError);
     await assert.rejects(contest.edit('test', exam.docId, { rated: true }), errors.ForbiddenError);
     assert.deepEqual((await contest.get('test', course.docId)).dag[0].pids, [1]);
+});
+test('ended classroom tests can reopen, record the editor and recalculate ACM time', async () => {
+    const { course, exam } = await courseFixture('acm', false);
+    const rid = ObjectId.createFromTime(Math.floor((exam.beginAt.getTime() + 1200000) / 1000));
+    await contest.attend('test', exam.docId, 42);
+    await contest.updateStatus('test', exam.docId, 42, rid, 1, { status: STATUS.STATUS_ACCEPTED, score: 100 });
+    const before = await contest.getStatus('test', exam.docId, 42);
+    const dag = structuredClone(course.dag);
+    dag[0].assessment.beginAt = new Date(exam.beginAt.getTime() - 600000).toISOString();
+    dag[0].assessment.endAt = new Date(Date.now() + 600000).toISOString();
+    await contest.editIfAssigned('test', course.docId, course.assign, { dag }, {}, 9);
+    const reopened = await contest.get('test', exam.docId);
+    const after = await contest.getStatus('test', exam.docId, 42);
+    assert.equal(reopened.docId.toString(), exam.docId.toString());
+    assert.equal(after.time, before.time + 600);
+    assert.equal(contest.isOngoing(reopened), true);
+    assert.equal(reopened.timeChangeHistory.length, 1);
+    const entry = reopened.timeChangeHistory[0];
+    assert.equal(entry.uid, 9);
+    assert.equal(entry.state, 'ended');
+    assert.equal(entry.attend, 1);
+    assert.equal(entry.before.beginAt.getTime(), exam.beginAt.getTime());
+    assert.equal(entry.after.endAt.toISOString(), dag[0].assessment.endAt);
+    assert.equal((await assessment.getAssessmentResults('test', await contest.get('test', course.docId), 42))[1].completed, false);
+    await contest.edit('test', course.docId, { title: 'Unrelated edit' });
+    assert.equal((await contest.get('test', exam.docId)).timeChangeHistory.length, 1);
+});
+test('classroom time correction to the future keeps question and deletion protections', async () => {
+    const { course, exam } = await courseFixture('oi', false);
+    const dag = structuredClone(course.dag);
+    dag[0].assessment.beginAt = new Date(Date.now() + 600000).toISOString();
+    dag[0].assessment.endAt = new Date(Date.now() + 1200000).toISOString();
+    await contest.edit('test', course.docId, { dag }, undefined, [], 7);
+    const changed = structuredClone(dag); changed[0].pids = [2];
+    await assert.rejects(contest.edit('test', course.docId, { dag: changed }), errors.ForbiddenError);
+    const newRule = structuredClone(dag); newRule[0].assessment.rule = 'acm';
+    await assert.rejects(contest.edit('test', course.docId, { dag: newRule }), errors.ForbiddenError);
+    await assert.rejects(contest.edit('test', course.docId, { dag: [] }), errors.ForbiddenError);
+    assert.equal((await contest.get('test', exam.docId)).timeChangeHistory[0].uid, 7);
+});
+test('contest time changes are atomic, keep history and reject stale editors', async () => {
+    const tid = await monitoredContest();
+    await contest.edit('test', tid, { rated: true });
+    const original = await contest.get('test', tid);
+    const firstEnd = new Date(original.endAt.getTime() + 600000);
+    await contest.edit('test', tid, { endAt: firstEnd }, original, [], 7);
+    await assert.rejects(contest.edit('test', tid, {
+        endAt: new Date(firstEnd.getTime() + 600000),
+    }, original, [], 9), errors.BadRequestError);
+    const first = await contest.get('test', tid);
+    assert.equal(first.endAt.getTime(), firstEnd.getTime());
+    assert.equal(first.timeChangeHistory.length, 1);
+    assert.equal(first.timeChangeHistory[0].ratingEnabled, true);
+    await contest.edit('test', tid, { endAt: firstEnd }, undefined, [], 9);
+    assert.equal((await contest.get('test', tid)).timeChangeHistory.length, 1);
+    // findOneAndUpdate is one operation: reject a failed conditional write without an audit append.
+    const failed = await contest.editIfAssigned('test', tid, ['missing-group'], {
+        endAt: new Date(firstEnd.getTime() + 600000),
+    }, {}, 9);
+    assert.equal(failed, null);
+    assert.equal((await contest.get('test', tid)).timeChangeHistory.length, 1);
+    await contest.edit('test', tid, { duration: 1 }, undefined, [], 9);
+    const second = await contest.get('test', tid);
+    assert.equal(second.timeChangeHistory.length, 2);
+    assert.equal(second.timeChangeHistory[1].uid, 9);
+    assert.equal(second.timeChangeHistory[1].before.endAt.getTime(), firstEnd.getTime());
+    assert.equal(second.timeChangeHistory[1].after.duration, 1);
+});
+test('classroom time changes retain certification evidence and flag it for review', async () => {
+    const { course, exam } = await courseFixture();
+    const { resolveClassroomBinding, isClassroomBindingCurrent } = load('packages/hydrooj/src/lib/rating-v2/classroom.ts');
+    const binding = await resolveClassroomBinding(db, exam);
+    const ratingPolicy = { enabled: true, classroom: { courseSignature: binding.courseSignature } };
+    await contest.edit('test', exam.docId, { ratingPolicy });
+    const dag = structuredClone(course.dag);
+    dag[0].assessment.endAt = new Date(exam.endAt.getTime() + 600000).toISOString();
+    await contest.edit('test', course.docId, { dag }, undefined, [], 9);
+    const synced = await contest.get('test', exam.docId);
+    assert.equal(await isClassroomBindingCurrent(db, synced), false);
+    assert.deepEqual(synced.ratingPolicy, ratingPolicy);
+    assert.equal(synced.timeChangeHistory[0].ratingEnabled, true);
+});
+
+test('failed classroom recalculation persists across saves and is recovered only by manual retry', async () => {
+    const { course, exam } = await courseFixture('acm', false);
+    const rid = ObjectId.createFromTime(Math.floor((exam.beginAt.getTime() + 1200000) / 1000));
+    await contest.attend('test', exam.docId, 42);
+    await contest.updateStatus('test', exam.docId, 42, rid, 1, { status: STATUS.STATUS_ACCEPTED, score: 100 });
+    const before = await contest.getStatus('test', exam.docId, 42);
+    const dag = structuredClone(course.dag);
+    dag[0].assessment.beginAt = new Date(exam.beginAt.getTime() - 600000).toISOString();
+    const original = document.revSetStatus;
+    let attempts = 0;
+    document.revSetStatus = async () => { attempts++; throw new Error('injected recalculation failure'); };
+    try {
+        await contest.edit('test', course.docId, { dag }, undefined, [], 9);
+        await contest.edit('test', course.docId, { dag }, undefined, [], 9);
+        assert.equal(attempts, 1, 'an unrelated save must not automatically retry a failed attempt');
+    } finally { document.revSetStatus = original; }
+    const failed = await contest.get('test', exam.docId);
+    assert.equal(failed.statsRecalc.state, 'failed');
+    assert.equal(failed.statsRecalc.settingsSaved, true);
+    assert.equal(failed.statsRevision, 1);
+    assert.equal(failed.timeChangeHistory.length, 1);
+    assert.equal(failed.beginAt.toISOString(), dag[0].assessment.beginAt);
+    const pending = (await assessment.getAssessmentResults('test', await contest.get('test', course.docId), 42))[1];
+    assert.equal(pending.updating, true);
+    assert.equal(pending.score, null);
+    // Reload the model without any process-local state to reproduce recovery after restart.
+    const restarted = reloadContestModel();
+    await restarted.recalcStatus('test', exam.docId, failed.statsRevision);
+    const recovered = await contest.get('test', exam.docId);
+    assert.equal(recovered.statsRecalc, undefined);
+    assert.equal(recovered.timeChangeHistory.length, 1);
+    assert.equal((await contest.getStatus('test', exam.docId, 42)).time, before.time + 600);
+    await restarted.recalcStatus('test', exam.docId, recovered.statsRevision);
+    assert.equal((await contest.get('test', exam.docId)).timeChangeHistory.length, 1);
+});
+
+test('an old judge statistics write cannot overwrite recalculation for a newer start time', async () => {
+    const { course, exam } = await courseFixture('acm', false);
+    const rid = ObjectId.createFromTime(Math.floor((exam.beginAt.getTime() + 1200000) / 1000));
+    await contest.attend('test', exam.docId, 42);
+    await contest.updateStatus('test', exam.docId, 42, rid, 1, { status: STATUS.STATUS_ACCEPTED, score: 100 });
+    const before = await contest.getStatus('test', exam.docId, 42);
+    let enter, release;
+    const entered = new Promise((resolve) => { enter = resolve; });
+    const resume = new Promise((resolve) => { release = resolve; });
+    const original = document.revSetStatus;
+    let pause = true;
+    document.revSetStatus = async (...args) => {
+        if (pause && args[5].statsRevision === 0) { pause = false; enter(); await resume; }
+        return original(...args);
+    };
+    const judging = contest.updateStatus('test', exam.docId, 42, rid, 1, { status: STATUS.STATUS_ACCEPTED, score: 100 });
+    try {
+        await entered;
+        const dag = structuredClone(course.dag);
+        dag[0].assessment.beginAt = new Date(exam.beginAt.getTime() - 600000).toISOString();
+        await contest.edit('test', course.docId, { dag }, undefined, [], 9);
+        assert.equal((await contest.getStatus('test', exam.docId, 42)).time, before.time + 600);
+        release();
+        await judging;
+        const after = await contest.getStatus('test', exam.docId, 42);
+        assert.equal(after.time, before.time + 600);
+        assert.equal(after.statsRevision, 1);
+        assert.equal((await contest.get('test', exam.docId)).statsRecalc, undefined);
+    } finally { release(); document.revSetStatus = original; await judging; }
+});
+
+test('a superseded recalculation cannot clear a newer configuration attempt', async () => {
+    const { course, exam } = await courseFixture('oi', false);
+    await contest.attend('test', exam.docId, 42);
+    await contest.updateStatus('test', exam.docId, 42, new ObjectId(), 1, { status: STATUS.STATUS_ACCEPTED, score: 80 });
+    let enter, release;
+    const entered = new Promise((resolve) => { enter = resolve; });
+    const resume = new Promise((resolve) => { release = resolve; });
+    const original = document.revSetStatus;
+    let pause = true;
+    document.revSetStatus = async (...args) => {
+        if (pause && args[5].statsRevision === 1) { pause = false; enter(); await resume; }
+        return original(...args);
+    };
+    const first = structuredClone(course.dag);
+    first[0].assessment.endAt = new Date(Date.now() + 600000).toISOString();
+    const saving = contest.edit('test', course.docId, { dag: first }, undefined, [], 9);
+    try {
+        await entered;
+        const second = structuredClone(first);
+        second[0].assessment.endAt = new Date(Date.now() + 1200000).toISOString();
+        await contest.edit('test', course.docId, { dag: second }, undefined, [], 9);
+        release();
+        await saving;
+        const latest = await contest.get('test', exam.docId);
+        assert.equal(latest.statsRevision, 2);
+        assert.equal(latest.statsRecalc, undefined);
+        assert.equal(latest.endAt.toISOString(), second[0].assessment.endAt);
+        assert.equal((await contest.getStatus('test', exam.docId, 42)).statsRevision, 2);
+        assert.equal(latest.timeChangeHistory.length, 2);
+    } finally { release(); document.revSetStatus = original; await saving; }
+});
+
+test('a preparation failure keeps the old time and can recover without inventing a time history entry', async () => {
+    const { exam } = await courseFixture('oi', false);
+    const original = document.collStatus.updateMany;
+    document.collStatus.updateMany = async () => { throw new Error('injected preparation failure'); };
+    try {
+        await assert.rejects(contest.edit('test', exam.docId, {
+            endAt: new Date(Date.now() + 600000),
+        }, exam, [], 9), /injected preparation failure/);
+    } finally { document.collStatus.updateMany = original; }
+    const interrupted = await contest.get('test', exam.docId);
+    assert.equal(interrupted.endAt.getTime(), exam.endAt.getTime());
+    assert.equal(interrupted.statsRecalc.state, 'failed');
+    assert.equal(interrupted.statsRecalc.settingsSaved, false);
+    assert.equal(interrupted.timeChangeHistory, undefined);
+    await contest.recalcStatus('test', exam.docId, 0);
+    const recovered = await contest.get('test', exam.docId);
+    assert.equal(recovered.statsRecalc, undefined);
+    assert.equal(recovered.endAt.getTime(), exam.endAt.getTime());
+    assert.equal(recovered.timeChangeHistory, undefined);
+});
+
+test('conditional statistics write misses are retried and cannot silently complete a recalculation', async () => {
+    const tid = await monitoredContest();
+    await contest.attend('test', tid, 42);
+    const original = document.revSetStatus;
+    let calls = 0;
+    document.revSetStatus = async (...args) => {
+        if (++calls <= 2) return null;
+        return original(...args);
+    };
+    try { await contest.recalcStatus('test', tid); } finally { document.revSetStatus = original; }
+    assert.equal(calls, 3);
+    assert.equal((await contest.get('test', tid)).statsRecalc, undefined);
+    document.revSetStatus = async () => null;
+    try {
+        await assert.rejects(contest.recalcStatus('test', tid), errors.BadRequestError);
+    } finally { document.revSetStatus = original; }
+    assert.equal((await contest.get('test', tid)).statsRecalc.state, 'failed');
+    await contest.recalcStatus('test', tid);
+    assert.equal((await contest.get('test', tid)).statsRecalc, undefined);
+});
+
+test('a concurrent judge failure cannot be hidden by successful completion of another recalculation writer', async () => {
+    const { exam } = await courseFixture('oi', false);
+    const rid = new ObjectId();
+    for (const uid of [42, 43]) {
+        await contest.attend('test', exam.docId, uid);
+        await contest.updateStatus('test', exam.docId, uid, rid, 1, { status: STATUS.STATUS_WRONG_ANSWER, score: 80 });
+    }
+    await contest.edit('test', exam.docId, { endAt: new Date(Date.now() + 600000) });
+    let enter43, done42, release;
+    const paused43 = new Promise((resolve) => { enter43 = resolve; });
+    const updated42 = new Promise((resolve) => { done42 = resolve; });
+    const resume = new Promise((resolve) => { release = resolve; });
+    const original = document.revSetStatus;
+    let fail42 = false;
+    document.revSetStatus = async (...args) => {
+        if (args[3] === 43) { enter43(); await resume; }
+        if (args[3] === 42 && fail42) throw new Error('injected concurrent judge failure');
+        const result = await original(...args);
+        if (args[3] === 42) done42();
+        return result;
+    };
+    const recalc = contest.recalcStatus('test', exam.docId);
+    try {
+        await Promise.all([paused43, updated42]);
+        fail42 = true;
+        await assert.rejects(contest.updateStatus('test', exam.docId, 42, rid, 1, {
+            status: STATUS.STATUS_WRONG_ANSWER, score: 20,
+        }), /injected concurrent judge failure/);
+        release();
+        await assert.rejects(recalc, errors.BadRequestError);
+        const failed = await contest.get('test', exam.docId);
+        assert.equal(failed.statsRecalc.state, 'failed');
+        assert.equal(contest.isStatsReady(failed, await contest.getStatus('test', exam.docId, 42)), false);
+    } finally { release(); document.revSetStatus = original; await recalc.catch(() => {}); }
+    await contest.recalcStatus('test', exam.docId);
+    const current = await contest.get('test', exam.docId);
+    const status = await contest.getStatus('test', exam.docId, 42);
+    assert.equal(status.score, 20);
+    assert.equal(status.statsJournalRevision, status.rev);
+    assert.equal(contest.isStatsReady(current, status), true);
+    assert.equal(contest.isStatsReady(current), true, 'a teacher without an exam enrollment is not permanently shown as updating');
+});
+
+test('manual recovery supersedes an interrupted running attempt without leaving per-user read fences', async () => {
+    const { exam } = await courseFixture('oi', false);
+    await contest.attend('test', exam.docId, 42);
+    await contest.updateStatus('test', exam.docId, 42, new ObjectId(), 1, { status: STATUS.STATUS_ACCEPTED, score: 80 });
+    await contest.edit('test', exam.docId, { endAt: new Date(Date.now() + 600000) });
+    let enter, release;
+    const entered = new Promise((resolve) => { enter = resolve; });
+    const resume = new Promise((resolve) => { release = resolve; });
+    const original = document.revSetStatus;
+    let pause = true;
+    document.revSetStatus = async (...args) => {
+        if (pause) { pause = false; enter(); await resume; }
+        return original(...args);
+    };
+    const interrupted = contest.recalcStatus('test', exam.docId);
+    try {
+        await entered;
+        const running = await contest.get('test', exam.docId);
+        assert.equal(running.statsRecalc.state, 'running');
+        assert.equal(running._assessmentStatusUpdates?.[42], undefined);
+        const restarted = reloadContestModel();
+        await restarted.recalcStatus('test', exam.docId, running.statsRevision);
+        release();
+        await assert.rejects(interrupted, errors.BadRequestError);
+        const recovered = await contest.get('test', exam.docId);
+        const status = await contest.getStatus('test', exam.docId, 42);
+        assert.equal(recovered.statsRecalc, undefined);
+        assert.equal(recovered._assessmentStatusUpdates?.[42], undefined);
+        assert.equal(contest.isStatsReady(recovered, status), true);
+    } finally { release(); document.revSetStatus = original; await interrupted.catch(() => {}); }
 });
 test('certification rejects a concurrent frozen configuration change before writing the policy', async () => {
     const tid = await monitoredContest({ langs: ['cpp'] });

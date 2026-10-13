@@ -15,6 +15,7 @@ exports.register = () => describe('Local feedback', () => {
     let teacherUid;
     let managerUid;
     let peerUid;
+    let outsiderUid;
     let teacher;
     let peer;
     let manager;
@@ -46,7 +47,6 @@ exports.register = () => describe('Local feedback', () => {
             await agent.post('/login').send({ uname, password: 'feedback-test-password' }).expect(302);
             return [id, agent];
         };
-        let outsiderUid;
         [managerUid, manager] = await login('manager');
         [teacherUid, teacher] = await login('teacher');
         [peerUid, peer] = await login('peer');
@@ -84,6 +84,195 @@ exports.register = () => describe('Local feedback', () => {
     beforeEach(async () => {
         // This suite can also run standalone. Reset only cross-case HTTP counters.
         await global.app.get('db').db.collection('opcount').deleteMany({ op: 'global' });
+    });
+
+    it('retries classroom statistics over HTTP without resubmitting the course form and enforces editing permission', async () => {
+        const model = global.Hydro.model;
+        const document = require('../packages/hydrooj/src/model/document');
+        const now = Date.now();
+        const localCourse = await model.contest.add(domainId, 'Manual retry HTTP', '', teacherUid, 'course',
+            new Date(now - 7200000), new Date(now + 7200000), [], false, { assign: ['feedback-class'] });
+        const dag = [{ _id: 1, title: 'Test', kind: 'assessment', pids: [pid], assessment: {
+            rule: 'oi', beginAt: new Date(now - 3600000).toISOString(), endAt: new Date(now - 600000).toISOString(), passScore: 60,
+        } }];
+        await model.contest.edit(domainId, localCourse, { dag });
+        const course = await model.contest.get(domainId, localCourse);
+        const examTid = new ObjectId(course.dag[0].assessment.contestTid);
+        await model.contest.attend(domainId, localCourse, uid, { allow: { 1: true } });
+        await model.contest.attend(domainId, examTid, uid);
+        await model.contest.updateStatus(domainId, examTid, uid, new ObjectId(), pid, { status: 1, score: 80 });
+        const url = `/d/${domainId}/course/${localCourse}/edit`;
+        const form = (await get(teacher, url).expect(200)).body;
+        const changed = structuredClone(course.dag);
+        changed[0].assessment.endAt = new Date(now + 3600000).toISOString();
+        const original = document.collStatus.findOneAndUpdate.bind(document.collStatus);
+        document.collStatus.findOneAndUpdate = async (filter, update, options) => {
+            if (filter.docId?.equals(examTid) && update.$set?.statsRevision !== undefined) throw new Error('injected HTTP recalculation failure');
+            return original(filter, update, options);
+        };
+        try {
+            await teacher.post(url).send({
+                title: course.title, content: 'Manual retry scenario', dag: JSON.stringify(changed),
+                beginAt: form.beginAtText, endAt: form.endAtText, assign: 'feedback-class',
+                dagRevision: course.dagRevision || 0,
+            }).expect(302);
+        } finally { document.collStatus.findOneAndUpdate = original; }
+        const failed = await model.contest.get(domainId, examTid);
+        assert.equal(failed.statsRecalc.state, 'failed');
+        assert.equal(failed.statsRecalc.settingsSaved, true);
+        const edit = await get(teacher, url).expect(200);
+        assert.equal(edit.body.assessmentTimeHistories[0].statsRecalc.state, 'failed');
+        const retry = { operation: 'retry_recalc', nodeId: 1, statsRevision: failed.statsRevision };
+        await student.post(url).send(retry).accept('json').expect(403);
+        await teacher.post(url).send(retry).expect(302);
+        const recovered = await model.contest.get(domainId, examTid);
+        assert.equal(recovered.statsRecalc, undefined);
+        assert.equal(recovered.timeChangeHistory.length, 1);
+        assert.equal(recovered.timeChangeHistory[0].uid, teacherUid);
+        await teacher.post(url).send(retry).expect(302);
+        assert.equal((await model.contest.get(domainId, examTid)).timeChangeHistory.length, 1);
+    });
+
+    it('ordinary contests expose durable failures and authorize minimal HTTP manual retry requests', async () => {
+        const model = global.Hydro.model;
+        const document = require('../packages/hydrooj/src/model/document');
+        const now = Date.now();
+        const tid = await model.contest.add(domainId, 'Contest manual retry HTTP', 'Retry scenario', teacherUid, 'acm',
+            new Date(now - 7200000), new Date(now + 3600000), [pid], false, { assign: ['feedback-class'] });
+        await model.contest.attend(domainId, tid, uid);
+        await model.contest.updateStatus(domainId, tid, uid, new ObjectId(), pid, { status: 1, score: 100 });
+        const before = await model.contest.getStatus(domainId, tid, uid);
+        const originalContest = await model.contest.get(domainId, tid);
+        await model.contest.edit(domainId, tid, { beginAt: new Date(now - 7800000) }, originalContest, [], teacherUid);
+        const original = document.collStatus.findOneAndUpdate.bind(document.collStatus);
+        document.collStatus.findOneAndUpdate = async (filter, update, options) => {
+            if (filter.docId?.equals(tid) && update.$set?.statsRevision !== undefined) throw new Error('injected contest recalculation failure');
+            return original(filter, update, options);
+        };
+        try { await assert.rejects(model.contest.recalcStatus(domainId, tid), /injected contest/); }
+        finally { document.collStatus.findOneAndUpdate = original; }
+        const url = `/d/${domainId}/contest/${tid}/edit`;
+        const failed = (await get(teacher, url).expect(200)).body.tdoc;
+        assert.equal(failed.statsRecalc.state, 'failed');
+        const retry = { operation: 'retry_recalc', statsRevision: failed.statsRevision };
+        await student.post(url).send(retry).accept('json').expect(403);
+        await teacher.post(url).send(retry).expect(302);
+        const recovered = await model.contest.get(domainId, tid);
+        const status = await model.contest.getStatus(domainId, tid, uid);
+        assert.equal(recovered.statsRecalc, undefined);
+        assert.equal(status.time, before.time + 600);
+        assert.equal(status.statsRevision, recovered.statsRevision);
+        assert.equal(status.statsJournalRevision, status.rev);
+        assert.equal(recovered.timeChangeHistory.length, 1);
+        await teacher.post(url).send(retry).expect(302);
+        assert.equal((await model.contest.get(domainId, tid)).timeChangeHistory.length, 1);
+    });
+
+    it('enforces course DAG gates on real problem detail and submit routes with scoped SELF permissions', async () => {
+        const model = global.Hydro.model;
+        const { PERM } = model.builtin;
+        const learner = await model.user.getById(domainId, uid);
+        assert(learner.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)); // Included in PERM_DEFAULT.
+        assert(!learner.hasPerm(PERM.PERM_EDIT_HOMEWORK, PERM.PERM_VIEW_HIDDEN_HOMEWORK));
+        const gatedPid = await model.problem.add(domainId, '', 'DAG permission regression', 'Test', managerUid);
+        await model.problem.edit(domainId, gatedPid, { config: 'type: objective\nanswers:\n  1: [A, 100]\n' });
+        const tid = await model.contest.add(domainId, 'DAG permission regression', '', teacherUid, 'course',
+            new Date(Date.now() - 60000), new Date(Date.now() + 3600000), [gatedPid], false, {
+                assign: ['feedback-class', String(outsiderUid)], maintainer: [peerUid],
+                dag: [{ _id: 1, title: 'Prerequisite', pids: [] },
+                    { _id: 2, title: 'Gated chapter', pids: [gatedPid], requireNids: [1] }],
+            });
+        const detailUrl = `/d/${domainId}/p/${gatedPid}?tid=${tid}`;
+        const submitUrl = `/d/${domainId}/p/${gatedPid}/submit?tid=${tid}`;
+        const submission = { tid: tid.toString(), lang: '_', code: '1: A', pretest: false };
+        const tokens = [];
+        const snapshot = async (actorUid) => ({
+            records: await model.record.coll.countDocuments({ domainId, pid: gatedPid }),
+            tasks: await global.app.get('db').db.collection('task').countDocuments({ domainId, pid: gatedPid }),
+            status: await model.contest.getStatus(domainId, tid, actorUid),
+            problem: await model.problem.get(domainId, gatedPid),
+        });
+        const denied = async (agent, actorUid, submit = true) => {
+            const before = await snapshot(actorUid);
+            const requests = [get(agent, detailUrl)];
+            if (submit) requests.push(get(agent, submitUrl), post(agent, submitUrl, submission));
+            for (const request of requests) {
+                const response = await request.expect(403);
+                assert.equal(response.body.error.name, 'ForbiddenError');
+            }
+            assert.deepEqual(await snapshot(actorUid), before, 'denied requests must not create records or change state');
+        };
+        const allowed = async (agent, actorUid) => {
+            assert.equal((await get(agent, detailUrl).expect(200)).body.pdoc.docId, gatedPid);
+            await get(agent, submitUrl).expect(200);
+            const before = await model.record.coll.countDocuments({ domainId, pid: gatedPid });
+            const response = await post(agent, submitUrl, submission).expect(200);
+            const record = await model.record.get(domainId, new ObjectId(response.body.rid));
+            assert.equal(record.uid, actorUid);
+            assert.equal(record.pid, gatedPid);
+            assert.equal(record.contest.toString(), tid.toString());
+            assert.equal(await model.record.coll.countDocuments({ domainId, pid: gatedPid }), before + 1);
+        };
+        const scopedOwner = async (scope) => {
+            const [sid] = await model.token.add(model.token.TYPE_SESSION, 3600, { uid: teacherUid, scope: scope.toString() });
+            tokens.push(sid);
+            const server = require('hydrooj').httpServer;
+            return {
+                get: (url) => supertest(server).get(url).set('Authorization', `Bearer ${sid}`),
+                post: (url) => supertest(server).post(url).set('Authorization', `Bearer ${sid}`),
+            };
+        };
+        try {
+            await model.contest.attend(domainId, tid, uid);
+            await model.contest.setStatus(domainId, tid, uid, { startAt: new Date(), allow: { 1: false, 2: false } });
+            await denied(student, uid);
+            await model.contest.setStatus(domainId, tid, uid, {}, { 'allow.2': 1 });
+            assert.equal((await model.contest.getStatus(domainId, tid, uid)).allow[2], undefined);
+            await denied(student, uid);
+
+            // Use the real management route to authorize a learner despite unmet prerequisites.
+            const unlock = await post(teacher, `/d/${domainId}/course/${tid}/manage`, {
+                operation: 'allow_user', uid, node: 2, allow: true,
+            }).expect(200);
+            assert.deepEqual(unlock.body.results, [{ uid, success: true }]);
+            const status = await model.contest.getStatus(domainId, tid, uid);
+            assert.equal(status.allow[1], false);
+            assert.equal(status.allow[2], true);
+            await allowed(student, uid);
+
+            // Owners and maintainers retain their scoped SELF bypass; domain admins retain full access.
+            for (const [actorUid, agent] of [[teacherUid, teacher], [peerUid, peer], [managerUid, manager]]) {
+                assert.equal(await model.contest.getStatus(domainId, tid, actorUid), null);
+                await allowed(agent, actorUid);
+            }
+            // Warmed owner caches must not grant SELF to restricted Bearer sessions.
+            await denied(await scopedOwner(PERM.PERM_VIEW | PERM.PERM_VIEW_PROBLEM | PERM.PERM_VIEW_HOMEWORK), teacherUid, false);
+            await denied(await scopedOwner(PERM.PERM_DEFAULT & ~PERM.PERM_EDIT_HOMEWORK_SELF), teacherUid);
+            await model.domain.setUserRole(domainId, teacherUid, 'read-only', true);
+            await denied(teacher, teacherUid);
+            await model.domain.setUserRole(domainId, teacherUid, 'teacher', true);
+
+            for (const [role, permission] of [['dag-editor', PERM.PERM_EDIT_HOMEWORK], ['dag-reader', PERM.PERM_VIEW_HIDDEN_HOMEWORK]]) {
+                await model.domain.addRole(domainId, role, (PERM.PERM_DEFAULT & ~PERM.PERM_EDIT_HOMEWORK_SELF) | permission);
+                await model.domain.setUserRole(domainId, outsiderUid, role, true);
+                assert(!(await model.user.getById(domainId, outsiderUid)).own(await model.contest.get(domainId, tid)));
+                await allowed(outsider, outsiderUid);
+            }
+            // Legacy courses use node 0; its numeric ID is valid, not a missing binding.
+            await model.contest.edit(domainId, tid, { dag: [{ _id: 0, title: 'Legacy chapter', pids: [gatedPid] }] });
+            await model.contest.setStatus(domainId, tid, uid, { 'allow.0': true });
+            await allowed(student, uid);
+            await model.contest.setStatus(domainId, tid, uid, { 'allow.0': false });
+            await denied(student, uid);
+        } finally {
+            await model.domain.setUserRole(domainId, teacherUid, 'teacher', true);
+            await model.domain.setUserRole(domainId, outsiderUid, 'teacher', true);
+            await Promise.all(tokens.map((sid) => model.token.del(sid, model.token.TYPE_SESSION)));
+            await model.record.coll.deleteMany({ domainId, pid: gatedPid });
+            await global.app.get('db').db.collection('task').deleteMany({ domainId, pid: gatedPid });
+            await model.contest.del(domainId, tid);
+            await model.problem.del(domainId, gatedPid);
+        }
     });
 
     it('course HTTP responses hide unreleased lectures and attachment writes enforce ownership', async () => {
@@ -630,9 +819,7 @@ exports.register = () => describe('Local feedback', () => {
 
     it('saves stable course IDs and score owners, rejects stale edits and prevents reuse after deletion', async () => {
         const model = global.Hydro.model;
-        // PERM_DEFAULT includes homework SELF editing, which bypasses the DAG.
-        // Exercise an actual learner subject to course access restrictions.
-        await model.domain.setUserRole(domainId, uid, 'read-only', true);
+        // Default learners have SELF editing, but must still satisfy the DAG.
         const id = await model.contest.add(domainId, 'Structure regression', '', teacherUid, 'course',
             new Date('2026-01-01'), new Date('2030-01-01'), [pid], false, {
                 assign: ['feedback-class'], lecture: { 1: 'Stable lecture content' },
@@ -668,7 +855,6 @@ exports.register = () => describe('Local feedback', () => {
         await post(teacher, url, { ...input, dagRevision: 2 }).expect(400);
         await post(teacher, url, { ...input, dagRevision: 2,
             dag: JSON.stringify([{ _id: 1, title: 'A', pids: [pid] }, { _id: 3, title: 'New', pids: [] }]) }).expect(200);
-        await model.domain.setUserRole(domainId, uid, 'default', true);
     });
 
     it('falls back to the previous effective observation after retracting the latest', async () => {
