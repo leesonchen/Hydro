@@ -1,0 +1,25 @@
+// Contest editor: native Hydro controls with compact, clearly separated groups.
+// No changes to the global theme, inputs, buttons or file sidebar.
+.page--contest_edit, .page--contest_create
+  .contest-settings__group-title
+    font-size: 1rem
+    font-weight: 600
+    margin: 0 0 14px
+
+  .contest-settings__group + .contest-settings__group
+    border-top: 1px solid rgba(128, 128, 128, .22)
+    margin-top: 12px
+    padding-top: 18px
+
+  .contest-settings__field-row
+    margin-bottom: 12px
+
+  .contest-settings__print-option
+    padding-top: 26px
+
+  .contest-settings__options .form__item
+    padding-bottom: 10px
+
+  @media (max-width: 639px)
+    .contest-settings__print-option
+      padding-top: 0

@@ -101,8 +101,8 @@ test('contest editor renders every persisted field and submits monitor mode', ()
     dom.window.close();
 });
 
-test('rule changes keep switch disabled appearance aligned with actual form submission', () => {
-    const { dom } = formData(renderContestEdit());
+test('rule changes keep native settings enabled only for compatible rules', () => {
+    const { dom, form } = formData(renderContestEdit());
     const $ = require('jquery')(dom.window);
     let initialize;
     const code = ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../packages/ui-default/pages/contest_edit.page.ts'), 'utf8'), {
@@ -121,17 +121,47 @@ test('rule changes keep switch disabled appearance aligned with actual form subm
         },
     });
     initialize('contest_create');
-    const field = dom.window.document.querySelector('[name="keepScoreboardHidden"]');
-    const toggle = field.closest('.contest-edit__toggle');
-    assert.equal(field.disabled, false);
-    assert.equal(toggle.classList.contains('contest-edit__toggle--disabled'), false);
+
+    const scoreboard = form.elements.namedItem('keepScoreboardHidden');
+    const personalTime = form.elements.namedItem('contestDuration');
+    assert.equal(scoreboard.disabled, false);
+    assert.equal(personalTime.disabled, false);
+    assert.equal(new dom.window.FormData(form).get('keepScoreboardHidden'), 'on');
+
     $('[name="rule"]').val('acm').trigger('change');
-    assert.equal(field.disabled, true);
-    assert.equal(toggle.classList.contains('contest-edit__toggle--disabled'), true);
+    assert.equal(scoreboard.disabled, true);
+    assert.equal(personalTime.disabled, true);
+    assert.equal(new dom.window.FormData(form).get('keepScoreboardHidden'), null);
+
     $('[name="rule"]').val('oi').trigger('change');
-    assert.equal(field.disabled, false);
-    assert.equal(toggle.classList.contains('contest-edit__toggle--disabled'), false);
-    assert.equal(dom.window.document.querySelector('[name="allowTeam"]').disabled, true);
+    assert.equal(scoreboard.disabled, false);
+    assert.equal(personalTime.disabled, false);
+    assert.equal(form.elements.namedItem('allowTeam').disabled, true);
+    dom.window.close();
+});
+
+test('contest editor groups each setting by purpose without duplicating native checkbox labels', () => {
+    const { dom, form } = formData(renderContestEdit());
+    const groups = [...form.querySelectorAll('[data-contest-settings-group]')];
+    assert.deepEqual(groups.map((group) => group.dataset.contestSettingsGroup), [
+        'process', 'visibility', 'scoring',
+    ]);
+    const expected = {
+        process: ['monitorMode', 'langs', 'allowPrint', 'contestDuration', 'lock'],
+        visibility: ['hideInBanner', 'autoHide', 'allowViewCode', 'keepScoreboardHidden'],
+        scoring: ['rated', 'allowTeam', 'allowPractice'],
+    };
+    for (const group of groups) {
+        const groupName = group.dataset.contestSettingsGroup;
+        for (const name of expected[groupName]) {
+            assert.ok(group.querySelector('[name="' + name + '"]'), name + ' must be in ' + groupName);
+        }
+    }
+    for (const name of ['hideInBanner', 'allowPrint', 'rated', 'allowTeam']) {
+        const input = form.elements.namedItem(name);
+        assert.equal(input.closest('.form__item').querySelectorAll('label').length, 1,
+            name + ' must have one native checkbox label');
+    }
     dom.window.close();
 });
 
