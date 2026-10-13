@@ -5,7 +5,15 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { test } = require('node:test');
 
-const installer = fs.readFileSync(path.resolve(__dirname, '../packages/hydrooj/bin/install-dev-from-private-npm.sh'), 'utf8');
+const installerPath = path.resolve(__dirname, '../packages/hydrooj/bin/install-dev-from-private-npm.sh');
+const installer = fs.readFileSync(installerPath, 'utf8');
+
+test('installer can be executed directly to show help', () => {
+    const result = spawnSync(installerPath, ['--help'], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.error?.message || result.stderr);
+    assert.match(result.stdout, /用法:/);
+});
+
 function extract(name) {
     const pattern = new RegExp('^' + name + '\\(\\) \\{[\\s\\S]*?^\\}', 'm');
     const match = installer.match(pattern);

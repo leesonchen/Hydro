@@ -171,7 +171,7 @@ test('public ranking renders V2 capability, provisional status, achievement and 
         model: { rp: {}, system: { get: () => 20 } },
         handler: { user: { hasPriv: () => false } },
     });
-    assert.match(html, /V2（试用）/);
+    assert.match(html, /V2（限域试用，非认证竞赛能力）/);
     assert.match(html, /最近更新：2026-10-12 16:30/);
     assert.match(html, /试用 Rating/);
     assert.match(html, /比赛\/测评场次/);
