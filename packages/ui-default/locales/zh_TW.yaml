@@ -1294,3 +1294,15 @@ Rated: 計入排名
 Auto hide-and show: 賽後自動公開題目
 Allow View Code: 允許賽後查看其他人的程式碼
 Keep Scoreboard Hidden: 賽後繼續隱藏成績表
+Contest session: 參賽過程
+Display and visibility: 展示與公開
+Scoring and participation: 計分與參與方式
+Contest Monitoring Mode: 考試監控模式
+Off: 關閉
+Browser tab-switch warnings and logging: 瀏覽器切換提醒與記錄
+Browser monitoring warns and logs tab switches but cannot prevent switching devices.: 開啟後提醒並記錄切換視窗，但無法阻止使用其他裝置。
+Leave blank for all languages; separate multiple languages with commas.: 留空表示不限制語言；多個語言以逗號分隔。
+Personal Time Limit (hours): 個人限時（小時）
+Scoreboard Freeze (minutes): 凍結排行榜（分鐘）
+Limit each participant to N hours after starting; cannot be combined with scoreboard freeze.: 每位參賽者開始比賽後限時 N 小時；不可與凍結排行榜同時設定。
+Freeze the scoreboard N minutes before the contest ends; cannot be combined with a personal time limit.: 於比賽結束前 N 分鐘凍結排行榜；不可與個人限時同時設定。
