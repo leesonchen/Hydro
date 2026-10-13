@@ -141,6 +141,7 @@ describe('Private content feedback', () => {
             '../error': errors,
             '../lib/avatar': avatar,
             '../lib/mail': {},
+            '../lib/rating-publication-read': {},
             '../lib/verifyTFA': {},
             '../model/blacklist': {},
             '../model/builtin': { PRIV, PERM },
