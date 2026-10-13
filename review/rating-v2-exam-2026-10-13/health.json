@@ -1,0 +1,33 @@
+{
+  "checkedAt": "2026-10-12T23:48:24.726Z",
+  "pm2": [
+    {
+      "name": "hydro-sandbox",
+      "status": "online",
+      "restarts": 0,
+      "pid": 34
+    },
+    {
+      "name": "mongodb",
+      "status": "online",
+      "restarts": 0,
+      "pid": 33
+    },
+    {
+      "name": "caddy",
+      "status": "online",
+      "restarts": 0,
+      "pid": 35
+    },
+    {
+      "name": "hydrooj",
+      "status": "online",
+      "restarts": 5,
+      "pid": 87268
+    }
+  ],
+  "http": {
+    "exam": "302 http://127.0.0.1:8888/d/exam/login?redirect=%2Fd%2Fexam%2F",
+    "login": "200"
+  }
+}

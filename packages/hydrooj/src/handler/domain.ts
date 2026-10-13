@@ -10,6 +10,7 @@ import {
 } from '../error';
 import type { DomainDoc, GDoc, TokenDoc } from '../interface';
 import avatar from '../lib/avatar';
+import { projectUserRating, projectUserRatings, publicRatingStore } from '../lib/rating-publication-read';
 import { PERM, PERMS_BY_FAMILY, PRIV } from '../model/builtin';
 import * as discussion from '../model/discussion';
 import domain, { type PreassignedDomainUser } from '../model/domain';
@@ -69,16 +70,22 @@ async function throwGroupInvitationMutationError(handler: Handler, domainId: str
 class DomainRankHandler extends Handler {
     @query('page', Types.PositiveInt, true)
     async get(domainId: string, page = 1) {
-        const [dudocs, upcount, ucount] = await this.paginate(
-            domain.getMultiUserInDomain(domainId, { uid: { $gt: 1 }, rp: { $gt: 0 }, join: true }).sort({ rp: -1 }),
+        const publication = await publicRatingStore.ranking(domainId);
+        const [dudocs, upcount, ucount] = await this.paginate<{ uid: number }>(
+            publication.cursor,
             page,
             'ranking',
         );
         const udict = await user.getList(domainId, dudocs.map((dudoc) => dudoc.uid));
-        const udocs = dudocs.map((i) => udict[i.uid]);
+        const udocs = await projectUserRatings(domainId, dudocs.map((i) => udict[i.uid]), publication.active);
+        this.user = await projectUserRating(domainId, this.user, publication.active);
         this.response.template = 'ranking.html';
         this.response.body = {
             udocs, upcount, ucount, page,
+            ratingAlgorithm: publication.active?.algorithm || 'legacy',
+            ratingUpdatedAt: publication.active?.updatedAt,
+            ratingUpdatedAtText: publication.active ? moment(publication.active.updatedAt).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss') : '',
+            ratingProvisionalEvents: 5,
         };
     }
 }

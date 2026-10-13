@@ -33,6 +33,8 @@ export const apply = (ctx) => ctx.addScript(
         priorSd: numberOpt('Initial ability prior standard deviation', 600),
         refDomain: Schema.string().description('Domain used for old-vs-new comparison').default('cpptrain'),
         poolId: Schema.string().description('Rating pool id').default('default'),
+        domainId: Schema.string().description('Limit replay inputs and projections to one domain'),
+        asOf: Schema.number().min(0).description('Replay cutoff as epoch milliseconds; defaults to the current time'),
         write: Schema.boolean().description('Write results to ratingv2_shadow collection').default(false),
     }),
     run,

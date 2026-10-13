@@ -1,0 +1,913 @@
+{
+  "commit": "bb748435ab59466e5abd74a31ef64383e008da74",
+  "coreHashesMatch": true,
+  "runs": [
+    {
+      "name": "trial-default",
+      "events": {
+        "1": 388,
+        "2": 42,
+        "3": 8,
+        "4": 1,
+        "5": 1
+      },
+      "ratedUsersWithoutProjection": 14,
+      "unratedProjections": 188,
+      "difficultyStatus": {},
+      "maxDifficultyStudents": 0,
+      "difficultyMin": 0,
+      "difficultyMax": 0,
+      "topRating": [
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "rating_state",
+          "uid": 1373,
+          "mu": 1918.8437503962766,
+          "events": 5
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "rating_state",
+          "uid": 1704,
+          "mu": 1761.3182394973833,
+          "events": 3
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "rating_state",
+          "uid": 1725,
+          "mu": 1744.9462255764129,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "rating_state",
+          "uid": 1611,
+          "mu": 1733.382196811137,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "rating_state",
+          "uid": 1633,
+          "mu": 1698.0621603835725,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "rating_state",
+          "uid": 1649,
+          "mu": 1679.140691058498,
+          "events": 3
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "rating_state",
+          "uid": 1613,
+          "mu": 1673.4227130413706,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "rating_state",
+          "uid": 1837,
+          "mu": 1665.0515467432842,
+          "events": 1
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "rating_state",
+          "uid": 2035,
+          "mu": 1664.3978231756619,
+          "events": 1
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "rating_state",
+          "uid": 715,
+          "mu": 1662.5027843373182,
+          "events": 1
+        }
+      ],
+      "topRP": [
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1373,
+          "a": 49.75,
+          "problems": 58,
+          "mu": 1918.84,
+          "rating": 1919,
+          "tier": "TIER_5",
+          "ratedEvents": 5,
+          "p": 119.51951951951952,
+          "c": 274.14285714285717,
+          "problemCents": 11952,
+          "contestCents": 27414,
+          "rpCents": 39366
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1704,
+          "a": 25.01,
+          "problems": 27,
+          "mu": 1761.32,
+          "rating": 1761,
+          "tier": "TIER_4",
+          "ratedEvents": 3,
+          "p": 66.69036931691926,
+          "c": 150.94285714285712,
+          "problemCents": 6669,
+          "contestCents": 15094,
+          "rpCents": 21763
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1662,
+          "a": 21.92,
+          "problems": 28,
+          "mu": 1594.63,
+          "rating": 1595,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 59.25241646576392,
+          "c": 136.71428571428572,
+          "problemCents": 5925,
+          "contestCents": 13671,
+          "rpCents": 19596
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1413,
+          "a": 23.97,
+          "problems": 26,
+          "mu": 1519.95,
+          "rating": 1520,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 64.20199584756547,
+          "c": 130.28571428571428,
+          "problemCents": 6420,
+          "contestCents": 13029,
+          "rpCents": 19449
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1649,
+          "a": 17.26,
+          "problems": 21,
+          "mu": 1679.14,
+          "rating": 1679,
+          "tier": "TIER_4",
+          "ratedEvents": 3,
+          "p": 47.67910155800519,
+          "c": 143.9142857142857,
+          "problemCents": 4768,
+          "contestCents": 14391,
+          "rpCents": 19159
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1695,
+          "a": 16.79,
+          "problems": 24,
+          "mu": 1574.37,
+          "rating": 1574,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 46.45616624766474,
+          "c": 134.9142857142857,
+          "problemCents": 4646,
+          "contestCents": 13491,
+          "rpCents": 18137
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1659,
+          "a": 18.03,
+          "problems": 22,
+          "mu": 1511.28,
+          "rating": 1511,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 49.617025180021095,
+          "c": 129.5142857142857,
+          "problemCents": 4962,
+          "contestCents": 12951,
+          "rpCents": 17913
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 951,
+          "a": 14.08,
+          "problems": 15,
+          "mu": 1481.12,
+          "rating": 1481,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 39.44879131145627,
+          "c": 126.94285714285714,
+          "problemCents": 3945,
+          "contestCents": 12694,
+          "rpCents": 16639
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1705,
+          "a": 12.8,
+          "problems": 15,
+          "mu": 1519.87,
+          "rating": 1520,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 36.090225563909776,
+          "c": 130.28571428571428,
+          "problemCents": 3609,
+          "contestCents": 13029,
+          "rpCents": 16638
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-default",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1358,
+          "a": 4,
+          "problems": 4,
+          "mu": 1291.58,
+          "rating": 1292,
+          "tier": "TIER_2",
+          "ratedEvents": 4,
+          "p": 11.764705882352942,
+          "c": 147.65714285714284,
+          "problemCents": 1176,
+          "contestCents": 14766,
+          "rpCents": 15942
+        }
+      ],
+      "totalDocs": 1054
+    },
+    {
+      "name": "trial-prior1",
+      "events": {
+        "1": 388,
+        "2": 42,
+        "3": 8,
+        "4": 1,
+        "5": 1
+      },
+      "ratedUsersWithoutProjection": 14,
+      "unratedProjections": 188,
+      "difficultyStatus": {
+        "ok": 49,
+        "degenerate": 16
+      },
+      "maxDifficultyStudents": 17,
+      "difficultyMin": 1070.98,
+      "difficultyMax": 1994.55,
+      "topRating": [
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "rating_state",
+          "uid": 1373,
+          "mu": 1918.8437503962766,
+          "events": 5
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "rating_state",
+          "uid": 1704,
+          "mu": 1761.3182394973833,
+          "events": 3
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "rating_state",
+          "uid": 1725,
+          "mu": 1744.9462255764129,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "rating_state",
+          "uid": 1611,
+          "mu": 1733.382196811137,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "rating_state",
+          "uid": 1633,
+          "mu": 1698.0621603835725,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "rating_state",
+          "uid": 1649,
+          "mu": 1679.140691058498,
+          "events": 3
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "rating_state",
+          "uid": 1613,
+          "mu": 1673.4227130413706,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "rating_state",
+          "uid": 1837,
+          "mu": 1665.0515467432842,
+          "events": 1
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "rating_state",
+          "uid": 2035,
+          "mu": 1664.3978231756619,
+          "events": 1
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "rating_state",
+          "uid": 715,
+          "mu": 1662.5027843373182,
+          "events": 1
+        }
+      ],
+      "topRP": [
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1373,
+          "a": 49.75,
+          "problems": 58,
+          "mu": 1918.84,
+          "rating": 1919,
+          "tier": "TIER_5",
+          "ratedEvents": 5,
+          "p": 119.51951951951952,
+          "c": 274.14285714285717,
+          "problemCents": 11952,
+          "contestCents": 27414,
+          "rpCents": 39366
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1704,
+          "a": 25.01,
+          "problems": 27,
+          "mu": 1761.32,
+          "rating": 1761,
+          "tier": "TIER_4",
+          "ratedEvents": 3,
+          "p": 66.69036931691926,
+          "c": 150.94285714285712,
+          "problemCents": 6669,
+          "contestCents": 15094,
+          "rpCents": 21763
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1662,
+          "a": 21.92,
+          "problems": 28,
+          "mu": 1594.63,
+          "rating": 1595,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 59.25241646576392,
+          "c": 136.71428571428572,
+          "problemCents": 5925,
+          "contestCents": 13671,
+          "rpCents": 19596
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1413,
+          "a": 23.97,
+          "problems": 26,
+          "mu": 1519.95,
+          "rating": 1520,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 64.20199584756547,
+          "c": 130.28571428571428,
+          "problemCents": 6420,
+          "contestCents": 13029,
+          "rpCents": 19449
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1649,
+          "a": 17.26,
+          "problems": 21,
+          "mu": 1679.14,
+          "rating": 1679,
+          "tier": "TIER_4",
+          "ratedEvents": 3,
+          "p": 47.67910155800519,
+          "c": 143.9142857142857,
+          "problemCents": 4768,
+          "contestCents": 14391,
+          "rpCents": 19159
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1695,
+          "a": 16.79,
+          "problems": 24,
+          "mu": 1574.37,
+          "rating": 1574,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 46.45616624766474,
+          "c": 134.9142857142857,
+          "problemCents": 4646,
+          "contestCents": 13491,
+          "rpCents": 18137
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1659,
+          "a": 18.03,
+          "problems": 22,
+          "mu": 1511.28,
+          "rating": 1511,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 49.617025180021095,
+          "c": 129.5142857142857,
+          "problemCents": 4962,
+          "contestCents": 12951,
+          "rpCents": 17913
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 951,
+          "a": 14.08,
+          "problems": 15,
+          "mu": 1481.12,
+          "rating": 1481,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 39.44879131145627,
+          "c": 126.94285714285714,
+          "problemCents": 3945,
+          "contestCents": 12694,
+          "rpCents": 16639
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1705,
+          "a": 12.8,
+          "problems": 15,
+          "mu": 1519.87,
+          "rating": 1520,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 36.090225563909776,
+          "c": 130.28571428571428,
+          "problemCents": 3609,
+          "contestCents": 13029,
+          "rpCents": 16638
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1358,
+          "a": 4,
+          "problems": 4,
+          "mu": 1291.58,
+          "rating": 1292,
+          "tier": "TIER_2",
+          "ratedEvents": 4,
+          "p": 11.764705882352942,
+          "c": 147.65714285714284,
+          "problemCents": 1176,
+          "contestCents": 14766,
+          "rpCents": 15942
+        }
+      ],
+      "totalDocs": 1966,
+      "spearmanDifficultySolveRate": -0.9912643885115935,
+      "fitRateAbsoluteErrorMean": 0.0073447877420603205,
+      "fitRateAbsoluteErrorMax": 0.020434913897642598,
+      "difficultySamples": [
+        {
+          "pid": 79,
+          "title": "细胞自动机",
+          "d": 1070.98,
+          "se": 158.94,
+          "students": 17,
+          "solved": 16
+        },
+        {
+          "pid": 80,
+          "title": "八车问题",
+          "d": 1374.59,
+          "se": 92.6,
+          "students": 17,
+          "solved": 12
+        },
+        {
+          "pid": 90,
+          "title": "重复字符",
+          "d": 1488.91,
+          "se": 96.93,
+          "students": 13,
+          "solved": 7
+        },
+        {
+          "pid": 93,
+          "title": "公寓",
+          "d": 1598.22,
+          "se": 99.38,
+          "students": 13,
+          "solved": 5
+        },
+        {
+          "pid": 67,
+          "title": "涂色",
+          "d": 1790.05,
+          "se": 129.85,
+          "students": 12,
+          "solved": 2
+        },
+        {
+          "pid": 68,
+          "title": "Joker",
+          "d": 1909.7,
+          "se": 162.66,
+          "students": 12,
+          "solved": 1
+        }
+      ]
+    },
+    {
+      "name": "trial-no-duration-prior1",
+      "events": {
+        "1": 265,
+        "2": 21,
+        "3": 4,
+        "4": 1
+      },
+      "ratedUsersWithoutProjection": 8,
+      "unratedProjections": 331,
+      "difficultyStatus": {
+        "ok": 28,
+        "degenerate": 9
+      },
+      "maxDifficultyStudents": 11,
+      "difficultyMin": 1263.28,
+      "difficultyMax": 1965.82,
+      "topRating": [
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "rating_state",
+          "uid": 1373,
+          "mu": 1799.0553530691952,
+          "events": 4
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "rating_state",
+          "uid": 1725,
+          "mu": 1744.9462255764129,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "rating_state",
+          "uid": 1611,
+          "mu": 1733.382196811137,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "rating_state",
+          "uid": 1633,
+          "mu": 1698.0621603835725,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "rating_state",
+          "uid": 1649,
+          "mu": 1679.140691058498,
+          "events": 3
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "rating_state",
+          "uid": 1613,
+          "mu": 1673.4227130413706,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "rating_state",
+          "uid": 1837,
+          "mu": 1665.0515467432842,
+          "events": 1
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "rating_state",
+          "uid": 715,
+          "mu": 1662.5027843373182,
+          "events": 1
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "rating_state",
+          "uid": 1730,
+          "mu": 1651.5146386170222,
+          "events": 2
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "rating_state",
+          "uid": 1577,
+          "mu": 1645.7335885134053,
+          "events": 1
+        }
+      ],
+      "topRP": [
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1373,
+          "a": 49.75,
+          "problems": 58,
+          "mu": 1799.06,
+          "rating": 1799,
+          "tier": "TIER_4",
+          "ratedEvents": 4,
+          "p": 119.51951951951952,
+          "c": 205.6,
+          "problemCents": 11952,
+          "contestCents": 20560,
+          "rpCents": 32512
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1649,
+          "a": 17.26,
+          "problems": 21,
+          "mu": 1679.14,
+          "rating": 1679,
+          "tier": "TIER_4",
+          "ratedEvents": 3,
+          "p": 47.67910155800519,
+          "c": 143.9142857142857,
+          "problemCents": 4768,
+          "contestCents": 14391,
+          "rpCents": 19159
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1695,
+          "a": 16.79,
+          "problems": 24,
+          "mu": 1574.37,
+          "rating": 1574,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 46.45616624766474,
+          "c": 134.9142857142857,
+          "problemCents": 4646,
+          "contestCents": 13491,
+          "rpCents": 18137
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1705,
+          "a": 12.8,
+          "problems": 15,
+          "mu": 1519.87,
+          "rating": 1520,
+          "tier": "TIER_3",
+          "ratedEvents": 3,
+          "p": 36.090225563909776,
+          "c": 130.28571428571428,
+          "problemCents": 3609,
+          "contestCents": 13029,
+          "rpCents": 16638
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1662,
+          "a": 21.92,
+          "problems": 28,
+          "mu": 1576.07,
+          "rating": 1576,
+          "tier": "TIER_3",
+          "ratedEvents": 2,
+          "p": 59.25241646576392,
+          "c": 90.05714285714285,
+          "problemCents": 5925,
+          "contestCents": 9006,
+          "rpCents": 14931
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1448,
+          "a": 20.78,
+          "problems": 24,
+          "mu": 1597.24,
+          "rating": 1597,
+          "tier": "TIER_3",
+          "ratedEvents": 2,
+          "p": 56.47250656762388,
+          "c": 91.25714285714287,
+          "problemCents": 5647,
+          "contestCents": 9126,
+          "rpCents": 14773
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1413,
+          "a": 23.97,
+          "problems": 26,
+          "mu": 1456.44,
+          "rating": 1456,
+          "tier": "TIER_3",
+          "ratedEvents": 2,
+          "p": 64.20199584756547,
+          "c": 83.2,
+          "problemCents": 6420,
+          "contestCents": 8320,
+          "rpCents": 14740
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1645,
+          "a": 15.89,
+          "problems": 19,
+          "mu": 1633.53,
+          "rating": 1634,
+          "tier": "TIER_4",
+          "ratedEvents": 2,
+          "p": 44.161378479781376,
+          "c": 93.37142857142857,
+          "problemCents": 4416,
+          "contestCents": 9337,
+          "rpCents": 13753
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1449,
+          "a": 17.21,
+          "problems": 25,
+          "mu": 1552.55,
+          "rating": 1553,
+          "tier": "TIER_3",
+          "ratedEvents": 2,
+          "p": 47.52653023641261,
+          "c": 88.74285714285713,
+          "problemCents": 4753,
+          "contestCents": 8874,
+          "rpCents": 13627
+        },
+        {
+          "poolId": "exam-v2-validation-20261012234708110-trial-no-duration-prior1",
+          "kind": "projection",
+          "domainId": "exam",
+          "uid": 1659,
+          "a": 18.03,
+          "problems": 22,
+          "mu": 1516.16,
+          "rating": 1516,
+          "tier": "TIER_3",
+          "ratedEvents": 2,
+          "p": 49.617025180021095,
+          "c": 86.62857142857143,
+          "problemCents": 4962,
+          "contestCents": 8663,
+          "rpCents": 13625
+        }
+      ],
+      "totalDocs": 1333,
+      "spearmanDifficultySolveRate": -0.9862492216628,
+      "fitRateAbsoluteErrorMean": 0.00847937783200826,
+      "fitRateAbsoluteErrorMax": 0.020434913897642598,
+      "difficultySamples": [
+        {
+          "pid": 47,
+          "title": "e",
+          "d": 1263.28,
+          "se": 131.31,
+          "students": 11,
+          "solved": 9
+        },
+        {
+          "pid": 37,
+          "title": "1.数学课",
+          "d": 1426.19,
+          "se": 116.27,
+          "students": 11,
+          "solved": 8
+        },
+        {
+          "pid": 57,
+          "title": "宫殿",
+          "d": 1525.07,
+          "se": 110.32,
+          "students": 10,
+          "solved": 5
+        },
+        {
+          "pid": 49,
+          "title": "g",
+          "d": 1619.19,
+          "se": 109.01,
+          "students": 11,
+          "solved": 4
+        },
+        {
+          "pid": 48,
+          "title": "f",
+          "d": 1778.93,
+          "se": 131.15,
+          "students": 11,
+          "solved": 2
+        },
+        {
+          "pid": 46,
+          "title": "d",
+          "d": 1900.34,
+          "se": 163.55,
+          "students": 11,
+          "solved": 1
+        }
+      ]
+    },
+    {
+      "name": "certified",
+      "events": {},
+      "ratedUsersWithoutProjection": 0,
+      "unratedProjections": 0,
+      "difficultyStatus": {},
+      "maxDifficultyStudents": 0,
+      "difficultyMin": 0,
+      "difficultyMax": 0,
+      "topRating": [],
+      "topRP": [],
+      "totalDocs": 0
+    }
+  ]
+}

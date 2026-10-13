@@ -51,6 +51,7 @@ manage_dashboard: System
 manage_module: Module Management
 manage_script: Scripts
 manage_setting: System Settings
+manage_rating: Rating Algorithms
 manage_user_import: Import Users
 manage_user_priv: User Privilege
 manage: System Manage

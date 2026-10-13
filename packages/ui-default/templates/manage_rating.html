@@ -1,0 +1,59 @@
+{% extends "manage_base.html" %}
+{% block manage_content %}
+<div class="section">
+  <div class="section__header"><h1 class="section__title">评分发布管理</h1></div>
+  <div class="section__body">
+    <p>保存设置只更新目标配置，不会自动切换任何分区的公开评分。请在对应分区确认后单独执行“重算并应用”。</p>
+    <form method="post">
+      <input type="hidden" name="op" value="save">
+      <label>评分算法
+        <select name="algorithm">
+          <option value="legacy"{% if dashboard.config.algorithm == 'legacy' %} selected{% endif %}>旧版</option>
+          <option value="v2_trial"{% if dashboard.config.algorithm == 'v2_trial' %} selected{% endif %}>V2 试用版</option>
+        </select>
+      </label>
+      <label>目标分区（每行一个，也可用逗号分隔）
+        <textarea name="domains" rows="4">{{ dashboard.config.domains|join('\n') }}</textarea>
+      </label>
+      <button type="submit" class="rounded primary">保存目标设置</button>
+    </form>
+  </div>
+</div>
+
+{% for item in dashboard.domains %}
+<div class="section">
+  <div class="section__header"><h2 class="section__title">{{ item.name }} <small>{{ item.domainId }}</small></h2></div>
+  <div class="section__body">
+    <p>公开算法：{% if item.active %}{{ 'V2 试用版' if item.active.algorithm == 'v2_trial' else '旧版' }}{% else %}旧版{% endif %}</p>
+    {% if item.active %}<p>最近更新：{{ item.active.updatedAtText|default(item.active.updatedAt) }}</p>{% endif %}
+    {% if item.pending %}<p>目标算法已变更，等待手工重算并应用。</p>{% endif %}
+    <p>最近任务：{% if item.job %}{% if item.job.status == 'queued' %}排队中{% elif item.job.status == 'running' %}计算中{% elif item.job.status == 'ready' %}计算完成，待发布{% elif item.job.status == 'complete' %}已应用{% elif item.job.status == 'failed' %}失败{% elif item.job.status == 'superseded' and item.job.operation == 'rollback' %}已回退{% elif item.job.status == 'superseded' %}未应用{% else %}{{ item.job.status }}{% endif %}{% if item.job.error %}：{{ item.job.error }}{% endif %}{% else %}暂无任务记录{% endif %}</p>
+    <form method="post" class="inline-form">
+      <input type="hidden" name="op" value="apply">
+      <input type="hidden" name="domainId" value="{{ item.domainId }}">
+      <button type="submit" class="rounded primary"{% if item.job and item.job.status in ['queued', 'running', 'ready'] %} disabled{% endif %}>重算并应用</button>
+    </form>
+    {% if item.active and item.active.previous %}
+    <form method="post" class="inline-form">
+      <input type="hidden" name="op" value="rollback">
+      <input type="hidden" name="domainId" value="{{ item.domainId }}">
+      <button type="submit" class="rounded">恢复上一次评分</button>
+    </form>
+    {% endif %}
+    {% if item.runs.length %}
+    <h3>最近批次</h3>
+    <table class="data-table"><thead><tr><th>算法</th><th>状态</th><th>评分日期</th><th>完成时间</th><th>说明</th></tr></thead><tbody>
+      {% for run in item.runs %}<tr><td>{{ 'V2 试用版' if run.algorithm == 'v2_trial' else '旧版' }}</td><td>{% if run.status == 'queued' %}排队中{% elif run.status == 'running' %}计算中{% elif run.status == 'ready' %}计算完成，待发布{% elif run.status == 'complete' %}已应用{% elif run.status == 'failed' %}失败{% elif run.status == 'superseded' and run.operation == 'rollback' %}已回退{% elif run.status == 'superseded' %}未应用{% else %}{{ run.status }}{% endif %}</td><td>{{ run.asOfText|default(run.asOf) }}</td><td>{{ run.completedAtText|default(run.completedAt|default('—')) }}</td><td>{{ run.error|default('—') }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% endif %}
+    {% if item.comparison.length %}
+    <h3>前 20 名对照</h3>
+    <table class="data-table"><thead><tr><th>用户</th><th>旧版 RP</th><th>V2 RP</th><th>能力 Rating</th><th>参赛场次</th><th>成就 A</th><th>排名</th><th>段位</th></tr></thead><tbody>
+      {% for row in item.comparison %}<tr><td>{{ row.uid }}</td><td>{{ row.legacyRp|default('—') }}</td><td>{{ row.rp|default('—') }}</td><td>{% if row.rating is not none %}{{ row.rating }}{% else %}未评级{% endif %}</td><td>{{ row.ratedEvents|default(0) }}</td><td>{{ row.achievement|default('—') }}</td><td>{{ row.rank|default('—') }}</td><td>{{ row.tier|default('—') }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+<p><a href="{{ url('manage_rating') }}">刷新状态</a></p>
+{% endblock %}

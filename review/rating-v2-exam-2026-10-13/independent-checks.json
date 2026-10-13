@@ -1,0 +1,270 @@
+{
+  "evidence": "review/rating-v2-exam-2026-10-13/evidence.json",
+  "generatedAt": "2026-10-13T07:51:16.300416+08:00",
+  "checks": [
+    {
+      "name": "trial-default and prior1 contest counts",
+      "pass": true,
+      "detail": {
+        "processed": 7,
+        "skipped": 1,
+        "frozen": 0,
+        "stages": [
+          {
+            "contestId": "682d2ef31006159b98ff8268",
+            "participants": 146,
+            "frozen": false,
+            "uids": 146
+          },
+          {
+            "contestId": "683980811006159b9800fc8d",
+            "participants": 12,
+            "frozen": false,
+            "uids": 12
+          },
+          {
+            "contestId": "68a1e535e50ec116d710a1f5",
+            "participants": 91,
+            "frozen": false,
+            "uids": 91
+          },
+          {
+            "contestId": "694f37d387017e780f6e0895",
+            "participants": 74,
+            "frozen": false,
+            "uids": 74
+          },
+          {
+            "contestId": "6953291d87017e780f6ec002",
+            "participants": 32,
+            "frozen": false,
+            "uids": 32
+          },
+          {
+            "contestId": "69a1be3a87017e780f6f8ef4",
+            "participants": 64,
+            "frozen": false,
+            "uids": 64
+          },
+          {
+            "contestId": "6a1f70a4b489abeadf8c4b51",
+            "participants": 86,
+            "frozen": false,
+            "uids": 86
+          }
+        ]
+      }
+    },
+    {
+      "name": "no-duration contest counts",
+      "pass": true,
+      "detail": {
+        "processed": 4,
+        "skipped": 4,
+        "frozen": 0,
+        "stages": [
+          {
+            "contestId": "682d2ef31006159b98ff8268",
+            "participants": 146,
+            "frozen": false,
+            "uids": 146
+          },
+          {
+            "contestId": "683980811006159b9800fc8d",
+            "participants": 12,
+            "frozen": false,
+            "uids": 12
+          },
+          {
+            "contestId": "68a1e535e50ec116d710a1f5",
+            "participants": 91,
+            "frozen": false,
+            "uids": 91
+          },
+          {
+            "contestId": "694f37d387017e780f6e0895",
+            "participants": 74,
+            "frozen": false,
+            "uids": 74
+          }
+        ]
+      }
+    },
+    {
+      "name": "prior1 states",
+      "pass": true,
+      "detail": {
+        "pass": true,
+        "calculated": 440,
+        "stored": 440,
+        "maxMuError": 3.659988578874618e-08,
+        "mismatches": []
+      }
+    },
+    {
+      "name": "prior1 observations",
+      "pass": true,
+      "detail": {
+        "pass": true,
+        "calculated": 847,
+        "stored": 847,
+        "mismatches": []
+      }
+    },
+    {
+      "name": "prior1 difficulty MAP, SE and gates",
+      "pass": true,
+      "detail": {
+        "pass": true,
+        "fits": 65,
+        "maxDError": 0.001104008294760206,
+        "maxSEError": 8.731426986230417e-05,
+        "fitMismatches": [],
+        "gateMismatches": []
+      }
+    },
+    {
+      "name": "prior1 projection mu/events/public rating/tier/components",
+      "pass": true,
+      "detail": {
+        "pass": true,
+        "count": 614,
+        "maxMuError": 0.0,
+        "mismatches": []
+      }
+    },
+    {
+      "name": "default equals prior1 states",
+      "pass": true,
+      "detail": {
+        "default": 440,
+        "prior1": 440
+      }
+    },
+    {
+      "name": "no-duration states",
+      "pass": true,
+      "detail": {
+        "pass": true,
+        "calculated": 291,
+        "stored": 291,
+        "maxMuError": 3.1891886465018615e-08,
+        "mismatches": []
+      }
+    },
+    {
+      "name": "no-duration observations",
+      "pass": true,
+      "detail": {
+        "pass": true,
+        "calculated": 391,
+        "stored": 391,
+        "mismatches": []
+      }
+    },
+    {
+      "name": "no-duration difficulty MAP, SE and gates",
+      "pass": true,
+      "detail": {
+        "pass": true,
+        "fits": 37,
+        "maxDError": 0.001104008294760206,
+        "maxSEError": 8.849390287934966e-05,
+        "fitMismatches": [],
+        "gateMismatches": []
+      }
+    },
+    {
+      "name": "no-duration projection mu/events/public rating/tier/components",
+      "pass": true,
+      "detail": {
+        "pass": true,
+        "count": 614,
+        "maxMuError": 0.0,
+        "mismatches": []
+      }
+    },
+    {
+      "name": "source fingerprint unchanged",
+      "pass": true,
+      "detail": {
+        "sourceUnchanged": true,
+        "beforeEqualsAfter": true,
+        "collections": [
+          "document",
+          "record",
+          "document.status",
+          "domain.user"
+        ]
+      }
+    },
+    {
+      "name": "shadow-only writes",
+      "pass": true,
+      "detail": {
+        "writeCount": 10,
+        "collections": [
+          "ratingv2_shadow"
+        ],
+        "onlyShadowWrites": true
+      }
+    },
+    {
+      "name": "exam domain isolation",
+      "pass": true,
+      "detail": {
+        "domains": [
+          "exam"
+        ]
+      }
+    },
+    {
+      "name": "shadow document counts",
+      "pass": true,
+      "detail": {
+        "trial-default": {
+          "docs": 1054,
+          "counts": {
+            "rating_state": 440,
+            "projection": 614
+          }
+        },
+        "trial-prior1": {
+          "docs": 1966,
+          "counts": {
+            "rating_state": 440,
+            "difficulty": 65,
+            "observation": 847,
+            "projection": 614
+          }
+        },
+        "trial-no-duration-prior1": {
+          "docs": 1333,
+          "counts": {
+            "rating_state": 291,
+            "difficulty": 37,
+            "observation": 391,
+            "projection": 614
+          }
+        },
+        "certified": {
+          "docs": 0,
+          "counts": {}
+        }
+      }
+    }
+  ],
+  "passed": 15,
+  "failed": 0,
+  "orderingDiagnostic": {
+    "recordPairInversions": 3818877,
+    "usersAffected": 439,
+    "maxMuDifference": 95.5918831969002,
+    "comparison": "same trial evidence, records sorted lexicographically by ObjectId ascending before per-user/problem aggregation"
+  },
+  "notes": [
+    "Independent Python standard-library implementation; no Hydro algorithm module imported.",
+    "Trial OI-family scores use the evidence record cursor order; the ordering diagnostic measures sensitivity to ascending ObjectId order.",
+    "Fully tied contests increment event count, although none occurred."
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "checkedAt": "2026-10-13T01:42:11.265Z",
+  "container": "hydro",
+  "active": "/root/.hydro/dev-releases/20261013092501",
+  "installed": {
+    "hydrooj": "5.0.7-dev.2",
+    "ui": "4.58.5-dev.5"
+  },
+  "target": {
+    "hydrooj": "5.0.7-dev.4",
+    "ui": "4.58.5-dev.6"
+  },
+  "ratingEntryInstalled": false,
+  "processes": [
+    {
+      "name": "hydro-sandbox",
+      "status": "online",
+      "pid": 34
+    },
+    {
+      "name": "mongodb",
+      "status": "online",
+      "pid": 33
+    },
+    {
+      "name": "caddy",
+      "status": "online",
+      "pid": 35
+    },
+    {
+      "name": "hydrooj",
+      "status": "online",
+      "pid": 93474
+    }
+  ],
+  "loginHTTP": "200",
+  "status": "blocked",
+  "blocker": "Private registry metadata ETIMEDOUT; installer exited 0 but installed package versions stayed at the prior releases."
+}

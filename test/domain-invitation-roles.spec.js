@@ -86,6 +86,11 @@ describe('Domain invitation role order', () => {
         domain = domainModule.default;
         const realUser = loadSource('packages/hydrooj/src/model/user.ts', {
             '../error': errors,
+            '../lib/rating-publication-read': {
+                projectUserRating: async (_domain, value) => value,
+                projectUserRatings: async (_domain, values) => values,
+                publicRatingStore: { active: async () => null },
+            },
             '../lib/avatar': {},
             '../lib/hash.hydro': {},
             '../service/db': { collection: (name) => db.collection(name) },
@@ -120,6 +125,11 @@ describe('Domain invitation role order', () => {
         const decorators = loadSource('framework/framework/decorators.ts', { './error': errors });
         const handlerModule = loadSource('packages/hydrooj/src/handler/domain.ts', {
             '../error': errors,
+            '../lib/rating-publication-read': {
+                projectUserRating: async (_domain, value) => value,
+                projectUserRatings: async (_domain, values) => values,
+                publicRatingStore: { active: async () => null },
+            },
             '../lib/avatar': {},
             '../model/builtin': builtin,
             '../model/discussion': {},

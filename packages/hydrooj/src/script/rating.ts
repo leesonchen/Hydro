@@ -6,12 +6,14 @@ import { Counter } from '@hydrooj/utils';
 import { Tdoc, Udoc } from '../interface';
 import difficultyAlgorithm from '../lib/difficulty';
 import rating from '../lib/rating';
-import { PRIV, STATUS } from '../model/builtin';
+import type { RatingRow } from '../lib/rating-publication-store';
+import { LEVELS, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as document from '../model/document';
 import domain from '../model/domain';
 import problem from '../model/problem';
 import UserModel from '../model/user';
+import { rankRatingRows, refreshRating } from '../model/rating-publication';
 import db from '../service/db';
 
 export const description = 'Calculate rp of a domain, or all domains';
@@ -197,29 +199,40 @@ export async function calcLevel(domainId: string, report: Report) {
     await bulk.execute();
 }
 
-async function runInDomain(domainId: string, report: Report) {
+export async function calculateLegacyInDomain(domainId: string, report: Report = () => {}) {
     const results: Record<keyof typeof RpTypes, ND> = {};
     const udict = Counter();
-    await db.collection('domain.user').updateMany({ domainId }, { $set: { rpInfo: {} } });
+    const info: Record<number, Record<string, number>> = {};
     for (const type in RpTypes) {
         results[type] = new Proxy({}, { get: (self, key) => self[key] || RpTypes[type].base });
         await RpTypes[type].run([domainId], results[type], report);
-        const bulk = db.collection('domain.user').initializeUnorderedBulkOp();
         for (const uid in results[type]) {
-            const udoc = await UserModel.getById(domainId, +uid);
-            if (!udoc?.hasPriv(PRIV.PRIV_USER_PROFILE)) continue;
-            bulk.find({ domainId, uid: +uid }).updateOne({ $set: { [`rpInfo.${type}`]: results[type][uid] } });
+            if (+uid <= 1 || !Number.isSafeInteger(+uid)) continue;
+            info[+uid] ||= {};
+            info[+uid][type] = results[type][uid];
             udict[+uid] += results[type][uid];
         }
-        if (bulk.batches.length) await bulk.execute();
     }
-    await domain.setMultiUserInDomain(domainId, {}, { rp: 0 });
-    const bulk = db.collection('domain.user').initializeUnorderedBulkOp();
-    for (const uid in udict) {
-        bulk.find({ domainId, uid: +uid }).upsert().update({ $set: { rp: Math.max(0, udict[uid]) } });
+    const members = await db.collection('domain.user').find({ domainId }).toArray();
+    const byUid = new Map(members.map((member) => [member.uid, member]));
+    const uids = [...new Set([...members.map((member) => member.uid), ...Object.keys(udict).map(Number)])]
+        .filter((uid) => Number.isSafeInteger(uid) && uid > 1);
+    const users = await UserModel.coll.find({ _id: { $in: uids } }, { projection: { _id: 1, priv: 1 } }).toArray();
+    const rows: RatingRow[] = users.map((user) => {
+        const visible = !!(user.priv & PRIV.PRIV_USER_PROFILE);
+        return { uid: user._id, join: byUid.get(user._id)?.join === true, visible,
+            rp: visible ? Math.max(0, udict[user._id] || 0) : 0,
+            rpInfo: visible ? info[user._id] || {} : {}, rank: null, level: 0 };
+    });
+    rankRatingRows(rows);
+    const ranked = rows.filter((row) => row.rank !== null);
+    for (const row of ranked) {
+        for (let i = 0; i < LEVELS.length; i++) {
+            if (row.rank <= LEVELS[i] * ranked.length / 100
+                && (i === LEVELS.length - 1 || row.rank > LEVELS[i + 1] * ranked.length / 100)) row.level = i;
+        }
     }
-    if (bulk.batches.length) await bulk.execute();
-    await calcLevel(domainId, report);
+    return { rows, summary: { domainId, users: rows.length, ranked: ranked.length }, parameters: {} };
 }
 
 export async function run({ domainId }, report: Report) {
@@ -228,7 +241,12 @@ export async function run({ domainId }, report: Report) {
         await report({ message: `Found ${domains.length} domains` });
         for (const i in domains) {
             const start = Date.now();
-            await runInDomain(domains[i]._id, report);
+            try {
+                await refreshRating(domains[i]._id, report);
+            } catch (error) {
+                await report({ message: `Domain ${domains[i]._id} rating update failed; previous scores preserved: ${error.message}` });
+                continue;
+            }
             await report({
                 case: {
                     status: STATUS.STATUS_ACCEPTED,
@@ -240,7 +258,7 @@ export async function run({ domainId }, report: Report) {
                 progress: Math.floor(((+i + 1) / domains.length) * 100),
             });
         }
-    } else await runInDomain(domainId, report);
+    } else await refreshRating(domainId, report);
     return true;
 }
 

@@ -13,6 +13,8 @@ import {
 } from '../error';
 import { DomainDoc, Setting } from '../interface';
 import avatar, { validate } from '../lib/avatar';
+import { projectUserRatings, publicRatingStore } from '../lib/rating-publication-read';
+import type { RatingPointer } from '../lib/rating-publication-store';
 import * as mail from '../lib/mail';
 import { verifyTFA } from '../lib/verifyTFA';
 import BlackListModel from '../model/blacklist';
@@ -37,6 +39,7 @@ import { camelCase, md5 } from '../utils';
 
 export class HomeHandler extends Handler {
     uids = new Set<number>();
+    ratingPointer?: RatingPointer | null;
 
     collectUser(uids: number[]) {
         for (const uid of uids) this.uids.add(uid);
@@ -117,8 +120,9 @@ export class HomeHandler extends Handler {
 
     async getRanking(domainId: string, limit = 50) {
         if (!this.user.hasPerm(PERM.PERM_VIEW_RANKING)) return [];
-        const dudocs = await domain.getMultiUserInDomain(domainId, { uid: { $gt: 1 }, rp: { $gt: 0 } })
-            .sort({ rp: -1 }).project({ uid: 1 }).limit(limit).toArray();
+        const publication = await publicRatingStore.ranking(domainId, false);
+        this.ratingPointer = publication.active;
+        const dudocs = await publication.cursor.project({ uid: 1 }).limit(limit).toArray();
         const uids = dudocs.map((dudoc) => dudoc.uid);
         this.collectUser(uids);
         return uids;
@@ -178,6 +182,9 @@ export class HomeHandler extends Handler {
             });
         }
         const udict = await user.getList(domainId, Array.from(this.uids));
+        if (this.ratingPointer !== undefined) {
+            for (const udoc of await projectUserRatings(domainId, Object.values(udict), this.ratingPointer)) udict[udoc._id] = udoc;
+        }
         this.response.template = 'main.html';
         this.response.body = {
             contents,

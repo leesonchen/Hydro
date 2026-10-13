@@ -1,0 +1,2692 @@
+{
+  "description": "Counterfactual sensitivity only; no DB writes. Current installed trial cursor order versus records sorted by ObjectId ascending.",
+  "affected": 439,
+  "changes": [
+    {
+      "uid": 1722,
+      "cursorMu": 1544.823880164978,
+      "chronologicalMu": 1640.4157633618781,
+      "difference": 95.5918831969002
+    },
+    {
+      "uid": 1739,
+      "cursorMu": 1550.0779811804948,
+      "chronologicalMu": 1635.5457640926795,
+      "difference": 85.4677829121847
+    },
+    {
+      "uid": 2018,
+      "cursorMu": 1521.4093352187463,
+      "chronologicalMu": 1593.6068159298725,
+      "difference": 72.19748071112622
+    },
+    {
+      "uid": 1621,
+      "cursorMu": 1542.943585560034,
+      "chronologicalMu": 1612.2947472365722,
+      "difference": 69.35116167653814
+    },
+    {
+      "uid": 1413,
+      "cursorMu": 1519.9543717032432,
+      "chronologicalMu": 1589.1980948384953,
+      "difference": 69.24372313525214
+    },
+    {
+      "uid": 1633,
+      "cursorMu": 1698.062160395529,
+      "chronologicalMu": 1631.0085972135537,
+      "difference": -67.05356318197528
+    },
+    {
+      "uid": 1877,
+      "cursorMu": 1457.1645887318612,
+      "chronologicalMu": 1518.077903992574,
+      "difference": 60.91331526071281
+    },
+    {
+      "uid": 1912,
+      "cursorMu": 1525.3935907796117,
+      "chronologicalMu": 1585.271256257181,
+      "difference": 59.87766547756928
+    },
+    {
+      "uid": 1373,
+      "cursorMu": 1918.8437504328765,
+      "chronologicalMu": 1978.3066078434642,
+      "difference": 59.46285741058773
+    },
+    {
+      "uid": 1713,
+      "cursorMu": 1387.1123389368438,
+      "chronologicalMu": 1443.7850443799541,
+      "difference": 56.67270544311032
+    },
+    {
+      "uid": 1684,
+      "cursorMu": 1538.4664627060088,
+      "chronologicalMu": 1592.3521191384987,
+      "difference": 53.885656432489895
+    },
+    {
+      "uid": 1728,
+      "cursorMu": 1584.780644748618,
+      "chronologicalMu": 1532.410011434881,
+      "difference": -52.37063331373702
+    },
+    {
+      "uid": 1868,
+      "cursorMu": 1619.8650981663252,
+      "chronologicalMu": 1672.0854031632402,
+      "difference": 52.22030499691505
+    },
+    {
+      "uid": 1422,
+      "cursorMu": 1591.040731262878,
+      "chronologicalMu": 1540.0258373985769,
+      "difference": -51.01489386430103
+    },
+    {
+      "uid": 1700,
+      "cursorMu": 1512.423569546299,
+      "chronologicalMu": 1461.4902389499528,
+      "difference": -50.933330596346195
+    },
+    {
+      "uid": 1730,
+      "cursorMu": 1651.5146386086199,
+      "chronologicalMu": 1700.9383471601755,
+      "difference": 49.42370855155559
+    },
+    {
+      "uid": 1964,
+      "cursorMu": 1561.0730761089626,
+      "chronologicalMu": 1609.2019043483751,
+      "difference": 48.12882823941254
+    },
+    {
+      "uid": 1679,
+      "cursorMu": 1588.4798675098662,
+      "chronologicalMu": 1543.2037653357738,
+      "difference": -45.27610217409233
+    },
+    {
+      "uid": 1654,
+      "cursorMu": 1619.229924007862,
+      "chronologicalMu": 1574.5373083916247,
+      "difference": -44.69261561623739
+    },
+    {
+      "uid": 1772,
+      "cursorMu": 1510.6596082735496,
+      "chronologicalMu": 1466.0107329927457,
+      "difference": -44.64887528080385
+    },
+    {
+      "uid": 1694,
+      "cursorMu": 1524.5018125140161,
+      "chronologicalMu": 1566.2864736738043,
+      "difference": 41.78466115978813
+    },
+    {
+      "uid": 1529,
+      "cursorMu": 1584.780644748618,
+      "chronologicalMu": 1543.2037653357738,
+      "difference": -41.576879412844164
+    },
+    {
+      "uid": 1704,
+      "cursorMu": 1761.318239490853,
+      "chronologicalMu": 1720.410716188328,
+      "difference": -40.90752330252508
+    },
+    {
+      "uid": 1734,
+      "cursorMu": 1606.8770832454532,
+      "chronologicalMu": 1566.2864736738043,
+      "difference": -40.59060957164888
+    },
+    {
+      "uid": 1698,
+      "cursorMu": 1623.267162518678,
+      "chronologicalMu": 1585.9958120366246,
+      "difference": -37.27135048205355
+    },
+    {
+      "uid": 1707,
+      "cursorMu": 1565.3017262389706,
+      "chronologicalMu": 1602.2106056039622,
+      "difference": 36.90887936499166
+    },
+    {
+      "uid": 1635,
+      "cursorMu": 1540.0258373985769,
+      "chronologicalMu": 1576.7158202691928,
+      "difference": 36.68998287061595
+    },
+    {
+      "uid": 1814,
+      "cursorMu": 1468.3499460134808,
+      "chronologicalMu": 1504.7378640396696,
+      "difference": 36.3879180261888
+    },
+    {
+      "uid": 2013,
+      "cursorMu": 1523.7650258657907,
+      "chronologicalMu": 1487.6735753552987,
+      "difference": -36.091450510491995
+    },
+    {
+      "uid": 1697,
+      "cursorMu": 1632.3454334164944,
+      "chronologicalMu": 1596.4220472818013,
+      "difference": -35.923386134693146
+    },
+    {
+      "uid": 1650,
+      "cursorMu": 1548.9719527995674,
+      "chronologicalMu": 1513.0701692691866,
+      "difference": -35.901783530380726
+    },
+    {
+      "uid": 1380,
+      "cursorMu": 1615.4489300027092,
+      "chronologicalMu": 1580.083368307729,
+      "difference": -35.365561694980215
+    },
+    {
+      "uid": 1575,
+      "cursorMu": 1400.6279705940856,
+      "chronologicalMu": 1435.9462360066493,
+      "difference": 35.31826541256373
+    },
+    {
+      "uid": 1611,
+      "cursorMu": 1733.3821968287518,
+      "chronologicalMu": 1768.0070806947845,
+      "difference": 34.62488386603263
+    },
+    {
+      "uid": 1708,
+      "cursorMu": 1459.506269594412,
+      "chronologicalMu": 1493.5288313919107,
+      "difference": 34.02256179749861
+    },
+    {
+      "uid": 1763,
+      "cursorMu": 1476.8406470979157,
+      "chronologicalMu": 1510.8163469509386,
+      "difference": 33.97569985302289
+    },
+    {
+      "uid": 1642,
+      "cursorMu": 1467.0290805232437,
+      "chronologicalMu": 1500.0,
+      "difference": 32.97091947675631
+    },
+    {
+      "uid": 2085,
+      "cursorMu": 1617.2427691332698,
+      "chronologicalMu": 1649.934754985742,
+      "difference": 32.69198585247227
+    },
+    {
+      "uid": 1775,
+      "cursorMu": 1576.3757415409534,
+      "chronologicalMu": 1608.9267641276347,
+      "difference": 32.551022586681256
+    },
+    {
+      "uid": 1873,
+      "cursorMu": 1418.4456030929864,
+      "chronologicalMu": 1450.7672869946434,
+      "difference": 32.321683901657025
+    },
+    {
+      "uid": 1578,
+      "cursorMu": 1543.2037653357738,
+      "chronologicalMu": 1511.779594727767,
+      "difference": -31.42417060800676
+    },
+    {
+      "uid": 1724,
+      "cursorMu": 1568.2852264886546,
+      "chronologicalMu": 1536.9258481168872,
+      "difference": -31.359378371767434
+    },
+    {
+      "uid": 2072,
+      "cursorMu": 1639.673531529201,
+      "chronologicalMu": 1608.3638242936,
+      "difference": -31.30970723560108
+    },
+    {
+      "uid": 600,
+      "cursorMu": 1555.038477367819,
+      "chronologicalMu": 1523.804433008221,
+      "difference": -31.2340443595981
+    },
+    {
+      "uid": 1132,
+      "cursorMu": 1555.038477367819,
+      "chronologicalMu": 1523.804433008221,
+      "difference": -31.2340443595981
+    },
+    {
+      "uid": 1733,
+      "cursorMu": 1555.038477367819,
+      "chronologicalMu": 1523.804433008221,
+      "difference": -31.2340443595981
+    },
+    {
+      "uid": 1648,
+      "cursorMu": 1548.9719527995674,
+      "chronologicalMu": 1580.083368307729,
+      "difference": 31.1114155081616
+    },
+    {
+      "uid": 1686,
+      "cursorMu": 1442.2727700095802,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": 29.905713677339236
+    },
+    {
+      "uid": 1703,
+      "cursorMu": 1609.9792527863792,
+      "chronologicalMu": 1580.1200999808257,
+      "difference": -29.85915280555355
+    },
+    {
+      "uid": 2042,
+      "cursorMu": 1489.5992464269534,
+      "chronologicalMu": 1519.0553443214517,
+      "difference": 29.45609789449827
+    },
+    {
+      "uid": 1072,
+      "cursorMu": 1536.9258481168872,
+      "chronologicalMu": 1566.2864736738043,
+      "difference": 29.360625556917057
+    },
+    {
+      "uid": 1458,
+      "cursorMu": 1461.714257768941,
+      "chronologicalMu": 1491.018416450915,
+      "difference": 29.30415868197406
+    },
+    {
+      "uid": 1445,
+      "cursorMu": 1501.202161427297,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -29.02367774037748
+    },
+    {
+      "uid": 1602,
+      "cursorMu": 1501.202161427297,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -29.02367774037748
+    },
+    {
+      "uid": 1658,
+      "cursorMu": 1501.202161427297,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -29.02367774037748
+    },
+    {
+      "uid": 1693,
+      "cursorMu": 1501.202161427297,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -29.02367774037748
+    },
+    {
+      "uid": 1737,
+      "cursorMu": 1501.202161427297,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -29.02367774037748
+    },
+    {
+      "uid": 1720,
+      "cursorMu": 1595.0416859296536,
+      "chronologicalMu": 1566.2864736738043,
+      "difference": -28.7552122558493
+    },
+    {
+      "uid": 1674,
+      "cursorMu": 1519.6887959891635,
+      "chronologicalMu": 1548.1306954187303,
+      "difference": 28.441899429566774
+    },
+    {
+      "uid": 1781,
+      "cursorMu": 1551.8436108957385,
+      "chronologicalMu": 1523.8119789720597,
+      "difference": -28.031631923678788
+    },
+    {
+      "uid": 1670,
+      "cursorMu": 1487.2751243913272,
+      "chronologicalMu": 1459.506269594412,
+      "difference": -27.768854796915093
+    },
+    {
+      "uid": 1988,
+      "cursorMu": 1462.1487207111413,
+      "chronologicalMu": 1489.710098829986,
+      "difference": 27.561378118844686
+    },
+    {
+      "uid": 1604,
+      "cursorMu": 1473.2223770795513,
+      "chronologicalMu": 1500.0,
+      "difference": 26.77762292044872
+    },
+    {
+      "uid": 1622,
+      "cursorMu": 1473.2223770795513,
+      "chronologicalMu": 1500.0,
+      "difference": 26.77762292044872
+    },
+    {
+      "uid": 1705,
+      "cursorMu": 1519.8738724320765,
+      "chronologicalMu": 1546.0582013829337,
+      "difference": 26.184328950857207
+    },
+    {
+      "uid": 2021,
+      "cursorMu": 1605.8608768513884,
+      "chronologicalMu": 1630.9516733629077,
+      "difference": 25.09079651151933
+    },
+    {
+      "uid": 2076,
+      "cursorMu": 1546.94788847007,
+      "chronologicalMu": 1571.8948299303117,
+      "difference": 24.94694146024176
+    },
+    {
+      "uid": 1715,
+      "cursorMu": 1464.495880386248,
+      "chronologicalMu": 1488.9606037039516,
+      "difference": 24.4647233177036
+    },
+    {
+      "uid": 1895,
+      "cursorMu": 1506.9753614835456,
+      "chronologicalMu": 1531.3589611075563,
+      "difference": 24.383599624010685
+    },
+    {
+      "uid": 1641,
+      "cursorMu": 1461.9886673788317,
+      "chronologicalMu": 1486.1594512131471,
+      "difference": 24.170783834315444
+    },
+    {
+      "uid": 1652,
+      "cursorMu": 1461.9886673788317,
+      "chronologicalMu": 1486.1594512131471,
+      "difference": 24.170783834315444
+    },
+    {
+      "uid": 1691,
+      "cursorMu": 1507.9689529726115,
+      "chronologicalMu": 1484.497576022756,
+      "difference": -23.47137694985554
+    },
+    {
+      "uid": 1319,
+      "cursorMu": 1580.083368307729,
+      "chronologicalMu": 1556.83334932071,
+      "difference": -23.250018987018848
+    },
+    {
+      "uid": 1688,
+      "cursorMu": 1560.5139763473921,
+      "chronologicalMu": 1583.5824467111834,
+      "difference": 23.06847036379122
+    },
+    {
+      "uid": 2038,
+      "cursorMu": 1600.7897861679878,
+      "chronologicalMu": 1623.5974310315785,
+      "difference": 22.807644863590667
+    },
+    {
+      "uid": 1732,
+      "cursorMu": 1493.5288313919107,
+      "chronologicalMu": 1515.026079511975,
+      "difference": 21.49724812006434
+    },
+    {
+      "uid": 2052,
+      "cursorMu": 1549.7971834706898,
+      "chronologicalMu": 1528.542543997173,
+      "difference": -21.254639473516818
+    },
+    {
+      "uid": 1647,
+      "cursorMu": 1473.2223770795513,
+      "chronologicalMu": 1452.197172348448,
+      "difference": -21.02520473110326
+    },
+    {
+      "uid": 1716,
+      "cursorMu": 1473.2223770795513,
+      "chronologicalMu": 1452.197172348448,
+      "difference": -21.02520473110326
+    },
+    {
+      "uid": 1736,
+      "cursorMu": 1473.2223770795513,
+      "chronologicalMu": 1452.197172348448,
+      "difference": -21.02520473110326
+    },
+    {
+      "uid": 1625,
+      "cursorMu": 1514.3713873357078,
+      "chronologicalMu": 1493.5288313919107,
+      "difference": -20.84255594379715
+    },
+    {
+      "uid": 1765,
+      "cursorMu": 1461.7662629523584,
+      "chronologicalMu": 1482.2505533227386,
+      "difference": 20.484290370380222
+    },
+    {
+      "uid": 1741,
+      "cursorMu": 1473.2223770795513,
+      "chronologicalMu": 1493.5288313919107,
+      "difference": 20.306454312359392
+    },
+    {
+      "uid": 1957,
+      "cursorMu": 1494.7098827102534,
+      "chronologicalMu": 1514.8169451297224,
+      "difference": 20.107062419469003
+    },
+    {
+      "uid": 2071,
+      "cursorMu": 1497.540096421875,
+      "chronologicalMu": 1516.7732393710553,
+      "difference": 19.23314294918032
+    },
+    {
+      "uid": 1985,
+      "cursorMu": 1506.2549155895106,
+      "chronologicalMu": 1487.064985983459,
+      "difference": -19.189929606051464
+    },
+    {
+      "uid": 1632,
+      "cursorMu": 1479.5917529825379,
+      "chronologicalMu": 1460.4963231717961,
+      "difference": -19.095429810741734
+    },
+    {
+      "uid": 1711,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1452.197172348448,
+      "difference": 19.092680068636355
+    },
+    {
+      "uid": 1603,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": 19.018099900081097
+    },
+    {
+      "uid": 1663,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": 19.018099900081097
+    },
+    {
+      "uid": 1682,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": 19.018099900081097
+    },
+    {
+      "uid": 1718,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": 19.018099900081097
+    },
+    {
+      "uid": 1613,
+      "cursorMu": 1673.4227130514346,
+      "chronologicalMu": 1654.9853090796685,
+      "difference": -18.437403971766116
+    },
+    {
+      "uid": 1672,
+      "cursorMu": 1533.898241903957,
+      "chronologicalMu": 1551.532683546509,
+      "difference": 17.63444164255202
+    },
+    {
+      "uid": 1472,
+      "cursorMu": 1506.718227004511,
+      "chronologicalMu": 1523.804433008221,
+      "difference": 17.086206003710004
+    },
+    {
+      "uid": 1701,
+      "cursorMu": 1573.466708066169,
+      "chronologicalMu": 1556.83334932071,
+      "difference": -16.633358745458963
+    },
+    {
+      "uid": 2017,
+      "cursorMu": 1491.5540658255447,
+      "chronologicalMu": 1507.9554052265282,
+      "difference": 16.40133940098349
+    },
+    {
+      "uid": 1687,
+      "cursorMu": 1467.0290805232437,
+      "chronologicalMu": 1483.3972273396596,
+      "difference": 16.3681468164159
+    },
+    {
+      "uid": 1725,
+      "cursorMu": 1744.9462255731992,
+      "chronologicalMu": 1728.7871635860665,
+      "difference": -16.159061987132645
+    },
+    {
+      "uid": 1660,
+      "cursorMu": 1461.9886673788317,
+      "chronologicalMu": 1446.0145114345657,
+      "difference": -15.97415594426593
+    },
+    {
+      "uid": 2023,
+      "cursorMu": 1623.780266840507,
+      "chronologicalMu": 1608.3638242936,
+      "difference": -15.416442546907092
+    },
+    {
+      "uid": 2067,
+      "cursorMu": 1575.6087261559937,
+      "chronologicalMu": 1560.2461355809976,
+      "difference": -15.362590574996148
+    },
+    {
+      "uid": 1740,
+      "cursorMu": 1648.7595740490394,
+      "chronologicalMu": 1664.0290152275497,
+      "difference": 15.269441178510306
+    },
+    {
+      "uid": 1308,
+      "cursorMu": 1487.2751243913272,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -15.096640704407719
+    },
+    {
+      "uid": 1363,
+      "cursorMu": 1487.2751243913272,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -15.096640704407719
+    },
+    {
+      "uid": 1607,
+      "cursorMu": 1487.2751243913272,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -15.096640704407719
+    },
+    {
+      "uid": 1608,
+      "cursorMu": 1487.2751243913272,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -15.096640704407719
+    },
+    {
+      "uid": 1637,
+      "cursorMu": 1487.2751243913272,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -15.096640704407719
+    },
+    {
+      "uid": 1689,
+      "cursorMu": 1487.2751243913272,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -15.096640704407719
+    },
+    {
+      "uid": 2043,
+      "cursorMu": 1561.9383515378738,
+      "chronologicalMu": 1546.8686485688715,
+      "difference": -15.069702969002265
+    },
+    {
+      "uid": 1717,
+      "cursorMu": 1573.466708066169,
+      "chronologicalMu": 1588.4798675098662,
+      "difference": 15.013159443697077
+    },
+    {
+      "uid": 1876,
+      "cursorMu": 1551.8780124635387,
+      "chronologicalMu": 1536.879853950607,
+      "difference": -14.998158512931695
+    },
+    {
+      "uid": 1309,
+      "cursorMu": 1453.7638268383992,
+      "chronologicalMu": 1468.501637881476,
+      "difference": 14.737811043076817
+    },
+    {
+      "uid": 1639,
+      "cursorMu": 1473.2223770795513,
+      "chronologicalMu": 1458.5200084788976,
+      "difference": -14.702368600653699
+    },
+    {
+      "uid": 1623,
+      "cursorMu": 1509.2292535199572,
+      "chronologicalMu": 1523.804433008221,
+      "difference": 14.575179488263757
+    },
+    {
+      "uid": 2032,
+      "cursorMu": 1557.2331883249472,
+      "chronologicalMu": 1542.7206236244801,
+      "difference": -14.51256470046701
+    },
+    {
+      "uid": 2056,
+      "cursorMu": 1557.2331883249472,
+      "chronologicalMu": 1542.7206236244801,
+      "difference": -14.51256470046701
+    },
+    {
+      "uid": 2044,
+      "cursorMu": 1579.3402770464468,
+      "chronologicalMu": 1565.0816252934983,
+      "difference": -14.25865175294848
+    },
+    {
+      "uid": 1614,
+      "cursorMu": 1536.6151123015063,
+      "chronologicalMu": 1522.4711926157931,
+      "difference": -14.143919685713172
+    },
+    {
+      "uid": 2039,
+      "cursorMu": 1631.1369403551191,
+      "chronologicalMu": 1617.0640048611067,
+      "difference": -14.072935494012427
+    },
+    {
+      "uid": 1931,
+      "cursorMu": 1442.2207007494771,
+      "chronologicalMu": 1456.0865643726922,
+      "difference": 13.865863623215091
+    },
+    {
+      "uid": 2083,
+      "cursorMu": 1536.1526765550384,
+      "chronologicalMu": 1549.7131914009774,
+      "difference": 13.560514845938997
+    },
+    {
+      "uid": 1832,
+      "cursorMu": 1632.6314460254716,
+      "chronologicalMu": 1619.1440806274072,
+      "difference": -13.487365398064412
+    },
+    {
+      "uid": 1815,
+      "cursorMu": 1540.1416834168504,
+      "chronologicalMu": 1553.546898369154,
+      "difference": 13.405214952303595
+    },
+    {
+      "uid": 1778,
+      "cursorMu": 1500.6406796499266,
+      "chronologicalMu": 1513.9398612020616,
+      "difference": 13.299181552134996
+    },
+    {
+      "uid": 1906,
+      "cursorMu": 1617.13558627656,
+      "chronologicalMu": 1603.9238434852246,
+      "difference": -13.211742791335382
+    },
+    {
+      "uid": 2002,
+      "cursorMu": 1479.2738879689423,
+      "chronologicalMu": 1492.3889063437462,
+      "difference": 13.115018374803867
+    },
+    {
+      "uid": 523,
+      "cursorMu": 1534.812273495494,
+      "chronologicalMu": 1547.8753964805073,
+      "difference": 13.063122985013251
+    },
+    {
+      "uid": 686,
+      "cursorMu": 1568.5469368834965,
+      "chronologicalMu": 1555.6136514662664,
+      "difference": -12.933285417230081
+    },
+    {
+      "uid": 1692,
+      "cursorMu": 1627.614188732339,
+      "chronologicalMu": 1640.4157633618781,
+      "difference": 12.801574629539118
+    },
+    {
+      "uid": 1618,
+      "cursorMu": 1487.2751243913272,
+      "chronologicalMu": 1500.0,
+      "difference": 12.724875608672846
+    },
+    {
+      "uid": 1723,
+      "cursorMu": 1487.2751243913272,
+      "chronologicalMu": 1500.0,
+      "difference": 12.724875608672846
+    },
+    {
+      "uid": 1776,
+      "cursorMu": 1482.6308875057314,
+      "chronologicalMu": 1495.2958373922452,
+      "difference": 12.664949886513796
+    },
+    {
+      "uid": 1649,
+      "cursorMu": 1679.1406910487103,
+      "chronologicalMu": 1666.804120273661,
+      "difference": -12.336570775049267
+    },
+    {
+      "uid": 1821,
+      "cursorMu": 1625.4645176758372,
+      "chronologicalMu": 1613.376756082097,
+      "difference": -12.087761593740197
+    },
+    {
+      "uid": 1631,
+      "cursorMu": 1443.2039552481554,
+      "chronologicalMu": 1431.2998332770305,
+      "difference": -11.904121971124823
+    },
+    {
+      "uid": 1403,
+      "cursorMu": 1535.4033200356334,
+      "chronologicalMu": 1523.804433008221,
+      "difference": -11.598887027412502
+    },
+    {
+      "uid": 2079,
+      "cursorMu": 1480.0975402514878,
+      "chronologicalMu": 1491.5591992675918,
+      "difference": 11.461659016104022
+    },
+    {
+      "uid": 1915,
+      "cursorMu": 1518.56987305065,
+      "chronologicalMu": 1507.1603304888495,
+      "difference": -11.409542561800436
+    },
+    {
+      "uid": 1147,
+      "cursorMu": 1500.85763613121,
+      "chronologicalMu": 1512.2323234814658,
+      "difference": 11.374687350255726
+    },
+    {
+      "uid": 1655,
+      "cursorMu": 1518.3419201974232,
+      "chronologicalMu": 1507.3424085122822,
+      "difference": -10.999511685140988
+    },
+    {
+      "uid": 2063,
+      "cursorMu": 1440.696977033905,
+      "chronologicalMu": 1429.7447036731578,
+      "difference": -10.952273360747085
+    },
+    {
+      "uid": 1460,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1442.2727700095802,
+      "difference": -10.887613777258139
+    },
+    {
+      "uid": 1609,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1442.2727700095802,
+      "difference": -10.887613777258139
+    },
+    {
+      "uid": 1685,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1442.2727700095802,
+      "difference": -10.887613777258139
+    },
+    {
+      "uid": 1852,
+      "cursorMu": 1528.2117681433883,
+      "chronologicalMu": 1517.4629262376243,
+      "difference": -10.748841905764039
+    },
+    {
+      "uid": 2050,
+      "cursorMu": 1512.3289730139952,
+      "chronologicalMu": 1501.631713198402,
+      "difference": -10.69725981559327
+    },
+    {
+      "uid": 2087,
+      "cursorMu": 1611.3144876096435,
+      "chronologicalMu": 1600.6274265601721,
+      "difference": -10.687061049471367
+    },
+    {
+      "uid": 2074,
+      "cursorMu": 1650.112624151074,
+      "chronologicalMu": 1639.4888582684284,
+      "difference": -10.623765882645557
+    },
+    {
+      "uid": 1638,
+      "cursorMu": 1446.957199982358,
+      "chronologicalMu": 1457.537471579747,
+      "difference": 10.580271597389128
+    },
+    {
+      "uid": 2037,
+      "cursorMu": 1510.1367469183606,
+      "chronologicalMu": 1499.5730042472003,
+      "difference": -10.563742671160298
+    },
+    {
+      "uid": 1968,
+      "cursorMu": 1492.3209701294822,
+      "chronologicalMu": 1481.8695794874973,
+      "difference": -10.451390641984972
+    },
+    {
+      "uid": 1975,
+      "cursorMu": 1492.3209701294822,
+      "chronologicalMu": 1481.8695794874973,
+      "difference": -10.451390641984972
+    },
+    {
+      "uid": 2077,
+      "cursorMu": 1507.9729324884413,
+      "chronologicalMu": 1497.537265446266,
+      "difference": -10.435667042175282
+    },
+    {
+      "uid": 1696,
+      "cursorMu": 1576.7158202691928,
+      "chronologicalMu": 1566.2864736738043,
+      "difference": -10.429346595388552
+    },
+    {
+      "uid": 1383,
+      "cursorMu": 1583.22657992133,
+      "chronologicalMu": 1593.6068159298725,
+      "difference": 10.380236008542397
+    },
+    {
+      "uid": 2019,
+      "cursorMu": 1495.5237138270513,
+      "chronologicalMu": 1505.8218790396206,
+      "difference": 10.298165212569302
+    },
+    {
+      "uid": 1965,
+      "cursorMu": 1487.0076694896482,
+      "chronologicalMu": 1476.79112126112,
+      "difference": -10.216548228528154
+    },
+    {
+      "uid": 1993,
+      "cursorMu": 1484.3997357715216,
+      "chronologicalMu": 1474.2925111764084,
+      "difference": -10.107224595113166
+    },
+    {
+      "uid": 1962,
+      "cursorMu": 1481.8222715602492,
+      "chronologicalMu": 1471.8194033779625,
+      "difference": -10.002868182286647
+    },
+    {
+      "uid": 2008,
+      "cursorMu": 1499.5786277507366,
+      "chronologicalMu": 1489.6069021212786,
+      "difference": -9.971725629457978
+    },
+    {
+      "uid": 2022,
+      "cursorMu": 1526.1584738591343,
+      "chronologicalMu": 1536.0912869358247,
+      "difference": 9.932813076690309
+    },
+    {
+      "uid": 1626,
+      "cursorMu": 1477.9817464229607,
+      "chronologicalMu": 1487.835337761994,
+      "difference": 9.8535913390333
+    },
+    {
+      "uid": 1874,
+      "cursorMu": 1580.2601614641292,
+      "chronologicalMu": 1590.0802435252838,
+      "difference": 9.820082061154608
+    },
+    {
+      "uid": 1605,
+      "cursorMu": 1461.9886673788317,
+      "chronologicalMu": 1452.197172348448,
+      "difference": -9.791495030383658
+    },
+    {
+      "uid": 1449,
+      "cursorMu": 1552.5450901039712,
+      "chronologicalMu": 1542.7805151679845,
+      "difference": -9.76457493598673
+    },
+    {
+      "uid": 2001,
+      "cursorMu": 1429.6016221581665,
+      "chronologicalMu": 1439.3477426150205,
+      "difference": 9.746120456853987
+    },
+    {
+      "uid": 1963,
+      "cursorMu": 1584.5670135527848,
+      "chronologicalMu": 1574.823645881108,
+      "difference": -9.743367671676879
+    },
+    {
+      "uid": 1984,
+      "cursorMu": 1584.5670135527848,
+      "chronologicalMu": 1574.823645881108,
+      "difference": -9.743367671676879
+    },
+    {
+      "uid": 1875,
+      "cursorMu": 1488.0653188800468,
+      "chronologicalMu": 1497.4330876430515,
+      "difference": 9.367768763004733
+    },
+    {
+      "uid": 1434,
+      "cursorMu": 1501.202161427297,
+      "chronologicalMu": 1510.4993802281692,
+      "difference": 9.297218800872315
+    },
+    {
+      "uid": 2020,
+      "cursorMu": 1504.7778501140667,
+      "chronologicalMu": 1495.5236054552875,
+      "difference": -9.254244658779271
+    },
+    {
+      "uid": 1606,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1442.2727700095802,
+      "difference": 9.168277729768533
+    },
+    {
+      "uid": 1612,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1442.2727700095802,
+      "difference": 9.168277729768533
+    },
+    {
+      "uid": 1668,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1442.2727700095802,
+      "difference": 9.168277729768533
+    },
+    {
+      "uid": 1955,
+      "cursorMu": 1445.5742437399983,
+      "chronologicalMu": 1454.707519427044,
+      "difference": 9.133275687045625
+    },
+    {
+      "uid": 1577,
+      "cursorMu": 1645.7335885064695,
+      "chronologicalMu": 1636.6428166551834,
+      "difference": -9.090771851286036
+    },
+    {
+      "uid": 1824,
+      "cursorMu": 1645.7335885064695,
+      "chronologicalMu": 1636.6428166551834,
+      "difference": -9.090771851286036
+    },
+    {
+      "uid": 1628,
+      "cursorMu": 1481.2141352707608,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -9.0356515838414
+    },
+    {
+      "uid": 1843,
+      "cursorMu": 1470.02369787248,
+      "chronologicalMu": 1461.1013960038133,
+      "difference": -8.922301868666636
+    },
+    {
+      "uid": 1910,
+      "cursorMu": 1628.864699453915,
+      "chronologicalMu": 1619.956324122456,
+      "difference": -8.908375331458956
+    },
+    {
+      "uid": 1913,
+      "cursorMu": 1589.608712354889,
+      "chronologicalMu": 1580.7044848993296,
+      "difference": -8.904227455559294
+    },
+    {
+      "uid": 1970,
+      "cursorMu": 1574.5275597045536,
+      "chronologicalMu": 1565.6422948768734,
+      "difference": -8.885264827680203
+    },
+    {
+      "uid": 1791,
+      "cursorMu": 1505.482018086127,
+      "chronologicalMu": 1514.286151898219,
+      "difference": 8.804133812092005
+    },
+    {
+      "uid": 1899,
+      "cursorMu": 1537.0138947436506,
+      "chronologicalMu": 1528.4747669210576,
+      "difference": -8.539127822592945
+    },
+    {
+      "uid": 1390,
+      "cursorMu": 1569.8559745167818,
+      "chronologicalMu": 1561.3223176874076,
+      "difference": -8.533656829374195
+    },
+    {
+      "uid": 2082,
+      "cursorMu": 1501.6402008253976,
+      "chronologicalMu": 1510.1160511184708,
+      "difference": 8.475850293073108
+    },
+    {
+      "uid": 1738,
+      "cursorMu": 1565.3017262389706,
+      "chronologicalMu": 1556.83334932071,
+      "difference": -8.468376918260446
+    },
+    {
+      "uid": 1905,
+      "cursorMu": 1584.8133181879714,
+      "chronologicalMu": 1576.3481212972024,
+      "difference": -8.465196890768993
+    },
+    {
+      "uid": 2025,
+      "cursorMu": 1591.5468290344215,
+      "chronologicalMu": 1583.0883620453733,
+      "difference": -8.458466989048247
+    },
+    {
+      "uid": 2086,
+      "cursorMu": 1462.232284897065,
+      "chronologicalMu": 1453.803612403753,
+      "difference": -8.428672493311979
+    },
+    {
+      "uid": 2006,
+      "cursorMu": 1460.5156445479981,
+      "chronologicalMu": 1452.14090387353,
+      "difference": -8.374740674468057
+    },
+    {
+      "uid": 1863,
+      "cursorMu": 1531.0853996427052,
+      "chronologicalMu": 1522.8700268533719,
+      "difference": -8.215372789333287
+    },
+    {
+      "uid": 1839,
+      "cursorMu": 1471.7092691126654,
+      "chronologicalMu": 1463.544343580731,
+      "difference": -8.164925531934387
+    },
+    {
+      "uid": 1695,
+      "cursorMu": 1574.3661459736074,
+      "chronologicalMu": 1566.2106087916757,
+      "difference": -8.155537181931777
+    },
+    {
+      "uid": 1980,
+      "cursorMu": 1532.8088526950864,
+      "chronologicalMu": 1524.6766964457295,
+      "difference": -8.132156249356967
+    },
+    {
+      "uid": 1894,
+      "cursorMu": 1512.0288414908266,
+      "chronologicalMu": 1520.1431783238875,
+      "difference": 8.114336833060861
+    },
+    {
+      "uid": 2064,
+      "cursorMu": 1587.2873831405914,
+      "chronologicalMu": 1579.20799558871,
+      "difference": -8.079387551881382
+    },
+    {
+      "uid": 1709,
+      "cursorMu": 1444.1379404141387,
+      "chronologicalMu": 1452.197172348448,
+      "difference": 8.05923193430931
+    },
+    {
+      "uid": 1890,
+      "cursorMu": 1456.590238721214,
+      "chronologicalMu": 1464.6265398587054,
+      "difference": 8.036301137491364
+    },
+    {
+      "uid": 1786,
+      "cursorMu": 1465.8607106008967,
+      "chronologicalMu": 1457.8788470641216,
+      "difference": -7.9818635367751085
+    },
+    {
+      "uid": 1845,
+      "cursorMu": 1465.8607106008967,
+      "chronologicalMu": 1457.8788470641216,
+      "difference": -7.9818635367751085
+    },
+    {
+      "uid": 1831,
+      "cursorMu": 1463.3961403300952,
+      "chronologicalMu": 1455.4867304074287,
+      "difference": -7.909409922666555
+    },
+    {
+      "uid": 1699,
+      "cursorMu": 1548.9719527995674,
+      "chronologicalMu": 1556.83334932071,
+      "difference": 7.861396521142751
+    },
+    {
+      "uid": 1897,
+      "cursorMu": 1450.7369487526742,
+      "chronologicalMu": 1458.5815985387003,
+      "difference": 7.844649786026139
+    },
+    {
+      "uid": 1856,
+      "cursorMu": 1522.6275770916086,
+      "chronologicalMu": 1514.8267482196634,
+      "difference": -7.800828871945214
+    },
+    {
+      "uid": 2054,
+      "cursorMu": 1493.5286363185592,
+      "chronologicalMu": 1485.7585396925297,
+      "difference": -7.770096626029499
+    },
+    {
+      "uid": 2012,
+      "cursorMu": 1538.768756146728,
+      "chronologicalMu": 1531.0137227364698,
+      "difference": -7.755033410258193
+    },
+    {
+      "uid": 1659,
+      "cursorMu": 1511.2825473542573,
+      "chronologicalMu": 1503.5628469295527,
+      "difference": -7.71970042470457
+    },
+    {
+      "uid": 1712,
+      "cursorMu": 1501.202161427297,
+      "chronologicalMu": 1493.5288313919107,
+      "difference": -7.673330035386243
+    },
+    {
+      "uid": 1818,
+      "cursorMu": 1556.2609364916957,
+      "chronologicalMu": 1563.806397099278,
+      "difference": 7.545460607582299
+    },
+    {
+      "uid": 2078,
+      "cursorMu": 1552.715318163445,
+      "chronologicalMu": 1560.2461355809976,
+      "difference": 7.530817417552498
+    },
+    {
+      "uid": 1885,
+      "cursorMu": 1571.759192688307,
+      "chronologicalMu": 1564.307735558491,
+      "difference": -7.451457129815935
+    },
+    {
+      "uid": 1904,
+      "cursorMu": 1571.759192688307,
+      "chronologicalMu": 1564.307735558491,
+      "difference": -7.451457129815935
+    },
+    {
+      "uid": 1914,
+      "cursorMu": 1571.759192688307,
+      "chronologicalMu": 1564.307735558491,
+      "difference": -7.451457129815935
+    },
+    {
+      "uid": 1742,
+      "cursorMu": 1479.5917529825379,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -7.41326929561842
+    },
+    {
+      "uid": 1782,
+      "cursorMu": 1473.4070269820236,
+      "chronologicalMu": 1466.0107329927457,
+      "difference": -7.396293989277865
+    },
+    {
+      "uid": 1358,
+      "cursorMu": 1291.5825164033708,
+      "chronologicalMu": 1284.2117234925774,
+      "difference": -7.370792910793398
+    },
+    {
+      "uid": 2041,
+      "cursorMu": 1531.066845048338,
+      "chronologicalMu": 1523.7235429319423,
+      "difference": -7.343302116395762
+    },
+    {
+      "uid": 2029,
+      "cursorMu": 1528.5916876235626,
+      "chronologicalMu": 1521.371539425286,
+      "difference": -7.220148198276547
+    },
+    {
+      "uid": 2075,
+      "cursorMu": 1469.2177135354123,
+      "chronologicalMu": 1476.4361791077677,
+      "difference": 7.218465572355399
+    },
+    {
+      "uid": 1662,
+      "cursorMu": 1594.6291142001123,
+      "chronologicalMu": 1601.7882836042968,
+      "difference": 7.159169404184468
+    },
+    {
+      "uid": 1408,
+      "cursorMu": 1386.548867391624,
+      "chronologicalMu": 1379.3957598591237,
+      "difference": -7.153107532500371
+    },
+    {
+      "uid": 1636,
+      "cursorMu": 1530.9380581049852,
+      "chronologicalMu": 1523.804433008221,
+      "difference": -7.133625096764263
+    },
+    {
+      "uid": 298,
+      "cursorMu": 1519.0895451351146,
+      "chronologicalMu": 1526.1132091592171,
+      "difference": 7.0236640241025725
+    },
+    {
+      "uid": 2059,
+      "cursorMu": 1458.8101643553969,
+      "chronologicalMu": 1465.735563984611,
+      "difference": 6.925399629214098
+    },
+    {
+      "uid": 1880,
+      "cursorMu": 1494.9377682498784,
+      "chronologicalMu": 1488.1817548930937,
+      "difference": -6.756013356784706
+    },
+    {
+      "uid": 1801,
+      "cursorMu": 1478.5773221844993,
+      "chronologicalMu": 1471.8629509961215,
+      "difference": -6.714371188377754
+    },
+    {
+      "uid": 1892,
+      "cursorMu": 1490.329897244774,
+      "chronologicalMu": 1483.7100115050291,
+      "difference": -6.619885739744859
+    },
+    {
+      "uid": 1746,
+      "cursorMu": 1464.8307661781216,
+      "chronologicalMu": 1471.2577342352222,
+      "difference": 6.4269680571005665
+    },
+    {
+      "uid": 1495,
+      "cursorMu": 1619.0963070269984,
+      "chronologicalMu": 1625.5047911680208,
+      "difference": 6.408484141022427
+    },
+    {
+      "uid": 1630,
+      "cursorMu": 1527.8553054562421,
+      "chronologicalMu": 1521.4751885623282,
+      "difference": -6.380116893913964
+    },
+    {
+      "uid": 1864,
+      "cursorMu": 1553.114140795833,
+      "chronologicalMu": 1546.7562769093042,
+      "difference": -6.357863886528776
+    },
+    {
+      "uid": 1972,
+      "cursorMu": 1608.773547200471,
+      "chronologicalMu": 1602.4276857321715,
+      "difference": -6.345861468299518
+    },
+    {
+      "uid": 1954,
+      "cursorMu": 1527.7907806326693,
+      "chronologicalMu": 1521.479040827543,
+      "difference": -6.311739805126308
+    },
+    {
+      "uid": 1710,
+      "cursorMu": 1444.5410783069292,
+      "chronologicalMu": 1450.7794129471827,
+      "difference": 6.23833464025347
+    },
+    {
+      "uid": 1731,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1446.957199982358,
+      "difference": -6.203183804480432
+    },
+    {
+      "uid": 1676,
+      "cursorMu": 1541.6046858847003,
+      "chronologicalMu": 1535.4033200356334,
+      "difference": -6.20136584906686
+    },
+    {
+      "uid": 1826,
+      "cursorMu": 1514.8393007504524,
+      "chronologicalMu": 1508.7660734102406,
+      "difference": -6.073227340211815
+    },
+    {
+      "uid": 1769,
+      "cursorMu": 1512.7361192681565,
+      "chronologicalMu": 1506.7402371563435,
+      "difference": -5.995882111812989
+    },
+    {
+      "uid": 1976,
+      "cursorMu": 1561.0730761089626,
+      "chronologicalMu": 1555.127524770544,
+      "difference": -5.9455513384186816
+    },
+    {
+      "uid": 1987,
+      "cursorMu": 1561.0730761089626,
+      "chronologicalMu": 1555.127524770544,
+      "difference": -5.9455513384186816
+    },
+    {
+      "uid": 1797,
+      "cursorMu": 1508.608662774746,
+      "chronologicalMu": 1502.7580365199135,
+      "difference": -5.850626254832605
+    },
+    {
+      "uid": 1960,
+      "cursorMu": 1602.0260754105284,
+      "chronologicalMu": 1596.1827547290816,
+      "difference": -5.843320681446812
+    },
+    {
+      "uid": 1865,
+      "cursorMu": 1500.85763613121,
+      "chronologicalMu": 1495.0789493500256,
+      "difference": -5.778686781184433
+    },
+    {
+      "uid": 1911,
+      "cursorMu": 1540.0772020298289,
+      "chronologicalMu": 1534.302432486643,
+      "difference": -5.774769543185812
+    },
+    {
+      "uid": 1629,
+      "cursorMu": 1424.0707552382491,
+      "chronologicalMu": 1418.4684208451317,
+      "difference": -5.602334393117417
+    },
+    {
+      "uid": 2073,
+      "cursorMu": 1544.1627718353016,
+      "chronologicalMu": 1538.7030724842518,
+      "difference": -5.459699351049721
+    },
+    {
+      "uid": 1921,
+      "cursorMu": 1464.862690451353,
+      "chronologicalMu": 1470.2989996970095,
+      "difference": 5.436309245656503
+    },
+    {
+      "uid": 2084,
+      "cursorMu": 1476.412580955247,
+      "chronologicalMu": 1471.0253110167903,
+      "difference": -5.387269938456711
+    },
+    {
+      "uid": 1645,
+      "cursorMu": 1633.530825887421,
+      "chronologicalMu": 1638.7611918454888,
+      "difference": 5.23036595806775
+    },
+    {
+      "uid": 1932,
+      "cursorMu": 1455.5670099913436,
+      "chronologicalMu": 1460.7346803059013,
+      "difference": 5.167670314557654
+    },
+    {
+      "uid": 2081,
+      "cursorMu": 1457.1155041716352,
+      "chronologicalMu": 1462.2708051359361,
+      "difference": 5.155300964300977
+    },
+    {
+      "uid": 2057,
+      "cursorMu": 1465.700471163298,
+      "chronologicalMu": 1460.5558067078478,
+      "difference": -5.144664455450311
+    },
+    {
+      "uid": 2089,
+      "cursorMu": 1463.9604382980128,
+      "chronologicalMu": 1458.851921658037,
+      "difference": -5.108516639975733
+    },
+    {
+      "uid": 1807,
+      "cursorMu": 1480.3278116524602,
+      "chronologicalMu": 1475.2727515135218,
+      "difference": -5.0550601389384155
+    },
+    {
+      "uid": 1887,
+      "cursorMu": 1497.2834150181473,
+      "chronologicalMu": 1502.2316521679388,
+      "difference": 4.9482371497915665
+    },
+    {
+      "uid": 2003,
+      "cursorMu": 1455.4313358790218,
+      "chronologicalMu": 1450.4877254093174,
+      "difference": -4.943610469704481
+    },
+    {
+      "uid": 1806,
+      "cursorMu": 1475.117353643112,
+      "chronologicalMu": 1470.1764186934117,
+      "difference": -4.9409349497002495
+    },
+    {
+      "uid": 2047,
+      "cursorMu": 1432.7944699915008,
+      "chronologicalMu": 1437.5728878779871,
+      "difference": 4.778417886486295
+    },
+    {
+      "uid": 1823,
+      "cursorMu": 1505.5779270533926,
+      "chronologicalMu": 1500.7998891412924,
+      "difference": -4.778037912100217
+    },
+    {
+      "uid": 1999,
+      "cursorMu": 1455.1356946628382,
+      "chronologicalMu": 1459.799863210898,
+      "difference": 4.664168548059706
+    },
+    {
+      "uid": 1787,
+      "cursorMu": 1458.5367506401703,
+      "chronologicalMu": 1453.9032876256485,
+      "difference": -4.633463014521794
+    },
+    {
+      "uid": 1624,
+      "cursorMu": 1441.3443355500738,
+      "chronologicalMu": 1436.7417614456774,
+      "difference": -4.6025741043963535
+    },
+    {
+      "uid": 1204,
+      "cursorMu": 1441.5786402566464,
+      "chronologicalMu": 1446.0206546159604,
+      "difference": 4.442014359314044
+    },
+    {
+      "uid": 1454,
+      "cursorMu": 1427.7153558055247,
+      "chronologicalMu": 1432.150677797839,
+      "difference": 4.435321992314357
+    },
+    {
+      "uid": 2026,
+      "cursorMu": 1471.8897741393928,
+      "chronologicalMu": 1467.4860698790385,
+      "difference": -4.403704260354289
+    },
+    {
+      "uid": 1898,
+      "cursorMu": 1469.6505591284463,
+      "chronologicalMu": 1465.4696577551422,
+      "difference": -4.180901373304096
+    },
+    {
+      "uid": 1882,
+      "cursorMu": 1411.8604346905843,
+      "chronologicalMu": 1415.971144452823,
+      "difference": 4.110709762238685
+    },
+    {
+      "uid": 1933,
+      "cursorMu": 1451.0448191188225,
+      "chronologicalMu": 1447.0244406301986,
+      "difference": -4.020378488623919
+    },
+    {
+      "uid": 1800,
+      "cursorMu": 1446.597931431366,
+      "chronologicalMu": 1442.5986654913777,
+      "difference": -3.9992659399883905
+    },
+    {
+      "uid": 1881,
+      "cursorMu": 1460.5615045591894,
+      "chronologicalMu": 1456.5964432635546,
+      "difference": -3.9650612956347686
+    },
+    {
+      "uid": 1855,
+      "cursorMu": 1458.568631537123,
+      "chronologicalMu": 1454.6253300021233,
+      "difference": -3.9433015349998186
+    },
+    {
+      "uid": 951,
+      "cursorMu": 1481.1195658183992,
+      "chronologicalMu": 1477.288690612794,
+      "difference": -3.8308752056052526
+    },
+    {
+      "uid": 1900,
+      "cursorMu": 1549.7247993331832,
+      "chronologicalMu": 1553.467602994074,
+      "difference": 3.742803660890786
+    },
+    {
+      "uid": 1841,
+      "cursorMu": 1502.5991466831622,
+      "chronologicalMu": 1498.8626044572686,
+      "difference": -3.7365422258935723
+    },
+    {
+      "uid": 1830,
+      "cursorMu": 1578.549516312139,
+      "chronologicalMu": 1582.2768090074644,
+      "difference": 3.727292695325332
+    },
+    {
+      "uid": 1956,
+      "cursorMu": 1552.908349798864,
+      "chronologicalMu": 1549.23119154562,
+      "difference": -3.677158253243988
+    },
+    {
+      "uid": 2061,
+      "cursorMu": 1474.592707448469,
+      "chronologicalMu": 1478.2688505288638,
+      "difference": 3.6761430803949224
+    },
+    {
+      "uid": 1979,
+      "cursorMu": 1549.0205927492964,
+      "chronologicalMu": 1545.446151691867,
+      "difference": -3.5744410574293397
+    },
+    {
+      "uid": 2066,
+      "cursorMu": 1572.0155374243293,
+      "chronologicalMu": 1575.4822857754627,
+      "difference": 3.4667483511334467
+    },
+    {
+      "uid": 2040,
+      "cursorMu": 1467.4527642477728,
+      "chronologicalMu": 1463.9972690346383,
+      "difference": -3.4554952131345544
+    },
+    {
+      "uid": 2055,
+      "cursorMu": 1453.757342719042,
+      "chronologicalMu": 1457.1588106143452,
+      "difference": 3.4014678953030852
+    },
+    {
+      "uid": 1590,
+      "cursorMu": 1482.0925673250188,
+      "chronologicalMu": 1478.7341567236122,
+      "difference": -3.3584106014066037
+    },
+    {
+      "uid": 1893,
+      "cursorMu": 1600.1003083202813,
+      "chronologicalMu": 1603.4581595187062,
+      "difference": 3.357851198424896
+    },
+    {
+      "uid": 1977,
+      "cursorMu": 1539.779765694807,
+      "chronologicalMu": 1536.4248317968415,
+      "difference": -3.354933897965566
+    },
+    {
+      "uid": 2031,
+      "cursorMu": 1443.9106041599023,
+      "chronologicalMu": 1447.2088251788127,
+      "difference": 3.2982210189104535
+    },
+    {
+      "uid": 1773,
+      "cursorMu": 1444.4493119202828,
+      "chronologicalMu": 1447.6544747470293,
+      "difference": 3.205162826746573
+    },
+    {
+      "uid": 1706,
+      "cursorMu": 1367.6779828693016,
+      "chronologicalMu": 1364.585012974301,
+      "difference": -3.0929698950005786
+    },
+    {
+      "uid": 1785,
+      "cursorMu": 1516.9703313755895,
+      "chronologicalMu": 1513.9398612020616,
+      "difference": -3.030470173527874
+    },
+    {
+      "uid": 1966,
+      "cursorMu": 1516.676067838194,
+      "chronologicalMu": 1513.7489945595069,
+      "difference": -2.927073278687203
+    },
+    {
+      "uid": 1991,
+      "cursorMu": 1516.676067838194,
+      "chronologicalMu": 1513.7489945595069,
+      "difference": -2.927073278687203
+    },
+    {
+      "uid": 1934,
+      "cursorMu": 1550.0282292150716,
+      "chronologicalMu": 1547.1884858226385,
+      "difference": -2.8397433924330926
+    },
+    {
+      "uid": 1619,
+      "cursorMu": 1487.2751243913272,
+      "chronologicalMu": 1490.0924391751773,
+      "difference": 2.817314783850179
+    },
+    {
+      "uid": 1448,
+      "cursorMu": 1597.2384975539337,
+      "chronologicalMu": 1599.9978679627916,
+      "difference": 2.759370408857876
+    },
+    {
+      "uid": 1808,
+      "cursorMu": 1553.4204810456579,
+      "chronologicalMu": 1550.7763705120938,
+      "difference": -2.644110533564117
+    },
+    {
+      "uid": 1678,
+      "cursorMu": 1512.423569546299,
+      "chronologicalMu": 1515.026079511975,
+      "difference": 2.602509965676063
+    },
+    {
+      "uid": 1719,
+      "cursorMu": 1550.6471975850563,
+      "chronologicalMu": 1548.0683299791908,
+      "difference": -2.5788676058655255
+    },
+    {
+      "uid": 1802,
+      "cursorMu": 1546.603426727375,
+      "chronologicalMu": 1544.1146533850056,
+      "difference": -2.488773342369541
+    },
+    {
+      "uid": 1804,
+      "cursorMu": 1546.603426727375,
+      "chronologicalMu": 1544.1146533850056,
+      "difference": -2.488773342369541
+    },
+    {
+      "uid": 1859,
+      "cursorMu": 1605.9196566679918,
+      "chronologicalMu": 1603.4581595187062,
+      "difference": -2.4614971492856057
+    },
+    {
+      "uid": 2016,
+      "cursorMu": 1438.3071900467994,
+      "chronologicalMu": 1440.753397542339,
+      "difference": 2.446207495539511
+    },
+    {
+      "uid": 1827,
+      "cursorMu": 1542.6872861359695,
+      "chronologicalMu": 1540.2804441821947,
+      "difference": -2.4068419537748014
+    },
+    {
+      "uid": 1961,
+      "cursorMu": 1466.92505153391,
+      "chronologicalMu": 1464.5423809933957,
+      "difference": -2.3826705405142548
+    },
+    {
+      "uid": 1978,
+      "cursorMu": 1464.5262122324045,
+      "chronologicalMu": 1462.1608479620404,
+      "difference": -2.3653642703641253
+    },
+    {
+      "uid": 1809,
+      "cursorMu": 1519.1304705252126,
+      "chronologicalMu": 1521.4730185896804,
+      "difference": 2.342548064467792
+    },
+    {
+      "uid": 1857,
+      "cursorMu": 1459.7916921906026,
+      "chronologicalMu": 1457.4585798151911,
+      "difference": -2.333112375411474
+    },
+    {
+      "uid": 1714,
+      "cursorMu": 1495.855383385592,
+      "chronologicalMu": 1493.5288313919107,
+      "difference": -2.326551993681278
+    },
+    {
+      "uid": 1998,
+      "cursorMu": 1457.454284460172,
+      "chronologicalMu": 1455.136190458343,
+      "difference": -2.3180940018289675
+    },
+    {
+      "uid": 1969,
+      "cursorMu": 1452.8351563590002,
+      "chronologicalMu": 1450.5450451480651,
+      "difference": -2.290111210935038
+    },
+    {
+      "uid": 2080,
+      "cursorMu": 1516.8039349737292,
+      "chronologicalMu": 1514.5236288549136,
+      "difference": -2.280306118815588
+    },
+    {
+      "uid": 1997,
+      "cursorMu": 1450.551936838914,
+      "chronologicalMu": 1452.8319244756112,
+      "difference": 2.279987636697342
+    },
+    {
+      "uid": 1973,
+      "cursorMu": 1446.0346773645201,
+      "chronologicalMu": 1443.7818183366676,
+      "difference": -2.252859027852537
+    },
+    {
+      "uid": 2053,
+      "cursorMu": 1514.5509066990132,
+      "chronologicalMu": 1512.3050277161863,
+      "difference": -2.24587898282698
+    },
+    {
+      "uid": 2005,
+      "cursorMu": 1443.7993194196285,
+      "chronologicalMu": 1441.5577145148725,
+      "difference": -2.241604904756059
+    },
+    {
+      "uid": 1924,
+      "cursorMu": 1512.8254228781218,
+      "chronologicalMu": 1510.6017864546066,
+      "difference": -2.223636423515245
+    },
+    {
+      "uid": 1982,
+      "cursorMu": 1439.3720424978746,
+      "chronologicalMu": 1437.1513237617849,
+      "difference": -2.2207187360897933
+    },
+    {
+      "uid": 1983,
+      "cursorMu": 1437.1789502935146,
+      "chronologicalMu": 1434.9678991843566,
+      "difference": -2.2110511091580065
+    },
+    {
+      "uid": 1967,
+      "cursorMu": 1434.9988077765415,
+      "chronologicalMu": 1432.7969287646788,
+      "difference": -2.2018790118627294
+    },
+    {
+      "uid": 1683,
+      "cursorMu": 1492.620333526199,
+      "chronologicalMu": 1490.45446402542,
+      "difference": -2.1658695007788538
+    },
+    {
+      "uid": 1853,
+      "cursorMu": 1481.4162975850245,
+      "chronologicalMu": 1479.3300082773683,
+      "difference": -2.086289307656216
+    },
+    {
+      "uid": 1798,
+      "cursorMu": 1587.9220218078892,
+      "chronologicalMu": 1590.0059684451567,
+      "difference": 2.083946637267445
+    },
+    {
+      "uid": 1907,
+      "cursorMu": 1479.24500503532,
+      "chronologicalMu": 1477.1721703876112,
+      "difference": -2.07283464770876
+    },
+    {
+      "uid": 1858,
+      "cursorMu": 1463.5791319665973,
+      "chronologicalMu": 1461.5867847050706,
+      "difference": -1.9923472615266746
+    },
+    {
+      "uid": 1909,
+      "cursorMu": 1463.5791319665973,
+      "chronologicalMu": 1461.5867847050706,
+      "difference": -1.9923472615266746
+    },
+    {
+      "uid": 1617,
+      "cursorMu": 1600.9009934050773,
+      "chronologicalMu": 1598.9300493187425,
+      "difference": -1.970944086334839
+    },
+    {
+      "uid": 1879,
+      "cursorMu": 1452.6748769178628,
+      "chronologicalMu": 1450.7232841541227,
+      "difference": -1.9515927637401091
+    },
+    {
+      "uid": 1884,
+      "cursorMu": 1431.069433735138,
+      "chronologicalMu": 1429.1674398903435,
+      "difference": -1.9019938447945606
+    },
+    {
+      "uid": 1908,
+      "cursorMu": 1431.069433735138,
+      "chronologicalMu": 1429.1674398903435,
+      "difference": -1.9019938447945606
+    },
+    {
+      "uid": 2004,
+      "cursorMu": 1400.7502615653923,
+      "chronologicalMu": 1398.8782065558025,
+      "difference": -1.872055009589758
+    },
+    {
+      "uid": 2010,
+      "cursorMu": 1481.963670255723,
+      "chronologicalMu": 1480.1168766175244,
+      "difference": -1.8467936381985055
+    },
+    {
+      "uid": 610,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1431.2998332770305,
+      "difference": -1.8046590027811362
+    },
+    {
+      "uid": 1616,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1431.2998332770305,
+      "difference": -1.8046590027811362
+    },
+    {
+      "uid": 1640,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1431.2998332770305,
+      "difference": -1.8046590027811362
+    },
+    {
+      "uid": 1643,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1431.2998332770305,
+      "difference": -1.8046590027811362
+    },
+    {
+      "uid": 1651,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1431.2998332770305,
+      "difference": -1.8046590027811362
+    },
+    {
+      "uid": 1702,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1431.2998332770305,
+      "difference": -1.8046590027811362
+    },
+    {
+      "uid": 1727,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1431.2998332770305,
+      "difference": -1.8046590027811362
+    },
+    {
+      "uid": 1729,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1431.2998332770305,
+      "difference": -1.8046590027811362
+    },
+    {
+      "uid": 1735,
+      "cursorMu": 1433.1044922798117,
+      "chronologicalMu": 1431.2998332770305,
+      "difference": -1.8046590027811362
+    },
+    {
+      "uid": 1583,
+      "cursorMu": 1496.7858116788636,
+      "chronologicalMu": 1495.0475717088307,
+      "difference": -1.7382399700329643
+    },
+    {
+      "uid": 1481,
+      "cursorMu": 1490.2236984519707,
+      "chronologicalMu": 1488.5478697256378,
+      "difference": -1.6758287263328384
+    },
+    {
+      "uid": 1771,
+      "cursorMu": 1490.2236984519707,
+      "chronologicalMu": 1488.5478697256378,
+      "difference": -1.6758287263328384
+    },
+    {
+      "uid": 1784,
+      "cursorMu": 1490.2236984519707,
+      "chronologicalMu": 1488.5478697256378,
+      "difference": -1.6758287263328384
+    },
+    {
+      "uid": 1789,
+      "cursorMu": 1490.2236984519707,
+      "chronologicalMu": 1488.5478697256378,
+      "difference": -1.6758287263328384
+    },
+    {
+      "uid": 1799,
+      "cursorMu": 1490.2236984519707,
+      "chronologicalMu": 1488.5478697256378,
+      "difference": -1.6758287263328384
+    },
+    {
+      "uid": 1842,
+      "cursorMu": 1490.2236984519707,
+      "chronologicalMu": 1488.5478697256378,
+      "difference": -1.6758287263328384
+    },
+    {
+      "uid": 2027,
+      "cursorMu": 1447.1571497522405,
+      "chronologicalMu": 1445.5825588088362,
+      "difference": -1.574590943404246
+    },
+    {
+      "uid": 1971,
+      "cursorMu": 1499.162635891566,
+      "chronologicalMu": 1500.6451691648904,
+      "difference": 1.4825332733244068
+    },
+    {
+      "uid": 1793,
+      "cursorMu": 1565.2394372153199,
+      "chronologicalMu": 1563.806397099278,
+      "difference": -1.433040116041866
+    },
+    {
+      "uid": 1816,
+      "cursorMu": 1447.5221172459135,
+      "chronologicalMu": 1446.1123233882936,
+      "difference": -1.4097938576198885
+    },
+    {
+      "uid": 1820,
+      "cursorMu": 1445.9818984662902,
+      "chronologicalMu": 1444.5777419844649,
+      "difference": -1.4041564818253391
+    },
+    {
+      "uid": 1573,
+      "cursorMu": 1501.202161427297,
+      "chronologicalMu": 1500.0,
+      "difference": -1.2021614272969146
+    },
+    {
+      "uid": 1866,
+      "cursorMu": 1429.6016221581665,
+      "chronologicalMu": 1428.4902751227896,
+      "difference": -1.1113470353768662
+    },
+    {
+      "uid": 1981,
+      "cursorMu": 1429.6016221581665,
+      "chronologicalMu": 1428.4902751227896,
+      "difference": -1.1113470353768662
+    },
+    {
+      "uid": 1902,
+      "cursorMu": 1471.8060825146674,
+      "chronologicalMu": 1472.916746979339,
+      "difference": 1.1106644646715722
+    },
+    {
+      "uid": 1671,
+      "cursorMu": 1473.2223770795513,
+      "chronologicalMu": 1472.1784836869194,
+      "difference": -1.043893392631844
+    },
+    {
+      "uid": 1922,
+      "cursorMu": 1550.765825331265,
+      "chronologicalMu": 1551.7597536023436,
+      "difference": 0.9939282710786301
+    },
+    {
+      "uid": 1489,
+      "cursorMu": 1471.8060825146674,
+      "chronologicalMu": 1470.817653242911,
+      "difference": -0.9884292717563312
+    },
+    {
+      "uid": 1930,
+      "cursorMu": 1563.479815428058,
+      "chronologicalMu": 1564.4679371969764,
+      "difference": 0.9881217689185178
+    },
+    {
+      "uid": 1937,
+      "cursorMu": 1539.2771662042928,
+      "chronologicalMu": 1540.2625097154314,
+      "difference": 0.9853435111385807
+    },
+    {
+      "uid": 1920,
+      "cursorMu": 1572.8582448977559,
+      "chronologicalMu": 1573.8318052435172,
+      "difference": 0.9735603457613706
+    },
+    {
+      "uid": 1927,
+      "cursorMu": 1532.1493796388056,
+      "chronologicalMu": 1533.1227740136856,
+      "difference": 0.9733943748799447
+    },
+    {
+      "uid": 1620,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1452.197172348448,
+      "difference": -0.9632114383903172
+    },
+    {
+      "uid": 1665,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1452.197172348448,
+      "difference": -0.9632114383903172
+    },
+    {
+      "uid": 1680,
+      "cursorMu": 1453.1603837868383,
+      "chronologicalMu": 1452.197172348448,
+      "difference": -0.9632114383903172
+    },
+    {
+      "uid": 1928,
+      "cursorMu": 1525.3728234637574,
+      "chronologicalMu": 1526.3301389512915,
+      "difference": 0.9573154875340606
+    },
+    {
+      "uid": 1938,
+      "cursorMu": 1583.2030460971926,
+      "chronologicalMu": 1584.150440874964,
+      "difference": 0.9473947777714784
+    },
+    {
+      "uid": 1940,
+      "cursorMu": 1518.8994645479222,
+      "chronologicalMu": 1519.8371119782814,
+      "difference": 0.9376474303592204
+    },
+    {
+      "uid": 1923,
+      "cursorMu": 1512.6907353060228,
+      "chronologicalMu": 1513.605550365369,
+      "difference": 0.9148150593462105
+    },
+    {
+      "uid": 1944,
+      "cursorMu": 1594.857045944982,
+      "chronologicalMu": 1595.7622785117426,
+      "difference": 0.9052325667605601
+    },
+    {
+      "uid": 2024,
+      "cursorMu": 1438.3071900467994,
+      "chronologicalMu": 1439.1594061557632,
+      "difference": 0.8522161089638303
+    },
+    {
+      "uid": 1925,
+      "cursorMu": 1608.4130209746795,
+      "chronologicalMu": 1609.252298108887,
+      "difference": 0.8392771342075775
+    },
+    {
+      "uid": 2049,
+      "cursorMu": 1428.907173408191,
+      "chronologicalMu": 1429.7447036731578,
+      "difference": 0.8375302649667447
+    },
+    {
+      "uid": 2060,
+      "cursorMu": 1428.907173408191,
+      "chronologicalMu": 1429.7447036731578,
+      "difference": 0.8375302649667447
+    },
+    {
+      "uid": 2068,
+      "cursorMu": 1428.907173408191,
+      "chronologicalMu": 1429.7447036731578,
+      "difference": 0.8375302649667447
+    },
+    {
+      "uid": 2070,
+      "cursorMu": 1428.907173408191,
+      "chronologicalMu": 1429.7447036731578,
+      "difference": 0.8375302649667447
+    },
+    {
+      "uid": 1953,
+      "cursorMu": 1495.3629296966199,
+      "chronologicalMu": 1496.1933487526298,
+      "difference": 0.8304190560099869
+    },
+    {
+      "uid": 1951,
+      "cursorMu": 1489.9457396522844,
+      "chronologicalMu": 1490.7434887442673,
+      "difference": 0.7977490919829506
+    },
+    {
+      "uid": 1926,
+      "cursorMu": 1484.678927858682,
+      "chronologicalMu": 1485.442023951925,
+      "difference": 0.7630960932428934
+    },
+    {
+      "uid": 1945,
+      "cursorMu": 1625.068535649477,
+      "chronologicalMu": 1625.8018257336953,
+      "difference": 0.7332900842181971
+    },
+    {
+      "uid": 1869,
+      "cursorMu": 1479.5486262810537,
+      "chronologicalMu": 1480.2752164596395,
+      "difference": 0.7265901785858659
+    },
+    {
+      "uid": 1029,
+      "cursorMu": 1524.5018125140161,
+      "chronologicalMu": 1523.804433008221,
+      "difference": -0.6973795057951975
+    },
+    {
+      "uid": 1615,
+      "cursorMu": 1524.5018125140161,
+      "chronologicalMu": 1523.804433008221,
+      "difference": -0.6973795057951975
+    },
+    {
+      "uid": 1942,
+      "cursorMu": 1474.5427228518702,
+      "chronologicalMu": 1475.2310637189244,
+      "difference": 0.688340867054194
+    },
+    {
+      "uid": 1666,
+      "cursorMu": 1491.475733167573,
+      "chronologicalMu": 1492.0247699713868,
+      "difference": 0.5490368038138058
+    },
+    {
+      "uid": 1943,
+      "cursorMu": 1648.089468042634,
+      "chronologicalMu": 1648.630654150565,
+      "difference": 0.5411861079310256
+    },
+    {
+      "uid": 1627,
+      "cursorMu": 1627.054813314993,
+      "chronologicalMu": 1627.5889315187976,
+      "difference": 0.53411820380461
+    },
+    {
+      "uid": 1903,
+      "cursorMu": 1636.1516873379023,
+      "chronologicalMu": 1636.68228652529,
+      "difference": 0.5305991873876792
+    },
+    {
+      "uid": 1916,
+      "cursorMu": 1612.2429462476914,
+      "chronologicalMu": 1612.7641184921495,
+      "difference": 0.5211722444580573
+    },
+    {
+      "uid": 1992,
+      "cursorMu": 1634.1650445792209,
+      "chronologicalMu": 1634.6841657458588,
+      "difference": 0.5191211666378877
+    },
+    {
+      "uid": 314,
+      "cursorMu": 1594.6868299431737,
+      "chronologicalMu": 1595.1717851423643,
+      "difference": 0.48495519919060825
+    },
+    {
+      "uid": 1974,
+      "cursorMu": 1616.1969985640449,
+      "chronologicalMu": 1616.6542667701372,
+      "difference": 0.45726820609229435
+    },
+    {
+      "uid": 715,
+      "cursorMu": 1662.5027843442551,
+      "chronologicalMu": 1662.947863601883,
+      "difference": 0.44507925762786726
+    },
+    {
+      "uid": 1946,
+      "cursorMu": 1437.9079498474566,
+      "chronologicalMu": 1438.236056146993,
+      "difference": 0.32810629953632997
+    },
+    {
+      "uid": 1919,
+      "cursorMu": 1429.4571539490937,
+      "chronologicalMu": 1429.6816658171,
+      "difference": 0.22451186800640244
+    },
+    {
+      "uid": 1867,
+      "cursorMu": 1509.483361757369,
+      "chronologicalMu": 1509.6775109775808,
+      "difference": 0.19414922021178427
+    },
+    {
+      "uid": 1948,
+      "cursorMu": 1425.310575319617,
+      "chronologicalMu": 1425.4813690005403,
+      "difference": 0.1707936809232251
+    },
+    {
+      "uid": 2035,
+      "cursorMu": 1664.3978231793103,
+      "chronologicalMu": 1664.2429386134968,
+      "difference": -0.15488456581351784
+    },
+    {
+      "uid": 1783,
+      "cursorMu": 1530.4186171856077,
+      "chronologicalMu": 1530.564892378129,
+      "difference": 0.146275192521216
+    },
+    {
+      "uid": 1805,
+      "cursorMu": 1532.7855209150575,
+      "chronologicalMu": 1532.930097898972,
+      "difference": 0.14457698391447593
+    },
+    {
+      "uid": 1825,
+      "cursorMu": 1535.1934297973241,
+      "chronologicalMu": 1535.336190698828,
+      "difference": 0.14276090150383425
+    },
+    {
+      "uid": 1838,
+      "cursorMu": 1452.1908060136977,
+      "chronologicalMu": 1452.328585517571,
+      "difference": 0.13777950387316196
+    },
+    {
+      "uid": 1762,
+      "cursorMu": 1450.626340443418,
+      "chronologicalMu": 1450.7623754652584,
+      "difference": 0.13603502184037097
+    },
+    {
+      "uid": 1828,
+      "cursorMu": 1449.07018885991,
+      "chronologicalMu": 1449.2044164669373,
+      "difference": 0.1342276070272419
+    },
+    {
+      "uid": 1768,
+      "cursorMu": 1442.9241432127892,
+      "chronologicalMu": 1443.0505163118482,
+      "difference": 0.12637309905903749
+    },
+    {
+      "uid": 1774,
+      "cursorMu": 1441.406183843268,
+      "chronologicalMu": 1441.530438018517,
+      "difference": 0.12425417524900695
+    },
+    {
+      "uid": 1810,
+      "cursorMu": 1437.6415077643014,
+      "chronologicalMu": 1437.760194333131,
+      "difference": 0.11868656882961659
+    },
+    {
+      "uid": 1811,
+      "cursorMu": 1435.4024599544016,
+      "chronologicalMu": 1435.517621034645,
+      "difference": 0.11516108024329696
+    },
+    {
+      "uid": 1878,
+      "cursorMu": 1485.8255248416792,
+      "chronologicalMu": 1485.933942636987,
+      "difference": 0.10841779530778695
+    },
+    {
+      "uid": 1764,
+      "cursorMu": 1570.0268609897691,
+      "chronologicalMu": 1570.135172696166,
+      "difference": 0.10831170639676202
+    },
+    {
+      "uid": 1777,
+      "cursorMu": 1570.0268609897691,
+      "chronologicalMu": 1570.135172696166,
+      "difference": 0.10831170639676202
+    },
+    {
+      "uid": 1386,
+      "cursorMu": 1430.2316323812443,
+      "chronologicalMu": 1430.3380287791506,
+      "difference": 0.10639639790633737
+    },
+    {
+      "uid": 1780,
+      "cursorMu": 1430.2316323812443,
+      "chronologicalMu": 1430.3380287791506,
+      "difference": 0.10639639790633737
+    },
+    {
+      "uid": 1792,
+      "cursorMu": 1430.2316323812443,
+      "chronologicalMu": 1430.3380287791506,
+      "difference": 0.10639639790633737
+    },
+    {
+      "uid": 1812,
+      "cursorMu": 1430.2316323812443,
+      "chronologicalMu": 1430.3380287791506,
+      "difference": 0.10639639790633737
+    },
+    {
+      "uid": 1817,
+      "cursorMu": 1430.2316323812443,
+      "chronologicalMu": 1430.3380287791506,
+      "difference": 0.10639639790633737
+    },
+    {
+      "uid": 1833,
+      "cursorMu": 1430.2316323812443,
+      "chronologicalMu": 1430.3380287791506,
+      "difference": 0.10639639790633737
+    },
+    {
+      "uid": 1675,
+      "cursorMu": 1410.8509888519163,
+      "chronologicalMu": 1410.956375361574,
+      "difference": 0.10538650965759189
+    },
+    {
+      "uid": 1794,
+      "cursorMu": 1575.0508243879146,
+      "chronologicalMu": 1575.1532195734644,
+      "difference": 0.10239518554976712
+    },
+    {
+      "uid": 1854,
+      "cursorMu": 1426.5419857651154,
+      "chronologicalMu": 1426.4484002713828,
+      "difference": -0.09358549373268943
+    },
+    {
+      "uid": 1819,
+      "cursorMu": 1594.0698278058305,
+      "chronologicalMu": 1594.1487391981495,
+      "difference": 0.07891139231901434
+    },
+    {
+      "uid": 1835,
+      "cursorMu": 1598.4406330025631,
+      "chronologicalMu": 1598.5140300245318,
+      "difference": 0.07339702196873077
+    },
+    {
+      "uid": 1840,
+      "cursorMu": 1603.0713675354884,
+      "chronologicalMu": 1603.1389264661132,
+      "difference": 0.06755893062472751
+    },
+    {
+      "uid": 1901,
+      "cursorMu": 1435.6508991255484,
+      "chronologicalMu": 1435.5869867200995,
+      "difference": -0.06391240544894572
+    },
+    {
+      "uid": 1387,
+      "cursorMu": 1608.01027486658,
+      "chronologicalMu": 1608.071642273032,
+      "difference": 0.06136740645206373
+    },
+    {
+      "uid": 2051,
+      "cursorMu": 1434.3608342479106,
+      "chronologicalMu": 1434.4213750301267,
+      "difference": 0.06054078221609416
+    },
+    {
+      "uid": 2088,
+      "cursorMu": 1435.9340498340482,
+      "chronologicalMu": 1435.9936173411966,
+      "difference": 0.059567507148358345
+    },
+    {
+      "uid": 2048,
+      "cursorMu": 1442.2997994538894,
+      "chronologicalMu": 1442.3550935848493,
+      "difference": 0.055294130959964605
+    },
+    {
+      "uid": 2065,
+      "cursorMu": 1448.793403934384,
+      "chronologicalMu": 1448.8437913728608,
+      "difference": 0.05038743847671867
+    },
+    {
+      "uid": 1918,
+      "cursorMu": 1468.6887719273884,
+      "chronologicalMu": 1468.7366935196692,
+      "difference": 0.04792159228077253
+    },
+    {
+      "uid": 1886,
+      "cursorMu": 1441.2272102331094,
+      "chronologicalMu": 1441.1817094309906,
+      "difference": -0.045500802118795036
+    },
+    {
+      "uid": 1883,
+      "cursorMu": 1466.6324303965164,
+      "chronologicalMu": 1466.6732010929127,
+      "difference": 0.040770696396293715
+    },
+    {
+      "uid": 1896,
+      "cursorMu": 1443.106548622667,
+      "chronologicalMu": 1443.067295583217,
+      "difference": -0.03925303945015912
+    },
+    {
+      "uid": 1861,
+      "cursorMu": 1444.9967928148312,
+      "chronologicalMu": 1444.9638455492327,
+      "difference": -0.03294726559852279
+    },
+    {
+      "uid": 1767,
+      "cursorMu": 1446.8983347188935,
+      "chronologicalMu": 1446.871752941944,
+      "difference": -0.026581776949569758
+    },
+    {
+      "uid": 1990,
+      "cursorMu": 1469.346169493293,
+      "chronologicalMu": 1469.3706973774201,
+      "difference": 0.024527884127110156
+    },
+    {
+      "uid": 1888,
+      "cursorMu": 1448.8115799546752,
+      "chronologicalMu": 1448.7914251326056,
+      "difference": -0.02015482206957131
+    },
+    {
+      "uid": 1837,
+      "cursorMu": 1665.0515467416851,
+      "chronologicalMu": 1665.0551920895725,
+      "difference": 0.0036453478874136636
+    }
+  ],
+  "topChronological": [
+    {
+      "uid": 1373,
+      "mu": 1978.3066078434642,
+      "events": 5
+    },
+    {
+      "uid": 1611,
+      "mu": 1768.0070806947845,
+      "events": 2
+    },
+    {
+      "uid": 1725,
+      "mu": 1728.7871635860665,
+      "events": 2
+    },
+    {
+      "uid": 1704,
+      "mu": 1720.410716188328,
+      "events": 3
+    },
+    {
+      "uid": 1730,
+      "mu": 1700.9383471601755,
+      "events": 2
+    },
+    {
+      "uid": 1868,
+      "mu": 1672.0854031632402,
+      "events": 2
+    },
+    {
+      "uid": 1649,
+      "mu": 1666.804120273661,
+      "events": 3
+    },
+    {
+      "uid": 1837,
+      "mu": 1665.0551920895725,
+      "events": 1
+    },
+    {
+      "uid": 2035,
+      "mu": 1664.2429386134968,
+      "events": 1
+    },
+    {
+      "uid": 1740,
+      "mu": 1664.0290152275497,
+      "events": 2
+    }
+  ]
+}

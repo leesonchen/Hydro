@@ -23,6 +23,13 @@ const STATUS_ACCEPTED = 1;
 const INITIAL_MU = 1500;
 const ACM_WRONG_PENALTY = 20;
 
+function effectiveSubmissionTime(record: any): { time: number, precise: boolean } {
+    if (record.submittedAt instanceof Date && Number.isFinite(record.submittedAt.getTime())) {
+        return { time: record.submittedAt.getTime(), precise: true };
+    }
+    return { time: record._id?.getTimestamp?.().getTime(), precise: false };
+}
+
 export interface ShadowOptions {
     eligibilityMode?: 'trial' | 'certified';
     rules?: string[];
@@ -39,6 +46,8 @@ export interface ShadowOptions {
     refDomain?: string;
     write?: boolean;
     poolId?: string;
+    domainId?: string;
+    asOf?: number;
 }
 
 export interface DbHandle {
@@ -90,9 +99,9 @@ function buildStandings(
         if (r.status === STATUS_ACCEPTED) {
             if (!p.ac) {
                 p.ac = true;
-                p.acTime = certified ? r.submittedAt.getTime() : r._id.getTimestamp().getTime();
+                p.acTime = certified ? r.submittedAt.getTime() : effectiveSubmissionTime(r).time;
             }
-        } else if (!p.ac && (!certified || r.status !== 7)) {
+        } else if (!p.ac && r.status !== 7) {
             p.wrong++;
         }
     }
@@ -108,7 +117,7 @@ function buildStandings(
                 if (p.ac) {
                     solved++;
                     solvedSet.add(pid);
-                    penalty += (p.acTime - beginAt.getTime()) / 60000 + ACM_WRONG_PENALTY * p.wrong;
+                    penalty += Math.max(0, p.acTime - beginAt.getTime()) / 60000 + ACM_WRONG_PENALTY * p.wrong;
                 }
             } else {
                 // OI family: the final scoring result is the last in-window submission.
@@ -145,12 +154,13 @@ function observe(
 }
 
 export async function runShadowReplay(
-    dbh: DbHandle, options: ShadowOptions = {}, report: Report = () => {},
+    dbh: DbHandle, options: ShadowOptions = {}, report: Report = () => {}, onResults?: (docs: any[]) => void,
 ): Promise<any> {
     const eligibilityMode = options.eligibilityMode ?? 'trial';
     if (!['trial', 'certified'].includes(eligibilityMode)) throw new Error('Invalid rating eligibility mode');
     const certified = eligibilityMode === 'certified';
-    const asOf = new Date();
+    const cutoff = options.asOf ?? Date.now();
+    const asOf = new Date(cutoff);
     const exclusions: Record<string, number> = {};
     const exclude = (reasons: EligibilityReason[]) => {
         for (const reason of reasons) exclusions[reason] = (exclusions[reason] || 0) + 1;
@@ -174,7 +184,7 @@ export async function runShadowReplay(
 
     // 1. candidates ------------------------------------------------------------
     const tdocs = await docColl.find(
-        { docType: DOC_TYPE_CONTEST, rule: { $in: rules }, ...(certified ? {
+        { docType: DOC_TYPE_CONTEST, rule: { $in: rules }, ...(options.domainId ? { domainId: options.domainId } : {}), beginAt: { $lte: asOf }, endAt: { $lte: asOf }, ...(certified ? {
             $or: [{ rated: true }, { sourceType: 'course_assessment', 'ratingPolicy.enabled': true }],
         } : { rated: true }) },
         { projection: {
@@ -188,7 +198,7 @@ export async function runShadowReplay(
     let teamExcluded = 0;
     let teamFlagMismatch = 0;
     for (const t of tdocs) {
-        if (!(t.beginAt instanceof Date) || !(t.endAt instanceof Date)) continue;
+        if (!(t.beginAt instanceof Date) || !(t.endAt instanceof Date) || t.beginAt.getTime() > cutoff || t.endAt.getTime() > cutoff) continue;
         if (t.allowTeam) {
             teamExcluded++;
             if (certified) exclude(['TEAM_CONTEST']);
@@ -253,6 +263,8 @@ export async function runShadowReplay(
     let skipped = 0;
     let frozenContests = 0;
     let failedContests = 0;
+    let precisionFallbacks = 0;
+    const personalDurationExcluded = { missingStart: 0, invalidStart: 0, outsideWindow: 0 };
     for (const contest of contests) {
         if (overlaps.has(String(contest.docId))) {
             exclude(['OVERLAPPING_CONTESTS']);
@@ -272,22 +284,70 @@ export async function runShadowReplay(
             skipped++;
             continue;
         }
+        const statusByUid = new Map<number, any>();
+        if (contest.duration) {
+        const attendance = await statusColl.find({ domainId: contest.domainId, docType: DOC_TYPE_CONTEST, docId: contest._id, attend: { $gt: 0 } }, { projection: { uid: 1, startAt: 1, endAt: 1 } }).toArray();
+            for (const a of attendance) statusByUid.set(a.uid, a);
+        }
         let records = await recordColl.find(
             {
-                contest: contest.docId, uid: { $gt: 0 },
-                ...(certified ? { domainId: contest.domainId } : { _id: {
-                    $gte: ObjectId.createFromTime(Math.floor(contest.beginAt.getTime() / 1000)),
-                    $lt: ObjectId.createFromTime(Math.ceil(contest.endAt.getTime() / 1000)),
-                } }),
+                contest: contest.docId, uid: { $gt: 0 }, domainId: contest.domainId,
+                ...(certified ? {} : { $or: [
+                    { _id: {
+                        $gte: ObjectId.createFromTime(Math.floor(contest.beginAt.getTime() / 1000)),
+                        $lt: ObjectId.createFromTime(Math.ceil(contest.endAt.getTime() / 1000)),
+                    } },
+                    { submittedAt: { $type: 'date', $gte: contest.beginAt, $lt: contest.endAt, $lte: asOf } },
+                ] }),
             },
             { projection: {
-                pid: 1, uid: 1, status: 1, score: 1, _id: 1,
+                pid: 1, uid: 1, status: 1, score: 1, _id: 1, domainId: 1, contest: 1, submittedAt: 1,
                 ...(certified ? {
                     contest: 1, practiceContest: 1, submittedAt: 1, submissionKind: 1, participationMode: 1,
                     problemRevisionId: 1, ingressVersion: 1, judgeAt: 1, submissionContext: 1, classroomSession: 1,
                 } : {}),
             } },
         ).toArray();
+        const beginMs = contest.beginAt.getTime();
+        const endMs = contest.endAt.getTime();
+        const fallbackBegin = Math.floor(beginMs / 1000) * 1000;
+        const fallbackEnd = Math.floor(endMs / 1000) * 1000;
+        const fallbackCutoff = Math.floor(cutoff / 1000) * 1000;
+        records = records.filter((r) => {
+            if (r.domainId !== contest.domainId || String(r.contest) !== String(contest.docId)) return false;
+            if (certified) return (!(r.submittedAt instanceof Date) || r.submittedAt.getTime() <= cutoff)
+                && (!(r.judgeAt instanceof Date) || r.judgeAt.getTime() <= cutoff);
+            if (!Number.isInteger(r.pid) || !(contest.pids || []).includes(r.pid)) return false;
+            const effective = effectiveSubmissionTime(r);
+            const at = effective.time;
+            if (!Number.isFinite(at)) return false;
+            if (effective.precise) {
+                if (at < beginMs || at >= endMs || at > cutoff) return false;
+            } else {
+                precisionFallbacks++;
+                if (at < fallbackBegin || at >= fallbackEnd || at > fallbackCutoff) return false;
+            }
+            if (!Number.isFinite(r.score) || r.score < 0 || !Number.isInteger(r.status) || r.status < 1 || r.status > 7) return false;
+            if (contest.duration) {
+                const attendance = statusByUid.get(r.uid);
+                const start = attendance?.startAt;
+                if (!start) { personalDurationExcluded.missingStart++; return false; }
+                if (!(start instanceof Date) || !Number.isFinite(start.getTime()) || !Number.isFinite(contest.duration) || contest.duration <= 0
+                    || start.getTime() < beginMs || start.getTime() >= endMs
+                    || (attendance.endAt !== undefined && (!(attendance.endAt instanceof Date) || !Number.isFinite(attendance.endAt.getTime())))) {
+                    personalDurationExcluded.invalidStart++;
+                    return false;
+                }
+                const personalEnd = Math.min(endMs, start.getTime() + contest.duration * 3600000,
+                    attendance.endAt instanceof Date ? attendance.endAt.getTime() : endMs);
+                const personalStartBoundary = effective.precise ? start.getTime() : Math.floor(start.getTime() / 1000) * 1000;
+                const personalEndBoundary = effective.precise ? personalEnd : Math.floor(personalEnd / 1000) * 1000;
+                if (at < personalStartBoundary || at >= personalEndBoundary) { personalDurationExcluded.outsideWindow++; return false; }
+            }
+            return true;
+        });
+        if (!certified) records.sort((a, b) => effectiveSubmissionTime(a).time - effectiveSubmissionTime(b).time
+            || String(a._id).localeCompare(String(b._id)));
         const problemKeys = new Map<number, string>();
         const fullScores = new Map<number, number>();
         if (certified) {
@@ -440,10 +500,13 @@ export async function runShadowReplay(
     let anomalies = 0;
     const statusCursor = statusColl.find(
         { docType: DOC_TYPE_PROBLEM, rid: { $ne: null }, uid: { $gt: 0 },
-            ...(certified ? { domainId: { $in: [...poolDomains] } } : {}) },
-        { projection: { domainId: 1, uid: 1, docId: 1, score: 1, status: 1, ...(certified ? { rid: 1 } : {}) } },
+            ...(options.domainId ? { domainId: options.domainId } : (certified ? { domainId: { $in: [...poolDomains] } } : {})) },
+        { projection: { domainId: 1, uid: 1, docId: 1, score: 1, status: 1, rid: 1 } },
     );
     for await (const s of statusCursor) {
+        // Status collections retain only the latest pointer, not a historical snapshot.
+        // Do not attribute a post-cutoff latest submission to an earlier as-of replay.
+        if (s.rid?.getTimestamp && s.rid.getTimestamp().getTime() > cutoff) continue;
         let units: number;
         let key: number | string = s.docId;
         if (certified) {
@@ -454,6 +517,8 @@ export async function runShadowReplay(
                 canonicalProblemKey: record?.canonicalProblemKey, fullScore: problem.problemFullScore,
             });
             if (!record || record.submissionKind !== 'normal' || record.ingressVersion !== 'record-v1'
+                || (record.submittedAt instanceof Date && record.submittedAt.getTime() > cutoff)
+                || (record.judgeAt instanceof Date && record.judgeAt.getTime() > cutoff)
                 || !record.problemRevisionId || !isFinalJudgement(record)
                 || record.problemRevisionId !== problem.problemRevisionId
                 || record.canonicalProblemKey !== problem.canonicalProblemKey
@@ -490,17 +555,27 @@ export async function runShadowReplay(
 
     // 5. composite projections ---------------------------------------------------
     const projections: any[] = [];
-    for (const ach of achievementByUser.values()) {
+    const projectionUsers = new Map<string, { domainId: string, uid: number, a: number, problems: number }>();
+    for (const ach of achievementByUser.values()) projectionUsers.set(`${ach.domainId}|${ach.uid}`, ach);
+    // State users are scoped to the replay domain when one is requested. In unscoped
+    // mode achievement rows provide the only safe domain association for projections.
+    if (options.domainId) for (const uid of states.keys()) {
+        const key = `${options.domainId}|${uid}`;
+        if (!projectionUsers.has(key)) projectionUsers.set(key, { domainId: options.domainId, uid, a: 0, problems: 0 });
+    }
+    for (const ach of projectionUsers.values()) {
         const st = states.get(ach.uid);
+        const a = (ach as any).a ?? 0;
+        const problems = (ach as any).problems ?? 0;
         const rating = publicRating(st ? st.mu : null);
         const events = st ? st.events : 0;
-        const comp = compositeScore(ach.a, rating, events);
+        const comp = compositeScore(a, rating, events);
         const tier = tierForRating(rating);
         projections.push({
             domainId: ach.domainId,
             uid: ach.uid,
-            a: Math.round(ach.a * 100) / 100,
-            problems: ach.problems,
+            a: Math.round(a * 100) / 100,
+            problems,
             mu: st ? Math.round(st.mu * 100) / 100 : null,
             rating,
             tier: tier ? tier.id : null,
@@ -519,7 +594,7 @@ export async function runShadowReplay(
         tierHist[k] = (tierHist[k] || 0) + 1;
     }
     const refUsers = await dbh.collection('domain.user').find(
-        { domainId: refDomain, rp: { $gt: 0 } },
+        { domainId: options.domainId ?? refDomain, rp: { $gt: 0 } },
         { projection: { uid: 1, rp: 1, nAccept: 1 } },
     ).toArray() as any[];
     const oldMap = new Map(refUsers.map((u) => [u.uid, u]));
@@ -550,6 +625,8 @@ export async function runShadowReplay(
             failed: failedContests,
             teamExcluded,
             teamFlagMismatch,
+            personalDurationExcluded,
+            precisionFallbacks,
         },
         ratingUsers: rated.length,
         provisionalUsers: rated.filter((s) => s.events < provisionalEvents).length,
@@ -596,18 +673,19 @@ export async function runShadowReplay(
         movers,
     };
 
+    const docs: any[] = [];
+    for (const [uid, s] of states) {
+        if (s.events === 0) continue;
+        docs.push({ poolId, kind: 'rating_state', uid, ...s, ...(options.domainId ? { domainId: options.domainId } : (certified ? { domainId: [...poolDomains][0] } : {})) });
+    }
+    for (const f of fits) docs.push({ poolId, kind: 'difficulty', ...f });
+    for (const o of observationRaw) docs.push({ poolId, kind: 'observation', ...o });
+    for (const p of projections) docs.push({ poolId, kind: 'projection', ...p });
+    onResults?.(docs);
     if (options.write) {
         // Shadow collections only; never touch domain.user or existing rp fields.
         const out = dbh.collection('ratingv2_shadow');
         await out.deleteMany({ poolId });
-        const docs: any[] = [];
-        for (const [uid, s] of states) {
-            if (s.events === 0) continue;
-            docs.push({ poolId, kind: 'rating_state', uid, ...s, ...(certified ? { domainId: [...poolDomains][0] } : {}) });
-        }
-        for (const f of fits) docs.push({ poolId, kind: 'difficulty', ...f });
-        for (const o of observationRaw) docs.push({ poolId, kind: 'observation', ...o });
-        for (const p of projections) docs.push({ poolId, kind: 'projection', ...p });
         for (let i = 0; i < docs.length; i += 1000) {
             await out.insertMany(docs.slice(i, i + 1000));
         }

@@ -10,6 +10,8 @@ import {
 } from '../interface';
 import avatar from '../lib/avatar';
 import pwhash from '../lib/hash.hydro';
+import { projectUserRating, projectUserRatings, publicRatingStore } from '../lib/rating-publication-read';
+import type { RatingPointer } from '../lib/rating-publication-store';
 import bus from '../service/bus';
 import db from '../service/db';
 import { Value } from '../typeutils';
@@ -173,7 +175,7 @@ export class User {
                 .map((i) => pick(i, ['_id', 'name', 'avatar']));
         }
         user._isPrivate = true;
-        return user;
+        return projectUserRating(this._dudoc.domainId, user);
     }
 
     getFields(type: 'public' | 'private' = 'public') {
@@ -253,7 +255,7 @@ class UserModel {
     static _deleteUserCache = deleteUserCache;
 
     @ArgMethod
-    static async getById(domainId: string, _id: number, scope: bigint | string = PERM.PERM_ALL): Promise<User> {
+    static async getById(domainId: string, _id: number, scope: bigint | string = PERM.PERM_ALL, ratingPointer?: RatingPointer | null): Promise<User> {
         let user = cache.get(`id/${_id}/${domainId}`);
         if (!user) {
             const udoc = await (_id < -999 ? collV : coll).findOne({ _id });
@@ -266,15 +268,16 @@ class UserModel {
             user = await initAndCache(udoc, dudoc);
         }
         // Cache only the full-scope base; each caller gets its own scoped view.
-        return Object.assign(Object.create(User.prototype), user, {
+        return projectUserRating(domainId, Object.assign(Object.create(User.prototype), user, {
             scope: typeof scope === 'string' ? BigInt(scope) : scope,
-        });
+        }), ratingPointer);
     }
 
     static async getList(domainId: string, uids: number[]): Promise<Udict> {
         const r: Udict = {};
+        const pointer = await publicRatingStore.active(domainId);
         await Promise.all(uniq(uids).map(async (uid) => {
-            r[uid] = (await UserModel.getById(domainId, uid)) || new User(UserModel.defaultUser, {});
+            r[uid] = (await UserModel.getById(domainId, uid, PERM.PERM_ALL, pointer)) || new User(UserModel.defaultUser, {});
         }));
         return r;
     }
@@ -282,21 +285,21 @@ class UserModel {
     @ArgMethod
     static async getByUname(domainId: string, uname: string): Promise<User | null> {
         const unameLower = uname.trim().toLowerCase();
-        if (cache.has(`name/${unameLower}/${domainId}`)) return cache.get(`name/${unameLower}/${domainId}`);
+        if (cache.has(`name/${unameLower}/${domainId}`)) return projectUserRating(domainId, cache.get(`name/${unameLower}/${domainId}`));
         const udoc = (await coll.findOne({ unameLower })) || await collV.findOne({ unameLower });
         if (!udoc) return null;
         const dudoc = await domain.getDomainUser(domainId, udoc);
-        return initAndCache(udoc, dudoc);
+        return projectUserRating(domainId, await initAndCache(udoc, dudoc));
     }
 
     @ArgMethod
     static async getByEmail(domainId: string, mail: string): Promise<User> {
         const mailLower = handleMailLower(mail);
-        if (cache.has(`mail/${mailLower}/${domainId}`)) return cache.get(`mail/${mailLower}/${domainId}`);
+        if (cache.has(`mail/${mailLower}/${domainId}`)) return projectUserRating(domainId, cache.get(`mail/${mailLower}/${domainId}`));
         const udoc = await coll.findOne({ mailLower });
         if (!udoc) return null;
         const dudoc = await domain.getDomainUser(domainId, udoc);
-        return initAndCache(udoc, dudoc);
+        return projectUserRating(domainId, await initAndCache(udoc, dudoc));
     }
 
     @ArgMethod
@@ -536,6 +539,8 @@ class UserModel {
             udict[key].studentId ||= '';
             udict[key].displayName ||= udict[key].uname;
         }
+        const projected = await projectUserRatings(domainId, Object.values(udict) as any[]);
+        for (const udoc of projected) if (udict[udoc._id]) udict[udoc._id] = udoc;
         return udict as BaseUserDict;
     }
 
