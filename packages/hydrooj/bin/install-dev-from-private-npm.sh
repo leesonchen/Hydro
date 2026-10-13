@@ -755,7 +755,11 @@ JSON
         if [ -n "${SELECTED_PACKAGE_VERSIONS[$key]:-}" ]; then
             spec="${package_name}@${SELECTED_PACKAGE_VERSIONS[$key]}"
         elif is_key_selected "$key" || [ -z "$current" ]; then
-            spec="${package_name}@dev"
+            if [ -n "${REMOTE_PACKAGE_VERSIONS[$key]:-}" ]; then
+                spec="${package_name}@${REMOTE_PACKAGE_VERSIONS[$key]}"
+            else
+                spec="${package_name}@dev"
+            fi
         else
             spec="${package_name}@${current}"
         fi
@@ -790,10 +794,17 @@ verify_release() {
         log_warn "局部更新未包含 hydrooj，跳过维护命令校验"
     fi
 
-    local key package_name package_version
+    local key package_name package_version expected_version
     for key in "${PACKAGE_KEYS[@]}"; do
         package_name=$(package_name_for_key "$key")
         package_version=$(package_version_from_dir "$release_dir" "$package_name")
+        if is_key_selected "$key"; then
+            expected_version="${SELECTED_PACKAGE_VERSIONS[$key]:-${REMOTE_PACKAGE_VERSIONS[$key]:-}}"
+            if [ -n "$expected_version" ] && [ "$package_version" != "$expected_version" ]; then
+                log_error "实际安装版本不匹配: ${package_name} 期望 ${expected_version}，获得 ${package_version}"
+                return 1
+            fi
+        fi
         log_ok "${package_name}@${package_version}"
     done
     echo ""
@@ -1098,30 +1109,39 @@ rollback_release() {
 }
 
 prepare_selected_packages() {
-    local mode="$1"
-    if [ ${#SELECTED_PACKAGE_KEYS[@]} -gt 0 ]; then
-        return 0
-    fi
-
+    local mode="$1" key package_name remote
     if [ "$mode" = "install" ]; then
-        select_all_packages
+        if [ ${#SELECTED_PACKAGE_KEYS[@]} -eq 0 ]; then select_all_packages; fi
         return 0
     fi
 
     log_title "4. 检查 dev 版本更新..."
+    if [ ${#SELECTED_PACKAGE_KEYS[@]} -gt 0 ]; then
+        # Explicit --packages requests also require verified remote metadata.
+        for key in "${SELECTED_PACKAGE_KEYS[@]}"; do
+            package_name=$(package_name_for_key "$key")
+            remote=$(remote_package_version "$package_name")
+            if [ -z "$remote" ]; then
+                log_error "无法确认 ${package_name} 的远端 dev 版本，更新已取消"
+                return 2
+            fi
+            REMOTE_PACKAGE_VERSIONS["$key"]="$remote"
+        done
+        return 0
+    fi
+
     select_outdated_packages
     print_update_table
     echo ""
+    if has_unknown_remote_versions; then
+        log_error "部分模块远端 dev 版本查询失败，不能确认已是最新，更新已取消"
+        return 2
+    fi
     if [ ${#SELECTED_PACKAGE_KEYS[@]} -eq 0 ]; then
-        if has_unknown_remote_versions; then
-            log_warn "未发现可更新模块，但部分模块 dev 版本查询失败，请查看状态表"
-        else
-            log_ok "所有模块都已是最新 dev 版本，无需更新"
-        fi
+        log_ok "所有模块都已是最新 dev 版本，无需更新"
         return 1
     fi
 }
-
 run_selected_install() {
     local backup_dir release_dir
     backup_dir=$(backup_current_state)
@@ -1161,6 +1181,10 @@ install_flow() {
 
     if prepare_selected_packages "$mode"; then
         run_selected_install
+    else
+        local status=$?
+        # A verified no-op returns 1; a registry/metadata failure must remain fatal.
+        if [ "$status" -ne 1 ]; then return "$status"; fi
     fi
 }
 
