@@ -2,8 +2,8 @@
     "name": "hydrooj",
     "version": "5.0.7",
     "bin": {
-        "hydrooj": "bin/hydrooj.js",
-        "hydro-maintenance": "bin/hydro-maintenance.js"
+        "hydro-maintenance": "bin/hydro-maintenance.js",
+        "hydrooj": "bin/hydrooj.js"
     },
     "main": "src/plugin-api",
     "module": "src/plugin-api",

@@ -11,7 +11,9 @@ import type { Handler } from '../service/server';
 import { FeedbackInput, FeedbackValidationError } from './classroomFeedback';
 
 export function feedbackEnabled(handler: Handler) {
-    return handler.domain.classroomFeedback === true;
+    // Boolean domain settings are submitted by the settings form as "on".
+    // Older/domain fixtures may also store the normalized boolean value.
+    return handler.domain.classroomFeedback === true || handler.domain.classroomFeedback === 'on';
 }
 
 async function feedbackPermission(handler: Handler, tdoc: Tdoc) {

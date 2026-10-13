@@ -57,9 +57,8 @@ function canBypassCourseTimeLimit(tdoc: any, udoc: User) {
 
 function canBypassCourseDagLimit(tdoc: any, udoc: User) {
     if (tdoc?.rule !== 'course') return false;
-    return udoc.own(tdoc)
-        || udoc.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-        || udoc.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF)
+    return udoc.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+        || udoc.own(tdoc, PERM.PERM_EDIT_HOMEWORK_SELF)
         || udoc.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
 }
 
@@ -487,7 +486,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             }
             if (this.tdoc.rule === 'course' && !canBypassCourseDagLimit(this.tdoc, this.user)) {
                 const nodeId = getCourseNodeIdByPid(this.tdoc, this.pdoc.docId);
-                if (!nodeId || this.tsdoc?.allow?.[nodeId] !== true) {
+                if (nodeId === null || this.tsdoc?.allow?.[nodeId] !== true) {
                     throw new ForbiddenError((this as any).translate('This problem is not available yet.'));
                 }
             }
