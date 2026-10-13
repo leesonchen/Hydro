@@ -41,6 +41,7 @@ test('rating management page separates configuration from domain publication', (
         url: (name) => `/${name}`,
     });
     assert.match(html, /保存目标设置/);
+    assert.match(html, /普通做题记录只计入题目成就/);
     assert.match(html, /重算并应用/);
     assert.match(html, /恢复上一次评分/);
     assert.match(html, /计算失败/);
@@ -170,10 +171,10 @@ test('public ranking renders V2 capability, provisional status, achievement and 
         model: { rp: {}, system: { get: () => 20 } },
         handler: { user: { hasPriv: () => false } },
     });
-    assert.match(html, /V2（试用）/);
+    assert.match(html, /V2（限域试用，非认证竞赛能力）/);
     assert.match(html, /最近更新：2026-10-12 16:30/);
-    assert.match(html, /能力 Rating/);
-    assert.match(html, /参赛场次/);
+    assert.match(html, /试用 Rating/);
+    assert.match(html, /比赛\/测评场次/);
     assert.match(html, /未评级/);
     assert.match(html, /暂定/);
     assert.match(html, /1500\.12/);

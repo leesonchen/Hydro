@@ -59,7 +59,7 @@ async function members(domainId: string, uids: number[]) {
 }
 
 export function rankRatingRows(rows: RatingRow[]) {
-    const eligible = rows.filter((row) => row.visible && row.rp > 0).sort((a, b) => b.rp - a.rp || a.uid - b.uid);
+    const eligible = rows.filter((row) => row.join && row.visible && row.rp > 0).sort((a, b) => b.rp - a.rp || a.uid - b.uid);
     let lastRp = -1;
     let rank = 0;
     for (let i = 0; i < eligible.length; i++) {
@@ -74,7 +74,7 @@ export function rankRatingRows(rows: RatingRow[]) {
 async function buildV2(job: RatingJob, report: (data: any) => void) {
     let docs: any[] = [];
     const options = { domainId: job.domainId, refDomain: job.domainId, asOf: job.asOf,
-        eligibilityMode: 'trial' as const, poolId: job._id, write: false };
+        eligibilityMode: 'trial' as const, includeClassroomAssessments: true, poolId: job._id, write: false };
     // Public scoring follows the same result visibility policy as legacy RP.
     // A hidden cached best result may need a visible earlier record instead.
     const statuses = await db.collection('document.status').find({ domainId: job.domainId, docType: 10,

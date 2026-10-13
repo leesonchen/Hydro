@@ -79,6 +79,10 @@ class DomainRankHandler extends Handler {
         const udict = await user.getList(domainId, dudocs.map((dudoc) => dudoc.uid));
         const udocs = await projectUserRatings(domainId, dudocs.map((i) => udict[i.uid]), publication.active);
         this.user = await projectUserRating(domainId, this.user, publication.active);
+        if (publication.liveRanks) {
+            for (const udoc of udocs) udoc.rank = publication.liveRanks.get(udoc._id) ?? null;
+            this.user.rank = publication.liveRanks.get(this.user._id) ?? null;
+        }
         this.response.template = 'ranking.html';
         this.response.body = {
             udocs, upcount, ucount, page,

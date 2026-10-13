@@ -9,7 +9,7 @@ import { resolveProblemEvidence } from '../submission-provenance';
 import { achievementUnits } from './achievement';
 import { calibratedProbability, evaluateCalibration, fitSolveCalibration } from './calibration';
 import { averageRanks, updateContest } from './cf-local';
-import { isClassroomBindingCurrent } from './classroom';
+import { isClassroomBindingCurrent, resolveClassroomBinding } from './classroom';
 import { compositeScore, publicRating, tierForRating } from './composite';
 import { fitDifficulty } from './difficulty';
 import {
@@ -32,6 +32,8 @@ function effectiveSubmissionTime(record: any): { time: number, precise: boolean 
 
 export interface ShadowOptions {
     eligibilityMode?: 'trial' | 'certified';
+    /** Opt-in: add genuine course-bound classroom tests to trial replays only. */
+    includeClassroomAssessments?: boolean;
     rules?: string[];
     minParticipants?: number;
     includeDuration?: boolean;
@@ -64,6 +66,7 @@ interface ContestDoc extends RatingContestInput {
     endAt: Date;
     duration: number;
     hasAssign: boolean;
+    excludedClassroomTeachers?: number[];
 }
 
 interface Standing {
@@ -186,7 +189,9 @@ export async function runShadowReplay(
     const tdocs = await docColl.find(
         { docType: DOC_TYPE_CONTEST, rule: { $in: rules }, ...(options.domainId ? { domainId: options.domainId } : {}), beginAt: { $lte: asOf }, endAt: { $lte: asOf }, ...(certified ? {
             $or: [{ rated: true }, { sourceType: 'course_assessment', 'ratingPolicy.enabled': true }],
-        } : { rated: true }) },
+        } : options.includeClassroomAssessments
+            ? { $or: [{ rated: true }, { sourceType: 'course_assessment' }] }
+            : { rated: true }) },
         { projection: {
             docId: 1, rated: 1, pids: 1, beginAt: 1, endAt: 1, duration: 1, assign: 1,
             allowTeam: 1, domainId: 1, rule: 1, ratingPolicy: 1, keepScoreboardHidden: 1, score: 1,
@@ -197,6 +202,7 @@ export async function runShadowReplay(
     const contests: ContestDoc[] = [];
     let teamExcluded = 0;
     let teamFlagMismatch = 0;
+    let classroomExcluded = 0;
     for (const t of tdocs) {
         if (!(t.beginAt instanceof Date) || !(t.endAt instanceof Date) || t.beginAt.getTime() > cutoff || t.endAt.getTime() > cutoff) continue;
         if (t.allowTeam) {
@@ -218,7 +224,22 @@ export async function runShadowReplay(
             report(`[replay] contest ${t._id} excluded: team status exists while allowTeam is false`);
             continue;
         }
+        let excludedClassroomTeachers: number[] = [];
+        if (!certified && t.sourceType === 'course_assessment') {
+            // A tag is not sufficient. Bind to the current real course/lesson and
+            // never include a test whose results are intentionally still hidden.
+            const binding = options.includeClassroomAssessments && !t.keepScoreboardHidden
+                && (!t.lockAt || t.unlocked) ? await resolveClassroomBinding(dbh, { ...t, docId: t.docId || t._id }) : null;
+            if (!binding) { classroomExcluded++; continue; }
+            const groupNames = (binding.course.assign || []).filter((name: string) => name !== 'teachers' && !/^\d+$/.test(name));
+            const groups = groupNames.length ? await dbh.collection('user.group').find({
+                domainId: t.domainId, name: { $in: groupNames },
+            }, { projection: { class: 1, teachers: 1 } }).toArray() : [];
+            excludedClassroomTeachers = [binding.course.owner, ...(binding.course.maintainer || []),
+                ...groups.flatMap((group) => group.class ? group.teachers || [] : [])];
+        }
         contests.push({
+            ...(excludedClassroomTeachers.length ? { excludedClassroomTeachers } : {}),
             ...t,
             docId: t.docId || t._id,
             _id: t._id,
@@ -260,6 +281,8 @@ export async function runShadowReplay(
     const observationRaw: { uid: number, pid: string | number, mu: number, solved: boolean, contestId: any }[] = [];
     const observations = new Map<string | number, { mu: number, solved: boolean }[]>();
     let processed = 0;
+    let ratedProcessed = 0;
+    let classroomProcessed = 0;
     let skipped = 0;
     let frozenContests = 0;
     let failedContests = 0;
@@ -285,8 +308,10 @@ export async function runShadowReplay(
             continue;
         }
         const statusByUid = new Map<number, any>();
-        if (contest.duration) {
-        const attendance = await statusColl.find({ domainId: contest.domainId, docType: DOC_TYPE_CONTEST, docId: contest._id, attend: { $gt: 0 } }, { projection: { uid: 1, startAt: 1, endAt: 1 } }).toArray();
+        if (contest.duration || (!certified && contest.sourceType === 'course_assessment')) {
+            const attendance = await statusColl.find({ domainId: contest.domainId, docType: DOC_TYPE_CONTEST,
+                docId: contest._id, $or: [{ attend: true }, { attend: { $gt: 0 } }],
+            }, { projection: { uid: 1, startAt: 1, endAt: 1 } }).toArray();
             for (const a of attendance) statusByUid.set(a.uid, a);
         }
         let records = await recordColl.find(
@@ -302,6 +327,7 @@ export async function runShadowReplay(
             },
             { projection: {
                 pid: 1, uid: 1, status: 1, score: 1, _id: 1, domainId: 1, contest: 1, submittedAt: 1,
+                practiceContest: 1, participationMode: 1, submissionKind: 1,
                 ...(certified ? {
                     contest: 1, practiceContest: 1, submittedAt: 1, submissionKind: 1, participationMode: 1,
                     problemRevisionId: 1, ingressVersion: 1, judgeAt: 1, submissionContext: 1, classroomSession: 1,
@@ -318,6 +344,12 @@ export async function runShadowReplay(
             if (certified) return (!(r.submittedAt instanceof Date) || r.submittedAt.getTime() <= cutoff)
                 && (!(r.judgeAt instanceof Date) || r.judgeAt.getTime() <= cutoff);
             if (!Number.isInteger(r.pid) || !(contest.pids || []).includes(r.pid)) return false;
+            // Historic ordinary records may lack provenance; explicitly marked practice,
+            // virtual or non-normal submissions must never affect timed trial rankings.
+            if (r.practiceContest || (r.participationMode && r.participationMode !== 'official')
+                || (r.submissionKind && r.submissionKind !== 'normal')) return false;
+            if (contest.sourceType === 'course_assessment'
+                && (!statusByUid.has(r.uid) || contest.excludedClassroomTeachers?.includes(r.uid))) return false;
             const effective = effectiveSubmissionTime(r);
             const at = effective.time;
             if (!Number.isFinite(at)) return false;
@@ -439,8 +471,10 @@ export async function runShadowReplay(
             for (const r of result.results) stateOf(r.uid).events++;
         }
         processed++;
+        if (contest.sourceType === 'course_assessment') classroomProcessed++;
+        else ratedProcessed++;
     }
-    report(`[replay] processed=${processed} skipped=${skipped} frozen=${frozenContests} failed=${failedContests}`);
+    report(`[replay] processed=${processed} rated=${ratedProcessed} classroom=${classroomProcessed} skipped=${skipped} frozen=${frozenContests} failed=${failedContests}`);
 
     // 3. difficulty fits -------------------------------------------------------
     const fits: any[] = [];
@@ -620,6 +654,9 @@ export async function runShadowReplay(
         contests: {
             total: contests.length,
             processed,
+            ratedProcessed,
+            classroomProcessed,
+            classroomExcluded,
             skipped,
             frozen: frozenContests,
             failed: failedContests,

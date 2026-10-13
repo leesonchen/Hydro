@@ -4,6 +4,7 @@
   <div class="section__header"><h1 class="section__title">评分发布管理</h1></div>
   <div class="section__body">
     <p>保存设置只更新目标配置，不会自动切换任何分区的公开评分。请在对应分区确认后单独执行“重算并应用”。</p>
+    <p class="note">V2 试用只对手动应用的分区生效。比赛 Rating 试算包括 rated=true 的已结束可公开比赛，以及课程绑定真实、成绩已公开且实际报名的课堂测试；普通做题记录只计入题目成就 A。练习 R/D 继续在管理员只读页面单独试验，三者不等同于认证竞赛能力。</p>
     <form method="post">
       <input type="hidden" name="op" value="save">
       <label>评分算法
@@ -43,12 +44,12 @@
     {% if item.runs.length %}
     <h3>最近批次</h3>
     <table class="data-table"><thead><tr><th>算法</th><th>状态</th><th>评分日期</th><th>完成时间</th><th>说明</th></tr></thead><tbody>
-      {% for run in item.runs %}<tr><td>{{ 'V2 试用版' if run.algorithm == 'v2_trial' else '旧版' }}</td><td>{% if run.status == 'queued' %}排队中{% elif run.status == 'running' %}计算中{% elif run.status == 'ready' %}计算完成，待发布{% elif run.status == 'complete' %}已应用{% elif run.status == 'failed' %}失败{% elif run.status == 'superseded' and run.operation == 'rollback' %}已回退{% elif run.status == 'superseded' %}未应用{% else %}{{ run.status }}{% endif %}</td><td>{{ run.asOfText|default(run.asOf) }}</td><td>{{ run.completedAtText|default(run.completedAt|default('—')) }}</td><td>{{ run.error|default('—') }}</td></tr>{% endfor %}
+      {% for run in item.runs %}<tr><td>{{ 'V2 试用版' if run.algorithm == 'v2_trial' else '旧版' }}</td><td>{% if run.status == 'queued' %}排队中{% elif run.status == 'running' %}计算中{% elif run.status == 'ready' %}计算完成，待发布{% elif run.status == 'complete' %}已应用{% elif run.status == 'failed' %}失败{% elif run.status == 'superseded' and run.operation == 'rollback' %}已回退{% elif run.status == 'superseded' %}未应用{% else %}{{ run.status }}{% endif %}</td><td>{{ run.asOfText|default(run.asOf) }}</td><td>{{ run.completedAtText|default(run.completedAt|default('—')) }}</td><td>{% if run.error %}{{ run.error }}{% elif run.algorithm == 'v2_trial' and run.diagnostics and run.diagnostics.contests %}{% if run.diagnostics.contests.ratedProcessed is defined %}比赛 {{ run.diagnostics.contests.ratedProcessed }} 场，课堂测试 {{ run.diagnostics.contests.classroomProcessed|default(0) }} 场{% else %}旧版试用批次，暂无分类统计{% endif %}{% else %}—{% endif %}</td></tr>{% endfor %}
     </tbody></table>
     {% endif %}
     {% if item.comparison.length %}
     <h3>前 20 名对照</h3>
-    <table class="data-table"><thead><tr><th>用户</th><th>旧版 RP</th><th>V2 RP</th><th>能力 Rating</th><th>参赛场次</th><th>成就 A</th><th>排名</th><th>段位</th></tr></thead><tbody>
+    <table class="data-table"><thead><tr><th>用户</th><th>旧版 RP</th><th>V2 RP</th><th>试用 Rating</th><th>比赛/测评场次</th><th>成就 A</th><th>排名</th><th>段位</th></tr></thead><tbody>
       {% for row in item.comparison %}<tr><td>{{ row.uid }}</td><td>{{ row.legacyRp|default('—') }}</td><td>{{ row.rp|default('—') }}</td><td>{% if row.rating is not none %}{{ row.rating }}{% else %}未评级{% endif %}</td><td>{{ row.ratedEvents|default(0) }}</td><td>{{ row.achievement|default('—') }}</td><td>{{ row.rank|default('—') }}</td><td>{{ row.tier|default('—') }}</td></tr>{% endfor %}
     </tbody></table>
     {% endif %}
