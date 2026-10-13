@@ -65,6 +65,8 @@ node doc/test/scripts/generate-report.cjs --run doc/test/releases/<run>
 
 浏览器脚本默认使用根目录 `testuser.txt` 的本地标签账号，并屏蔽 Chrome 对外网的访问。可通过 `HYDRO_TEST_BASE_URL`、`HYDRO_TEST_DOMAIN`、`HYDRO_TEST_CREDENTIALS`、`HYDRO_TEST_CHROME` 指定环境。它依赖仓库现有 Node 模块、Docker 权限、Chrome 和正常运行的判题服务；本次验证环境为 Node 22、Chrome 141。
 
+三个浏览器运行脚本（`browser-system-test.cjs`、`extra-course-test.cjs`、`course-datetime-test.cjs`）均要求显式传入 `--out`，每轮使用独立目录；缺少输出路径时会在写入文件和启动浏览器之前退出。模板补测只在所有用例通过且清理完成时返回退出码 0，失败、阻塞或清理未完成均返回非零退出码。
+
 只有已得到真实消息发送授权时才给主脚本增加 `--allow-feedback`。`--only ID,ID` 用于针对性重测，须带上前置用例并使用独立输出路径；合并最终结果时保留证据相对路径，不能用未执行的 `skipped` 项覆盖原结果。模板保存/复制由额外脚本执行，应将其计划与结果并入矩阵后再生成报告。
 
 脚本不会自动发布或升级。开发版发布与更新继续遵守根目录 [AGENTS.md](../../AGENTS.md)。

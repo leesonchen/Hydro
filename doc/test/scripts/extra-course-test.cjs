@@ -12,7 +12,12 @@ const argv = process.argv.slice(2);
 const option = (name, fallback) => { const at = argv.indexOf('--' + name); return at < 0 ? fallback : argv[at + 1]; };
 if (argv.includes('--help')) { console.log('node doc/test/scripts/extra-course-test.cjs --out doc/test/releases/<run>/evidence/extra-course [--container hydro]\nUses isolated temporary fixtures and browser Save as Template / Add Course actions; does not send messages.'); process.exit(0); }
 const container = option('container', 'hydro');
-const out = path.resolve(option('out', path.join(root, 'releases/2026-10-12-dev.2/evidence/extra-course')));
+const output = option('out');
+if (!output || output.startsWith('--')) {
+  console.error('Required: --out <new evidence directory>. Use an independent output directory for each run.');
+  process.exit(2);
+}
+const out = path.resolve(output);
 const stamp = () => new Date().toISOString();
 const attemptId = new Date().toISOString().replace(/[:.]/g, '-');
 const attemptDir = path.join(out, 'attempts', attemptId);
@@ -322,6 +327,9 @@ async function main() {
     statuses: Object.fromEntries(results.map((r) => [r.id, r.status])),
     cleanupStatus: cleanup.status,
   }, null, 2) + '\n');
+  if (results.some((row) => row.status !== 'pass') || cleanup.status !== 'complete') {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {

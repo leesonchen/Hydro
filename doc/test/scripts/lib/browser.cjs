@@ -1,6 +1,17 @@
 const fs=require('node:fs');const os=require('node:os');const path=require('node:path');const {spawn}=require('node:child_process');
 const h=require('./http.cjs');const request=require(path.resolve(__dirname,'../../../../node_modules/superagent'));
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
+function createSessionAgent(cookies,baseUrl=h.base){
+ const hostname=new URL(baseUrl).hostname;
+ const agent=request.agent();
+ for(const cookie of cookies){
+  const attributes=[`${cookie.name}=${cookie.value}`,`Path=${cookie.path||'/'}`,`Domain=${cookie.domain||hostname}`];
+  if(cookie.secure)attributes.push('Secure');
+  if(cookie.httpOnly)attributes.push('HttpOnly');
+  agent.jar.setCookie(attributes.join('; '),hostname,cookie.path||'/');
+ }
+ return agent;
+}
 async function create(role,seedCookies){
  const profile=fs.mkdtempSync(path.join(os.tmpdir(),'hydro-live-browser-'));
  const process=spawn(global.process.env.HYDRO_TEST_CHROME||'/usr/bin/google-chrome',['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--remote-debugging-port=0','--remote-allow-origins=*','--proxy-server=direct://','--proxy-bypass-list=*',...(global.process.env.HYDRO_TEST_BLOCK_EXTERNAL==='0'?[]:['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1']),`--user-data-dir=${profile}`,'about:blank'],{stdio:'ignore'});
@@ -25,7 +36,7 @@ async function create(role,seedCookies){
  await waitFor(`document.readyState==='complete'&&!location.pathname.endsWith('/login')&&document.body.innerText.includes(${JSON.stringify(c.uname)})`,25000);
  }
  const cookies=(await send('Network.getCookies',{urls:[h.base+'/']})).cookies;
- const agent=request.agent();for(const cookie of cookies)agent.jar.setCookie(`${cookie.name}=${cookie.value}; Path=${cookie.path||'/'}; Domain=localhost`,'localhost',cookie.path||'/');
+ const agent=createSessionAgent(cookies);
  const screenshot=async filename=>{const r=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(filename,Buffer.from(r.data,'base64'))};
  let clickDocument=null;let clickUrl=null;
  const click=async selector=>{const rect=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing browser control');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();if(!document.documentElement.hasAttribute('data-browser-test-document'))document.documentElement.setAttribute('data-browser-test-document','doc-'+Math.random().toString(36).slice(2));return {x:r.x+r.width/2,y:r.y+r.height/2,documentId:document.documentElement.getAttribute('data-browser-test-document'),documentUrl:location.href}})()`);clickDocument=rect.documentId;clickUrl=rect.documentUrl;delete rect.documentId;delete rect.documentUrl;await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...rect});await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...rect});await delay(300);};
@@ -40,4 +51,4 @@ async function create(role,seedCookies){
  return {role,agent,targetId:target.id,navigate,evaluate,waitFor,send,screenshot,click,clickText,fill,typeEditor,confirmClick,popup,text,location,navigation,close,responses,exceptions};
  }catch(e){await close();throw e}
 }
-module.exports={create,delay};
+module.exports={create,delay,createSessionAgent};

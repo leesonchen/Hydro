@@ -12,7 +12,12 @@ if (argv.includes('--help')) {
   console.log('node doc/test/scripts/course-datetime-test.cjs --out doc/test/fixes/<run>/evidence/datetime --container hydro\nTests precise assessment times, started-test metadata, profile/browser timezone defaults and native contest settings in an isolated temporary domain.');
   process.exit(0);
 }
-const out = path.resolve(option('out', 'doc/test/fixes/2026-10-13-course-datetime/evidence/datetime'));
+const output = option('out');
+if (!output || output.startsWith('--')) {
+  console.error('Required: --out <new evidence directory>. Use an independent output directory for each run.');
+  process.exit(2);
+}
+const out = path.resolve(output);
 fs.mkdirSync(path.join(out, 'screenshots'), { recursive: true });
 const plan = [
   { id: 'DATE-01', title: '达标分数及监控编辑保留时间精度', expected: '浏览器修改分数/监控并保存，开始结束的秒和毫秒完全保留。' },
