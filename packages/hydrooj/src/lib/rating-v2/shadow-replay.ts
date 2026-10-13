@@ -231,7 +231,12 @@ export async function runShadowReplay(
             const binding = options.includeClassroomAssessments && !t.keepScoreboardHidden
                 && (!t.lockAt || t.unlocked) ? await resolveClassroomBinding(dbh, { ...t, docId: t.docId || t._id }) : null;
             if (!binding) { classroomExcluded++; continue; }
-            excludedClassroomTeachers = [binding.course.owner, ...(binding.course.maintainer || [])];
+            const groupNames = (binding.course.assign || []).filter((name: string) => name !== 'teachers' && !/^\\d+$/.test(name));
+            const groups = groupNames.length ? await dbh.collection('user.group').find({
+                domainId: t.domainId, name: { $in: groupNames },
+            }, { projection: { class: 1, teachers: 1 } }).toArray() : [];
+            excludedClassroomTeachers = [binding.course.owner, ...(binding.course.maintainer || []),
+                ...groups.flatMap((group) => group.class ? group.teachers || [] : [])];
         }
         contests.push({
             ...(excludedClassroomTeachers.length ? { excludedClassroomTeachers } : {}),
@@ -341,7 +346,7 @@ export async function runShadowReplay(
             if (!Number.isInteger(r.pid) || !(contest.pids || []).includes(r.pid)) return false;
             // Historic ordinary records may lack provenance; explicitly marked practice,
             // virtual or non-normal submissions must never affect timed trial rankings.
-            if (r.practiceContest || r.participationMode === 'practice'
+            if (r.practiceContest || (r.participationMode && r.participationMode !== 'official')
                 || (r.submissionKind && r.submissionKind !== 'normal')) return false;
             if (contest.sourceType === 'course_assessment'
                 && (!statusByUid.has(r.uid) || contest.excludedClassroomTeachers?.includes(r.uid))) return false;

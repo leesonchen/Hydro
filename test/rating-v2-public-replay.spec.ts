@@ -21,7 +21,7 @@ after(async () => {
     await server?.stop();
 });
 beforeEach(async () => {
-    for (const name of ['document', 'document.status', 'record', 'domain.user']) await db.collection(name).deleteMany({});
+    for (const name of ['document', 'document.status', 'record', 'domain.user', 'user.group']) await db.collection(name).deleteMany({});
 });
 
 let recordCounter = 1;
@@ -249,4 +249,23 @@ test('normal learning statuses contribute A but never invent a contest Rating', 
     assert.equal(learner.a, 1);
     assert.equal(learner.rating, null);
     assert.equal(learner.ratedEvents, 0);
+});
+
+test('class teachers cannot become trial participants even with a contest attendance row', async () => {
+    await addTrialClassroom();
+    await db.collection('user.group').insertOne({
+        domainId: 'd', name: 'group-one', class: true, teachers: [2], students: [1],
+    });
+    const { summary } = await replay({ domainId: 'd', includeClassroomAssessments: true });
+    assert.equal(summary.contests.processed, 0); // the remaining attendee is alone
+});
+
+test('rated contests retain normal legacy records but reject explicit virtual participation', async () => {
+    const contest = await addContest('d', beginAt, endAt);
+    await addRecord(contest, 'd', 1, beginAt.getTime() + 1000);
+    await addRecord(contest, 'd', 2, beginAt.getTime() + 2000, { participationMode: 'virtual' });
+    await addRecord(contest, 'd', 3, beginAt.getTime() + 3000, { participationMode: 'official' });
+    const { summary, docs } = await replay({ domainId: 'd' });
+    assert.equal(summary.contests.processed, 1);
+    assert.deepEqual(docs.filter((d) => d.kind === 'rating_state').map((d) => d.uid).sort(), [1, 3]);
 });
