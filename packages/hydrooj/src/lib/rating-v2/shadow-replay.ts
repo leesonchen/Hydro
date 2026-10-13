@@ -231,7 +231,7 @@ export async function runShadowReplay(
             const binding = options.includeClassroomAssessments && !t.keepScoreboardHidden
                 && (!t.lockAt || t.unlocked) ? await resolveClassroomBinding(dbh, { ...t, docId: t.docId || t._id }) : null;
             if (!binding) { classroomExcluded++; continue; }
-            const groupNames = (binding.course.assign || []).filter((name: string) => name !== 'teachers' && !/^\\d+$/.test(name));
+            const groupNames = (binding.course.assign || []).filter((name: string) => name !== 'teachers' && !/^\d+$/.test(name));
             const groups = groupNames.length ? await dbh.collection('user.group').find({
                 domainId: t.domainId, name: { $in: groupNames },
             }, { projection: { class: 1, teachers: 1 } }).toArray() : [];
