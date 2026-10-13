@@ -377,3 +377,42 @@ test('pre-upgrade complete-but-unpublished snapshots are cancelled without chang
     const retry = await runtime.queueRatingApply('d', 99);
     assert.notEqual(retry.runId, old._id);
 });
+
+test('a limited-domain V2 trial includes a valid unrated course assessment alongside rated contests', async () => {
+    await seedContest();
+    const now = Date.now();
+    const begin = new Date(now - 45 * 60000);
+    const end = new Date(now - 30 * 60000);
+    const courseTid = new ObjectId();
+    const examTid = new ObjectId();
+    await db.collection('document').insertMany([
+        { _id: courseTid, docId: courseTid, docType: 30, domainId: 'd', rule: 'course',
+            owner: 99, beginAt: begin, endAt: end, assign: [], dag: [{
+                _id: 1, kind: 'assessment', pids: [1],
+                assessment: { contestTid: examTid.toString(), rule: 'oi', beginAt: begin, endAt: end },
+            }] },
+        { _id: examTid, docId: examTid, docType: 30, domainId: 'd', rule: 'oi', rated: false,
+            sourceType: 'course_assessment', sourceCourseTid: courseTid, sourceNodeId: 1,
+            beginAt: begin, endAt: end, pids: [1], duration: 0, assign: [] },
+    ]);
+    await db.collection('document.status').insertMany([
+        { domainId: 'd', docType: 30, docId: examTid, uid: 2, attend: true },
+        { domainId: 'd', docType: 30, docId: examTid, uid: 3, attend: true },
+    ]);
+    await db.collection('record').insertMany([
+        { _id: recordId(begin.getTime() + 1000, 61), domainId: 'd', uid: 2, pid: 1,
+            contest: examTid, score: 100, status: 1 },
+        { _id: recordId(begin.getTime() + 2000, 62), domainId: 'd', uid: 3, pid: 1,
+            contest: examTid, score: 0, status: 2 },
+    ]);
+    await runtime.configureRating({ algorithm: 'v2_trial', domains: ['d'] }, 99);
+    const runId = (await runtime.queueRatingApply('d', 99)).runId;
+    await runtime.executeRatingJob(await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: runId }));
+    const rows = await db.collection(RATING_COLLECTIONS.users).find({ domainId: 'd', runId }).toArray();
+    assert.equal(rows.find((row) => row.uid === 2).ratedEvents, 2);
+    assert.equal(rows.find((row) => row.uid === 3).ratedEvents, 2);
+    const snapshot = await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: runId });
+    assert.equal(snapshot.diagnostics.contests.ratedProcessed, 1);
+    assert.equal(snapshot.diagnostics.contests.classroomProcessed, 1);
+    assert.equal(snapshot.parameters.includeClassroomAssessments, true);
+});

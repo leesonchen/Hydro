@@ -7,7 +7,7 @@
     <div class="section">
       <div class="section__body no-padding">
         <div data-fragment-id="ranking">
-          {% if ratingAlgorithm == 'v2_trial' %}<p class="note">评分：V2（试用）{% if ratingUpdatedAtText %}，最近更新：{{ ratingUpdatedAtText }}{% endif %}</p>{% endif %}
+          {% if ratingAlgorithm == 'v2_trial' %}<p class="note">评分：V2（限域试用，非认证竞赛能力）；比赛 Rating 含试用赛事与符合条件的课堂测试，普通做题计入成就 A。{% if ratingUpdatedAtText %}最近更新：{{ ratingUpdatedAtText }}{% endif %}</p>{% endif %}
           {% if not udocs.length %}
             {% if page == 1 %}
               <blockquote class="note">{{ _('The ranking page is not updated realtime.') }}</blockquote>

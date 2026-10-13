@@ -181,3 +181,72 @@ test('domain scope isolates same contest pid, emits A0 rating projections and cu
     assert.equal(docs.some((d) => d.kind === 'projection' && d.uid === 15), false);
     assert(docs.filter((d) => d.kind === 'observation').every((d) => d.uid !== 13));
 });
+
+async function addTrialClassroom(options: { hidden?: boolean; badBinding?: boolean } = {}) {
+    const courseTid = new ObjectId();
+    const examTid = await addContest('d', beginAt, endAt, {
+        rated: false, sourceType: 'course_assessment', sourceCourseTid: courseTid,
+        sourceNodeId: options.badBinding ? 99 : 1, keepScoreboardHidden: options.hidden || false,
+    });
+    await db.collection('document').insertOne({
+        _id: courseTid, docId: courseTid, docType: 30, domainId: 'd', rule: 'course', owner: 99,
+        beginAt, endAt, assign: ['group-one'], maintainer: [],
+        dag: [{ _id: 1, kind: 'assessment', pids: [1],
+            assessment: { contestTid: examTid.toString(), rule: 'oi', beginAt, endAt } }],
+    });
+    await db.collection('document.status').insertMany([
+        { domainId: 'd', docType: 30, docId: examTid, uid: 1, attend: true },
+        { domainId: 'd', docType: 30, docId: examTid, uid: 2, attend: 1 },
+    ]);
+    await addRecord(examTid, 'd', 1, beginAt.getTime() + 1000);
+    await addRecord(examTid, 'd', 2, beginAt.getTime() + 2000, { status: 2, score: 0 });
+    return examTid;
+}
+
+test('classroom tests require explicit trial opt-in and a real released course binding', async () => {
+    await addTrialClassroom();
+    const previous = await replay({ domainId: 'd' });
+    assert.equal(previous.summary.contests.total, 0);
+    const trial = await replay({ domainId: 'd', includeClassroomAssessments: true });
+    assert.equal(trial.summary.contests.processed, 1);
+    assert.equal(trial.summary.contests.classroomProcessed, 1);
+    assert.equal(trial.summary.contests.ratedProcessed, 0);
+    assert.deepEqual(trial.docs.filter((d) => d.kind === 'rating_state').map((d) => d.uid).sort(), [1, 2]);
+});
+
+test('trial classroom tags cannot bypass course binding and hidden-result restrictions', async () => {
+    await addTrialClassroom({ badBinding: true });
+    const invalid = await replay({ domainId: 'd', includeClassroomAssessments: true });
+    assert.equal(invalid.summary.contests.processed, 0);
+    assert.equal(invalid.summary.contests.classroomExcluded, 1);
+    await db.collection('document').deleteMany({});
+    await db.collection('record').deleteMany({});
+    await db.collection('document.status').deleteMany({});
+    await addTrialClassroom({ hidden: true });
+    const hidden = await replay({ domainId: 'd', includeClassroomAssessments: true });
+    assert.equal(hidden.summary.contests.processed, 0);
+    assert.equal(hidden.summary.contests.classroomExcluded, 1);
+});
+
+test('trial excludes marked practice records and unregistered classroom participants', async () => {
+    const examTid = await addTrialClassroom();
+    await db.collection('record').updateOne({ contest: examTid, uid: 2 },
+        { $set: { participationMode: 'practice' } });
+    await addRecord(examTid, 'd', 3, beginAt.getTime() + 3000);
+    const trial = await replay({ domainId: 'd', includeClassroomAssessments: true });
+    assert.equal(trial.summary.contests.processed, 0); // only one valid participant
+    assert.equal(trial.docs.filter((d) => d.kind === 'rating_state').length, 0);
+});
+
+test('normal learning statuses contribute A but never invent a contest Rating', async () => {
+    await addTrialClassroom();
+    await db.collection('document.status').insertOne({
+        domainId: 'd', docType: 10, uid: 4, docId: 42,
+        rid: oid(beginAt.getTime() + 3000), status: 1, score: 100,
+    });
+    const { docs } = await replay({ domainId: 'd', includeClassroomAssessments: true });
+    const learner = docs.find((d) => d.kind === 'projection' && d.uid === 4);
+    assert.equal(learner.a, 1);
+    assert.equal(learner.rating, null);
+    assert.equal(learner.ratedEvents, 0);
+});
