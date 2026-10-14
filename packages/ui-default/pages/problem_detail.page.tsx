@@ -346,6 +346,7 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
       if (!UiContext.monitoredExam) throw error;
       console.warn('Advanced editor failed; restoring independent basic editor.', error);
       monitoredDraft?.restore();
+      $('.problem-content-container').append($('.problem-content'));
       try {
         if (unmountReact) unmountReact();
       } catch (e) { console.warn('Editor cleanup failed.', e); }
@@ -373,14 +374,23 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
   }
 
   async function leaveScratchpadMode() {
-    if (progress) return;
+    if (progress || !extender.isExtended) return;
     progress = true;
-    monitoredDraft?.restore();
-    await scratchpadFadeOut();
-    $('.problem-content-container').append($('.problem-content'));
-    await extender.collapse();
-    unmountReact();
-    progress = false;
+    try {
+      monitoredDraft?.restore();
+      await scratchpadFadeOut();
+      $('.problem-content-container').append($('.problem-content'));
+      await extender.collapse();
+      unmountReact?.();
+      unmountReact = null;
+    } finally {
+      const basic = UiContext.monitoredExam ? document.getElementById('monitored-basic-editor') : null;
+      if (basic) {
+        basic.style.display = 'block';
+        basic.querySelector<HTMLTextAreaElement>('textarea[name="code"]')?.focus();
+      }
+      progress = false;
+    }
   }
 
   async function loadObjective() {

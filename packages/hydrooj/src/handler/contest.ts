@@ -507,7 +507,7 @@ export class ContestEditHandler extends Handler {
         hideInBanner = false,
         monitorMode: NonNullable<Tdoc['monitorMode']> = 'off',
     ) {
-        if (!['off', 'browser'].includes(monitorMode)) throw new ValidationError('monitorMode');
+        if (monitorMode !== 'off') throw new ValidationError('monitorMode');
         if (!Object.keys(contest.RULES).includes(rule) || contest.RULES[rule].hidden) throw new ValidationError('rule');
         if (autoHide) this.checkPerm(PERM.PERM_EDIT_PROBLEM);
         const allowTeamProvided = Object.hasOwn(this.request.body || {}, 'allowTeam');
@@ -522,17 +522,9 @@ export class ContestEditHandler extends Handler {
         const beginAt = beginAtMoment.toDate();
         const lockAt = lock ? moment(endAt).add(-lock, 'minutes').toDate() : null;
         if (lockAt && contestDuration) throw new ValidationError('lockAt', 'duration');
-        const selectedProblems = await problem.getList(
+        await problem.getList(
             domainId, pids, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN) || this.user._id, true,
         );
-        if (monitorMode === 'browser') {
-            const filePid = pids.find((pid) => selectedProblems[pid]?.config
-                && typeof selectedProblems[pid].config === 'object'
-                && selectedProblems[pid].config.type === 'submit_answer');
-            if (filePid !== undefined) {
-                throw new BadRequestError(`测试监控模式不支持文件提交题 P${filePid}。请调整测试题目或关闭监控模式。`);
-            }
-        }
         const update = {
             title, content, rule, beginAt, endAt, pids, rated, duration: contestDuration,
             assign, _code, autoHide, lockAt, maintainer, allowViewCode, allowPrint,

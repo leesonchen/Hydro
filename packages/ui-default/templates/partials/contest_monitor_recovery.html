@@ -4,18 +4,50 @@
   // Same authenticated student/domain/contest/attempt scope as the live monitor.
   var queueKey = 'hydro-monitor-queue:{{ handler.user._id }}/{{ tdoc.domainId }}/{{ tdoc.docId }}/{{ (tsdoc.startAt or tdoc.beginAt).getTime() }}';
   var endpoint = "{{ url('contest_monitor', tid=tdoc.docId) }}";
-  var pending;
-  try { pending = JSON.parse(sessionStorage.getItem(queueKey) || '[]'); } catch (e) { pending = []; }
-  if (!Array.isArray(pending) || !pending.length) return;
-  var inFlight = false, stopped = false, timer;
+  function load() {
+    var queue;
+    try { queue = JSON.parse(sessionStorage.getItem(queueKey) || '[]'); } catch (e) { queue = []; }
+    return Array.isArray(queue) ? queue : [];
+  }
+  var pending = load();
+  if (!pending.length) return;
+  var inFlight = false, stopped = false, finished = false, timer, generation = 0;
   function save() { try { sessionStorage.setItem(queueKey, JSON.stringify(pending)); } catch (e) { /* unavailable */ } }
-  function finish() { stopped = true; if (timer) clearInterval(timer); }
+  function pause() {
+    stopped = true;
+    generation++;
+    inFlight = false;
+    if (timer) clearInterval(timer);
+    timer = null;
+  }
+  function finish() {
+    pause();
+    finished = true;
+    window.removeEventListener('pagehide', pause);
+    window.removeEventListener('pageshow', resume);
+  }
+  function resume(event) {
+    if (!event.persisted || finished || !stopped) return;
+    // Another page may have drained this queue while this page was cached.
+    pending = load();
+    if (!pending.length) { finish(); return; }
+    stopped = false;
+    timer = setInterval(transmit, 5000);
+    transmit();
+  }
   function transmit() {
     if (inFlight || stopped || !pending.length) return;
     inFlight = true;
     var first = pending[0];
-    function failure(blocked) { inFlight = false; if (blocked) finish(); }
+    var requestGeneration = generation;
+    function active() { return !stopped && requestGeneration === generation; }
+    function failure(blocked) {
+      if (!active()) return;
+      inFlight = false;
+      if (blocked) finish();
+    }
     function acknowledge(data) {
+      if (!active()) return;
       if (!data || data.ok !== true) { failure(false); return; }
       pending = pending.filter(function (item) {
         return item.sessionId !== first.sessionId || item.pageInstanceId !== first.pageInstanceId || item.sequence !== first.sequence;
@@ -55,7 +87,8 @@
     } catch (e) { failure(false); }
   }
   timer = setInterval(transmit, 5000);
-  window.addEventListener('pagehide', finish);
+  window.addEventListener('pagehide', pause);
+  window.addEventListener('pageshow', resume);
   transmit();
 })();
 </script>

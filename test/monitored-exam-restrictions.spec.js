@@ -361,11 +361,107 @@ test('HTML editor is hidden only after a usable React editor reports ready', () 
     assert.match(editor, /hydro:monitored-editor-ready/);
     assert.match(editor, /this\.notifyEditorReady\(\)/);
 });
-test('contest and classroom-test settings prevent file-upload-only questions', () => {
+test('monitoring is limited to classroom tests and rejects file-upload-only questions', () => {
     const contest = source('packages/hydrooj/src/handler/contest.ts');
     const classroom = source('packages/hydrooj/src/builtin/course-management/model/assessment.ts');
-    assert.match(contest, /测试监控模式不支持文件提交题/);
+    assert.match(contest, /monitorMode !== 'off'/);
     assert.match(classroom, /课堂测试监控模式不支持文件提交题/);
+});
+
+function recoveryHarness(legacy = false) {
+    const script = source('packages/ui-default/templates/partials/contest_monitor_recovery.html')
+        .match(/<script>([\s\S]*?)<\/script>/)[1];
+    const event = (sequence) => ({ sessionId: 'session-123456', pageInstanceId: 'page-123456', sequence });
+    let queue = [event(1), event(2)];
+    let timerId = 0;
+    const timers = new Map();
+    const listeners = new Map();
+    const requests = [];
+    const window = {
+        addEventListener(name, fn) {
+            if (!listeners.has(name)) listeners.set(name, new Set());
+            listeners.get(name).add(fn);
+        },
+        removeEventListener(name, fn) { listeners.get(name)?.delete(fn); },
+    };
+    class XHR {
+        open() {} setRequestHeader() {}
+        send() { requests.push(this); }
+    }
+    vm.runInNewContext(script, {
+        window,
+        sessionStorage: { getItem: () => JSON.stringify(queue), setItem: (_key, value) => { queue = JSON.parse(value); } },
+        setInterval: (fn) => { timers.set(++timerId, fn); return timerId; },
+        clearInterval: (id) => timers.delete(id),
+        ...(legacy ? { XMLHttpRequest: XHR } : { fetch: () => new Promise((resolve, reject) => { requests.push({ resolve, reject }); }) }),
+    });
+    return {
+        requests, timers, queue: () => queue,
+        setQueue: (sequences) => { queue = sequences.map(event); },
+        fire(name, event = { persisted: true }) { for (const fn of listeners.get(name) || []) fn(event); },
+        async respond(index, status = 200) {
+            const request = requests[index];
+            if (legacy) {
+                Object.assign(request, { readyState: 4, status, responseText: JSON.stringify({ ok: true }) });
+                request.onreadystatechange();
+            } else {
+                request.resolve({ ok: status === 200, status, json: async () => ({ ok: true }) });
+            }
+            for (let i = 0; i < 4; i++) await Promise.resolve();
+        },
+    };
+}
+
+test('post-exam recovery resumes a pending offline queue after returning from the browser cache', async () => {
+    const h = recoveryHarness();
+    h.requests[0].reject(new Error('Offline'));
+    await new Promise(setImmediate);
+    h.fire('pagehide');
+    assert.equal(h.timers.size, 0);
+    h.fire('pageshow', { persisted: false });
+    assert.equal(h.requests.length, 1);
+    h.fire('pageshow');
+    assert.equal(h.timers.size, 1);
+    assert.equal(h.requests.length, 2);
+    h.fire('pageshow');
+    assert.equal(h.timers.size, 1);
+    assert.equal(h.requests.length, 2);
+    await h.respond(1);
+    await h.respond(2);
+    assert.deepEqual(h.queue(), []);
+    assert.equal(h.timers.size, 0);
+    h.fire('pageshow');
+    assert.equal(h.requests.length, 3);
+});
+
+test('recovery rereads shared storage and ignores acknowledgements from before pagehide', async () => {
+    for (const legacy of [false, true]) {
+        const h = recoveryHarness(legacy);
+        h.fire('pagehide');
+        h.setQueue([2, 3]);
+        h.fire('pageshow');
+        await h.respond(0);
+        assert.deepEqual(h.queue().map((event) => event.sequence), [2, 3]);
+        await h.respond(1);
+        assert.deepEqual(h.queue().map((event) => event.sequence), [3]);
+        await h.respond(2);
+        assert.deepEqual(h.queue(), []);
+        assert.equal(h.timers.size, 0);
+    }
+});
+
+test('recovery stays stopped after authorization expires or another page drains the queue', async () => {
+    const blocked = recoveryHarness();
+    await blocked.respond(0, 403);
+    blocked.fire('pageshow');
+    assert.equal(blocked.requests.length, 1);
+    assert.equal(blocked.timers.size, 0);
+    const drained = recoveryHarness();
+    drained.fire('pagehide');
+    drained.setQueue([]);
+    drained.fire('pageshow');
+    assert.equal(drained.requests.length, 1);
+    assert.equal(drained.timers.size, 0);
 });
 test('invigilators see readable Chinese names for newly blocked events', () => {
     const monitor = source('packages/ui-default/templates/contest_monitor.html');

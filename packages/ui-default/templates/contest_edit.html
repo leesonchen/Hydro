@@ -142,9 +142,9 @@
                 columns:4,
                 label:'Contest Monitoring Mode',
                 name:'monitorMode',
-                options:{'off':'Off', 'browser':'Browser tab-switch warnings and logging'},
-                value:tdoc.monitorMode|default('off'),
-                help_text:_('Browser monitoring warns and logs tab switches but cannot prevent switching devices.'),
+                options:{'off':'Off'},
+                value:'off',
+                help_text:'考试监控功能目前仅在课堂测试中试用，比赛暂不开放。' + ('保存后将关闭本场比赛已有的监控。' if tdoc.monitorMode == 'browser' else ''),
                 row:false
               }) }}
               {{ form.form_text({
