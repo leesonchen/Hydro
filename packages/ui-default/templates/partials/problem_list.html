@@ -17,6 +17,9 @@
       <col class="col--name">
       <col class="col--ac-tried">
       <col class="col--difficulty">
+    {% if showV2Difficulty %}
+      <col class="col--difficulty-v2">
+    {% endif %}
     </colgroup>
     <thead>
       <tr>
@@ -35,6 +38,7 @@
         </th>
         <th class="col--ac-tried">{{ _('AC') }} / {{ _('Tried') }}</th>
         <th class="col--difficulty">{{ _('Difficulty') }}</th>
+        {% if showV2Difficulty %}<th class="col--difficulty-v2">V2 D</th>{% endif %}
       </tr>
     </thead>
     <tbody>
@@ -59,6 +63,9 @@
         </td>
         <td class="col--ac-tried">{{ pdoc.nAccept }} / {{ pdoc.nSubmit }}</td>
         <td class="col--difficulty">{{ pdoc['difficulty'] or lib.difficulty(pdoc.nSubmit, pdoc.nAccept) or _('(None)') }}</td>
+        {% if showV2Difficulty %}
+          <td class="col--difficulty-v2">{% include "partials/problem_v2_difficulty.html" %}</td>
+        {% endif %}
       </tr>
     {%- endfor -%}
     </tbody>

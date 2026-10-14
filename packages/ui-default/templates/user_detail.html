@@ -33,7 +33,7 @@
               {% endif %}
               </p>
               {% if udoc.ratingAlgorithm == 'v2_trial' %}
-                <p>{{ _('Solved {0} problems').format(udoc.nAccept|default(0)) }}, RP: {{ udoc.rp|default(0)|round(2) }}, 试用 Rating：{% if udoc.rating is not none %}{{ udoc.rating }}{% else %}未评级{% endif %}（{{ udoc.ratedEvents|default(0) }} 场{% if udoc.ratedEvents|default(0) < ratingProvisionalEvents|default(5) %}，暂定{% endif %}），成就 A：{{ udoc.ratingAchievement|default('—') }}，分项 P / C：{{ (udoc.rpInfo|default({})).problem|default('—') }} / {{ (udoc.rpInfo|default({})).contest|default('—') }}，{{ udoc.ratingTierName|default(udoc.ratingTier|default('')) }}</p>
+                <p>通过数：{{ udoc.nAccept|default(0) }}，题目提交：{{ udoc.nSubmit|default(0) }}，综合分：{{ udoc.rp|default(0)|round(2) }}，等级分：{% if udoc.rating is not none %}{{ udoc.rating }}{% else %}未评级{% endif %}，测评场次：{{ udoc.ratedEvents|default(0) }}，成长值：{{ (udoc.rpInfo|default({})).problem|default('—') }}，{{ udoc.ratingTierName|default(udoc.ratingTier|default('')) }}</p>
               {% else %}
                 <p>{{ _('Solved {0} problems, RP: {1} (No. {2})').format(udoc.nAccept|default(0), udoc['rp']|default(0.0)|round(2), udoc['rank']|default('?')) }}</p>
               {% endif %}

@@ -170,26 +170,27 @@ function fakeAdmin(state) {
     return browser;
 }
 
-test('public ranking renders V2 capability, provisional status, achievement and P/C fields', () => {
+test('public ranking renders the simplified V2 score columns', () => {
     const html = environment().render('ranking.html', {
         ratingAlgorithm: 'v2_trial', ratingUpdatedAtText: '2026-10-12 16:30', ratingProvisionalEvents: 5, page: 1, upcount: 1,
-        udocs: [{ _id: 7, uname: 'alice', rp: 1512.345, rating: null, ratedEvents: 2,
+        udocs: [{ _id: 7, uname: 'alice', rp: 1512.345, rating: null, ratedEvents: 2, nSubmit: 18, nAccept: 12,
             ratingAchievement: 81, rpInfo: { problem: 1500.12, contest: 1200.5 }, rank: 1,
             ratingTier: 'TIER_2', ratingTierName: '二级' }],
         model: { rp: {}, system: { get: () => 20 } },
         handler: { user: { hasPriv: () => false } },
     });
-    assert.match(html, /V2（限域试用，非认证竞赛能力）/);
-    assert.match(html, /最近更新：2026-10-12 16:30/);
-    assert.match(html, /试用 Rating/);
-    assert.match(html, /比赛\/测评场次/);
+    assert.doesNotMatch(html, /限域试用|最近更新|试用 Rating/);
+    assert.match(html, /综合分/);
+    assert.match(html, /等级分/);
+    assert.match(html, /测评场次/);
+    assert.match(html, /成长值/);
+    assert.match(html, /题目提交/);
+    assert.match(html, /通过数/);
     assert.match(html, /未评级/);
-    assert.match(html, /暂定/);
     assert.match(html, /1500\.12/);
-    assert.match(html, /1200\.5/);
-    assert.match(html, /题目分 P/);
-    assert.match(html, /比赛分 C/);
-    assert.doesNotMatch(html, /已评分事件|分项 P \/ C|<th>排名<\/th>|<th>等级<\/th>/);
+    assert.match(html, /18/);
+    assert.match(html, /12/);
+    assert.doesNotMatch(html, /成就 A|题目分 P|比赛分 C|分项 P \/ C/);
     assert.match(html, /1512\.35/);
     assert.doesNotMatch(html, /rp-problem/);
 });
@@ -209,4 +210,30 @@ test('V2 inline user badge uses tier without legacy level class or badge', () =>
     });
     assert.match(html, /二级/);
     assert.doesNotMatch(html, /uname--lv|badge--lv/);
+});
+
+test('V2 difficulty shows only qualified estimates and explains unavailable values', () => {
+    const env = environment();
+    const render = (fit) => env.render('partials/problem_v2_difficulty.html', { pdoc: { ratingV2Difficulty: fit } });
+    const fit = { d: 1680.5, se: 42, students: 24, pos: 8, neg: 16, status: 'ok', provisionalLike: true };
+    assert.match(render(fit), /1681/);
+    assert.match(render(fit), /样本 24，通过 8 \/ 未通过 16，SE 42/);
+    for (const [status, reason] of [['degenerate', '数据退化'], ['nonconverged', '拟合未收敛']]) {
+        const html = render({ ...fit, d: 1500, status, se: null });
+        assert.match(html, new RegExp(`暂无（${reason}）`));
+        assert.doesNotMatch(html, /1500/);
+    }
+    assert.match(render({ ...fit, provisionalLike: false }), /暂无（样本不足或误差过大）/);
+    assert.match(render(null), /暂无（无拟合数据）/);
+});
+
+test('V2 ranking headers and every user row have the same nine columns', () => {
+    const html = environment().render('ranking.html', {
+        ratingAlgorithm: 'v2_trial', page: 1, upcount: 1,
+        udocs: [{ _id: 7, uname: 'alice', rp: 50, rating: 1500, nAccept: 2, nSubmit: 4 }],
+        model: { rp: {}, system: { get: () => 20 } },
+        handler: { user: { hasPriv: () => true, rp: 0, rating: null } },
+    });
+    const rows = [...html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((row) => (row[1].match(/<t[hd][\s>]/g) || []).length);
+    assert.deepEqual(rows, [9, 9, 9]);
 });

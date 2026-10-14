@@ -130,6 +130,9 @@
             <a class="problem__tag-item interactive" href="{{ url('record_main', query={pid:pdoc.docId}) }}">{{ _('Tried') }}: {{ pdoc.nSubmit }}</a>
             <a class="problem__tag-item interactive" href="{{ url('record_main', query={pid:pdoc.docId, status:1}) }}">{{ _('Accepted') }}: {{ pdoc.nAccept if ((not tdoc) or showAccept) else '?' }}</a>
             <span class="problem__tag-item">{{ _('Difficulty') }}: {{ pdoc['difficulty'] or lib.difficulty(pdoc.nSubmit, pdoc.nAccept) or _('(None)') }}</span>
+            {% if showV2Difficulty %}
+              <span class="problem__tag-item">V2 D: {% include "partials/problem_v2_difficulty.html" %}</span>
+            {% endif %}
             <span class="problem__tag-item interactive">{{ _('Last updated: {0} at {1}').format(user.render_inline(editor_udoc, badge=false), datetimeSpan(lastUpdateAt, false, 'YYYY-MM-DD HH:mm'))|safe }}</span>
           {% endif %}
           {% if pdoc.tag.length %}

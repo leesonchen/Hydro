@@ -1,0 +1,15 @@
+{% set fit = pdoc.ratingV2Difficulty %}
+{% if fit and fit.status == 'ok' and fit.provisionalLike %}
+  {{ fit.d|round }}
+{% elif fit and fit.status == 'degenerate' %}
+  暂无（数据退化）
+{% elif fit and fit.status == 'nonconverged' %}
+  暂无（拟合未收敛）
+{% elif fit %}
+  暂无（样本不足或误差过大）
+{% else %}
+  暂无（无拟合数据）
+{% endif %}
+{% if fit %}
+  <small>样本 {{ fit.students }}，通过 {{ fit.pos }} / 未通过 {{ fit.neg }}，SE {{ fit.se|round if fit.se is not none else '—' }}</small>
+{% endif %}

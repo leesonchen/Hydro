@@ -11,6 +11,10 @@
     <dd>{{ pdoc.config.memoryMax if pdoc.config.memoryMax == pdoc.config.memoryMin else pdoc.config.memoryMin+'~'+pdoc.config.memoryMax }}MiB</dd>
     <dt>{{ _('Difficulty') }}</dt>
     <dd>{{ pdoc['difficulty'] or lib.difficulty(pdoc.nSubmit, pdoc.nAccept) or _('(None)') }}</dd>
+    {% if showV2Difficulty %}
+      <dt>V2 D</dt>
+      <dd>{% include "partials/problem_v2_difficulty.html" %}</dd>
+    {% endif %}
     <dt>{{ _('Tags') }}</dt>
     <dd>
       {{ problem.render_problem_tags(pdoc, true) }}

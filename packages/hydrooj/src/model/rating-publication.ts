@@ -110,7 +110,17 @@ async function buildV2(job: RatingJob, report: (data: any) => void) {
             achievement: projection?.a || 0, tier: projection?.tier || null,
             tierName: TIERS.find((tier) => tier.id === projection?.tier)?.name || null };
     });
-    return { rows: rankRatingRows(rows), summary, parameters: options };
+    const problemDifficulties = docs.filter((doc) => doc.kind === 'difficulty').map((doc) => ({
+        pid: doc.pid,
+        d: doc.d,
+        se: doc.se,
+        students: doc.students,
+        pos: doc.pos,
+        neg: doc.neg,
+        status: doc.status,
+        provisionalLike: !!doc.provisionalLike,
+    }));
+    return { rows: rankRatingRows(rows), summary, parameters: options, problemDifficulties };
 }
 
 /** Both manual and daily work use the same fenced snapshot publisher. */
@@ -143,6 +153,9 @@ export async function executeRatingJob(job: RatingJob, report: (data: any) => vo
         }
         const result = job.algorithm === 'legacy' ? legacy : await buildV2(job, report);
         if (heartbeatError) throw heartbeatError;
+        if (job.algorithm === 'v2_trial' && 'problemDifficulties' in result) {
+            await ratingStore.writeProblemDifficulties(job, result.problemDifficulties);
+        }
         await ratingStore.writeRows(job, result.rows, result.summary, {
             parameters: result.parameters || {}, modelVersion: job.algorithm === 'v2_trial' ? 'hydro-local-cf-v1/rp-policy-v2' : 'legacy-rp',
             ...(legacyRunId ? { legacyRunId } : {}),
@@ -172,6 +185,14 @@ export async function executeRatingJob(job: RatingJob, report: (data: any) => vo
 export async function refreshRating(domainId: string, report: (data: any) => void = () => {}) {
     const job = await ratingStore.begin(domainId, false);
     return executeRatingJob(job, report);
+}
+
+export async function getV2ProblemDifficulties(domainId: string, pids: (number | string)[]) {
+    const active = await ratingStore.active(domainId);
+    return {
+        active: active?.algorithm === 'v2_trial',
+        rows: await ratingStore.problemDifficulties(domainId, pids, active),
+    };
 }
 
 export async function ratingDashboard() {

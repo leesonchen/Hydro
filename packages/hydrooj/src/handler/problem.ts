@@ -36,6 +36,7 @@ import feedback from '../model/feedback';
 import * as oplog from '../model/oplog';
 import problem from '../model/problem';
 import record from '../model/record';
+import { getV2ProblemDifficulties } from '../model/rating-publication';
 import * as setting from '../model/setting';
 import solution from '../model/solution';
 import storage from '../model/storage';
@@ -315,6 +316,13 @@ export class ProblemMainHandler extends Handler {
             ppcount = Math.ceil(total / limit);
         }
         if (sort.length) pdocs = pdocs.sort((a, b) => sort.indexOf(`${a.domainId}/${a.docId}`) - sort.indexOf(`${b.domainId}/${b.docId}`));
+        let showV2Difficulty = false;
+        if (this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) && domainId !== 'system') {
+            const { active, rows: difficulties } = await getV2ProblemDifficulties(domainId, pdocs.map((pdoc) => pdoc.docId));
+            showV2Difficulty = active;
+            const byPid = new Map(difficulties.map((difficulty) => [difficulty.pid, difficulty]));
+            pdocs = pdocs.map((pdoc) => ({ ...pdoc, ratingV2Difficulty: byPid.get(pdoc.docId) || null }));
+        }
         if (text && pcount > pdocs.length) pcount = pdocs.length;
         if (this.user.hasPriv(PRIV.PRIV_USER_PROFILE)) {
             Object.assign(psdict, await problem.getVisibleListStatus(
@@ -329,6 +337,7 @@ export class ProblemMainHandler extends Handler {
                 fragments: (await Promise.all([
                     this.renderHTML('partials/problem_list.html', {
                         page, ppcount, pcount, pdocs, psdict, qs: q, scope, globalSearch: isGlobalSearch, sort: sortStrategy,
+                        showV2Difficulty,
                     }),
                     this.renderHTML('partials/problem_stat.html', { pcount, pcountRelation: this.queryContext.pcountRelation }),
                     this.renderHTML('partials/problem_lucky.html', { qs: q }),
@@ -347,6 +356,7 @@ export class ProblemMainHandler extends Handler {
                 globalSearch: isGlobalSearch,
                 canGlobalSearch,
                 sort: sortStrategy,
+                showV2Difficulty,
             };
         }
     }
@@ -499,6 +509,12 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
         } else if (!problem.canViewBy(this.pdoc, this.user)) {
             throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
         }
+        let showV2Difficulty = false;
+        if (this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
+            const { active, rows: [difficulty] } = await getV2ProblemDifficulties(domainId, [this.pdoc.docId]);
+            showV2Difficulty = active;
+            this.pdoc = { ...this.pdoc, ratingV2Difficulty: difficulty || null };
+        }
         this.problemFilePdoc = this.pdoc;
         this.problemFileDomainId = this.pdoc.domainId;
         this.problemFileUser = this.user;
@@ -574,6 +590,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
                     : !this.tsdoc?.attend ? 'view'
                         : !contest.isDone(this.tdoc) ? 'contest'
                             : problem.canViewBy(this.pdoc, this.user) ? 'correction' : 'none',
+            showV2Difficulty,
         };
         if (this.tdoc && this.tsdoc) {
             const fields = ['attend', 'startAt', 'endAt'];
