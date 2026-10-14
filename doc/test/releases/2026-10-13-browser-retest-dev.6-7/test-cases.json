@@ -1,0 +1,287 @@
+[
+  {
+    "id": "AUTH-01",
+    "area": "登录回归",
+    "title": "管理员浏览器登录",
+    "role": "admin",
+    "steps": "填写本地管理员凭据并提交登录表单",
+    "expected": "进入登录后的页面，显示管理员身份"
+  },
+  {
+    "id": "AUTH-02",
+    "area": "登录回归",
+    "title": "学生浏览器登录",
+    "role": "student",
+    "steps": "填写本地学生凭据并提交登录表单",
+    "expected": "进入登录后的页面，显示学生身份"
+  },
+  {
+    "id": "CON-01",
+    "area": "比赛设置",
+    "title": "分组设置与开启保存",
+    "role": "admin",
+    "steps": "打开临时比赛编辑页，检查四组设置，开启可用布尔开关并保存，再打开编辑页",
+    "expected": "所有可用开关保存并正确回显，比赛规则和时间保留"
+  },
+  {
+    "id": "CON-02",
+    "area": "比赛设置",
+    "title": "关闭设置与 banner 可见性",
+    "role": "admin",
+    "steps": "关闭可用开关保存，验证回显，再检查开启 hideInBanner 后比赛列表",
+    "expected": "可编辑开关关闭状态持久化；已开启的团队模式保持只读；隐藏 banner 不移除列表条目"
+  },
+  {
+    "id": "CON-03",
+    "area": "比赛权限",
+    "title": "学生不能编辑比赛",
+    "role": "student",
+    "steps": "在地址栏访问临时比赛编辑页",
+    "expected": "403 权限页面，不显示编辑表单"
+  },
+  {
+    "id": "COUR-02",
+    "area": "课程参与",
+    "title": "学生认领与初始门禁",
+    "role": "student",
+    "steps": "打开课程，点击认领，查看课程章节及后续题目的直接链接",
+    "expected": "第一章和测评可见，依赖测评的第二章不可访问"
+  },
+  {
+    "id": "COUR-06",
+    "area": "课程权限",
+    "title": "学生不能管理或编辑课程",
+    "role": "student",
+    "steps": "分别直接访问课程 manage 和 edit 路由",
+    "expected": "两个页面均显示403，不提供管理或编辑控件"
+  },
+  {
+    "id": "PR-01",
+    "area": "管理员评分试用",
+    "title": "默认关闭",
+    "role": "admin",
+    "steps": "尚未启用时访问课程 practice-rating 页面",
+    "expected": "403且课程无试用入口"
+  },
+  {
+    "id": "PR-02",
+    "area": "管理员评分试用",
+    "title": "临时域启用后的只读与样本不足",
+    "role": "admin",
+    "steps": "通过夹具仅启用临时域 adminTrial，点击课程侧栏试用入口，选择学生和题目后查看",
+    "expected": "管理员只读页面显示样本不足及无配对概率，明示模型范围，没有编辑分数功能"
+  },
+  {
+    "id": "PR-03",
+    "area": "管理员评分试用权限",
+    "title": "学生及越界参数拒绝",
+    "role": "student/admin",
+    "steps": "学生直接访问试用页面；管理员输入不在课程名单的UID或PID访问",
+    "expected": "均显示403，不展示其他人的评分数据"
+  },
+  {
+    "id": "ASM-01",
+    "area": "课堂测评",
+    "title": "父课程准入与独立测评",
+    "role": "student/admin",
+    "steps": "未认领课程前访问子测评；认领后从课程进入子测评并报名",
+    "expected": "未认领拒绝；认领后可报名；试卷单独存在且默认不计Rating"
+  },
+  {
+    "id": "ASM-02",
+    "area": "课堂测评",
+    "title": "正常进入题目列表开始作答",
+    "role": "student",
+    "steps": "等待临时测评开赛，点击题目列表后打开私有题目",
+    "expected": "正常记录开始时间，隐藏题目可见，测评监控脚本启动"
+  },
+  {
+    "id": "MON-01",
+    "area": "浏览器监考",
+    "title": "真实失焦与粘贴事件上报",
+    "role": "student/admin",
+    "steps": "在学生测评页面触发浏览器焦点切换和粘贴动作，教师刷新监考记录",
+    "expected": "教师页面出现对应浏览器事件和会话，明示不能单独作为作弊结论"
+  },
+  {
+    "id": "MON-02",
+    "area": "浏览器监考权限",
+    "title": "学生无权查看监考记录",
+    "role": "student",
+    "steps": "直接访问测评monitor页面",
+    "expected": "403，不展示他人事件或会话"
+  },
+  {
+    "id": "ASM-03",
+    "area": "课堂测评",
+    "title": "真实判题与测评期间成绩隐藏",
+    "role": "student/admin",
+    "steps": "学生在客观题的输入控件作答并点击提交，教师从记录列表查看Accepted，学生查看记录与课程",
+    "expected": "教师看到100分Accepted；学生看不到结束前成绩，后续章节仍锁定"
+  },
+  {
+    "id": "ASM-04",
+    "area": "课堂测评",
+    "title": "结束后成绩与后续章节自动解锁",
+    "role": "student",
+    "steps": "测评结束后刷新课程，点击后续章题目",
+    "expected": "显示100分成绩，后续章节出现并可访问"
+  },
+  {
+    "id": "ASM-05",
+    "area": "课堂测评保护",
+    "title": "直接编辑子测评与删除已开赛课程拒绝",
+    "role": "admin",
+    "steps": "访问子测评编辑页；通过课程编辑页面点击删除并确认",
+    "expected": "均被拒绝，父课程与子测评仍存在"
+  },
+  {
+    "id": "CERT-01",
+    "area": "Rating认证",
+    "title": "题目版本冻结与释放门槛",
+    "role": "admin",
+    "steps": "使用实际认证CLI认证未来比赛并尝试提前释放；浏览器查看其公开比赛界面",
+    "expected": "CLI冻结版本且拒绝提前释放；公开榜单/普通rated开关不被认证策略替代",
+    "evidenceType": "supplemental-cli"
+  },
+  {
+    "id": "CERT-02",
+    "area": "课堂Rating认证",
+    "title": "教师不得进入学生认证名单",
+    "role": "admin",
+    "steps": "认证CLI提交含教师的临时课堂名单；浏览器再次查看课程",
+    "expected": "认证拒绝classroomParticipant，课程和测评正常且未生成错误政策",
+    "evidenceType": "supplemental-cli"
+  },
+  {
+    "id": "DATE-01",
+    "title": "日期字段编辑保留秒与毫秒",
+    "steps": "管理员编辑课堂测评分数/监控后保存",
+    "expected": "开始与结束时间精度完全保留",
+    "role": "admin"
+  },
+  {
+    "id": "DATE-02",
+    "title": "单独修改结束时间",
+    "steps": "管理员仅修改结束时间并确认",
+    "expected": "开始时间不变，结束时间更新",
+    "role": "admin"
+  },
+  {
+    "id": "DATE-03",
+    "title": "已开始测评允许编辑设置",
+    "steps": "开始课堂测评后修改分数/监控",
+    "expected": "仅允许设置变化，子测评时间不变",
+    "role": "admin"
+  },
+  {
+    "id": "DATE-04",
+    "title": "不同时区的默认测评时间",
+    "steps": "切换时区观察新建默认时间",
+    "expected": "UTC 时间匹配各时区预期",
+    "role": "admin"
+  },
+  {
+    "id": "CSET-01",
+    "title": "原生比赛设置切换赛制及保存",
+    "steps": "OI/ACM 赛制切换并保存设置",
+    "expected": "设置回显正确",
+    "role": "admin"
+  },
+  {
+    "id": "PUB-01",
+    "title": "管理员评分发布管理页面",
+    "steps": "登录并通过二次验证打开管理页",
+    "expected": "显示目标配置、手工应用说明",
+    "role": "admin/student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "PUB-02",
+    "title": "评分管理学生权限",
+    "steps": "学生直接访问管理页面",
+    "expected": "HTTP 403且无管理表单",
+    "role": "student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "PUB-03",
+    "title": "保存目标配置与自动应用边界",
+    "steps": "浏览器保存仅临时域 V2 目标配置，刷新",
+    "expected": "保存回显且公开算法仍旧版",
+    "role": "admin/student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "PUB-04",
+    "title": "手工应用 V2 评分",
+    "steps": "仅临时域点击重算并应用，刷新等待",
+    "expected": "任务完成、公开算法 V2、分类统计出现",
+    "role": "admin/student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "PUB-05",
+    "title": "恢复上一批次评分",
+    "steps": "临时域点击恢复上一次评分",
+    "expected": "公开算法恢复旧版",
+    "role": "admin/student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "PUB-06",
+    "title": "非法目标域拒绝保存",
+    "steps": "提交不存在的临时域 ID",
+    "expected": "可见验证错误且配置未改变",
+    "role": "admin/student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "RANK-01",
+    "title": "V2 榜单与当前用户显示",
+    "steps": "学生打开临时域榜单",
+    "expected": "V2 说明、评分分项、暂定场次显示",
+    "role": "student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "RANK-02",
+    "title": "V2 用户详情与段位显示",
+    "steps": "学生打开临时域个人详情",
+    "expected": "试用 Rating、场次、成就和评分分项显示",
+    "role": "student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "RANK-03",
+    "title": "成员退出后的排名连续性",
+    "steps": "临时域准备评分快照与成员退出，浏览器刷新",
+    "expected": "榜单移除退出用户并重新计算可见排名",
+    "role": "student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "TIME-05",
+    "title": "原生比赛修改时间与历史",
+    "steps": "浏览器修改结束时间确认保存，展开历史",
+    "expected": "前后时间和修改记录持久显示",
+    "role": "admin/student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "RECALC-01",
+    "title": "重算失败提示与学生成绩暂不确认",
+    "steps": "临时夹具标记重算失败，师生打开页面",
+    "expected": "教师见重试入口，学生见待确认提示",
+    "role": "admin/student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  },
+  {
+    "id": "RECALC-02",
+    "title": "教师浏览器重试成绩重算",
+    "steps": "教师点击重试成绩重算并刷新",
+    "expected": "失败状态消失且重算完成",
+    "role": "admin/student",
+    "setup": "独立临时域；测试账号来自 testuser.txt"
+  }
+]

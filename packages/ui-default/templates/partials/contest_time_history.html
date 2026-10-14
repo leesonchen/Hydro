@@ -1,7 +1,7 @@
 {% if timeChangeHistory|length %}
 <details class="contest-time-history" style="margin-top: 1em;">
   <summary>时间修改记录：{{ timeHistoryTitle }}（{{ timeChangeHistory|length }}）</summary>
-  <p class="help-text">这些变更可能影响成绩、罚时和提交有效性。启用积分认证的比赛还需核对认证和结算结果。</p>
+  <p class="help-text" style="margin-top: 0;">这些变更可能影响成绩、罚时和提交有效性。启用积分认证的比赛还需核对认证和结算结果。</p>
   <div style="overflow-x: auto;">
     <table class="data-table">
       <thead><tr><th>操作时间 / 操作者</th><th>修改前</th><th>修改后</th><th>修改时状态</th></tr></thead>

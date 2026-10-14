@@ -1,72 +1,63 @@
-# Hydro 发布与浏览器系统测试
+# Hydro 测试与发布交接
 
-## 日期与比赛设置修复
+本目录保存可复用测试工具、用例计划、缺陷分析、精简发布记录和少量关键图片。根 [test/](../../test/README.md) 保存自动化回归源码。所有历史版本和结果均指当次执行，不能视为当前环境状态。
 
-本轮测试时，hydro部署为后端`5.0.7-dev.2` / UI `4.58.5-dev.5`。24项相关代码/构建测试和18项浏览器回归全部通过；此处记录的是该轮测试的版本快照。
+## 长期保留与本地产物
 
-- [修复与浏览器报告](fixes/2026-10-13-course-datetime/system-test-report.md)
-- [Release note](fixes/2026-10-13-course-datetime/release-notes.md)
-- [18项逐项结果](fixes/2026-10-13-course-datetime/evidence/browser-results.json)
-
-
-## UI dev.4 课程模板状态修复记录
-
-前一轮修复使用 `hydrooj 5.0.7-dev.2` / UI `4.58.5-dev.4`。后续修复普通课程误判模板的问题，原 dev.2 发布测试结果保留为历史证据。
-
-- [修复与浏览器回归报告](fixes/2026-10-12-course-template/system-test-report.md)
-- [修复版 Release note](fixes/2026-10-12-course-template/release-notes.md)
-- [针对性用例计划](fixes/2026-10-12-course-template/test-cases.json)
-
-
-## 原 dev.2 发布测试
-
-目标容器为 `hydro`，地址为 `http://localhost:8082`，现有 `exam` 域采用只读检查；写入用例使用独立临时域。
-
-| 包 | 升级前实际安装 | 本次实际安装 |
+| 位置 | 用途 | Git |
 | --- | --- | --- |
-| hydrooj | 5.0.7-dev.1 | 5.0.7-dev.2 |
-| @hydrooj/ui-default | 4.58.4-dev.41 | 4.58.5-dev.2 |
+| 根 `test/` | 回归源码、集成入口和复现脚本 | 提交 |
+| `scripts/`、`skills/` | 复用驱动、报告工具与 skill 源码 | 提交 |
+| `fixes/`、`releases/` 中的文档、用例和场景脚本 | 版本、根因、复现、验证范围与后续处理 | 提交 |
+| `assets/history-layout/` | 桌面修复前后、窄屏修复后三张代表图 | 提交 |
+| `.local/`、各批次 `evidence/` | 完整矩阵、批量截图、运行 JSON、环境快照、日志、重试与一次性工具 | 仅本地，已忽略 |
+| 根 `test-reports/`、`test-results/`、`playwright-report/` 等 | 工具生成报告 | 仅本地，已忽略 |
+| 根 `testuser.txt`、`test/testuser.txt` | 真实测试账号 | 仅本地，已忽略 |
 
-- [Release note](releases/2026-10-12-dev.2/release-notes.md)
-- [系统测试报告](releases/2026-10-12-dev.2/system-test-report.md)
-- [53 项系统用例](releases/2026-10-12-dev.2/test-cases.json)
-- [最终逐项结果及重测来源](releases/2026-10-12-dev.2/evidence/browser-results.json)
-- [课程普通编辑的遗留缺陷](releases/2026-10-12-dev.2/defects.md)
-- [全部临时域清理核验](releases/2026-10-12-dev.2/evidence/final-cleanup-verification.json)
+完整运行产物先写入 `.local/<批次>/`，整理后只提交能说明问题和支撑交接的简明结论。新增图片应有具体解释价值，避免每个成功用例都提交截图。需要跨成员共享完整证据时，使用团队共享存储或 CI 产物，并约定有效期；本次未上传任何文件。
 
-最终共 53 项：51 通过、1 失败、1 因账号能力阻塞。浏览器用例为 51 项，其中 49 通过；另有 2 项通过的认证 CLI 补充检查。初次驱动与夹具校准不计入最终统计，其观察与重测证据保留在 `evidence/attempts/`。
+本次整理保留了原始内容：`.local/` 保持原批次路径，原完整报告在 `.local/full-reports/`；迁移清单也存放在 `.local/`。这些是本机归档，团队阅读仓库报告无需取得归档文件。精简报告不能重新生成原始逐项证据，重新验证应按用例计划运行。
 
-失败项是普通课程编辑返回 400 的遗留问题；两个发布包均存在相同触发逻辑。本轮保持被测发布版本不变，未修改产品代码。阻塞项是普通消息的空输入发送测试，给定的两名测试用户均没有普通全站发信权限；内容反馈及其独立回复权限已通过浏览器验证，授权的测试消息已清理。
+## 交接索引
 
-## 后续复用
+| 批次 | 历史版本 Hydro / UI | 结果与入口 |
+| --- | --- | --- |
+| 初次发布 | dev.2 / dev.2 | [53 项：51 通过、1 失败、1 阻塞](releases/2026-10-12-dev.2/system-test-report.md)；[普通课程模板误判](releases/2026-10-12-dev.2/defects.md) |
+| 课程模板修复 | dev.2 / dev.4 | [13 项浏览器回归通过](fixes/2026-10-12-course-template/system-test-report.md) |
+| 日期与比赛设置修复 | dev.2 / dev.5 | [24 项代码/构建检查、18 项浏览器回归通过](fixes/2026-10-13-course-datetime/system-test-report.md) |
+| 后续发布 | dev.6 / dev.7 | [12 项通过](releases/2026-10-13-dev.6-7/system-test-report.md) |
+| 扩大浏览器复测 | dev.6 / dev.7 | [36 项：35 通过、1 失败](releases/2026-10-13-browser-retest-dev.6-7/system-test-report.md)；[排队与布局缺陷](releases/2026-10-13-browser-retest-dev.6-7/defects.md) |
+| 队列与布局修复发布 | dev.7 / dev.8 | [30 项通过及部署清理结论](releases/2026-10-13-rating-queue-fix/system-test-report.md)；[根因、复现与关键对照图](fixes/2026-10-13-rating-queue-history/fix-report.md) |
 
-使用 `$hydro-release-system-test`。已安装的个人 skill 位于 `~/.codex/skills/hydro-release-system-test/`，仓库保留 [skill 源文件](skills/hydro-release-system-test/SKILL.md)。
+表中 Hydro 稳定基版本均为 `5.0.7`，UI 为 `4.58.5`。普通全站发信的 MSG-02 历史阻塞仍需具备相应权限的隔离账号补测，不能由其他消息用例的通过替代。
 
-在仓库根目录运行脚本。下面的 `<run>`、容器名和发布目录需替换为下一次实际环境，不要直接以 Git 日期作为发布基线。
+## 继续测试
+
+共享浏览器工具读取根 `testuser.txt` 的本地标签账号，格式见 [testuser.example.txt](testuser.example.txt)。也可使用 `HYDRO_TEST_CREDENTIALS` 指定本地凭据文件。运行需要仓库依赖、Chrome、Docker 权限，以及正常的 Hydro 和判题服务；环境可通过 `HYDRO_TEST_BASE_URL`、`HYDRO_TEST_DOMAIN`、`HYDRO_TEST_CHROME` 指定。
+
+在根目录运行，先将本轮计划、`change-scope.json` 和发布说明准备到 `.local/<run>/`。实际部署目录和目标容器必须按本轮环境填写。
 
 ```bash
 node doc/test/scripts/compare-releases.cjs \
   --container hydro \
   --previous /root/.hydro/dev-releases/<previous> \
   --current /root/.hydro/dev-releases/<current> \
-  --out doc/test/releases/<run>/evidence/release-comparison.json
+  --out doc/test/.local/<run>/evidence/release-comparison.json
 
 node doc/test/scripts/browser-system-test.cjs \
   --container hydro \
-  --cases doc/test/releases/<run>/test-cases.json \
-  --out doc/test/releases/<run>/evidence
+  --cases doc/test/.local/<run>/test-cases.json \
+  --out doc/test/.local/<run>/evidence
 
 node doc/test/scripts/extra-course-test.cjs \
   --container hydro \
-  --out doc/test/releases/<run>/evidence/extra-course
+  --out doc/test/.local/<run>/evidence/extra-course
 
-node doc/test/scripts/generate-report.cjs --run doc/test/releases/<run>
+node doc/test/scripts/generate-report.cjs --run doc/test/.local/<run>
 ```
 
-浏览器脚本默认使用根目录 `testuser.txt` 的本地标签账号，并屏蔽 Chrome 对外网的访问。可通过 `HYDRO_TEST_BASE_URL`、`HYDRO_TEST_DOMAIN`、`HYDRO_TEST_CREDENTIALS`、`HYDRO_TEST_CHROME` 指定环境。它依赖仓库现有 Node 模块、Docker 权限、Chrome 和正常运行的判题服务；本次验证环境为 Node 22、Chrome 141。
+日期专项工具为 `scripts/course-datetime-test.cjs`。三个共享浏览器运行脚本要求显式 `--out`；每轮使用独立目录。历史批次的场景脚本保留用于复现，运行前阅读其参数、夹具和清理逻辑；部分默认写入批次 `evidence/`，该输出同样被忽略。一次性结果聚合、清理状态核验脚本仅保存在本地归档。
 
-三个浏览器运行脚本（`browser-system-test.cjs`、`extra-course-test.cjs`、`course-datetime-test.cjs`）均要求显式传入 `--out`，每轮使用独立目录；缺少输出路径时会在写入文件和启动浏览器之前退出。模板补测只在所有用例通过且清理完成时返回退出码 0，失败、阻塞或清理未完成均返回非零退出码。
+`--only ID,ID` 聚焦复测时包含前置用例。合并结果不得用未执行项覆盖已完成项；CLI 和夹具准备不代替浏览器操作。只有获准发送真实消息时才传 `--allow-feedback`。写入使用独立临时域，结束后核对数据清理与全局配置恢复。
 
-只有已得到真实消息发送授权时才给主脚本增加 `--allow-feedback`。`--only ID,ID` 用于针对性重测，须带上前置用例并使用独立输出路径；合并最终结果时保留证据相对路径，不能用未执行的 `skipped` 项覆盖原结果。模板保存/复制由额外脚本执行，应将其计划与结果并入矩阵后再生成报告。
-
-脚本不会自动发布或升级。开发版发布与更新继续遵守根目录 [AGENTS.md](../../AGENTS.md)。
+完整报告生成器用于本地运行目录，生成结果再人工精简为仓库交接记录。流程细节见 [hydro-release-system-test](skills/hydro-release-system-test/SKILL.md)。发布与升级仍遵守 [AGENTS.md](../../AGENTS.md)。

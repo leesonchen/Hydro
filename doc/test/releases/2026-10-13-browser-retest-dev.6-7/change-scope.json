@@ -1,0 +1,94 @@
+{
+  "packages": [
+    "hydrooj",
+    "@hydrooj/ui-default"
+  ],
+  "features": [
+    {
+      "title": "评分发布管理、V2榜单与个人详情",
+      "cases": [
+        "PUB-01",
+        "PUB-02",
+        "PUB-03",
+        "PUB-04",
+        "PUB-05",
+        "PUB-06",
+        "RANK-01",
+        "RANK-02",
+        "RANK-03"
+      ]
+    },
+    {
+      "title": "课堂测评时间精度、时区与比赛时间历史",
+      "cases": [
+        "DATE-01",
+        "DATE-02",
+        "DATE-03",
+        "DATE-04",
+        "CSET-01",
+        "TIME-05"
+      ]
+    },
+    {
+      "title": "重算失败提示与浏览器重试",
+      "cases": [
+        "RECALC-01",
+        "RECALC-02"
+      ]
+    },
+    {
+      "title": "测评师生权限、真实作答判题和章节解锁",
+      "cases": [
+        "COUR-02",
+        "COUR-06",
+        "ASM-01",
+        "ASM-02",
+        "ASM-03",
+        "ASM-04",
+        "ASM-05",
+        "MON-01",
+        "MON-02"
+      ]
+    },
+    {
+      "title": "浏览器账户登录",
+      "cases": [
+        "AUTH-01",
+        "AUTH-02"
+      ]
+    },
+    {
+      "title": "比赛设置保存与权限",
+      "cases": [
+        "CON-01",
+        "CON-02",
+        "CON-03"
+      ]
+    },
+    {
+      "title": "评分只读试用与访问边界",
+      "cases": [
+        "PR-01",
+        "PR-02",
+        "PR-03"
+      ]
+    },
+    {
+      "title": "认证 CLI 补充",
+      "cases": [
+        "CERT-01",
+        "CERT-02"
+      ]
+    }
+  ],
+  "baseline": {
+    "current": {
+      "container": "hydro",
+      "release": "/root/.hydro/dev-releases/20261013123330"
+    },
+    "previous": {
+      "container": "hydro",
+      "release": "/root/.hydro/dev-releases/20261013015721"
+    }
+  }
+}

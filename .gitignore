@@ -8716,3 +8716,18 @@ testuser.md
 /packages/ui-default/misc/fonts/Xiaolai-Regular.ttf
 /packages/ui-default/misc/fonts/Xiaolai-Regular.ttf.*.tmp
 /packages/ui-default/misc/xiaolai-font.generated.styl
+
+# Test sources, plans, concise reports and selected assets are versioned.
+# Complete runtime evidence and local maintenance artifacts stay local.
+/doc/test/.local/
+/doc/test/**/evidence/
+/doc/test/**/screenshots/
+
+# Generated test output (keep source directories test/ and doc/test/ visible).
+/testreport/
+/test-report/
+/test-results/
+/playwright-report/
+/blob-report/
+/test/.local/
+/doc/test/**/testuser.txt

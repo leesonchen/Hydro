@@ -45,7 +45,7 @@ State the grade per case. A screenshot of setup alone is not evidence of the tes
 
 ## Report layout
 
-Save a concise Markdown report and its evidence beneath `doc/test/`, grouped by run or deployment pair:
+Save the complete runtime report and evidence beneath `doc/test/.local/<run>/`, grouped by run or deployment pair:
 
 1. **Pair and scope:** deployment identifiers, test date, target environment, package comparison source, and covered changes.
 2. **Release note:** user-visible changes, each linked to its package and case IDs; call out non-UI items separately.
@@ -53,5 +53,7 @@ Save a concise Markdown report and its evidence beneath `doc/test/`, grouped by 
 4. **Case matrix:** all fields from the table above, including expected and observed results.
 5. **Evidence index:** relative artifact paths and grades, with a brief description of each.
 6. **Cleanup:** judge completion, temporary domain/data removal, and active versus `autoDelete` storage state.
+
+For Git handoff, retain a concise report under `doc/test/releases/` or `doc/test/fixes/`: deployment versions/date, coverage counts, failures, limitations, reproduction/fix links and cleanup conclusions. Keep plans and reusable scripts. Promote only a few explanatory images to `doc/test/assets/`; runtime JSON, full matrices, bulk screenshots and logs stay local or in agreed shared artifact storage. A concise handoff report must not link to local-only artifacts as dependencies.
 
 Never imply deployment, publication, or an upgrade occurred because tests were run. Follow the root `AGENTS.md` only if a separately authorized release operation is requested.

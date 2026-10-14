@@ -1,0 +1,22 @@
+{
+  "baseline": {
+    "previous": {
+      "container": "hydro",
+      "release": "/root/.hydro/dev-releases/20261013015721"
+    },
+    "current": {
+      "container": "hydro",
+      "release": "/root/.hydro/dev-releases/20261013123330"
+    }
+  },
+  "features": [
+    "评分试用与发布控制",
+    "课堂测评时间精度及时区默认值",
+    "原生比赛设置与赛制切换",
+    "安装器开发版更新校验"
+  ],
+  "packages": [
+    "hydrooj",
+    "@hydrooj/ui-default"
+  ]
+}

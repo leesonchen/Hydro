@@ -6,6 +6,8 @@ import { MongoClient, ObjectId } from 'mongodb';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { after, before, beforeEach, test } from 'node:test';
 import { transformSync } from 'esbuild';
+import { Context } from 'cordis';
+import TimerService from '@cordisjs/plugin-timer';
 import { runShadowReplay } from '../packages/hydrooj/src/lib/rating-v2/shadow-replay';
 import { RatingPublicationStore, RATING_COLLECTIONS } from '../packages/hydrooj/src/lib/rating-publication-store';
 
@@ -20,6 +22,7 @@ let counters: { renew: number, publish: number };
 let recoveryErrorDomain: string | null;
 let visibilityCalls: { uid: number, strict: boolean, contestId: any }[];
 let clock: number | null;
+let ensureIndexes: (() => Promise<void>) | null;
 
 before(async () => {
     server = await MongoMemoryServer.create();
@@ -40,6 +43,7 @@ function loadRuntime() {
     store = new RatingPublicationStore(db, () => clock ?? Date.now());
     // Execute with the same Mongo store used by the runtime while counting renew/publish calls.
     const countedStore = new Proxy(store, { get(target, prop) {
+        if (prop === 'ensureIndexes' && ensureIndexes) return ensureIndexes;
         if (prop === 'renew') return async (...args: any[]) => { counters.renew++; return target.renew(...args); };
         if (prop === 'publish') return async (...args: any[]) => { counters.publish++; return target.publish(...args); };
         if (prop === 'leaseAlive') return async (...args: any[]) => {
@@ -91,6 +95,35 @@ function loadRuntime() {
     return module.exports;
 }
 
+function loadWorkerService() {
+    const source = readFileSync('packages/hydrooj/src/service/worker.ts', 'utf8');
+    const code = transformSync(source, { loader: 'ts', format: 'cjs', target: 'node22.16' }).code;
+    const module = { exports: {} as any };
+    const env = { ...process.env };
+    delete env.CI;
+    const mocks: Record<string, any> = {
+        '../context': require('cordis'),
+        './db': { __esModule: true, default: db },
+        cac: () => ({ parse: () => ({ options: { disableWorker: true } }) }),
+    };
+    vm.runInNewContext(code, {
+        module,
+        exports: module.exports,
+        require: (name) => mocks[name] || require(name),
+        process: { env },
+    });
+    return module.exports.default;
+}
+
+async function loadCordisRuntime() {
+    const ctx = new Context();
+    const timer = ctx.plugin(TimerService);
+    await timer;
+    const worker = ctx.plugin(loadWorkerService());
+    await worker;
+    return { ctx, timer, worker, service: ctx.worker };
+}
+
 const legacyRows = () => ({ rows: [
     { uid: 2, rp: 1500, rpInfo: { accepted: 3 }, rank: 1, level: 3, join: true, visible: true },
     { uid: 3, rp: 1200, rpInfo: { accepted: 1 }, rank: 2, level: 2, join: true, visible: true },
@@ -131,6 +164,7 @@ beforeEach(async () => {
     recoveryErrorDomain = null;
     visibilityCalls = [];
     clock = null;
+    ensureIndexes = null;
     beforeLegacy = null;
     calculateLegacy = async () => legacyRows();
     runtime = loadRuntime();
@@ -143,6 +177,7 @@ test('configuration is pending until queued legacy work successfully publishes',
     const queued = await runtime.queueRatingApply('d', 99);
     const job = await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: queued.runId });
     assert.equal(job.status, 'queued');
+    assert.equal((await db.collection('schedule').findOne({ runId: queued.runId })).domainId, 'd');
     assert.equal(await store.active('d'), null);
     const pointer = await runtime.executeRatingJob(job);
     assert.equal(pointer.algorithm, 'legacy');
@@ -254,14 +289,26 @@ test('worker recovery fails expired jobs without renewing or publishing and sche
     const liveKey = Buffer.from('d').toString('base64url');
     const expiry = (await db.collection('system').findOne({ _id: 'rating.publication' })).value.locks[liveKey].expiresAt;
     const handlers: any = {};
-    let onStarted: any;
+    let intervals = 0;
     const ctx: any = {
-        on: (event: string, handler: any) => { if (event === 'app/started') onStarted = handler; },
-        inject: async (_deps: any, callback: any) => callback({ on: (_event: string, handler: any) => { handlers.task = handler; } }),
-        interval: () => {},
+        on: () => {},
+        inject: async (_deps: any, callback: any) => callback({
+            worker: { addHandler: (type: string, handler: any) => { handlers[type] = handler; } },
+            interval: () => { intervals++; },
+        }),
     };
-    await runtime.apply(ctx);
-    onStarted();
+    const oldInstance = process.env.NODE_APP_INSTANCE;
+    const oldCli = process.env.HYDRO_CLI;
+    process.env.NODE_APP_INSTANCE = '0';
+    delete process.env.HYDRO_CLI;
+    try {
+        await runtime.apply(ctx);
+    } finally {
+        if (oldInstance === undefined) delete process.env.NODE_APP_INSTANCE;
+        else process.env.NODE_APP_INSTANCE = oldInstance;
+        if (oldCli === undefined) delete process.env.HYDRO_CLI;
+        else process.env.HYDRO_CLI = oldCli;
+    }
     for (let i = 0; i < 50 && (await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: expired._id })).status !== 'failed'; i++) {
         await new Promise((resolve) => setTimeout(resolve, 10));
     }
@@ -269,12 +316,221 @@ test('worker recovery fails expired jobs without renewing or publishing and sche
     assert.equal((await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: deferred._id })).status, 'running');
     assert.equal((await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: liveJob._id })).status, 'queued');
     assert.equal(await db.collection('schedule').countDocuments({ runId: liveJob._id }), 1);
+    assert.equal((await db.collection('schedule').findOne({ runId: liveJob._id })).domainId, liveJob.domainId);
     assert.equal((await db.collection('system').findOne({ _id: 'rating.publication' })).value.locks[liveKey].expiresAt, expiry);
     assert.equal((await db.collection('system').findOne({ _id: 'rating.publication' })).value.locks[deferredKey].expiresAt, deferredExpiry);
     assert.equal(await store.active('d'), null);
     assert.equal(counters.publish, 0);
     assert.equal(counters.renew, 0);
-    assert.equal(typeof handlers.task, 'function');
+    assert.equal(typeof handlers['task.rating-publication'], 'function');
+    assert.equal(intervals, 1);
+});
+
+test('rating worker registration survives app/started during delayed initialization and cleans up on reload', async () => {
+    let resolveIndexes!: () => void;
+    ensureIndexes = () => new Promise<void>((resolve) => { resolveIndexes = resolve; });
+    runtime = loadRuntime();
+    const { ctx, timer, worker, service } = await loadCordisRuntime();
+    const oldInstance = process.env.NODE_APP_INSTANCE;
+    const oldCli = process.env.HYDRO_CLI;
+    const realSetInterval = global.setInterval;
+    const realClearInterval = global.clearInterval;
+    const activeIntervals = new Set<any>();
+    global.setInterval = ((callback: any, delay?: number, ...args: any[]) => {
+        const handle = realSetInterval(callback, delay, ...args);
+        activeIntervals.add(handle);
+        return handle;
+    }) as any;
+    global.clearInterval = ((handle: any) => {
+        activeIntervals.delete(handle);
+        return realClearInterval(handle);
+    }) as any;
+    process.env.NODE_APP_INSTANCE = '0';
+    delete process.env.HYDRO_CLI;
+    let plugin: any;
+    try {
+        const queued = await runtime.queueRatingApply('d', 99);
+        await db.collection('domain').insertOne({ _id: 'expired-primary' });
+        const expired = await store.begin('expired-primary', true);
+        await db.collection(RATING_COLLECTIONS.runs).updateOne({ _id: expired._id }, { $set: { status: 'running' } });
+        const expiredKey = Buffer.from('expired-primary').toString('base64url');
+        await db.collection('system').updateOne({ _id: 'rating.publication' }, {
+            $set: { [`value.locks.${expiredKey}.expiresAt`]: Date.now() - 1 },
+        });
+        plugin = ctx.plugin({ apply: runtime.apply });
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(typeof resolveIndexes, 'function');
+
+        // Hydro emits this once while the model's index barrier is still pending.
+        await ctx.parallel('app/started');
+        assert.equal(await service.getFirst(), null);
+
+        resolveIndexes();
+        await plugin;
+        assert.equal(typeof service.handlers['task.rating-publication'], 'function');
+        assert.equal(activeIntervals.size, 1);
+        const task = await service.getFirst();
+        assert.equal(task.runId.toString(), queued.runId.toString());
+        await service.handlers['task.rating-publication'](task);
+        assert.equal((await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: queued.runId })).status, 'complete');
+        assert.equal((await store.active('d'))?.runId.toString(), queued.runId.toString());
+        for (let i = 0; i < 50 && (await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: expired._id })).status !== 'failed'; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        assert.equal((await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: expired._id })).status, 'failed');
+
+        await plugin.dispose();
+        assert.equal(service.handlers['task.rating-publication'], undefined);
+        assert.equal(activeIntervals.size, 0);
+
+        ensureIndexes = null;
+        plugin = ctx.plugin({ apply: runtime.apply });
+        await plugin;
+        assert.equal(typeof service.handlers['task.rating-publication'], 'function');
+        assert.equal(activeIntervals.size, 1);
+        await plugin.dispose();
+        assert.equal(service.handlers['task.rating-publication'], undefined);
+        assert.equal(activeIntervals.size, 0);
+    } finally {
+        resolveIndexes?.();
+        await plugin?.dispose();
+        await worker.dispose();
+        await timer.dispose();
+        global.setInterval = realSetInterval;
+        global.clearInterval = realClearInterval;
+        if (oldInstance === undefined) delete process.env.NODE_APP_INSTANCE;
+        else process.env.NODE_APP_INSTANCE = oldInstance;
+        if (oldCli === undefined) delete process.env.HYDRO_CLI;
+        else process.env.HYDRO_CLI = oldCli;
+        ensureIndexes = null;
+    }
+});
+
+test('rating worker and recovery remain disabled in Hydro CLI mode', async () => {
+    runtime = loadRuntime();
+    const { ctx, timer, worker, service } = await loadCordisRuntime();
+    const oldInstance = process.env.NODE_APP_INSTANCE;
+    const oldCli = process.env.HYDRO_CLI;
+    const realSetInterval = global.setInterval;
+    const realClearInterval = global.clearInterval;
+    const activeIntervals = new Set<any>();
+    global.setInterval = ((callback: any, delay?: number, ...args: any[]) => {
+        const handle = realSetInterval(callback, delay, ...args);
+        activeIntervals.add(handle);
+        return handle;
+    }) as any;
+    global.clearInterval = ((handle: any) => {
+        activeIntervals.delete(handle);
+        return realClearInterval(handle);
+    }) as any;
+    const queued = await runtime.queueRatingApply('d', 99);
+    await db.collection('domain').insertOne({ _id: 'expired-cli' });
+    const expired = await store.begin('expired-cli', true);
+    await db.collection(RATING_COLLECTIONS.runs).updateOne({ _id: expired._id }, { $set: { status: 'running' } });
+    const expiredKey = Buffer.from('expired-cli').toString('base64url');
+    await db.collection('system').updateOne({ _id: 'rating.publication' }, {
+        $set: { [`value.locks.${expiredKey}.expiresAt`]: Date.now() - 1 },
+    });
+    process.env.NODE_APP_INSTANCE = '0';
+    process.env.HYDRO_CLI = 'true';
+    let plugin: any;
+    try {
+        plugin = ctx.plugin({ apply: runtime.apply });
+        await plugin;
+        assert.equal(service.handlers['task.rating-publication'], undefined);
+        assert.equal(await service.getFirst(), null);
+        assert.equal(await db.collection('schedule').countDocuments({ runId: queued.runId }), 1);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        assert.equal((await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: expired._id })).status, 'running');
+        assert.equal(activeIntervals.size, 0);
+    } finally {
+        await plugin?.dispose();
+        await worker.dispose();
+        await timer.dispose();
+        global.setInterval = realSetInterval;
+        global.clearInterval = realClearInterval;
+        if (oldInstance === undefined) delete process.env.NODE_APP_INSTANCE;
+        else process.env.NODE_APP_INSTANCE = oldInstance;
+        if (oldCli === undefined) delete process.env.HYDRO_CLI;
+        else process.env.HYDRO_CLI = oldCli;
+    }
+});
+
+test('non-primary instances register the worker but do not run rating recovery', async () => {
+    runtime = loadRuntime();
+    const { ctx, timer, worker, service } = await loadCordisRuntime();
+    const oldInstance = process.env.NODE_APP_INSTANCE;
+    const oldCli = process.env.HYDRO_CLI;
+    process.env.NODE_APP_INSTANCE = '1';
+    delete process.env.HYDRO_CLI;
+    await db.collection('domain').insertOne({ _id: 'expired-non-primary' });
+    const expired = await store.begin('expired-non-primary', true);
+    await db.collection(RATING_COLLECTIONS.runs).updateOne({ _id: expired._id }, { $set: { status: 'running' } });
+    const expiredKey = Buffer.from('expired-non-primary').toString('base64url');
+    await db.collection('system').updateOne({ _id: 'rating.publication' }, {
+        $set: { [`value.locks.${expiredKey}.expiresAt`]: Date.now() - 1 },
+    });
+    let plugin: any;
+    try {
+        plugin = ctx.plugin({ apply: runtime.apply });
+        await plugin;
+        assert.equal(typeof service.handlers['task.rating-publication'], 'function');
+        assert.equal((await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: expired._id })).status, 'running');
+    } finally {
+        await plugin?.dispose();
+        await worker.dispose();
+        await timer.dispose();
+        if (oldInstance === undefined) delete process.env.NODE_APP_INSTANCE;
+        else process.env.NODE_APP_INSTANCE = oldInstance;
+        if (oldCli === undefined) delete process.env.HYDRO_CLI;
+        else process.env.HYDRO_CLI = oldCli;
+    }
+});
+
+test('domain deletion removes owned rating schedules and keeps unrelated tasks intact in CLI mode', async () => {
+    runtime = loadRuntime();
+    const { ctx, timer, worker } = await loadCordisRuntime();
+    const oldInstance = process.env.NODE_APP_INSTANCE;
+    const oldCli = process.env.HYDRO_CLI;
+    process.env.NODE_APP_INSTANCE = '0';
+    process.env.HYDRO_CLI = 'true';
+    await db.collection('domain').insertMany([
+        { _id: 'domain-to-delete' }, { _id: 'domain-to-keep' },
+    ]);
+    const deleted = await runtime.queueRatingApply('domain-to-delete', 99);
+    const kept = await runtime.queueRatingApply('domain-to-keep', 99);
+    const legacySchedule = await db.collection('schedule').findOne({ runId: deleted.runId, subType: 'task.rating-publication' });
+    await db.collection('schedule').updateOne({ _id: legacySchedule._id }, { $unset: { domainId: '' } });
+    await db.collection('schedule').insertOne({ _id: new ObjectId(), type: 'schedule', subType: 'task.rating-publication',
+        executeAfter: new Date(), domainId: 'domain-to-delete', runId: deleted.runId });
+    await db.collection('schedule').insertOne({ _id: new ObjectId(), type: 'schedule', subType: 'task.daily',
+        executeAfter: new Date(), domainId: 'domain-to-delete', runId: deleted.runId });
+    let plugin: any;
+    try {
+        plugin = ctx.plugin({ apply: runtime.apply });
+        await plugin;
+        // The domain listener is installed before the CLI early return.
+        await ctx.parallel('domain/delete', 'domain-to-delete');
+
+        assert.equal(await db.collection(RATING_COLLECTIONS.runs).countDocuments({ domainId: 'domain-to-delete' }), 0);
+        assert.equal(await db.collection(RATING_COLLECTIONS.runs).countDocuments({ _id: kept.runId }), 1);
+        assert.equal(await db.collection('schedule').countDocuments({
+            subType: 'task.rating-publication', runId: deleted.runId,
+        }), 0);
+        const keptSchedule = await db.collection('schedule').findOne({ runId: kept.runId, subType: 'task.rating-publication' });
+        assert.equal(keptSchedule.domainId, 'domain-to-keep');
+        assert.equal(await db.collection('schedule').countDocuments({
+            subType: 'task.daily', domainId: 'domain-to-delete', runId: deleted.runId,
+        }), 1);
+    } finally {
+        await plugin?.dispose();
+        await worker.dispose();
+        await timer.dispose();
+        if (oldInstance === undefined) delete process.env.NODE_APP_INSTANCE;
+        else process.env.NODE_APP_INSTANCE = oldInstance;
+        if (oldCli === undefined) delete process.env.HYDRO_CLI;
+        else process.env.HYDRO_CLI = oldCli;
+    }
 });
 
 test('interrupted ready snapshots are cancelled on expiry and require a new manual calculation', async () => {

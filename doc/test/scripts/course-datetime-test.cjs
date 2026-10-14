@@ -96,7 +96,11 @@ async function prepareWindow(beginAt, endAt) {
       const original = await assessment(3); const selector = await editNode(3);
       const newEnd = new Date(new Date(original.endAt).getTime() + 60000); newEnd.setUTCMilliseconds(0);
       await admin.fill(selector + ' .dag-assessment-end', newEnd.toISOString().slice(0, 19).replace('T', ' '));
-      await admin.click('input[name="title"]'); await saveCourse(); const stored = await assessment(3);
+      await admin.click('input[name="title"]');
+      await admin.click('form button[type="submit"]:not([name])');
+      await admin.waitFor("document.body.innerText.includes('修改课堂测试时间可能影响')");
+      await admin.clickText('是', 'button');
+      await admin.navigation('/course/' + fixture.courseTid); const stored = await assessment(3);
       assert.equal(stored.beginAt, original.beginAt); assert.equal(stored.endAt, newEnd.toISOString());
       return { originalBegin: original.beginAt, storedBegin: stored.beginAt, storedEnd: stored.endAt, onlyEndChanged: true };
     });

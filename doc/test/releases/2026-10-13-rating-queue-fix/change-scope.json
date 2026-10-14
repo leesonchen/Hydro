@@ -1,0 +1,19 @@
+{
+  "features": [
+    "评分任务启动注册与恢复",
+    "删除域时评分队列清理",
+    "时间历史布局"
+  ],
+  "published": {
+    "hydrooj": "5.0.7-dev.7",
+    "@hydrooj/ui-default": "4.58.5-dev.8"
+  },
+  "deploymentStatus": "upgraded and restarted; active hydrooj 5.0.7-dev.7 / @hydrooj/ui-default 4.58.5-dev.8",
+  "baseline": {
+    "current": {
+      "container": "hydro",
+      "hydrooj": "5.0.7-dev.6",
+      "@hydrooj/ui-default": "4.58.5-dev.7"
+    }
+  }
+}

@@ -1,0 +1,86 @@
+[
+  {
+    "id": "DATE-01",
+    "title": "日期字段编辑保留秒与毫秒",
+    "steps": "管理员编辑课堂测评分数/监控后保存",
+    "expected": "开始与结束时间精度完全保留",
+    "role": "admin"
+  },
+  {
+    "id": "DATE-02",
+    "title": "单独修改结束时间",
+    "steps": "管理员仅修改结束时间并确认",
+    "expected": "开始时间不变，结束时间更新",
+    "role": "admin"
+  },
+  {
+    "id": "DATE-03",
+    "title": "已开始测评允许编辑设置",
+    "steps": "开始课堂测评后修改分数/监控",
+    "expected": "仅允许设置变化，子测评时间不变",
+    "role": "admin"
+  },
+  {
+    "id": "DATE-04",
+    "title": "不同时区的默认测评时间",
+    "steps": "切换时区观察新建默认时间",
+    "expected": "UTC 时间匹配各时区预期",
+    "role": "admin"
+  },
+  {
+    "id": "CSET-01",
+    "title": "原生比赛设置切换赛制及保存",
+    "steps": "OI/ACM 赛制切换并保存设置",
+    "expected": "设置回显正确",
+    "role": "admin"
+  },
+  {
+    "id": "PUB-01",
+    "title": "管理员评分发布管理页面",
+    "steps": "打开评分发布管理页面",
+    "expected": "展示算法、域配置与手工应用操作说明",
+    "role": "admin"
+  },
+  {
+    "id": "PUB-02",
+    "title": "学生不能访问评分管理页面",
+    "steps": "学生打开评分管理页面",
+    "expected": "拒绝访问",
+    "role": "student"
+  },
+  {
+    "id": "PR-01",
+    "title": "评分试用默认关闭",
+    "steps": "未启用时访问评分试用页",
+    "expected": "拒绝访问",
+    "role": "admin"
+  },
+  {
+    "id": "PR-02",
+    "title": "临时域评分试用为只读",
+    "steps": "在显式临时域开启试用并查看",
+    "expected": "页面只读且样本不足时不展示预测",
+    "role": "admin"
+  },
+  {
+    "id": "PR-03",
+    "title": "评分试用权限和参数边界",
+    "steps": "学生及域外名单/题目尝试访问",
+    "expected": "请求被拒绝",
+    "role": "admin/student"
+  },
+  {
+    "id": "CERT-01",
+    "title": "认证冻结题目版本及发布门槛",
+    "steps": "通过 CLI 验证题目版本冻结和发布检查",
+    "expected": "冻结生效，提前发布遭拒",
+    "role": "admin CLI"
+  },
+  {
+    "id": "CERT-02",
+    "title": "教师不能进入学生认证名单",
+    "steps": "通过 CLI 尝试教师进入名单",
+    "expected": "名单校验拒绝教师",
+    "role": "admin CLI"
+  }
+]

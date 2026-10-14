@@ -1,6 +1,6 @@
 # Hydro `dev.2` 发布说明
 
-对照的是两次实际活动包快照：previous 为 `hydrooj 5.0.7-dev.1`、`@hydrooj/ui-default 4.58.4-dev.41`，来自发布目录 `20261004051256`；current 为 `hydrooj 5.0.7-dev.2`、`@hydrooj/ui-default 4.58.5-dev.2`，来自发布目录 `20261012110535`。本次升级前备份目录为 `20261012110531`。包清单见 [release-comparison.json](evidence/release-comparison.json)。两份快照均没有可靠 `gitHead`，因此本说明按活动包 before/after 内容比较，不用日期推断 Git 基线。功能范围和建议浏览器用例见 [change-scope.json](change-scope.json)。本说明只记录源码确认的行为，不汇报浏览器用例结果。
+对照的是两次实际活动包快照：previous 为 `hydrooj 5.0.7-dev.1`、`@hydrooj/ui-default 4.58.4-dev.41`，来自发布目录 `20261004051256`；current 为 `hydrooj 5.0.7-dev.2`、`@hydrooj/ui-default 4.58.5-dev.2`，来自发布目录 `20261012110535`。本次升级前备份目录为 `20261012110531`。包清单见 release-comparison.json（原始记录本地归档）。两份快照均没有可靠 `gitHead`，因此本说明按活动包 before/after 内容比较，不用日期推断 Git 基线。功能范围和建议浏览器用例见 [change-scope.json](change-scope.json)。本说明只记录源码确认的行为，不汇报浏览器用例结果。
 
 ## 新增
 

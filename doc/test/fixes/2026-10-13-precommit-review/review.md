@@ -15,11 +15,11 @@
 
 | 检查 | 结果 | 证据 |
 | --- | --- | --- |
-| 安全回归 | 30/30 通过 | [security.tap](evidence/security.tap) |
-| 课程模板与日期 | 10/10 通过 | [course-template.tap](evidence/course-template.tap) |
-| 比赛设置 | 8/8 通过 | [contest-settings.tap](evidence/contest-settings.tap) |
-| 课堂反馈逻辑 | 49/49 通过 | [classroom-feedback.tap](evidence/classroom-feedback.tap) |
-| 课程反馈结构 | 7/7 通过 | [feedback-structure.tap](evidence/feedback-structure.tap) |
+| 安全回归 | 30/30 通过 | `security.tap`（原始产物仅保存在本地 `.local/`） |
+| 课程模板与日期 | 10/10 通过 | `course-template.tap`（原始产物仅保存在本地 `.local/`） |
+| 比赛设置 | 8/8 通过 | `contest-settings.tap`（原始产物仅保存在本地 `.local/`） |
+| 课堂反馈逻辑 | 49/49 通过 | `classroom-feedback.tap`（原始产物仅保存在本地 `.local/`） |
+| 课程反馈结构 | 7/7 通过 | `feedback-structure.tap`（原始产物仅保存在本地 `.local/`） |
 | 从实际 TypeScript 源码提取的反馈开关检查 | 10/10 通过 | `true`/`on` 开启；8 种关闭或无效值关闭 |
 | 新增 JS/CJS 脚本语法 | 全部通过 | `node --check` |
 | 待提交资料凭据检查 | 179 个文本文件无口令匹配或非空敏感 JSON 字段 | 文件内容在内存中与本地凭据比对，未输出凭据 |

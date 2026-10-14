@@ -30,7 +30,7 @@ export async function queueRatingApply(domainId: string, operator: number) {
     const job = await ratingStore.begin(domainId, true, operator);
     try {
         await db.collection('schedule').insertOne({ _id: new ObjectId(), type: 'schedule', subType: 'task.rating-publication',
-            executeAfter: new Date(), runId: job._id });
+            executeAfter: new Date(), domainId, runId: job._id });
         await oplog.add({ type: 'rating.applyQueued', operator, time: new Date(), domainId, runId: job._id });
         return { runId: job._id };
     } catch (error) {
@@ -226,7 +226,8 @@ export async function recoverRatingJobs() {
             }
             if (job.status === 'queued' && job.operation !== 'rollback' && await ratingStore.queueLeaseAlive(job)
                 && !await db.collection('schedule').findOne({ subType: 'task.rating-publication', runId: job._id })) {
-                await db.collection('schedule').insertOne({ _id: new ObjectId(), type: 'schedule', subType: 'task.rating-publication', executeAfter: new Date(), runId: job._id });
+                await db.collection('schedule').insertOne({ _id: new ObjectId(), type: 'schedule', subType: 'task.rating-publication',
+                    executeAfter: new Date(), domainId: job.domainId, runId: job._id });
             }
         } catch (error) {
             logger.error('Deferred rating recovery for %s: %s', job.domainId, error.message);
@@ -237,11 +238,17 @@ export async function recoverRatingJobs() {
 export async function apply(ctx: Context) {
     await ratingStore.ensureIndexes();
     ctx.on('domain/delete', async (domainId) => {
+        const runs = await db.collection(RATING_COLLECTIONS.runs).find({ domainId }, { projection: { _id: 1 } }).toArray();
+        await db.collection('schedule').deleteMany({ subType: 'task.rating-publication', $or: [
+            { domainId }, { runId: { $in: runs.map((run) => run._id) } },
+        ] });
         await ratingStore.deleteDomain(domainId);
         deleteUserCache(domainId);
     });
-    await ctx.inject(['worker'], (c) => {
-        c.on('app/started', () => c.worker.addHandler('task.rating-publication', async (task) => {
+    if (process.env.HYDRO_CLI) return;
+    // Index initialization may finish after the one-time app/started event.
+    await ctx.inject(['worker', 'timer'], (c) => {
+        c.worker.addHandler('task.rating-publication', async (task) => {
             const job = await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: task.runId, status: 'queued', operation: { $ne: 'rollback' } });
             if (!job) return;
             try {
@@ -249,11 +256,9 @@ export async function apply(ctx: Context) {
             } catch (error) {
                 logger.error('Rating publication failed for %s: %s', job.domainId, error.message);
             }
-        }));
-    });
-    ctx.on('app/started', () => {
+        });
         if (process.env.NODE_APP_INSTANCE && process.env.NODE_APP_INSTANCE !== '0') return;
         recoverRatingJobs().catch((error) => logger.error('%s', error.message));
-        ctx.interval(() => recoverRatingJobs().catch((error) => logger.error('%s', error.message)), 15000);
+        c.interval(() => recoverRatingJobs().catch((error) => logger.error('%s', error.message)), 15000);
     });
 }
