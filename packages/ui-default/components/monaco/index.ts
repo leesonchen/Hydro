@@ -7,6 +7,7 @@ import { IQuickInputService } from 'monaco-editor/esm/vs/platform/quickinput/com
 import list from 'monaco-themes/themes/themelist.json';
 import { nanoid } from 'nanoid';
 import { i18n, request } from 'vj/utils';
+import { registerMonitoredClipboard } from './monitored-clipboard';
 
 export { renderMarkdown } from 'monaco-editor/esm/vs/base/browser/markdownRenderer';
 
@@ -141,6 +142,7 @@ export function registerAction(
   model: monaco.editor.IModel,
   element?,
 ) {
+  if (UiContext.monitoredExam) registerMonitoredClipboard(editor);
   if (element) {
     editor.addAction({
       id: 'hydro.submitForm',

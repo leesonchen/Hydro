@@ -88,7 +88,7 @@ export default connect((state: any) => ({
       } else if (typeof textarea.setRangeText === 'function') {
         textarea.setRangeText('    ', start, end, 'end');
       } else {
-        textarea.value = textarea.value.slice(0, start) + '    ' + textarea.value.slice(end);
+        textarea.value = `${textarea.value.slice(0, start)}    ${textarea.value.slice(end)}`;
         textarea.selectionStart = textarea.selectionEnd = start + 4;
       }
       this.props.handleUpdateCode?.(textarea.value, undefined as any);
@@ -249,7 +249,7 @@ export default connect((state: any) => ({
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
         <div style={{ textAlign: 'right', padding: '4px 10px', fontSize: 12 }}>
-          <a href={basicUrl.toString()} data-no-instant={"true"}>编辑器无法使用？切换基础编辑模式</a>
+          <a href={basicUrl.toString()} data-no-instant="true">编辑器无法使用？切换基础编辑模式</a>
         </div>
         {editor}
       </div>

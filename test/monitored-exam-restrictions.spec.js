@@ -111,7 +111,8 @@ function monitoredHarness(options = {}) {
         };
     }
     const win = emitter();
-    Object.assign(win, { crypto: { randomUUID: () => 'test-id-' + (++serial) + '-123456789' }, ClipboardEvent: function ClipboardEvent() {} });
+    Object.assign(win, { crypto: { randomUUID: () => 'test-id-' + (++serial) + '-123456789' },
+        ClipboardEvent: function ClipboardEvent() {}, navigator: { clipboard: options.clipboard } });
     const doc = emitter();
     Object.assign(doc, {
         hidden: false, fullscreenElement: null, hasFocus: () => true, documentElement: {},
@@ -172,6 +173,98 @@ test('browser clipboard custom MIME may be stripped without breaking same-editor
     h.input.selectionStart = h.input.selectionEnd = 0;
     h.document.fire('paste', { target: h.input, clipboardData: plain });
     assert.equal(h.input.value, 'ABCfirst ABC');
+});
+
+function commandEditor(h) {
+    const edits = [];
+    const editor = { getModel: () => ({}), getSelections: () => [{}], pushUndoStop() {},
+        executeEdits(_source, changes) { edits.push(...changes.map((change) => change.text)); } };
+    h.window.editor = editor;
+    return { editor, edits, paste() { h.document.fire('hydro:monitored-paste', { detail: { editor } }); } };
+}
+
+test('Monaco clipboard command blocks OS text even after a legitimate copy', async () => {
+    const h = monitoredHarness({ clipboard: { readText: async () => 'external code' } });
+    h.document.fire('copy', { target: h.input, clipboardData: h.clipboard() });
+    const command = commandEditor(h);
+    command.paste();
+    await Promise.resolve();
+    assert.deepEqual(command.edits, []);
+    assert.ok(h.queue().some((event) => event.eventType === 'paste_detected'));
+});
+
+test('Monaco clipboard command accepts the current internal copy with equivalent newlines', async () => {
+    const h = monitoredHarness({ clipboard: { readText: async () => 'line1\r\nline2' } });
+    h.input.value = 'line1\nline2';
+    h.input.selectionStart = 0;
+    h.input.selectionEnd = h.input.value.length;
+    h.document.fire('copy', { target: h.input, clipboardData: h.clipboard() });
+    const command = commandEditor(h);
+    command.paste();
+    await Promise.resolve();
+    assert.deepEqual(command.edits, ['line1\nline2']);
+});
+
+test('Monaco clipboard command fails closed when clipboard read is unavailable or denied', async () => {
+    for (const clipboard of [undefined, { readText: async () => { throw new Error('Denied'); } },
+        { readText() { throw new Error('Denied'); } }]) {
+        const h = monitoredHarness({ clipboard });
+        h.document.fire('copy', { target: h.input, clipboardData: h.clipboard() });
+        const command = commandEditor(h);
+        command.paste();
+        await Promise.resolve();
+        assert.deepEqual(command.edits, []);
+        assert.ok(h.queue().some((event) => event.eventType === 'paste_detected'));
+    }
+});
+
+test('a clipboard read completing after blur, editor replacement or cleanup cannot insert text', async () => {
+    for (const invalidate of [(h) => h.window.fire('blur'), (h) => { h.window.editor = {}; },
+        (h) => h.window.__contestMonitorCleanup()]) {
+        let complete;
+        const h = monitoredHarness({ clipboard: { readText: () => new Promise((resolve) => { complete = resolve; }) } });
+        h.document.fire('copy', { target: h.input, clipboardData: h.clipboard() });
+        const command = commandEditor(h);
+        command.paste();
+        invalidate(h);
+        complete('ABC');
+        await Promise.resolve();
+        assert.deepEqual(command.edits, []);
+    }
+});
+
+test('Monaco guard consumes its focused editor command before the default OS reader and disposes on unmount', () => {
+    const ts = require('typescript');
+    let command;
+    let priority;
+    let disposeEditor;
+    let disposed = false;
+    let focused = true;
+    const events = [];
+    const exports = {};
+    vm.runInNewContext(ts.transpileModule(source('packages/ui-default/components/monaco/monitored-clipboard.ts'), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS },
+    }).outputText, {
+        exports,
+        require: () => ({ PasteAction: { addImplementation(value, _name, handler) {
+            priority = value;
+            command = handler;
+            return { dispose() { disposed = true; } };
+        } } }),
+        CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
+        document: { dispatchEvent(event) { events.push(event); } },
+    });
+    const editor = { hasTextFocus: () => focused, onDidDispose(handler) { disposeEditor = handler; } };
+    exports.registerMonitoredClipboard(editor);
+    assert.ok(priority > 10000, 'the built-in clipboard reader has priority 10000');
+    assert.equal(command(), true);
+    assert.equal(events[0].type, 'hydro:monitored-paste');
+    assert.equal(events[0].detail.editor, editor);
+    focused = false;
+    assert.equal(command(), false, 'other editors retain their default clipboard commands');
+    assert.equal(events.length, 1);
+    disposeEditor();
+    assert.equal(disposed, true);
 });
 test('focus warning is acknowledged once; leaving page invalidates IDE copy state', () => {
     const h = monitoredHarness();
@@ -243,7 +336,7 @@ test('CRLF conversion of a legitimate copied multi-line code is allowed', () => 
 test('HTML editor is hidden only after a usable React editor reports ready', () => {
     const page = source('packages/ui-default/pages/problem_detail.page.tsx');
     const editor = source('packages/ui-default/components/scratchpad/ScratchpadEditorContainer.tsx');
-    assert.match(page, /if \(readiness\) await readiness\.promise;\s*if \(basic\) basic\.style\.display = 'none'/);
+    assert.match(page, /if \(readiness\) await readiness\.promise;\s*monitoredDraft\?\.activate\(\);\s*if \(basic\) basic\.style\.display = 'none'/);
     assert.match(page, /MonitoredEditorBoundary/);
     assert.match(page, /hydro:monitored-editor-failed/);
     assert.match(editor, /hydro:monitored-editor-ready/);
@@ -279,7 +372,13 @@ test('basic textarea uses native edit commands for Tab and Shift+Tab where suppo
     };
     const form = { addEventListener() {} };
     const lang = { value: 'cpp', addEventListener() {} };
-    const section = { querySelector(q) { return q === 'select[name="lang"]' ? lang : form; } };
+    const attributes = new Map();
+    const section = {
+        getAttribute: (name) => attributes.get(name) || null,
+        setAttribute: (name, value) => attributes.set(name, value),
+        removeAttribute: (name) => attributes.delete(name),
+        querySelector(q) { return q === 'select[name="lang"]' ? lang : form; },
+    };
     const document = {
         getElementById(id) { return id === 'monitored-basic-code' ? textarea : section; },
         execCommand(command, _ui, insertion) {

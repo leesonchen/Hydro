@@ -197,6 +197,34 @@
     return false;
   }
   function clipboardComparable(text) { return String(text || '').replace(/\r\n?/g, '\n'); }
+  function rejectPaste() {
+    emit('paste_detected');
+    blocked('已阻止外部粘贴，请先在当前在线编程区域内复制代码。', 'clipboard_blocked');
+  }
+  function pasteFromClipboard(target, plain, marker, hasText) {
+    if (!internalClipboard || (hasText && clipboardComparable(plain) !== clipboardComparable(internalClipboard.text))
+        || (marker && marker !== internalClipboard.marker)) {
+      rejectPaste();
+      return;
+    }
+    pasteSelection(target, internalClipboard.text);
+  }
+  function monitoredPaste(event) {
+    var editor = event.detail && event.detail.editor;
+    if (!editor || editor !== window.editor || !editor.getModel() || stopped) return;
+    var copied = internalClipboard;
+    var clipboard = window.navigator && window.navigator.clipboard;
+    // Without permission to read the clipboard, native Ctrl/Cmd+V can still
+    // supply ClipboardEvent data. Never fall back to Monaco's unchecked reader.
+    if (!clipboard || typeof clipboard.readText !== 'function') { rejectPaste(); return; }
+    function active() { return !stopped && window.editor === editor && internalClipboard === copied && editor.getModel(); }
+    try {
+      clipboard.readText().then(function (text) {
+        if (active()) pasteFromClipboard({ editor: editor }, text, '', true);
+      }, function () { if (active()) rejectPaste(); });
+    } catch (e) { if (active()) rejectPaste(); }
+  }
+  document.addEventListener('hydro:monitored-paste', monitoredPaste);
   function clipboardEvent(event) {
     var target = codeEditor(event.target);
     if (!target) {
@@ -220,13 +248,7 @@
       }
       // Fallback for browsers that remove the custom MIME type but preserve text.
       // When clipboard content is unavailable, paste only our internal buffer.
-      if (!internalClipboard || (hasText && clipboardComparable(plain) !== clipboardComparable(internalClipboard.text))
-          || (marker && marker !== internalClipboard.marker)) {
-        emit('paste_detected');
-        blocked('已阻止外部粘贴，请先在当前在线编程区域内复制代码。', 'clipboard_blocked');
-        return;
-      }
-      pasteSelection(target, internalClipboard.text);
+      pasteFromClipboard(target, plain, marker, hasText);
       return;
     }
     var text = selectedCode(target);
@@ -417,6 +439,7 @@
     document.removeEventListener('keydown', stopOutsideKeys, true);
     ['copy', 'cut', 'paste'].forEach(function (name) { document.removeEventListener(name, clipboardEvent, true); });
     document.removeEventListener('beforeinput', beforeInput, true);
+    document.removeEventListener('hydro:monitored-paste', monitoredPaste);
     document.removeEventListener('dragover', blockDrag, true);
     document.removeEventListener('drop', blockDrop, true);
     if (acknowledgeButton) acknowledgeButton.removeEventListener('click', acknowledge);

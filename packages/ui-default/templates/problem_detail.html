@@ -204,6 +204,8 @@
     if (previous && previous.lang && langSelect) langSelect.value = previous.lang;
   } catch (e) { /* local storage unavailable */ }
   function save() {
+    if (section.getAttribute('data-editor-owner') === 'advanced') return;
+    section.setAttribute('data-draft-edited', 'true');
     try { localStorage.setItem(key, JSON.stringify({ code: textarea.value, lang: langSelect ? langSelect.value : '' })); }
     catch (e) { /* local storage unavailable */ }
   }

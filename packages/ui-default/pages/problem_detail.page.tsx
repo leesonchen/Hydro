@@ -33,9 +33,18 @@ class MonitoredEditorBoundary extends React.Component<{ children: React.ReactNod
 function waitForMonitoredEditorReady() {
   let cleanup = () => {};
   const promise = new Promise<void>((resolve, reject) => {
-    const ready = () => { cleanup(); resolve(); };
-    const failed = () => { cleanup(); reject(new Error('Monitored editor failed to mount')); };
-    const timeout = window.setTimeout(() => { cleanup(); reject(new Error('Monitored editor readiness timed out')); }, 18000);
+    const ready = () => {
+      cleanup();
+      resolve();
+    };
+    const failed = () => {
+      cleanup();
+      reject(new Error('Monitored editor failed to mount'));
+    };
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('Monitored editor readiness timed out'));
+    }, 18000);
     cleanup = () => {
       window.clearTimeout(timeout);
       document.removeEventListener('hydro:monitored-editor-ready', ready);
@@ -45,6 +54,46 @@ function waitForMonitoredEditorReady() {
     document.addEventListener('hydro:monitored-editor-failed', failed);
   });
   return { promise, cancel: () => cleanup() };
+}
+
+// Only the active editor may persist the monitored draft. Keep a synchronous
+// copy in the basic form so it can take over even when advanced rendering fails.
+function createMonitoredDraftBridge(store, cacheKey: string) {
+  const basic = document.getElementById('monitored-basic-editor');
+  const code = basic?.querySelector<HTMLTextAreaElement>('textarea[name="code"]');
+  const lang = basic?.querySelector<HTMLSelectElement>('select[name="lang"]');
+  const save = () => {
+    if (basic?.getAttribute('data-editor-owner') !== 'advanced') return;
+    const editor = store.getState().editor;
+    if (code) code.value = editor.code;
+    if (lang) lang.value = editor.lang;
+    try {
+      localStorage.setItem(`hydro-monitor-draft:${cacheKey}`, JSON.stringify({ code: editor.code, lang: editor.lang }));
+    } catch { /* The basic form still retains the current draft. */ }
+  };
+  const update = _.debounce(save, 150);
+  window.addEventListener('pagehide', save);
+  return {
+    update,
+    activate: () => {
+      // Basic editing can continue while the advanced assets are loading, and
+      // after a failed attempt. Hand those newer edits to the store first.
+      if (basic?.getAttribute('data-draft-edited') === 'true') {
+        store.dispatch({ type: 'SCRATCHPAD_EDITOR_HYDRATE', payload: { code: code?.value, lang: lang?.value } });
+        basic.removeAttribute('data-draft-edited');
+      }
+      basic?.setAttribute('data-editor-owner', 'advanced');
+      save();
+    },
+    restore: () => {
+      update.cancel();
+      // A mount failure can happen before activation, after an IDB draft was
+      // hydrated. Preserve that draft unless the basic form has newer edits.
+      if (basic?.getAttribute('data-draft-edited') !== 'true') basic?.setAttribute('data-editor-owner', 'advanced');
+      save();
+      basic?.removeAttribute('data-editor-owner');
+    },
+  };
 }
 
 class ProblemPageExtender {
@@ -144,6 +193,7 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
   let reactLoaded = false;
   let renderReact = null;
   let unmountReact = null;
+  let monitoredDraft: ReturnType<typeof createMonitoredDraftBridge> | null = null;
   const extender = new ProblemPageExtender();
 
   async function handleClickDownloadProblem() {
@@ -195,13 +245,13 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
       try { draft = await (await openDB).get('scratchpad-drafts', cacheKey); } catch { /* IDB unsupported */ }
     }
     if (draft) {
-        store.dispatch({
-          type: 'SCRATCHPAD_EDITOR_HYDRATE',
-          payload: {
-            code: draft.code ?? (UiContext.monitoredExam ? '' : UiContext.codeTemplate),
-            lang: draft.lang ?? UiContext.codeLang,
-          },
-        });
+      store.dispatch({
+        type: 'SCRATCHPAD_EDITOR_HYDRATE',
+        payload: {
+          code: draft.code ?? (UiContext.monitoredExam ? '' : UiContext.codeTemplate),
+          lang: draft.lang ?? UiContext.codeLang,
+        },
+      });
     }
 
     let previousEditorState = store.getState().editor;
@@ -211,19 +261,12 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
         .then(() => openDB.then((db) => db.put('scratchpad-drafts', { id: cacheKey, code, lang })))
         .catch(() => { });
     }, 400);
-    const saveBasicCopy = _.debounce((code: string, lang: string) => {
-      try {
-        localStorage.setItem(`hydro-monitor-draft:${cacheKey}`, JSON.stringify({ code, lang }));
-      } catch { /* quota or disabled local storage: the IDB draft remains available */ }
-    }, 150);
-    if (UiContext.monitoredExam) {
-      window.addEventListener('pagehide', () => saveBasicCopy.flush());
-    }
+    if (UiContext.monitoredExam) monitoredDraft = createMonitoredDraftBridge(store, cacheKey);
     store.subscribe(() => {
       const editor = store.getState().editor;
       if (editor === previousEditorState) return;
       previousEditorState = editor;
-      if (UiContext.monitoredExam) saveBasicCopy(editor.code, editor.lang);
+      monitoredDraft?.update();
       saveDraft(editor.code, editor.lang);
     });
 
@@ -296,15 +339,21 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
       if (UiContext.monitoredExam) readiness = waitForMonitoredEditorReady();
       renderReact();
       if (readiness) await readiness.promise;
+      monitoredDraft?.activate();
       if (basic) basic.style.display = 'none';
       await scratchpadFadeIn();
     } catch (error) {
       if (!UiContext.monitoredExam) throw error;
       console.warn('Advanced editor failed; restoring independent basic editor.', error);
-      try { if (unmountReact) unmountReact(); } catch (e) { console.warn('Editor cleanup failed.', e); }
+      monitoredDraft?.restore();
+      try {
+        if (unmountReact) unmountReact();
+      } catch (e) { console.warn('Editor cleanup failed.', e); }
       unmountReact = null;
       if (extender.isExtended) {
-        try { await extender.collapse(); } catch (e) { console.warn('Editor layout cleanup failed.', e); }
+        try {
+          await extender.collapse();
+        } catch (e) { console.warn('Editor layout cleanup failed.', e); }
       }
       // A failed transition can leave the expanded CSS active without setting isExtended.
       $('body').removeClass('header--collapsed mode--scratchpad');
@@ -326,6 +375,7 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
   async function leaveScratchpadMode() {
     if (progress) return;
     progress = true;
+    monitoredDraft?.restore();
     await scratchpadFadeOut();
     $('.problem-content-container').append($('.problem-content'));
     await extender.collapse();
