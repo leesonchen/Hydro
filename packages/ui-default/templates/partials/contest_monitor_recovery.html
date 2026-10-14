@@ -1,0 +1,61 @@
+{# Upload pending events only; do not reenable monitoring after the exam. #}
+<script>
+(function () {
+  // Same authenticated student/domain/contest/attempt scope as the live monitor.
+  var queueKey = 'hydro-monitor-queue:{{ handler.user._id }}/{{ tdoc.domainId }}/{{ tdoc.docId }}/{{ (tsdoc.startAt or tdoc.beginAt).getTime() }}';
+  var endpoint = "{{ url('contest_monitor', tid=tdoc.docId) }}";
+  var pending;
+  try { pending = JSON.parse(sessionStorage.getItem(queueKey) || '[]'); } catch (e) { pending = []; }
+  if (!Array.isArray(pending) || !pending.length) return;
+  var inFlight = false, stopped = false, timer;
+  function save() { try { sessionStorage.setItem(queueKey, JSON.stringify(pending)); } catch (e) { /* unavailable */ } }
+  function finish() { stopped = true; if (timer) clearInterval(timer); }
+  function transmit() {
+    if (inFlight || stopped || !pending.length) return;
+    inFlight = true;
+    var first = pending[0];
+    function failure(blocked) { inFlight = false; if (blocked) finish(); }
+    function acknowledge(data) {
+      if (!data || data.ok !== true) { failure(false); return; }
+      pending = pending.filter(function (item) {
+        return item.sessionId !== first.sessionId || item.pageInstanceId !== first.pageInstanceId || item.sequence !== first.sequence;
+      });
+      save();
+      inFlight = false;
+      if (pending.length) transmit();
+      else finish();
+    }
+    var payload = JSON.stringify(first);
+    try {
+      if (typeof fetch === 'function') {
+        fetch(endpoint, { method: 'POST', credentials: 'same-origin', keepalive: true,
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: payload
+        }).then(function (response) {
+          if (!response.ok) { failure(response.status === 401 || response.status === 403); return null; }
+          return response.json();
+        }).then(function (data) { if (data) acknowledge(data); }).catch(function () { failure(false); });
+      } else if (typeof XMLHttpRequest !== 'undefined') {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', endpoint, true);
+        xhr.timeout = 8000;
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) return;
+          if (xhr.status < 200 || xhr.status >= 300) {
+            failure(xhr.status === 401 || xhr.status === 403); return;
+          }
+          try { acknowledge(JSON.parse(xhr.responseText)); }
+          catch (e) { failure(false); }
+        };
+        xhr.onerror = function () { failure(false); };
+        xhr.ontimeout = function () { failure(false); };
+        xhr.send(payload);
+      } else { failure(true); }
+    } catch (e) { failure(false); }
+  }
+  timer = setInterval(transmit, 5000);
+  window.addEventListener('pagehide', finish);
+  transmit();
+})();
+</script>
