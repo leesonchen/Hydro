@@ -125,9 +125,9 @@ for (const stage of ['session-transition', 'event-commit', 'session-clear']) {
         await monitor.recordEvent(input('page_hidden', 3, { clientAt: new Date(110000) }));
         await monitor.recordEvent(visible);
         const event = await monitor.events.findOne({ sequence: 2 });
-        assert.equal(event.durationMs, 5000);
+        assert.equal(event.durationMs, undefined);
         const session = await monitor.sessions.findOne({});
-        assert.equal(session.hiddenSince.getTime(), 110000);
+        assert.equal(session.hiddenSince, undefined);
         assert.equal(session.pendingEvent, undefined);
         assert.equal(await monitor.events.countDocuments({}), 3);
     });
@@ -144,7 +144,7 @@ test('heartbeats remain bounded and do not clear an unfinished hidden interval',
     for (let sequence = 2; sequence < 15; sequence++) await monitor.recordEvent(input('heartbeat', sequence));
     assert.equal(await monitor.events.countDocuments({}), 1);
     assert.equal(await monitor.sessions.countDocuments({}), 1);
-    assert.ok((await monitor.sessions.findOne({})).hiddenSince);
+    assert.equal((await monitor.sessions.findOne({})).hiddenSince, undefined);
 });
 test('reusing an event identity with a different event type is rejected', async () => {
     await monitor.recordEvent(input('page_hidden', 1));
@@ -173,9 +173,35 @@ test('nonparticipants, expired individual duration and outsiders cannot report e
     const tid = await monitoredContest({ duration: 0.001 });
     await assert.rejects(handler().post('test', tid, 'heartbeat', 'session-123456', 'page-123456', 1), errors.ContestNotAttendedError);
     await contest.setStatus('test', tid, 42, { attend: 1, startAt: new Date(Date.now() - 60000) });
-    await assert.rejects(handler().post('test', tid, 'heartbeat', 'session-123456', 'page-123456', 1), errors.ForbiddenError);
+    const late = handler();
+    await late.post('test', tid, 'heartbeat', 'session-123456', 'page-123456', 1);
+    assert.equal(late.response.body.accepted, false);
     await contest.edit('test', tid, { assign: ['another-class'] });
     await assert.rejects(handler().post('test', tid, 'heartbeat', 'session-123456', 'page-123456', 1), errors.ForbiddenError);
+});
+test('queued monitoring transitions are accepted after the exam ends within the grace period', async () => {
+    const tid = await monitoredContest();
+    await contest.setStatus('test', tid, 42, { attend: 1 });
+    const exam = await contest.get('test', tid);
+    const eventAt = exam.beginAt.getTime() + 500;
+    await contest.edit('test', tid, { endAt: new Date(Date.now() - 3000) });
+    const h = handler();
+    await h.post('test', tid, 'page_hidden', 'session-123456', 'page-123456', 1, eventAt);
+    assert.equal(h.response.body.accepted, true);
+    assert.equal((await monitor.events.findOne({ sequence: 1 })).receivedAfterEnd, true);
+    await h.post('test', tid, 'heartbeat', 'session-123456', 'page-123456', 2, eventAt);
+    assert.equal(h.response.body.accepted, false);
+    await h.post('test', tid, 'page_visible', 'session-123456', 'page-123456', 3, Date.now() + 1000);
+    assert.equal(h.response.body.accepted, false);
+    await h.post('test', tid, 'window_focus', 'session-123456', 'page-123456', 4);
+    assert.equal(h.response.body.accepted, false);
+});
+test('uploads after the grace window are rejected', async () => {
+    const tid = await monitoredContest();
+    await contest.setStatus('test', tid, 42, { attend: 1 });
+    await contest.edit('test', tid, { endAt: new Date(Date.now() - monitor.monitorUploadGraceMs - 5000) });
+    await assert.rejects(handler().post('test', tid, 'page_hidden',
+        'session-123456', 'page-123456', 1, Date.now() - monitor.monitorUploadGraceMs - 10000), errors.ForbiddenError);
 });
 test('only authorized invigilators can read monitoring records; stale sessions are excluded', async () => {
     const tid = await monitoredContest();
@@ -671,7 +697,7 @@ for (const [name, first, second, setState] of [
         const queued = h.queue().filter((e) => e.eventType === first || e.eventType === second);
         for (const event of queued) await monitor.recordEvent(input(event.eventType, event.sequence, { clientAt: new Date(event.clientAt) }));
         const final = await monitor.events.findOne({ sequence: queued[3].sequence });
-        if (first !== 'fullscreen_enter') assert.equal(final.durationMs, 30000);
+        assert.equal(final.durationMs, undefined);
         h.window.__contestMonitorCleanup();
     });
 }
