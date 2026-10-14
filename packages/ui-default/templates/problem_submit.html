@@ -3,6 +3,8 @@
 {% set monitoredExam = tdoc and tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc, tsdoc) and mode != 'practice' %}
 {% if monitoredExam %}
   {% include 'partials/contest_monitor_client.html' %}
+{% elif tdoc and tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isDone(tdoc, tsdoc) %}
+  {% include 'partials/contest_monitor_recovery.html' %}
 {% endif %}
 {{ set(UiContext, 'pdoc', pdoc) }}
 <div class="row responsive-sidebar-layout">
