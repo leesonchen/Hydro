@@ -246,12 +246,13 @@ export class Handler extends HandlerCommon {
     }
 
     async init() {
-        const contentType = this.request.headers['content-type']?.split(';', 1)[0]?.toLowerCase();
+        const contentType = this.request.headers['content-type']?.split(';', 1)[0]?.trim().toLowerCase();
         const isFormRequest = contentType === 'application/x-www-form-urlencoded'
             || contentType === 'multipart/form-data' || contentType === 'text/plain';
         const hasCookieSession = !!this.context.cookies.get('sid');
         const hasBearerToken = /^Bearer\s+/i.test(this.request.headers.authorization || '');
-        if (this.request.method === 'post' && isFormRequest && hasCookieSession && !hasBearerToken
+        const isUnsafeMethod = !['get', 'head', 'options'].includes(this.request.method.toLowerCase());
+        if (isUnsafeMethod && isFormRequest && hasCookieSession && !hasBearerToken
             && !this.context.cors && !this.allowCors) {
             try {
                 const source = this.request.headers.origin || this.request.headers.referer;

@@ -525,12 +525,25 @@ publish_package() {
     local package_path="$2"
     local tgz_filename="$3"
     local package_json="$package_path/package.json"
+    local package_relpath="${package_path#"$SCRIPT_DIR"/}/package.json"
     local package_json_backup
 
     echo -e "${YELLOW}处理包: ${package_name}${NC}"
 
     if [ ! -d "$package_path" ]; then
         echo -e "${RED}错误: 包目录不存在: $package_path${NC}"
+        return 1
+    fi
+
+    # The release commit must contain only the generated version bump. Refuse
+    # to publish this package if its manifest already has uncommitted changes.
+    if ! git -C "$SCRIPT_DIR" diff --quiet HEAD -- "$package_relpath"; then
+        echo -e "${RED}错误: ${package_json} 有未提交修改，无法安全记录发布版本${NC}"
+        return 1
+    fi
+    if ! git -C "$SCRIPT_DIR" var GIT_AUTHOR_IDENT >/dev/null 2>&1 \
+        || ! git -C "$SCRIPT_DIR" var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
+        echo -e "${RED}错误: Git 作者或提交者身份未配置，无法记录发布版本${NC}"
         return 1
     fi
 
@@ -653,9 +666,21 @@ publish_package() {
         cleanup_ui_asset_aliases
     fi
 
-    mv -f "$package_json_backup" "$package_json"
+    # Keep workspace dependency rewrites out of the source manifest. Preserve
+    # only the published version, then create a path-scoped commit so unrelated
+    # staged changes are not included.
+    cat "$package_json_backup" > "$package_json"
+    rm -f "$package_json_backup"
+    sed -i "s/\"version\": \"$current_version\"/\"version\": \"$new_version\"/" "$package_json"
     cd "$SCRIPT_DIR"
     rm -rf /tmp/publish-temp
+
+    local commit_message="chore(release): ${package_name}@${new_version}"
+    if ! git -C "$SCRIPT_DIR" commit --only -m "$commit_message" -- "$package_relpath"; then
+        echo -e "${RED}错误: ${package_name}@${new_version} 已发布，但版本提交失败；package.json 保留新版本号，请检查 Git 状态${NC}"
+        return 1
+    fi
+    echo -e "${GREEN}✓ 已提交版本变更: ${commit_message}${NC}"
 
     echo ""
 }
