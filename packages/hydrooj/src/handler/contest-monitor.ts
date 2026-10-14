@@ -5,7 +5,7 @@ import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
 import { PERM } from '../model/builtin';
 import * as contest from '../model/contest';
 import {
-    events, initializeMonitor, MonitorEventType, monitorEventTypes, recordEvent, retentionMs, sessions,
+    events, initializeMonitor, monitorUploadGraceMs, MonitorEventType, monitorEventTypes, recordEvent, retentionMs, sessions,
 } from '../model/contestMonitor';
 import { Handler, param, Types } from '../service/server';
 
@@ -44,16 +44,31 @@ export class ContestMonitorHandler extends Handler {
         const team = tdoc.allowTeam ? await contest.getTeamVid(domainId, tid, this.user._id) : undefined;
         const status = await contest.getStatus(domainId, tid, team ?? this.user._id);
         if (!status?.attend) throw new ContestNotAttendedError(domainId, tid);
-        if (!contest.isOngoing(tdoc, status)) throw new ForbiddenError('Exam is not active');
+        const now = Date.now();
+        const personalEnd = tdoc.duration && status.startAt instanceof Date
+            ? status.startAt.getTime() + tdoc.duration * 3600000 : Infinity;
+        const eventEnd = Math.min(tdoc.endAt.getTime(), status.endAt instanceof Date ? status.endAt.getTime() : Infinity, personalEnd);
+        const eventStart = Math.max(tdoc.beginAt.getTime(), status.startAt instanceof Date ? status.startAt.getTime() : -Infinity);
+        const receivedAfterEnd = !contest.isOngoing(tdoc, status);
+        // Uploading existing monitor events must never reopen the answer window.
+        if (receivedAfterEnd && (now < eventEnd || now > eventEnd + monitorUploadGraceMs)) {
+            throw new ForbiddenError('Exam is not active');
+        }
         await this.limitRate('contest_monitor', 60, 150);
-        // Client clocks are advisory; preserve server receipt time independently.
-        const validClientAt = Number.isFinite(clientAt) && clientAt <= Date.now() + 60000 && clientAt >= Date.now() - retentionMs;
+        // Client clocks are advisory only. Late evidence is marked and never trusted as proof.
+        const validClientAt = Number.isFinite(clientAt) && clientAt <= now + 60000 && clientAt >= now - retentionMs;
+        if (receivedAfterEnd && (eventType === 'heartbeat' || !validClientAt
+            || clientAt < eventStart || clientAt >= eventEnd)) {
+            this.response.body = { ok: true, accepted: false };
+            return;
+        }
         await recordEvent({
             domainId, contestTid: tid, uid: this.user._id, sessionId, pageInstanceId, sequence,
             eventType: eventType as MonitorEventType,
             ...(validClientAt ? { clientAt: new Date(clientAt) } : {}),
+            ...(receivedAfterEnd ? { receivedAfterEnd: true } : {}),
         });
-        this.response.body = { ok: true };
+        this.response.body = { ok: true, accepted: true };
     }
 }
 
