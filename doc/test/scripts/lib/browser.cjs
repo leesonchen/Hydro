@@ -39,7 +39,23 @@ async function create(role,seedCookies){
  const agent=createSessionAgent(cookies);
  const screenshot=async filename=>{const r=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(filename,Buffer.from(r.data,'base64'))};
  let clickDocument=null;let clickUrl=null;
- const click=async selector=>{const rect=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing browser control');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();if(!document.documentElement.hasAttribute('data-browser-test-document'))document.documentElement.setAttribute('data-browser-test-document','doc-'+Math.random().toString(36).slice(2));return {x:r.x+r.width/2,y:r.y+r.height/2,documentId:document.documentElement.getAttribute('data-browser-test-document'),documentUrl:location.href}})()`);clickDocument=rect.documentId;clickUrl=rect.documentUrl;delete rect.documentId;delete rect.documentUrl;await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...rect});await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...rect});await delay(300);};
+ const click=async selector=>{
+  const documentState=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing browser control');e.scrollIntoView({block:'center',inline:'center',behavior:'instant'});if(!document.documentElement.hasAttribute('data-browser-test-document'))document.documentElement.setAttribute('data-browser-test-document','doc-'+Math.random().toString(36).slice(2));return {documentId:document.documentElement.getAttribute('data-browser-test-document'),documentUrl:location.href}})()`);
+  clickDocument=documentState.documentId;clickUrl=documentState.documentUrl;
+  // Sticky sidebars reposition after the scroll event. Wait for a stable,
+  // unobstructed target instead of clicking the coordinates from before layout.
+  let rect,previous;
+  for(let attempt=0;attempt<30;attempt++){
+   await delay(100);
+   const current=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);return {x,y,width:r.width,height:r.height,reachable:r.width>0&&r.height>0&&!!hit&&(hit===e||e.contains(hit))}})()`);
+   if(current?.reachable&&previous?.reachable&&Math.abs(current.x-previous.x)<0.5&&Math.abs(current.y-previous.y)<0.5){rect={x:current.x,y:current.y};break;}
+   previous=current;
+  }
+  if(!rect)throw Error('Browser click target did not become stable and reachable: '+selector);
+  await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...rect});
+  await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...rect});
+  await delay(300);
+ };
  const fill=async(selector,value)=>evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing browser field');e.focus();const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(e,${JSON.stringify(String(value))});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
  const text=()=>evaluate('document.body.innerText');
  const location=()=>evaluate('location.pathname+location.search');
