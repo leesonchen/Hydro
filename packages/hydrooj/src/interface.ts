@@ -196,6 +196,7 @@ declare module './model/problem' {
         html?: boolean;
         stats?: any;
         difficulty?: number;
+        ratingV2Difficulty?: import('./lib/rating-publication-store').RatingProblemDifficulty | null;
         sort?: string;
         reference?: {
             domainId: string;

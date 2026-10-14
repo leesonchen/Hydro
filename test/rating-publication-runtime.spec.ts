@@ -157,7 +157,7 @@ async function seedContest(domainId = 'd') {
 
 beforeEach(async () => {
     for (const name of ['system', 'domain', 'domain.user', 'user', 'document', 'document.status', 'record', 'schedule',
-        'ratingv2_shadow', 'rating.publication.runs', 'rating.publication.users', RATING_COLLECTIONS.runs, RATING_COLLECTIONS.users]) {
+        'ratingv2_shadow', 'rating.publication.runs', 'rating.publication.users', RATING_COLLECTIONS.runs, RATING_COLLECTIONS.users, RATING_COLLECTIONS.problems]) {
         await db.collection(name).deleteMany({});
     }
     counters = { renew: 0, publish: 0 };
@@ -671,4 +671,31 @@ test('a limited-domain V2 trial includes a valid unrated course assessment along
     assert.equal(snapshot.diagnostics.contests.ratedProcessed, 1);
     assert.equal(snapshot.diagnostics.contests.classroomProcessed, 1);
     assert.equal(snapshot.parameters.includeClassroomAssessments, true);
+});
+
+test('V2 publication saves replayed difficulty from mature contest participants', async () => {
+    const firstStart = Date.now() - 8 * 86400000;
+    for (let i = 0; i < 6; i++) {
+        const tid = new ObjectId();
+        const beginAt = new Date(firstStart + i * 86400000);
+        const endAt = new Date(beginAt.getTime() + 3600000);
+        await db.collection('document').insertOne({ _id: tid, docId: tid, docType: 30, domainId: 'd',
+            rule: 'oi', rated: true, beginAt, endAt, duration: 0, pids: [1], assign: [] });
+        await db.collection('record').insertMany([
+            { _id: recordId(beginAt.getTime() + 60000, i * 2 + 1), domainId: 'd', uid: 2, pid: 1, contest: tid, status: 1, score: 100 },
+            { _id: recordId(beginAt.getTime() + 120000, i * 2 + 2), domainId: 'd', uid: 3, pid: 1, contest: tid, status: 2, score: 0 },
+        ]);
+    }
+    await runtime.configureRating({ algorithm: 'v2_trial', domains: ['d'] }, 99);
+    const queued = await runtime.queueRatingApply('d', 99);
+    const job = await db.collection(RATING_COLLECTIONS.runs).findOne({ _id: queued.runId });
+    await runtime.executeRatingJob(job);
+    const [difficulty] = await store.problemDifficulties('d', [1]);
+    assert.equal(difficulty.runId, job._id);
+    assert.equal(difficulty.students, 2);
+    assert.equal(difficulty.pos, 1);
+    assert.equal(difficulty.neg, 1);
+    assert.equal(difficulty.status, 'ok');
+    assert.equal(difficulty.provisionalLike, false);
+    assert(Number.isFinite(difficulty.d));
 });

@@ -19,7 +19,7 @@ after(async () => {
     await server?.stop();
 });
 beforeEach(async () => {
-    for (const name of ['system', 'domain', RATING_COLLECTIONS.runs, RATING_COLLECTIONS.users]) await db.collection(name).deleteMany({});
+    for (const name of ['system', 'domain', RATING_COLLECTIONS.runs, RATING_COLLECTIONS.users, RATING_COLLECTIONS.problems]) await db.collection(name).deleteMany({});
     store = new RatingPublicationStore(db);
 });
 
@@ -168,6 +168,33 @@ test('empty result generations complete and publish', async () => {
     assert.equal(run.status, 'complete');
     assert.equal(run.count, 0);
     assert.equal((await store.rows('exam', [2], pointer)).rows.length, 0);
+});
+
+test('V2 difficulty snapshots follow the active publication pointer', async () => {
+    await addDomain();
+    await store.configure('v2_trial', ['exam']);
+    const job = await store.begin('exam', true);
+    await store.writeProblemDifficulties(job, [{ pid: 7, d: 1680.5, se: 42.1, students: 24, pos: 8, neg: 16,
+        status: 'ok', provisionalLike: true }]);
+    await store.writeRows(job, [row()], {});
+    const pointer = await store.publish(job);
+    assert.deepEqual(await store.problemDifficulties('exam', [7], pointer), [{
+        _id: (await db.collection(RATING_COLLECTIONS.problems).findOne({ domainId: 'exam', runId: job._id }))._id,
+        domainId: 'exam', runId: job._id, pid: 7, d: 1680.5, se: 42.1, students: 24, pos: 8, neg: 16,
+        status: 'ok', provisionalLike: true,
+    }]);
+    const next = await store.begin('exam', true);
+    await store.writeProblemDifficulties(next, [{ pid: 7, d: 1800, se: null, students: 24, pos: 24, neg: 0,
+        status: 'degenerate', provisionalLike: false }]);
+    // Unpublished snapshots never replace the active difficulty.
+    assert.equal((await store.problemDifficulties('exam', [7]))[0].d, 1680.5);
+    await store.writeRows(next, [row()], {});
+    await store.publish(next);
+    assert.equal((await store.problemDifficulties('exam', [7]))[0].d, 1800);
+    await store.rollback('exam');
+    assert.equal((await store.problemDifficulties('exam', [7]))[0].d, 1680.5);
+    await store.deleteDomain('exam');
+    assert.equal(await db.collection(RATING_COLLECTIONS.problems).countDocuments({ domainId: 'exam' }), 0);
 });
 
 test('write readback corruption is rejected before completion', async () => {

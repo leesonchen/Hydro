@@ -26,6 +26,18 @@ export interface RatingRow {
     tier?: string | null;
     tierName?: string | null;
 }
+export interface RatingProblemDifficulty {
+    domainId: string;
+    runId: string;
+    pid: number | string;
+    d: number;
+    se: number | null;
+    students: number;
+    pos: number;
+    neg: number;
+    status: 'ok' | 'degenerate' | 'nonconverged';
+    provisionalLike: boolean;
+}
 export interface RatingJob {
     _id: string;
     domainId: string;
@@ -56,9 +68,10 @@ declare module '../service/db' {
     interface Collections {
         rating_publication_runs: RatingJob;
         rating_publication_users: RatingRow & { domainId: string, runId: string };
+        rating_publication_problems: RatingProblemDifficulty;
     }
 }
-export const RATING_COLLECTIONS = { runs: 'rating_publication_runs', users: 'rating_publication_users' } as const;
+export const RATING_COLLECTIONS = { runs: 'rating_publication_runs', users: 'rating_publication_users', problems: 'rating_publication_problems' } as const;
 const CONTROL_ID = 'rating.publication';
 const QUEUE_LEASE_MS = 30 * 60 * 1000;
 const EXECUTION_LEASE_MS = 90 * 1000;
@@ -80,6 +93,7 @@ export class RatingPublicationStore {
     async ensureIndexes() {
         await this.database.collection(RATING_COLLECTIONS.users).createIndex({ domainId: 1, runId: 1, uid: 1 }, { unique: true });
         await this.database.collection(RATING_COLLECTIONS.users).createIndex({ domainId: 1, runId: 1, join: 1, visible: 1, rp: -1, uid: 1 });
+        await this.database.collection(RATING_COLLECTIONS.problems).createIndex({ domainId: 1, runId: 1, pid: 1 }, { unique: true });
         await this.database.collection(RATING_COLLECTIONS.runs).createIndex({ domainId: 1, asOf: -1 });
     }
 
@@ -285,6 +299,34 @@ export class RatingPublicationStore {
         if (!completed.matchedCount) throw new Error('评分任务已失效，不能完成快照');
     }
 
+    async writeProblemDifficulties(job: RatingJob, difficulties: Omit<RatingProblemDifficulty, 'domainId' | 'runId'>[]) {
+        await this.renew(job);
+        if (new Set(difficulties.map((row) => row.pid)).size !== difficulties.length
+            || difficulties.some((row) => !Number.isFinite(row.d)
+                || !['ok', 'degenerate', 'nonconverged'].includes(row.status))) {
+            throw new Error('题目难度结果包含重复题目或无效数值');
+        }
+        const coll = this.database.collection(RATING_COLLECTIONS.problems);
+        if (difficulties.length) {
+            await coll.insertMany(difficulties.map((difficulty) => ({
+                domainId: job.domainId, runId: job._id, ...difficulty,
+            })));
+        }
+        const saved = await coll.find({ domainId: job.domainId, runId: job._id }, {
+            projection: { _id: 0, domainId: 0, runId: 0 },
+        }).toArray();
+        const sort = (rows: typeof difficulties) => [...rows].sort((a, b) => String(a.pid).localeCompare(String(b.pid)));
+        if (hash(sort(saved)) !== hash(sort(difficulties))) throw new Error('题目难度写入校验失败');
+    }
+
+    async problemDifficulties(domainId: string, pids: (number | string)[], pointer?: RatingPointer | null): Promise<RatingProblemDifficulty[]> {
+        const active = pointer === undefined ? await this.active(domainId) : pointer;
+        if (!active || active.algorithm !== 'v2_trial' || !pids.length) return [] as RatingProblemDifficulty[];
+        return this.database.collection(RATING_COLLECTIONS.problems).find({
+            domainId, runId: active.runId, pid: { $in: pids },
+        }).toArray();
+    }
+
     async publish(job: RatingJob, fallbackPrevious?: RatingPointer) {
         const prior = await this.receipt(job);
         if (prior?.outcome === 'committed') return prior.pointer;
@@ -417,6 +459,7 @@ export class RatingPublicationStore {
             $pull: { 'value.domains': domainId }, $inc: { 'value.revision': 1 },
         });
         await this.database.collection(RATING_COLLECTIONS.users).deleteMany({ domainId });
+        await this.database.collection(RATING_COLLECTIONS.problems).deleteMany({ domainId });
         await this.database.collection(RATING_COLLECTIONS.runs).deleteMany({ domainId });
     }
 
@@ -438,6 +481,7 @@ export class RatingPublicationStore {
         const ids = expired.map((run) => run._id);
         if (!ids.length) return;
         await this.database.collection(RATING_COLLECTIONS.users).deleteMany({ domainId, runId: { $in: ids } });
+        await this.database.collection(RATING_COLLECTIONS.problems).deleteMany({ domainId, runId: { $in: ids } });
         await this.database.collection(RATING_COLLECTIONS.runs).deleteMany({ domainId, _id: { $in: ids } });
         await this.database.collection('system').updateOne({ _id: CONTROL_ID }, {
             $unset: Object.fromEntries(ids.map((_id) => [this.receiptPath({ _id, domainId }), ''])),

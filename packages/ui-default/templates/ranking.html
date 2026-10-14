@@ -7,7 +7,6 @@
     <div class="section">
       <div class="section__body no-padding">
         <div data-fragment-id="ranking">
-          {% if ratingAlgorithm == 'v2_trial' %}<p class="note">评分：V2（限域试用，非认证竞赛能力）；比赛 Rating 含试用赛事与符合条件的课堂测试，普通做题计入成就 A。{% if ratingUpdatedAtText %}最近更新：{{ ratingUpdatedAtText }}{% endif %}</p>{% endif %}
           {% if not udocs.length %}
             {% if page == 1 %}
               <blockquote class="note">{{ _('The ranking page is not updated realtime.') }}</blockquote>
@@ -28,16 +27,16 @@
                 {% endif %}
               {% endfor %}
               {% endif %}
-              <col class="col--ac">
+              {% if ratingAlgorithm != 'v2_trial' %}<col class="col--ac">{% endif %}
               <col class="col--bio">
             </colgroup>
             <thead>
               <tr>
                 <th class="col--rank">{{ _('Rank') }}</th>
                 <th class="col--user">{{ _('Username') }}</th>
-                <th class="col--rp">{{ 'RP' if ratingAlgorithm == 'v2_trial' else _('RP') }}</th>
+                <th class="col--rp">{{ '综合分' if ratingAlgorithm == 'v2_trial' else _('RP') }}</th>
                 {% if ratingAlgorithm == 'v2_trial' %}
-                  <th>试用 Rating</th><th>比赛/测评场次</th><th>成就 A</th><th>题目分 P</th><th>比赛分 C</th>
+                  <th>等级分</th><th>测评场次</th><th>成长值</th><th>题目提交</th><th>通过数</th>
                 {% else %}
                 {% for key, def in model.rp %}
                   {% if not def.hidden %}
@@ -45,7 +44,7 @@
                   {% endif %}
                 {% endfor %}
                 {% endif %}
-                <th class="col--ac">{{ _('Accept') }}</th>
+                {% if ratingAlgorithm != 'v2_trial' %}<th class="col--ac">{{ _('Accept') }}</th>{% endif %}
                 <th class="col--bio">{{ _('Bio') }}</th>
               </tr>
             </thead>
@@ -56,7 +55,7 @@
                 <td class="col--user">{{ user.render_inline(handler.user) }}</td>
                 <td class="col--rp">{{ handler.user.rp|default(0)|round(2) if ratingAlgorithm == 'v2_trial' else handler.user.rp|default(0)|round(0) }}</td>
                 {% if ratingAlgorithm == 'v2_trial' %}
-                  <td>{% if handler.user.rating is not none %}{{ handler.user.rating }}{% else %}未评级{% endif %}</td><td>{{ handler.user.ratedEvents|default(0) }}{% if handler.user.ratedEvents|default(0) < ratingProvisionalEvents|default(5) %} <small>暂定</small>{% endif %}</td><td>{{ handler.user.ratingAchievement|default('—') }}</td><td>{{ (handler.user.rpInfo|default({})).problem|default('—') }}</td><td>{{ (handler.user.rpInfo|default({})).contest|default('—') }}</td>
+                  <td>{% if handler.user.rating is not none %}{{ handler.user.rating }}{% else %}未评级{% endif %}</td><td>{{ handler.user.ratedEvents|default(0) }}</td><td>{{ (handler.user.rpInfo|default({})).problem|default('—') }}</td><td>{{ handler.user.nSubmit|default(0) }}</td><td>{{ handler.user.nAccept|default(0) }}</td>
                 {% else %}
                 {% for key, def in model.rp %}
                   {% if not def.hidden %}
@@ -64,7 +63,7 @@
                   {% endif %}
                 {% endfor %}
                 {% endif %}
-                <td class="col--ac">{{ handler.user.nAccept|default(0) }}</td>
+                {% if ratingAlgorithm != 'v2_trial' %}<td class="col--ac">{{ handler.user.nAccept|default(0) }}</td>{% endif %}
                 <td class="col--bio">{{ handler.user.bio|default('')|truncate(10, true)|markdownInline|safe }}</td>
               </tr>
               {% endif %}
@@ -74,7 +73,7 @@
                 <td class="col--user">{{ user.render_inline(udoc) }}</td>
                 <td class="col--rp">{{ udoc.rp|default(0)|round(2) if ratingAlgorithm == 'v2_trial' else udoc.rp|default(0)|round(0) }}</td>
                 {% if ratingAlgorithm == 'v2_trial' %}
-                  <td>{% if udoc.rating is not none %}{{ udoc.rating }}{% else %}未评级{% endif %}</td><td>{{ udoc.ratedEvents|default(0) }}{% if udoc.ratedEvents|default(0) < ratingProvisionalEvents|default(5) %} <small>暂定</small>{% endif %}</td><td>{{ udoc.ratingAchievement|default('—') }}</td><td>{{ (udoc.rpInfo|default({})).problem|default('—') }}</td><td>{{ (udoc.rpInfo|default({})).contest|default('—') }}</td>
+                  <td>{% if udoc.rating is not none %}{{ udoc.rating }}{% else %}未评级{% endif %}</td><td>{{ udoc.ratedEvents|default(0) }}</td><td>{{ (udoc.rpInfo|default({})).problem|default('—') }}</td><td>{{ udoc.nSubmit|default(0) }}</td><td>{{ udoc.nAccept|default(0) }}</td>
                 {% else %}
                 {% for key, def in model.rp %}
                   {% if not def.hidden %}
@@ -82,7 +81,7 @@
                   {% endif %}
                 {% endfor %}
                 {% endif %}
-                <td class="col--ac">{{ udoc.nAccept|default(0) }}</td>
+                {% if ratingAlgorithm != 'v2_trial' %}<td class="col--ac">{{ udoc.nAccept|default(0) }}</td>{% endif %}
                 <td class="col--bio">{{ udoc.bio|default('')|truncate(10, true)|markdownInline|safe }}</td>
               </tr>
               {%- endfor -%}
