@@ -11,6 +11,8 @@ export const monitorEventTypes: MonitorEventType[] = [
     'fullscreen_exit', 'fullscreen_enter', 'paste_detected', 'clipboard_blocked', 'drop_blocked', 'page_leave', 'heartbeat',
 ];
 export const retentionMs = 90 * 24 * 60 * 60 * 1000;
+// A short upload-only grace period; it never extends the allowed answer window.
+export const monitorUploadGraceMs = 30 * 60 * 1000;
 
 interface MonitorKey {
     domainId: string;
@@ -28,12 +30,11 @@ export interface MonitorEvent extends MonitorKey {
     clientAt?: Date;
     expiresAt: Date;
     processedAt?: Date;
-    durationMs?: number;
+    receivedAfterEnd?: boolean;
 }
 
 interface PendingTransition {
     eventId: ObjectId;
-    durationMs?: number;
 }
 
 export interface MonitorSession extends MonitorKey {
@@ -42,8 +43,6 @@ export interface MonitorSession extends MonitorKey {
     lastSeenAt: Date;
     expiresAt: Date;
     lastEventType?: MonitorEventType;
-    hiddenSince?: Date;
-    blurSince?: Date;
     pendingEvent?: PendingTransition;
 }
 
@@ -61,19 +60,14 @@ export const sessions = db.collection('contest.monitor.sessions');
 async function finishTransition(session: MonitorSession) {
     const pending = session.pendingEvent;
     if (!pending) return;
-    await events.updateOne({ _id: pending.eventId }, {
-        $set: {
-            processedAt: new Date(),
-            ...(pending.durationMs !== undefined ? { durationMs: pending.durationMs } : {}),
-        },
-    });
+    await events.updateOne({ _id: pending.eventId }, { $set: { processedAt: new Date() } });
     await sessions.updateOne({ _id: session._id, 'pendingEvent.eventId': pending.eventId }, {
         $unset: { pendingEvent: '' }, $inc: { revision: 1 },
     });
 }
 
 /** A one-entry journal and revision CAS make retries recoverable on standalone MongoDB. */
-export async function recordEvent(input: Omit<MonitorEvent, '_id' | 'serverAt' | 'expiresAt' | 'processedAt' | 'durationMs'>) {
+export async function recordEvent(input: Omit<MonitorEvent, '_id' | 'serverAt' | 'expiresAt' | 'processedAt'>) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + retentionMs);
     const key: MonitorKey = {
@@ -115,24 +109,11 @@ export async function recordEvent(input: Omit<MonitorEvent, '_id' | 'serverAt' |
         // eslint-disable-next-line no-await-in-loop
         const current = await events.findOne({ _id: event._id });
         if (current.processedAt) return;
-        const at = event.clientAt || event.serverAt;
-        const fields: Partial<MonitorSession> = { lastEventType: event.eventType };
-        const unset: Record<string, ''> = {};
-        let durationMs: number | undefined;
-        if (event.eventType === 'page_hidden' && !session.hiddenSince) fields.hiddenSince = at;
-        if (event.eventType === 'window_blur' && !session.blurSince) fields.blurSince = at;
-        if (event.eventType === 'page_visible' && session.hiddenSince) {
-            durationMs = Math.max(0, at.getTime() - session.hiddenSince.getTime());
-            unset.hiddenSince = '';
-        }
-        if (event.eventType === 'window_focus' && session.blurSince) {
-            durationMs = Math.max(0, at.getTime() - session.blurSince.getTime());
-            unset.blurSince = '';
-        }
-        fields.pendingEvent = { eventId: event._id, ...(durationMs !== undefined ? { durationMs } : {}) };
+        // Keep reliable event transitions, not untrustworthy wall-clock durations.
+        const fields: Partial<MonitorSession> = { lastEventType: event.eventType, pendingEvent: { eventId: event._id } };
         // eslint-disable-next-line no-await-in-loop
         await sessions.updateOne({ _id: session._id, revision: session.revision, pendingEvent: { $exists: false } }, {
-            $set: fields, $inc: { revision: 1 }, ...(Object.keys(unset).length ? { $unset: unset } : {}),
+            $set: fields, $inc: { revision: 1 }, $unset: { hiddenSince: '', blurSince: '' },
         });
     }
     throw new BadRequestError('Monitoring session is busy; retry the event');

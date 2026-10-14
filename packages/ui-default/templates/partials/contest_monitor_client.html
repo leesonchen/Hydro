@@ -29,8 +29,11 @@
 (function installMonitor() {
   if (window.__contestMonitorCleanup) window.__contestMonitorCleanup();
   var contestId = '{{ tdoc.docId }}';
-  var sessionKey = 'hydro-monitor-session:' + contestId;
-  var queueKey = 'hydro-monitor-queue:' + contestId;
+  // Scope to the authenticated user, domain, contest and participation attempt.
+  // The legacy contest-only queue cannot be securely attributed and is not replayed.
+  var scope = '{{ handler.user._id }}/{{ tdoc.domainId }}/' + contestId + '/{{ (tsdoc.startAt or tdoc.beginAt).getTime() }}';
+  var sessionKey = 'hydro-monitor-session:' + scope;
+  var queueKey = 'hydro-monitor-queue:' + scope;
   function newId() {
     return (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
   }
@@ -46,7 +49,7 @@
   var warningDialog = document.getElementById('contest-monitor-dialog');
   var warningBody = document.getElementById('contest-monitor-dialog-body');
   var acknowledgeButton = document.getElementById('contest-monitor-dialog-confirm');
-  var awaySince = null;
+  var away = false;
   var awayReasons = [];
   var internalClipboard = null;
   var lastBlockedAt = 0;
@@ -73,20 +76,19 @@
     }
   }
   function markAway(reason) {
-    if (awaySince === null) awaySince = Date.now();
+    away = true;
     if (awayReasons.indexOf(reason) === -1) awayReasons.push(reason);
     internalClipboard = null;
   }
   function reportReturn() {
-    if (awaySince === null || document.hidden || (document.hasFocus && !document.hasFocus())) return;
-    var seconds = Math.max(0, Math.round((Date.now() - awaySince) / 1000));
+    if (!away || document.hidden || (document.hasFocus && !document.hasFocus())) return;
     var fullscreenOnly = awayReasons.length === 1 && awayReasons[0] === '退出全屏';
-    awaySince = null;
+    away = false;
     awayReasons = [];
     if (warningDialog && warningBody) {
       warningBody.textContent = fullscreenOnly
         ? '检测到你刚才退出了全屏模式。测试期间请保持全屏，在当前页面完成作答。'
-        : '检测到你刚才离开了测试页面（约 ' + seconds + ' 秒）。测试期间请保持全屏模式，并留在当前页面完成作答。';
+        : '检测到你刚才离开了测试页面。测试期间请保持全屏模式，并留在当前页面完成作答。';
       warningDialog.hidden = false;
       warningDialog.style.display = 'flex';
       if (acknowledgeButton) acknowledgeButton.focus();

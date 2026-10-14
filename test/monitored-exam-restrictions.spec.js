@@ -17,6 +17,24 @@ test('monitored exam warns on return, requires acknowledgement and cleans listen
     assert.match(html, /function fullscreen\(\)/);
     assert.match(html, /document\.removeEventListener\('keydown', clipboardKeydown, true\)/);
 });
+test('monitor client scopes both queue and session to student, domain, contest and attempt', () => {
+    const html = source('packages/ui-default/templates/partials/contest_monitor_client.html');
+    assert.match(html, /handler\.user\._id/);
+    assert.match(html, /tdoc\.domainId/);
+    assert.match(html, /tsdoc\.startAt or tdoc\.beginAt/);
+    assert.match(html, /hydro-monitor-queue:' \+ scope/);
+    assert.match(html, /hydro-monitor-session:' \+ scope/);
+});
+test('post-exam uploader does not reinstall focus, clipboard or fullscreen monitoring', () => {
+    const html = source('packages/ui-default/templates/partials/contest_monitor_recovery.html');
+    assert.match(html, /handler\.user\._id/);
+    assert.match(html, /hydro-monitor-queue:/);
+    assert.match(html, /pagehide/);
+    assert.doesNotMatch(html, /visibilitychange|fullscreenchange|clipboardKeydown|markAway/);
+    for (const page of ['contest_detail', 'contest_problemlist', 'problem_detail', 'problem_submit']) {
+        assert.match(source('packages/ui-default/templates/' + page + '.html'), /contest_monitor_recovery/);
+    }
+});
 test('monitored clipboard intercepts shortcuts, native paste and drag/drop', () => {
     const html = source('packages/ui-default/templates/partials/contest_monitor_client.html');
     for (const name of ['copy', 'cut', 'paste']) assert.match(html, new RegExp(`'${name}'`));
@@ -273,7 +291,8 @@ test('focus warning is acknowledged once; leaving page invalidates IDE copy stat
     h.advance(3100);
     h.window.fire('focus');
     assert.equal(h.elements['contest-monitor-dialog'].hidden, false);
-    assert.match(h.elements['contest-monitor-dialog-body'].textContent, /测试页面（约 3 秒）/);
+    assert.match(h.elements['contest-monitor-dialog-body'].textContent, /检测到你刚才离开了测试页面/);
+    assert.doesNotMatch(h.elements['contest-monitor-dialog-body'].textContent, /秒/);
     h.elements['contest-monitor-dialog-confirm'].fire('click');
     assert.equal(h.elements['contest-monitor-dialog'].hidden, true);
     h.input.selectionStart = h.input.selectionEnd = 0;
