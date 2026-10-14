@@ -1,9 +1,14 @@
 name: CI
 
 # Run automated checks on pushed commits and pull requests; no daily schedule.
+# Only verify the integration branch after merge; feature branches are checked via PR.
+# This avoids running the same expensive build for both PR synchronize and
+# each push to the PR source branch. Manual runs remain available.
 on:
   push:
+    branches: [course-v2.2]
   pull_request:
+    branches: [course-v2.2]
   workflow_dispatch:
 
 permissions:
