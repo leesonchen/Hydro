@@ -4,11 +4,11 @@ import { BadRequestError } from '../error';
 import db from '../service/db';
 
 export type MonitorEventType = 'page_hidden' | 'page_visible' | 'window_blur' | 'window_focus'
-    | 'fullscreen_exit' | 'fullscreen_enter' | 'paste_detected' | 'page_leave' | 'heartbeat';
+    | 'fullscreen_exit' | 'fullscreen_enter' | 'paste_detected' | 'clipboard_blocked' | 'drop_blocked' | 'page_leave' | 'heartbeat';
 
 export const monitorEventTypes: MonitorEventType[] = [
     'page_hidden', 'page_visible', 'window_blur', 'window_focus',
-    'fullscreen_exit', 'fullscreen_enter', 'paste_detected', 'page_leave', 'heartbeat',
+    'fullscreen_exit', 'fullscreen_enter', 'paste_detected', 'clipboard_blocked', 'drop_blocked', 'page_leave', 'heartbeat',
 ];
 export const retentionMs = 90 * 24 * 60 * 60 * 1000;
 

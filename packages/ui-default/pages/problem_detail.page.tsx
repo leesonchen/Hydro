@@ -12,6 +12,41 @@ import {
 } from 'vj/utils';
 import { openDB } from 'vj/utils/db';
 
+// React failures after createRoot().render() do not propagate to the caller.
+class MonitoredEditorBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.warn('Monitored editor render failed.', error);
+    document.dispatchEvent(new Event('hydro:monitored-editor-failed'));
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+function waitForMonitoredEditorReady() {
+  let cleanup = () => {};
+  const promise = new Promise<void>((resolve, reject) => {
+    const ready = () => { cleanup(); resolve(); };
+    const failed = () => { cleanup(); reject(new Error('Monitored editor failed to mount')); };
+    const timeout = window.setTimeout(() => { cleanup(); reject(new Error('Monitored editor readiness timed out')); }, 18000);
+    cleanup = () => {
+      window.clearTimeout(timeout);
+      document.removeEventListener('hydro:monitored-editor-ready', ready);
+      document.removeEventListener('hydro:monitored-editor-failed', failed);
+    };
+    document.addEventListener('hydro:monitored-editor-ready', ready);
+    document.addEventListener('hydro:monitored-editor-failed', failed);
+  });
+  return { promise, cancel: () => cleanup() };
+}
+
 class ProblemPageExtender {
   isExtended = false;
   inProgress = false;
@@ -147,18 +182,27 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
     const { Provider, store } = await loadReactRedux(ScratchpadReducer);
     let cacheKey = `${UserContext._id}/${UiContext.pdoc.domainId}/${UiContext.pdoc.docId}`;
     if (UiContext.tdoc?._id) cacheKey += `@${UiContext.tdoc._id}`;
-    try {
-      const draft = await (await openDB).get('scratchpad-drafts', cacheKey);
-      if (draft) {
+    if (UiContext.monitoredExam) cacheKey += `@monitored:${UiContext.monitoredAttempt}`;
+    let draft;
+    // The server-rendered basic editor and the standard scratchpad share a draft.
+    // Never hydrate an old, non-monitored draft into a monitored test.
+    if (UiContext.monitoredExam) {
+      try {
+        draft = JSON.parse(localStorage.getItem(`hydro-monitor-draft:${cacheKey}`) || 'null');
+      } catch { /* disabled local storage */ }
+    }
+    if (!draft) {
+      try { draft = await (await openDB).get('scratchpad-drafts', cacheKey); } catch { /* IDB unsupported */ }
+    }
+    if (draft) {
         store.dispatch({
           type: 'SCRATCHPAD_EDITOR_HYDRATE',
           payload: {
-            code: draft.code ?? UiContext.codeTemplate,
+            code: draft.code ?? (UiContext.monitoredExam ? '' : UiContext.codeTemplate),
             lang: draft.lang ?? UiContext.codeLang,
           },
         });
-      }
-    } catch { }
+    }
 
     let previousEditorState = store.getState().editor;
     let write: Promise<any> = Promise.resolve();
@@ -167,10 +211,19 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
         .then(() => openDB.then((db) => db.put('scratchpad-drafts', { id: cacheKey, code, lang })))
         .catch(() => { });
     }, 400);
+    const saveBasicCopy = _.debounce((code: string, lang: string) => {
+      try {
+        localStorage.setItem(`hydro-monitor-draft:${cacheKey}`, JSON.stringify({ code, lang }));
+      } catch { /* quota or disabled local storage: the IDB draft remains available */ }
+    }, 150);
+    if (UiContext.monitoredExam) {
+      window.addEventListener('pagehide', () => saveBasicCopy.flush());
+    }
     store.subscribe(() => {
       const editor = store.getState().editor;
       if (editor === previousEditorState) return;
       previousEditorState = editor;
+      if (UiContext.monitoredExam) saveBasicCopy(editor.code, editor.lang);
       saveDraft(editor.code, editor.lang);
     });
 
@@ -217,7 +270,9 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
       const root = createRoot($('#scratchpad').get(0));
       root.render(
         <Provider store={store}>
-          <ScratchpadApp />
+          {UiContext.monitoredExam
+            ? <MonitoredEditorBoundary><ScratchpadApp /></MonitoredEditorBoundary>
+            : <ScratchpadApp />}
         </Provider>,
       );
       unmountReact = () => root.unmount();
@@ -231,11 +286,41 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
   async function enterScratchpadMode() {
     if (progress) return;
     progress = true;
-    await extender.extend();
-    await loadReact();
-    renderReact();
-    await scratchpadFadeIn();
-    progress = false;
+    const basic = UiContext.monitoredExam ? document.getElementById('monitored-basic-editor') : null;
+    let readiness: ReturnType<typeof waitForMonitoredEditorReady> | null = null;
+    try {
+      await extender.extend();
+      await loadReact();
+      // In monitored mode the independent HTML editor must remain available
+      // until Monaco (or the React textarea fallback) has actually mounted.
+      if (UiContext.monitoredExam) readiness = waitForMonitoredEditorReady();
+      renderReact();
+      if (readiness) await readiness.promise;
+      if (basic) basic.style.display = 'none';
+      await scratchpadFadeIn();
+    } catch (error) {
+      if (!UiContext.monitoredExam) throw error;
+      console.warn('Advanced editor failed; restoring independent basic editor.', error);
+      try { if (unmountReact) unmountReact(); } catch (e) { console.warn('Editor cleanup failed.', e); }
+      unmountReact = null;
+      if (extender.isExtended) {
+        try { await extender.collapse(); } catch (e) { console.warn('Editor layout cleanup failed.', e); }
+      }
+      // A failed transition can leave the expanded CSS active without setting isExtended.
+      $('body').removeClass('header--collapsed mode--scratchpad');
+      $('.main > .row').show();
+      $('.footer').show();
+      $('.scratchpad-container').hide();
+      window.document.body.style.overflow = '';
+      if (basic) {
+        basic.style.display = 'block';
+        basic.querySelector<HTMLTextAreaElement>('textarea[name="code"]')?.focus();
+      }
+      Notification.error('高级编辑器无法使用，已切换为基础编辑模式。');
+    } finally {
+      readiness?.cancel();
+      progress = false;
+    }
   }
 
   async function leaveScratchpadMode() {
@@ -431,6 +516,10 @@ const page = new NamedPage(['problem_detail', 'contest_detail_problem', 'homewor
     $('span.tags').css('display', 'inline-block');
   });
   $('[name="problem-sidebar__download"]').on('click', handleClickDownloadProblem);
+  if (UiContext.monitoredExam && typeof URLSearchParams !== 'undefined'
+    && new URLSearchParams(window.location.search).get('editor') === 'online') {
+    enterScratchpadMode();
+  }
   if (UiContext.pdoc.config?.type === 'objective') {
     loadObjective();
     $(document).on('vjContentNew', loadObjective);

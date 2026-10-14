@@ -1,7 +1,7 @@
 /* eslint-disable no-await-in-loop -- Binding writes and cleanup must be ordered and awaited. */
 import type { Tdoc } from '../../../plugin-api';
 import {
-    BadRequestError, ContestModel, ForbiddenError, ObjectId,
+    BadRequestError, ContestModel, ForbiddenError, ObjectId, ProblemModel,
 } from '../../../plugin-api';
 import type { CourseTdoc, DagNode } from './course';
 
@@ -33,6 +33,19 @@ export async function validateAssessmentPlan(
             || (assessment.rule === 'acm' && (!Number.isInteger(assessment.passScore ?? 0)
                 || (assessment.passScore ?? 0) > node.pids.length))) {
             throw new BadRequestError('课堂测试时间必须处于课程范围内，题目与达标门槛必须有效。');
+        }
+        if (assessment.monitorMode === 'browser') {
+            // Validate before any course mutation/synchronization, so students are
+            // never given a monitored test containing a file-only question.
+            const pdict = await ProblemModel.getList(
+                domainId, node.pids, true, true, ProblemModel.PROJECTION_CONTEST_LIST,
+            );
+            const filePid = node.pids.find((pid) => pdict[pid]?.config
+                && typeof pdict[pid].config === 'object'
+                && pdict[pid].config.type === 'submit_answer');
+            if (filePid !== undefined) {
+                throw new BadRequestError(`课堂测试监控模式不支持文件提交题 P${filePid}。请先调整题目。`);
+            }
         }
         const recorded = linked.find((exam) => exam.sourceNodeId === node._id);
         if (recorded && hasStarted(recorded) && (

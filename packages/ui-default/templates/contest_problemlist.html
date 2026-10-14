@@ -3,7 +3,8 @@
 {% import "components/record.html" as record with context %}
 {% import "components/problem.html" as problem with context %}
 {% block content %}
-{% if tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc,tsdoc) %}
+{% set monitoredTest = tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc,tsdoc) and not practiceReady %}
+{% if monitoredTest %}
   {% include 'partials/contest_monitor_client.html' %}
 {% endif %}
 {{ set(UiContext, 'tdoc', tdoc) }}
@@ -87,7 +88,11 @@
                   <span class="problem__tag-item icon icon-comparison" style="font-size: .75rem;margin: 0;padding: 0 5px!important;">{{ pdict[pid].config.memoryMax if pdict[pid].config.memoryMax == pdict[pid].config.memoryMin else pdict[pid].config.memoryMin+'~'+pdict[pid].config.memoryMax }}MiB</span>
                 {% endif %}
                 {% if pdict[pid].config.type != 'objective' and (practiceReady or not model.contest.isDone(tdoc)) %}
-                  <a href="{{ url('problem_submit', pid=pid, query={tid:tdoc.docId}) }}" target="_blank" class="typo-a" style="float: right;"><span class="icon icon-send">{{ _('Post-contest Practice') if practiceReady else _('Submit') }}</span></a>
+                  {% if monitoredTest %}{% if pdict[pid].config.type != 'submit_answer' %}
+                    <a href="{{ url('problem_detail', pid=pid, query={tid:tdoc.docId, editor:'online'}) }}" class="typo-a" style="float: right;"><span class="icon icon-edit">在线编程</span></a>
+                  {% endif %}{% else %}
+                    <a href="{{ url('problem_submit', pid=pid, query={tid:tdoc.docId}) }}" target="_blank" class="typo-a" style="float: right;"><span class="icon icon-send">{{ _('Post-contest Practice') if practiceReady else _('Submit') }}</span></a>
+                  {% endif %}
                 {% endif %}
               </td>
             </tr>

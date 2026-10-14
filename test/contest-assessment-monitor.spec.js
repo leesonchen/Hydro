@@ -29,6 +29,7 @@ let mongod, client, db, monitor, assessment, contest, document, access, MonitorH
 let fault;
 let groups = [];
 let team;
+let testProblemType = 'default';
 const listeners = {};
 const bus = { parallel: async (name, ...args) => {
     for (const fn of listeners[name] || []) await fn(...args);
@@ -73,7 +74,13 @@ before(async () => {
         '../lib/avatar': () => '', '../lib/contest-participation': { hasTeamParticipation: async () => false },
         './problem': {}, './record': {}, './message': {}, '@hydrooj/utils/lib/utils': utils,
     });
-    const api = { ContestModel: contest, DocumentModel: document, ObjectId, PERM, STATUS, ...utils, ...errors };
+    const problemApi = {
+        PROJECTION_CONTEST_LIST: ['config'],
+        getList: async (_domainId, pids) => Object.fromEntries(pids.map((pid) => [
+            pid, { docId: pid, config: { type: testProblemType } },
+        ])),
+    };
+    const api = { ContestModel: contest, DocumentModel: document, ProblemModel: problemApi, ObjectId, PERM, STATUS, ...utils, ...errors };
     // Proxy error exports are deliberately selected: spreading a Proxy doesn't enumerate them.
     Object.assign(api, { BadRequestError: errors.BadRequestError, ForbiddenError: errors.ForbiddenError });
     const structure = load('packages/hydrooj/src/builtin/course-management/model/structure.ts');
@@ -98,7 +105,7 @@ before(async () => {
 });
 after(async () => { await client?.close(); await mongod?.stop(); });
 beforeEach(async () => {
-    fault = null; groups = []; team = undefined;
+    fault = null; groups = []; team = undefined; testProblemType = 'default';
     for (const name of ['document', 'document.status', 'contest.monitor', 'contest.monitor.sessions']) await db.collection(name).deleteMany({});
 });
 
@@ -192,6 +199,11 @@ async function courseFixture(rule = 'oi', future = true, passScore = 1) {
     const exam = await contest.get('test', new ObjectId(course.dag[0].assessment.contestTid));
     return { course, exam };
 }
+test('classroom monitor rejects file-only questions before writing a contest', async () => {
+    testProblemType = 'submit_answer';
+    await assert.rejects(courseFixture(), /课堂测试监控模式不支持文件提交题/);
+    assert.equal(await document.coll.countDocuments({ sourceType: 'course_assessment' }), 0);
+});
 test('course synchronization is idempotent and updates class assignment and invigilators', async () => {
     const { course, exam } = await courseFixture();
     await contest.edit('test', course.docId, { title: 'Renamed', assign: ['class-b', '42'], maintainer: [9] });

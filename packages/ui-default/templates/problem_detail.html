@@ -1,6 +1,7 @@
 {% extends "layout/basic.html" %}
 {% block content %}
-{% if tdoc and tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc,tsdoc) %}
+{% set monitoredExam = tdoc and tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc,tsdoc) and mode == 'contest' %}
+{% if monitoredExam %}
   {% include 'partials/contest_monitor_client.html' %}
 {% endif %}
 <script>
@@ -8,7 +9,9 @@
   problemId: pdoc.pid|default(pdoc.docId),
   problemNumId: pdoc.docId,
   codeLang: handler.user.codeLang,
-  codeTemplate: handler.user.codeTemplate,
+  codeTemplate: '' if monitoredExam else handler.user.codeTemplate,
+  monitoredExam: monitoredExam,
+  monitoredAttempt: (tsdoc.startAt or tdoc.beginAt).getTime() if monitoredExam else 0,
   pdoc: pdoc
 }) }}
 {% if tdoc %}
@@ -167,6 +170,86 @@
     {% include "partials/problem_sidebar.html" %}
   </div></div>
 </div>
+
+{% if monitoredExam and pdoc.config.type == 'submit_answer' %}
+<div class="row"><div class="columns"><blockquote class="warn">当前题目要求提交文件，不支持在测试监控模式下作答，请联系监考老师。</blockquote></div></div>
+{% endif %}
+{% if monitoredExam and pdoc.config.type != 'objective' and pdoc.config.type != 'submit_answer' %}
+{# This is a fully server-rendered online code editor for old browsers or failed advanced assets. #}
+<div id="monitored-basic-editor" class="section" style="max-width:1024px;margin:16px auto">
+  <div class="section__header"><h1 class="section__title">基础编辑模式</h1></div>
+  <div class="section__body">
+    <p style="color:#697681">当前浏览器可直接使用基础编辑模式。你仍然可以编写、保存草稿和提交代码。</p>
+    <form method="post" action="{{ url('problem_submit', pid=pdoc.docId, query={tid:tdoc.docId}) }}">
+      {{ form.form_select({label:'Code language',options:basicEditorLangRange,name:'lang',value:handler.user.codeLang}) }}
+      <label for="monitored-basic-code">代码</label>
+      <textarea id="monitored-basic-code" name="code" required spellcheck="false" autocapitalize="off"
+                rows="18" class="textbox" style="display:block;width:100%;min-height:320px;font-family:monospace;font-size:14px;margin:8px 0"></textarea>
+      <button type="submit" class="rounded primary button">提交代码</button>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var section = document.getElementById('monitored-basic-editor');
+  var textarea = document.getElementById('monitored-basic-code');
+  if (!section || !textarea) return;
+  // Keep the basic editor usable even when modern JavaScript cannot initialize.
+  // It is hidden only after the advanced editor successfully starts.
+  var key = 'hydro-monitor-draft:{{ handler.user._id }}/{{ pdoc.domainId }}/{{ pdoc.docId }}@{{ tdoc._id }}@monitored:{{ (tsdoc.startAt or tdoc.beginAt).getTime() }}';
+  var langSelect = section.querySelector('select[name="lang"]');
+  try {
+    var previous = JSON.parse(localStorage.getItem(key) || 'null');
+    if (previous && typeof previous.code === 'string') textarea.value = previous.code;
+    if (previous && previous.lang && langSelect) langSelect.value = previous.lang;
+  } catch (e) { /* local storage unavailable */ }
+  function save() {
+    try { localStorage.setItem(key, JSON.stringify({ code: textarea.value, lang: langSelect ? langSelect.value : '' })); }
+    catch (e) { /* local storage unavailable */ }
+  }
+  textarea.addEventListener('input', save);
+  if (langSelect) langSelect.addEventListener('change', save);
+  // Prefer the browser edit command to retain native undo/redo history.
+  // Older browsers without it can still edit through setRangeText or a plain textarea.
+  function replaceRange(start, end, insertion, selectionStart, selectionEnd) {
+    textarea.focus();
+    if (typeof textarea.setSelectionRange === 'function') textarea.setSelectionRange(start, end);
+    else { textarea.selectionStart = start; textarea.selectionEnd = end; }
+    var inserted = false;
+    try {
+      if (typeof document.execCommand === 'function') {
+        inserted = document.execCommand('insertText', false, insertion) === true;
+      }
+    } catch (e) { /* edit command unsupported */ }
+    if (!inserted && typeof textarea.setRangeText === 'function') {
+      textarea.setRangeText(insertion, start, end, 'end');
+      inserted = true;
+    }
+    if (!inserted) {
+      textarea.value = textarea.value.slice(0, start) + insertion + textarea.value.slice(end);
+    }
+    if (typeof textarea.setSelectionRange === 'function') textarea.setSelectionRange(selectionStart, selectionEnd);
+    else { textarea.selectionStart = selectionStart; textarea.selectionEnd = selectionEnd; }
+    save();
+  }
+  textarea.addEventListener('keydown', function (event) {
+    if (event.keyCode !== 9) return;
+    var start = textarea.selectionStart, end = textarea.selectionEnd;
+    if (typeof start !== 'number' || typeof end !== 'number') return;
+    event.preventDefault();
+    var text = textarea.value;
+    if (event.shiftKey) {
+      var beginning = text.lastIndexOf('\n', start - 1) + 1;
+      var width = Math.min(4, ((text.slice(beginning, start).match(/^ */) || [''])[0]).length);
+      if (width) replaceRange(beginning, beginning + width, '',
+        Math.max(beginning, start - width), Math.max(beginning, end - width));
+    } else replaceRange(start, end, '    ', start + 4, start + 4);
+  });
+  section.querySelector('form').addEventListener('submit', save);
+  window.addEventListener('pagehide', save);
+})();
+</script>
+{% endif %}
 <div style="display:none" class="outer-loader-container"><div class="loader"></div></div>
 <div class="scratchpad-container" style="display:none">
   <div style="display:none" class="loader-container"><div class="loader"></div></div>

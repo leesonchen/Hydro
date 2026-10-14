@@ -554,7 +554,11 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             solution.count(domainId, { parentId: this.pdoc.docId, title: { $ne: REFERENCE_CODE_TITLE } }),
             discussion.count(domainId, { parentId: this.pdoc.docId }),
         ]);
+        const basicEditorLangRange = typeof this.pdoc.config === 'object' && this.pdoc.config
+            ? Object.fromEntries((this.pdoc.config.langs || []).map((lang) => [lang, setting.langs[lang]?.display || lang]))
+            : {};
         this.response.body = {
+            basicEditorLangRange,
             pdoc: this.pdoc,
             udoc: this.udoc,
             editor_udoc: editorUdoc,
@@ -696,6 +700,17 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
     }
 
     async get() {
+        // The legacy submit form is not an entry point for a monitored coding test.
+        // Redirect direct bookmarks as well as sidebar links into online programming.
+        if (this.tdoc?.monitorMode === 'browser' && this.tsdoc?.attend && !this.practiceReady
+            && contest.isOngoing(this.tdoc, this.tsdoc)
+            && typeof this.pdoc.config === 'object' && this.pdoc.config
+            && this.pdoc.config.type !== 'objective') {
+            this.response.redirect = this.url('problem_detail', {
+                pid: this.pdoc.docId, query: { tid: this.tdoc.docId, editor: 'online' },
+            });
+            return;
+        }
         this.response.template = 'problem_submit.html';
         const langRange = (typeof this.pdoc.config === 'object' && this.pdoc.config.langs)
             ? Object.fromEntries(this.pdoc.config.langs.map((i) => [i, setting.langs[i]?.display || i]))
@@ -731,6 +746,20 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
         }
         await this.limitRate('add_record', 60, system.get('limit.submission_user'), '{{user}}');
         await this.limitRate('add_record', 60, pretest ? system.get('limit.pretest') : system.get('limit.submission'));
+        // A crafted form cannot upload a source file to a monitored coding test.
+        // This check precedes any storage.put side effect and covers pretests too.
+        if (tid && this.request.files?.file?.size > 0) {
+            const monitored = await contest.get(domainId, tid);
+            if (monitored?.monitorMode === 'browser') {
+                const uid = monitored.allowTeam
+                    ? (await contest.getTeamVid(domainId, tid, this.user._id)) ?? this.user._id
+                    : this.user._id;
+                const monitoredStatus = await contest.getStatus(domainId, tid, uid);
+                if (monitoredStatus?.attend && contest.isOngoing(monitored, monitoredStatus)) {
+                    throw new ForbiddenError('测试监控模式下不允许提交本地文件，请使用在线编程模式。');
+                }
+            }
+        }
         const files: Record<string, string> = {};
         const lengthLimit = system.get('limit.codelength') || 128 * 1024;
         if (!code) {

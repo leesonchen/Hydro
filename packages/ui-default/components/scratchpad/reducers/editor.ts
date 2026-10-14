@@ -1,6 +1,6 @@
 export default function reducer(state = {
   lang: UiContext.codeLang,
-  code: UiContext.codeTemplate,
+  code: UiContext.monitoredExam ? '' : UiContext.codeTemplate,
 }, action: any = {}) {
   if (action.type === 'SCRATCHPAD_EDITOR_HYDRATE') return action.payload;
   if (action.type === 'SCRATCHPAD_EDITOR_UPDATE_CODE') return { ...state, code: action.payload };

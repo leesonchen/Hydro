@@ -1,7 +1,29 @@
-<div id="contest-monitor-banner" class="typo" style="padding:10px;background:#fff4d3;border:1px solid #ecd180;margin-bottom:12px">
-  监控模式已开启：切换网页、失去焦点和退出全屏会被记录；浏览器不能阻止打开其他程序。
-  <button type="button" id="contest-monitor-fullscreen" class="rounded button small">进入全屏</button>
-  <span id="contest-monitor-warning" role="status" style="margin-left:8px"></span>
+<style>
+  .contest-monitor-brief { box-sizing:border-box; max-width:1024px; margin:10px auto 12px; padding:9px 12px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid #dce2e6; border-left:3px solid #78a9b6; color:#47545c; font-size:13px; line-height:1.6; }
+  .contest-monitor-brief__dot { width:7px; height:7px; flex:0 0 7px; border-radius:50%; background:#68a18e; }
+  .contest-monitor-brief__message { flex:1 1 320px; }
+  .contest-monitor-brief__button { margin:0!important; white-space:nowrap; }
+  .contest-monitor-toast { box-sizing:border-box; max-width:1024px; margin:0 auto 10px; padding:7px 12px; color:#855d26; background:#fff8e6; border:1px solid #eee1b9; font-size:12px; }
+  @media(max-width:1060px) { .contest-monitor-brief,.contest-monitor-toast { margin-left:12px; margin-right:12px; } }
+</style>
+<div id="contest-monitor-banner" class="contest-monitor-brief">
+  <span class="contest-monitor-brief__dot" aria-hidden="true"></span>
+  <strong>测试监控中</strong>
+  <span class="contest-monitor-brief__message">测试结束前，请保持全屏模式，不要切换到其他窗口或应用。</span>
+  <button type="button" id="contest-monitor-fullscreen" class="rounded button small contest-monitor-brief__button">进入全屏</button>
+</div>
+<div id="contest-monitor-warning" class="contest-monitor-toast" role="status" aria-live="polite" hidden></div>
+<div id="contest-monitor-dialog" hidden role="alertdialog" aria-modal="true"
+     aria-labelledby="contest-monitor-dialog-title" aria-describedby="contest-monitor-dialog-body"
+     style="display:none;position:fixed;inset:0;z-index:99999;align-items:center;justify-content:center;background:rgba(0,0,0,.5);padding:20px">
+  <div style="max-width:460px;width:100%;background:#fff;border-radius:5px;padding:26px;box-shadow:0 8px 36px rgba(0,0,0,.24);color:#242424">
+    <h2 id="contest-monitor-dialog-title" style="margin:0 0 16px;font-size:20px">测试监控提醒</h2>
+    <p id="contest-monitor-dialog-body" style="font-size:15px;line-height:1.7"></p>
+    <p style="font-size:13px;color:#78818a">本次行为已记录，供监考老师查看。</p>
+    <div style="text-align:right;margin-top:20px">
+      <button type="button" id="contest-monitor-dialog-confirm" class="rounded primary button">我知道了，继续测试</button>
+    </div>
+  </div>
 </div>
 <script>
 (function installMonitor() {
@@ -21,6 +43,13 @@
   var sequence = 0;
   var endpoint = "{{ url('contest_monitor', tid=tdoc.docId) }}";
   var status = document.getElementById('contest-monitor-warning');
+  var warningDialog = document.getElementById('contest-monitor-dialog');
+  var warningBody = document.getElementById('contest-monitor-dialog-body');
+  var acknowledgeButton = document.getElementById('contest-monitor-dialog-confirm');
+  var awaySince = null;
+  var awayReasons = [];
+  var internalClipboard = null;
+  var lastBlockedAt = 0;
   var pending;
   try { pending = JSON.parse(load(queueKey, '[]')); } catch (e) { pending = []; }
   if (!Array.isArray(pending)) pending = [];
@@ -32,34 +61,280 @@
     window_blur: 'focus', window_focus: 'focus',
     fullscreen_enter: 'fullscreen', fullscreen_exit: 'fullscreen'
   };
-  function show(message) { if (status) status.textContent = message; }
+  var clipboardType = 'application/x-hydro-monitored-code';
+  var toastTimer = null;
+  function show(message) {
+    if (!status) return;
+    status.textContent = message || '';
+    status.hidden = !message;
+    if (toastTimer && typeof clearTimeout === 'function') clearTimeout(toastTimer);
+    if (message && typeof setTimeout === 'function') {
+      toastTimer = setTimeout(function () { if (status) { status.hidden = true; status.textContent = ''; } }, 4000);
+    }
+  }
+  function markAway(reason) {
+    if (awaySince === null) awaySince = Date.now();
+    if (awayReasons.indexOf(reason) === -1) awayReasons.push(reason);
+    internalClipboard = null;
+  }
+  function reportReturn() {
+    if (awaySince === null || document.hidden || (document.hasFocus && !document.hasFocus())) return;
+    var seconds = Math.max(0, Math.round((Date.now() - awaySince) / 1000));
+    var fullscreenOnly = awayReasons.length === 1 && awayReasons[0] === '退出全屏';
+    awaySince = null;
+    awayReasons = [];
+    if (warningDialog && warningBody) {
+      warningBody.textContent = fullscreenOnly
+        ? '检测到你刚才退出了全屏模式。测试期间请保持全屏，在当前页面完成作答。'
+        : '检测到你刚才离开了测试页面（约 ' + seconds + ' 秒）。测试期间请保持全屏模式，并留在当前页面完成作答。';
+      warningDialog.hidden = false;
+      warningDialog.style.display = 'flex';
+      if (acknowledgeButton) acknowledgeButton.focus();
+    }
+  }
+  function acknowledge() {
+    if (!warningDialog) return;
+    warningDialog.hidden = true;
+    warningDialog.style.display = 'none';
+  }
+  function stopOutsideKeys(event) {
+    if (!warningDialog || warningDialog.hidden) return;
+    if ((event.key === 'Enter' || event.key === ' ') && event.target === acknowledgeButton) return;
+    event.preventDefault();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    if (acknowledgeButton) acknowledgeButton.focus();
+  }
+  if (acknowledgeButton) acknowledgeButton.addEventListener('click', acknowledge);
+  document.addEventListener('keydown', stopOutsideKeys, true);
+
+  // Clipboard metadata never becomes part of the code. On browsers that strip
+  // custom MIME types, validate the native text against the in-page copy record.
+  function cancel(event) {
+    if (event && event.preventDefault) event.preventDefault();
+    if (event && event.stopImmediatePropagation) event.stopImmediatePropagation();
+    else if (event && event.stopPropagation) event.stopPropagation();
+  }
+  function closestEditor(target) {
+    for (var node = target; node && node !== document; node = node.parentNode) {
+      if (node.className && typeof node.className === 'string'
+          && /(^|\s)(ScratchpadPlainEditor|ScratchpadMonacoEditor)(\s|$)/.test(node.className)) return node;
+      if (node.tagName === 'TEXTAREA' && node.name === 'code') return node;
+    }
+    return null;
+  }
+  function codeEditor(target) {
+    var node = closestEditor(target);
+    if (!node) return null;
+    if (node.tagName === 'TEXTAREA') return { textarea: node };
+    var editor = window.editor;
+    if (editor && editor.getModel && editor.getModel() && editor.getSelections) return { editor: editor };
+    return null;
+  }
+  function blocked(message, eventType) {
+    if (Date.now() - lastBlockedAt > 800) {
+      lastBlockedAt = Date.now();
+      emit(eventType || 'clipboard_blocked');
+    }
+    show(message);
+  }
+  function fireInput(textarea) {
+    var event;
+    if (typeof Event === 'function') event = new Event('input', { bubbles: true });
+    else { event = document.createEvent('Event'); event.initEvent('input', true, false); }
+    textarea.dispatchEvent(event);
+  }
+  function insertTextarea(textarea, replacement) {
+    var start = textarea.selectionStart || 0;
+    var end = textarea.selectionEnd || 0;
+    if (typeof textarea.setRangeText === 'function') textarea.setRangeText(replacement, start, end, 'end');
+    else {
+      textarea.value = textarea.value.slice(0, start) + replacement + textarea.value.slice(end);
+      textarea.selectionStart = textarea.selectionEnd = start + replacement.length;
+    }
+    fireInput(textarea);
+  }
+  function selectionRanges(editor) {
+    var model = editor.getModel();
+    return (editor.getSelections() || []).map(function (range) {
+      if (!range.isEmpty()) return range;
+      var line = range.startLineNumber;
+      return { startLineNumber: line, startColumn: 1,
+        endLineNumber: Math.min(line + 1, model.getLineCount()),
+        endColumn: line < model.getLineCount() ? 1 : model.getLineMaxColumn(line) };
+    });
+  }
+  function selectedCode(target) {
+    if (target.textarea) {
+      var textarea = target.textarea;
+      return textarea.value.slice(textarea.selectionStart || 0, textarea.selectionEnd || 0);
+    }
+    var model = target.editor.getModel();
+    return selectionRanges(target.editor).map(function (range) { return model.getValueInRange(range); }).join('\n');
+  }
+  function cutSelection(target) {
+    if (target.textarea) { insertTextarea(target.textarea, ''); return; }
+    var editor = target.editor;
+    editor.pushUndoStop();
+    editor.executeEdits('contest-monitor-cut', selectionRanges(editor).map(function (range) { return { range: range, text: '' }; }));
+    editor.pushUndoStop();
+  }
+  function pasteSelection(target, text) {
+    if (target.textarea) { insertTextarea(target.textarea, text); return; }
+    var editor = target.editor;
+    editor.pushUndoStop();
+    editor.executeEdits('contest-monitor-paste', (editor.getSelections() || []).map(function (range) { return { range: range, text: text }; }));
+    editor.pushUndoStop();
+  }
+  function writeClipboard(event, text, marker) {
+    var data = event.clipboardData;
+    if (data && typeof data.setData === 'function') {
+      try {
+        data.setData('text/plain', text);
+        try { data.setData(clipboardType, marker); } catch (e) { /* custom MIME unsupported */ }
+        return true;
+      } catch (e) { /* native clipboard fallback */ }
+    }
+    return false;
+  }
+  function clipboardComparable(text) { return String(text || '').replace(/\r\n?/g, '\n'); }
+  function clipboardEvent(event) {
+    var target = codeEditor(event.target);
+    if (!target) {
+      cancel(event);
+      blocked('测试期间仅支持在在线编程区域内复制和粘贴。', 'clipboard_blocked');
+      if (event.type === 'paste') emit('paste_detected');
+      return;
+    }
+    if (event.type === 'paste') {
+      cancel(event);
+      var data = event.clipboardData;
+      var plain = '';
+      var marker = '';
+      var hasText = false;
+      if (data && typeof data.getData === 'function') {
+        try {
+          plain = data.getData('text/plain');
+          marker = data.getData(clipboardType);
+          hasText = true;
+        } catch (e) { /* old browser */ }
+      }
+      // Fallback for browsers that remove the custom MIME type but preserve text.
+      // When clipboard content is unavailable, paste only our internal buffer.
+      if (!internalClipboard || (hasText && clipboardComparable(plain) !== clipboardComparable(internalClipboard.text))
+          || (marker && marker !== internalClipboard.marker)) {
+        emit('paste_detected');
+        blocked('已阻止外部粘贴，请先在当前在线编程区域内复制代码。', 'clipboard_blocked');
+        return;
+      }
+      pasteSelection(target, internalClipboard.text);
+      return;
+    }
+    var text = selectedCode(target);
+    if (!text) { cancel(event); return; }
+    var marker = pageInstanceId + ':' + newId();
+    internalClipboard = { text: text, marker: marker };
+    if (writeClipboard(event, text, marker)) {
+      cancel(event);
+      if (event.type === 'cut') cutSelection(target);
+    }
+    // Without ClipboardEvent.clipboardData, allow native copy/cut while
+    // keeping a separate text record for subsequent in-page paste attempts.
+  }
+  function clipboardKeydown(event) {
+    var key = String(event.key || '').toLowerCase();
+    var shortcut = (event.ctrlKey || event.metaKey) && !event.altKey
+      && (key === 'c' || key === 'x' || key === 'v')
+      || event.ctrlKey && key === 'insert'
+      || event.shiftKey && !event.ctrlKey && (key === 'insert' || key === 'delete');
+    if (!shortcut) return;
+    var target = codeEditor(event.target);
+    if (!target) {
+      cancel(event);
+      blocked('测试期间仅支持在在线编程区域内复制和粘贴。');
+      return;
+    }
+    // Legacy browsers without native ClipboardEvent need an internal fallback.
+    if (typeof window.ClipboardEvent === 'undefined') {
+      cancel(event);
+      if (key === 'v' || key === 'insert' && event.shiftKey) {
+        if (internalClipboard) pasteSelection(target, internalClipboard.text);
+        else blocked('已阻止外部粘贴，请先在在线编程区域内复制代码。');
+      } else {
+        var text = selectedCode(target);
+        if (text) {
+          internalClipboard = { text: text, marker: pageInstanceId + ':' + newId() };
+          if (key === 'x' || key === 'delete') cutSelection(target);
+        }
+      }
+    }
+  }
+  function beforeInput(event) {
+    if (event.inputType !== 'insertFromPaste' && event.inputType !== 'insertFromDrop') return;
+    cancel(event);
+    if (event.inputType === 'insertFromDrop') blocked('已阻止拖入外部内容。', 'drop_blocked');
+    // A native paste already passed through clipboardEvent (and was handled there).
+  }
+  function blockDrag(event) { if (codeEditor(event.target)) cancel(event); }
+  function blockDrop(event) {
+    cancel(event);
+    blocked('已阻止拖入外部内容。', 'drop_blocked');
+  }
+  document.addEventListener('keydown', clipboardKeydown, true);
+  ['copy', 'cut', 'paste'].forEach(function (name) { document.addEventListener(name, clipboardEvent, true); });
+  document.addEventListener('beforeinput', beforeInput, true);
+  document.addEventListener('dragover', blockDrag, true);
+  document.addEventListener('drop', blockDrop, true);
   function persist() { save(queueKey, JSON.stringify(pending.slice(-120))); }
   function transmit() {
     if (inFlight || stopped || !pending.length) return;
     inFlight = true;
     var first = pending[0];
-    fetch(endpoint, {
-      method: 'POST', credentials: 'same-origin', keepalive: true,
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(first)
-    }).then(function (response) {
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      return response.json();
-    }).then(function (body) {
+    function failure() {
       if (stopped) return;
-      if (!body || body.ok !== true) throw new Error('Monitor acknowledgement missing');
+      inFlight = false;
+      show('网络暂时不稳定，记录将在连接恢复后自动同步。');
+    }
+    function acknowledge(body) {
+      if (stopped) return;
+      if (!body || body.ok !== true) { failure(); return; }
       pending = pending.filter(function (item) {
         return item.sessionId !== first.sessionId || item.pageInstanceId !== first.pageInstanceId || item.sequence !== first.sequence;
       });
       persist();
-      show('监控状态正常');
       inFlight = false;
       transmit();
-    }).catch(function () {
-      if (stopped) return;
-      inFlight = false;
-      show('监控事件暂未同步，恢复网络后自动重试');
-    });
+    }
+    var payload = JSON.stringify(first);
+    try {
+      if (typeof fetch === 'function') {
+        fetch(endpoint, {
+          method: 'POST', credentials: 'same-origin', keepalive: true,
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: payload
+        }).then(function (response) {
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response.json();
+        }).then(acknowledge).catch(failure);
+      } else if (typeof XMLHttpRequest !== 'undefined') {
+        // Legacy editors can submit without fetch or native Promise.
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', endpoint, true);
+        xhr.timeout = 8000;
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) return;
+          if (xhr.status < 200 || xhr.status >= 300) { failure(); return; }
+          try { acknowledge(JSON.parse(xhr.responseText)); }
+          catch (e) { failure(); }
+        };
+        xhr.onerror = failure;
+        xhr.ontimeout = failure;
+        xhr.send(payload);
+      } else {
+        failure();
+      }
+    } catch (e) { failure(); }
   }
   function emit(eventType) {
     if (stopped) return;
@@ -73,35 +348,59 @@
     if (eventType === 'heartbeat' && pending.some(function (item) { return item.eventType === 'heartbeat'; })) return;
     pending.push({ eventType: eventType, sessionId: session, pageInstanceId: pageInstanceId, sequence: ++sequence, clientAt: now });
     if (pending.length > 120) {
-      var hb = pending.findIndex(function (item, index) { return item.eventType === 'heartbeat' && (!inFlight || index !== 0); });
+      // Older browsers without Array.prototype.findIndex must retain events as well.
+      var hb = -1;
+      for (var i = 0; i < pending.length; i++) {
+        if (pending[i].eventType === 'heartbeat' && (!inFlight || i !== 0)) { hb = i; break; }
+      }
       if (hb !== -1) pending.splice(hb, 1);
       else pending.splice(inFlight ? 1 : 0, 1);
     }
     persist();
-    if (eventType !== 'heartbeat') show('检测到 ' + eventType + '，正在上报');
     transmit();
   }
-  function visibility() { emit(document.hidden ? 'page_hidden' : 'page_visible'); }
-  function blur() { emit('window_blur'); }
-  function focus() { emit('window_focus'); }
-  function fullscreen() { emit(document.fullscreenElement ? 'fullscreen_enter' : 'fullscreen_exit'); }
-  function paste() { emit('paste_detected'); }
+  function visibility() {
+    if (document.hidden) markAway('切换了浏览器标签页');
+    emit(document.hidden ? 'page_hidden' : 'page_visible');
+    if (!document.hidden) reportReturn();
+  }
+  function blur() { markAway('离开了测试窗口'); emit('window_blur'); }
+  function focus() { emit('window_focus'); reportReturn(); }
+  function fullscreen() {
+    emit(document.fullscreenElement ? 'fullscreen_enter' : 'fullscreen_exit');
+    updateFullscreenButton();
+    if (!document.fullscreenElement) {
+      markAway('退出全屏');
+      reportReturn();
+    }
+  }
   function unload() { emit('page_leave'); stopTransport(); }
   function pageshow(event) { if (event.persisted) installMonitor(); }
   document.addEventListener('visibilitychange', visibility);
   window.addEventListener('blur', blur);
   window.addEventListener('focus', focus);
   document.addEventListener('fullscreenchange', fullscreen);
-  document.addEventListener('paste', paste);
   window.addEventListener('pagehide', unload);
   window.addEventListener('pageshow', pageshow);
   var fullButton = document.getElementById('contest-monitor-fullscreen');
+  function updateFullscreenButton() {
+    if (!fullButton) return;
+    fullButton.hidden = !!document.fullscreenElement;
+    // Hydro's .button display rule can otherwise override the hidden attribute.
+    if (fullButton.style) fullButton.style.display = document.fullscreenElement ? 'none' : '';
+  }
   function enterFullscreen() {
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(function () { show('浏览器未允许进入全屏'); });
+    if (!document.documentElement || !document.documentElement.requestFullscreen) {
+      show('当前浏览器不支持网页全屏，可继续在线编程。');
+      return;
     }
+    try {
+      var result = document.documentElement.requestFullscreen();
+      if (result && result.catch) result.catch(function () { show('浏览器未允许进入全屏，可继续在线编程。'); });
+    } catch (e) { show('当前浏览器不支持网页全屏，可继续在线编程。'); }
   }
   if (fullButton) fullButton.addEventListener('click', enterFullscreen);
+  updateFullscreenButton();
   var heartbeatTimer = setInterval(function () { if (!document.hidden) emit('heartbeat'); }, 15000);
   var retryTimer = setInterval(transmit, 4000);
   transmit();
@@ -114,7 +413,16 @@
     window.removeEventListener('blur', blur);
     window.removeEventListener('focus', focus);
     document.removeEventListener('fullscreenchange', fullscreen);
-    document.removeEventListener('paste', paste);
+    document.removeEventListener('keydown', clipboardKeydown, true);
+    document.removeEventListener('keydown', stopOutsideKeys, true);
+    ['copy', 'cut', 'paste'].forEach(function (name) { document.removeEventListener(name, clipboardEvent, true); });
+    document.removeEventListener('beforeinput', beforeInput, true);
+    document.removeEventListener('dragover', blockDrag, true);
+    document.removeEventListener('drop', blockDrop, true);
+    if (acknowledgeButton) acknowledgeButton.removeEventListener('click', acknowledge);
+    internalClipboard = null;
+    if (toastTimer && typeof clearTimeout === 'function') clearTimeout(toastTimer);
+    acknowledge();
     window.removeEventListener('pagehide', unload);
     if (fullButton) fullButton.removeEventListener('click', enterFullscreen);
   }

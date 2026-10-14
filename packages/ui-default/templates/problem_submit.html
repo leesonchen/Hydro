@@ -1,6 +1,7 @@
 {% extends "layout/basic.html" %}
 {% block content %}
-{% if tdoc and tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc, tsdoc) %}
+{% set monitoredExam = tdoc and tdoc.monitorMode == 'browser' and tsdoc and tsdoc.attend and model.contest.isOngoing(tdoc, tsdoc) and mode != 'practice' %}
+{% if monitoredExam %}
   {% include 'partials/contest_monitor_client.html' %}
 {% endif %}
 {{ set(UiContext, 'pdoc', pdoc) }}
@@ -27,7 +28,7 @@
           {{ form.form_textarea({label:'Code', columns:12, name:'code', extra_class:'monospace', autofocus:true, nospellcheck:true}) }}
           <div class="row">
             <div class="medium-12 columns">
-              <p>{{ _('Or upload a file:') }} <input type="file" name="file"></p>
+              {% if not monitoredExam %}<p>{{ _('Or upload a file:') }} <input type="file" name="file"></p>{% endif %}
               <br />
             </div>
           </div>
