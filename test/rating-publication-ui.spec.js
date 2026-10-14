@@ -41,6 +41,14 @@ test('rating management page separates configuration from domain publication', (
         url: (name) => `/${name}`,
     });
     assert.match(html, /保存目标设置/);
+    assert.match(html, /class="select-container" name="form_item_algorithm"/);
+    assert.match(html, /class="textarea-container" name="form_item_domains"/);
+    assert.match(html, /class="section__body rating-manage__actions"/);
+    assert.match(html, /class="rating-manage__table-scroll"/);
+    assert.match(html, /class="rating-manage__table-scroll rating-manage__table-scroll--comparison"/);
+    assert.match(html, /保存设置只更新目标配置，不会自动切换/);
+    assert.match(html, /name="domains" rows="4" class="textbox"/);
+
     assert.match(html, /普通做题记录只计入题目成就/);
     assert.match(html, /重算并应用/);
     assert.match(html, /恢复上一次评分/);
