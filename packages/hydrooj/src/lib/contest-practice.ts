@@ -30,13 +30,17 @@ export function isPracticeOpen(tdoc: Tdoc) {
 }
 
 export function canManagePractice(user: User, tdoc: Tdoc) {
+    if (tdoc.sourceType === 'course_assessment') {
+        return user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+            || (user.own(tdoc) && user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF));
+    }
     return user.own(tdoc) || user.hasPerm(PERM.PERM_EDIT_CONTEST);
 }
 
 export function canReadPractice(user: User, tdoc: Tdoc, uid: number) {
     return supportsPractice(tdoc) && user._id > 0
         && user.hasPerm(PERM.PERM_VIEW_CONTEST) && user.hasPerm(PERM.PERM_VIEW_PROBLEM)
-        && contest.canAccessAssignedContest(user, tdoc)
+        && (canManagePractice(user, tdoc) || contest.canAccessAssignedContest(user, tdoc))
         && (uid === user._id || canManagePractice(user, tdoc));
 }
 
