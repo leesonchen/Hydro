@@ -11,12 +11,18 @@
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_detail', tid=tdoc.docId) }}">
         <span class="icon icon-award"></span> {{ _('View Contest') }}
       </a></li>
+      {% if tdoc.sourceType == 'course_assessment' %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('course_detail', tid=tdoc.sourceCourseTid) }}">
+        <span class="icon icon-homework"></span> 返回所属课程
+      </a></li>
+      {% else %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_manage', tid=tdoc.docId) }}">
         <span class="icon icon-settings"></span> {{ _('Contest Management') }}
       </a></li>
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_edit', tid=tdoc.docId) }}">
         <span class="icon icon-edit"></span> {{ _('Edit Contest') }}
       </a></li>
+      {% endif %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_user', tid=tdoc.docId) }}">
         <span class="icon icon-user"></span> {{ _('Attendee Manage') }}
       </a></li>
