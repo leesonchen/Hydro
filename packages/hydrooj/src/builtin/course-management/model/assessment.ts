@@ -34,6 +34,9 @@ export async function validateAssessmentPlan(
                 || (assessment.passScore ?? 0) > node.pids.length))) {
             throw new BadRequestError('课堂测试时间必须处于课程范围内，题目与达标门槛必须有效。');
         }
+        if (assessment.allowPractice !== undefined && typeof assessment.allowPractice !== 'boolean') {
+            throw new BadRequestError('Invalid classroom test post-test practice setting');
+        }
         if (assessment.monitorMode === 'browser') {
             // Validate before any course mutation/synchronization, so students are
             // never given a monitored test containing a file-only question.
@@ -91,6 +94,7 @@ export async function syncAssessmentContests(
             const updated = await ContestModel.edit(domainId, current.docId, {
                 ...(!hasStarted(current) ? { title: `${title} - ${node.title}` } : {}),
                 assign, maintainer, rule: assessment.rule, monitorMode: assessment.monitorMode || 'off',
+                allowPractice: assessment.allowPractice === true,
                 beginAt, endAt, pids: node.pids, rated: false,
             }, current, ['beginAt', 'endAt', 'rule', 'pids'], actorUid);
             if (recalculate && (timeChanged || (updated.statsRevision || 0) !== (current.statsRevision || 0))) {
@@ -108,7 +112,8 @@ export async function syncAssessmentContests(
             newTid = await ContestModel.add(
                 domainId, `${title} - ${node.title}`, '', owner, assessment.rule,
                 new Date(assessment.beginAt), new Date(assessment.endAt), node.pids, false,
-                { ...selector, assign, maintainer, monitorMode: assessment.monitorMode || 'off' },
+                { ...selector, assign, maintainer, monitorMode: assessment.monitorMode || 'off',
+                    allowPractice: assessment.allowPractice === true },
             );
         } catch (error: any) {
             // Concurrent saves may race on the unique binding index. Reuse the winning instance.
