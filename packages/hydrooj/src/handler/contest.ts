@@ -91,13 +91,15 @@ export class ContestDetailBaseHandler extends Handler {
     tsdoc?: ContestStatusDoc;
     team?: number;
     practiceReady = false;
+    /** True only when the current parent course grants management rights. */
+    classroomTeacher = false;
 
     @param('tid', Types.ObjectId, true)
     async __prepare(domainId: string, tid: ObjectId) {
         if (!tid) return; // ProblemDetailHandler also extends from ContestDetailBaseHandler
         this.tdoc = await contest.get(domainId, tid);
-        const courseTeacher = await assertCourseAssessmentAccess(this.user, this.tdoc);
-        if (!courseTeacher && !contest.canAccessAssignedContest(this.user, this.tdoc)) {
+        this.classroomTeacher = await assertCourseAssessmentAccess(this.user, this.tdoc);
+        if (!this.classroomTeacher && !contest.canAccessAssignedContest(this.user, this.tdoc)) {
             throw new NotAssignedError('contest', tid);
         }
         if (this.tdoc.allowTeam) {
@@ -217,7 +219,14 @@ export class ContestDetailHandler extends ContestDetailBaseHandler {
     @param('code', Types.String, true)
     @param('vuid', Types.Int, true)
     async postAttend(domainId: string, tid: ObjectId, code = '', vuid?: number) {
-        this.checkPerm(PERM.PERM_ATTEND_CONTEST);
+        if (this.tdoc.sourceType === 'course_assessment') {
+            // Student identity and the unlocked lesson are established by the parent course.
+            // A teacher reviews without creating a student's official attendance record.
+            if (await assertCourseAssessmentAccess(this.user, this.tdoc)) throw new ForbiddenError('教师不能作为学生参加课堂测试');
+            this.checkPerm(PERM.PERM_ATTEND_HOMEWORK);
+            if (contest.isNotStarted(this.tdoc) || contest.isDone(this.tdoc)) throw new ContestNotLiveError(domainId, tid);
+            if (vuid || this.tdoc.allowTeam) throw new ForbiddenError('课堂测试仅支持个人正式参赛');
+        } else this.checkPerm(PERM.PERM_ATTEND_CONTEST);
         if (contest.isDone(this.tdoc)) throw new ContestNotLiveError(domainId, tid);
         if (this.tdoc._code && code !== this.tdoc._code) throw new InvalidTokenError('Contest Invitation', code);
         if (vuid) {
@@ -346,8 +355,10 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
 
     @param('tid', Types.ObjectId)
     async get(domainId: string, tid: ObjectId) {
-        if (contest.isNotStarted(this.tdoc)) throw new ContestNotLiveError(domainId, tid);
-        if (!this.tsdoc?.attend && !contest.isDone(this.tdoc)) throw new ContestNotAttendedError(domainId, tid);
+        if (contest.isNotStarted(this.tdoc) && !this.classroomTeacher) throw new ContestNotLiveError(domainId, tid);
+        if (!this.tsdoc?.attend && !contest.isDone(this.tdoc) && !this.classroomTeacher) {
+            throw new ContestNotAttendedError(domainId, tid);
+        }
         const [pdict, udict, tcdocs] = await Promise.all([
             problem.getList(domainId, this.tdoc.pids, true, true, problem.PROJECTION_CONTEST_LIST),
             user.getList(domainId, [this.tdoc.owner, this.user._id]),
