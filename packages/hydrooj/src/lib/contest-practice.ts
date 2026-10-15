@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { ObjectId } from 'mongodb';
 import { ContestNotLiveError, InvalidTokenError, PermissionError } from '../error';
 import type { RecordDoc, Tdoc, User } from '../interface';
+import { assertCourseAssessmentAccess } from './course-assessment-access';
 import { PERM, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import record from '../model/record';
@@ -57,11 +58,13 @@ async function hasInvitationAccess(user: User, tdoc: Tdoc) {
 }
 
 export async function canSubmitPractice(user: User, tdoc: Tdoc) {
+    if (tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(user, tdoc);
     return isPracticeOpen(tdoc) && canReadPractice(user, tdoc, user._id)
         && user.hasPerm(PERM.PERM_SUBMIT_PROBLEM) && await hasInvitationAccess(user, tdoc);
 }
 
 export async function grantPracticeAccess(user: User, tdoc: Tdoc, code: string) {
+    if (tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(user, tdoc);
     if (!isPracticeOpen(tdoc)) throw new ContestNotLiveError(tdoc.docId);
     if (!canReadPractice(user, tdoc, user._id) || !user.hasPerm(PERM.PERM_SUBMIT_PROBLEM)) {
         throw new PermissionError(PERM.PERM_SUBMIT_PROBLEM);
