@@ -13,11 +13,14 @@ export async function assertCourseAssessmentAccess(user: User, tdoc: Tdoc) {
     const node = course.dag?.find((n) => n._id === tdoc.sourceNodeId);
     if (course.rule !== 'course' || course.assign?.includes('teachers')
         || node?.kind !== 'assessment' || node.assessment?.contestTid !== tdoc.docId.toString()) deny();
-    const teacher = user.own(course) || user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-        || (course.maintainer?.includes(user._id) && user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF));
+    // Ownership and maintenance have the same *scoped* editing requirement.
+    const teacher = user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
+        || (user.own(course) && user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF));
     if (teacher) return true;
     const groups = await UserModel.listGroup(tdoc.domainId, user._id);
-    const assigned = !course.assign?.length || course.assign.some((g) => g === String(user._id)
+    // A classroom test cannot become open enrollment merely because assign is empty.
+    // The parent course may allow open courses, but a real test requires a class or extra-student grant.
+    const assigned = !!course.assign?.some((g) => g === String(user._id)
         || groups.some((group) => group.name === g && !group.archive));
     const status = await contest.getStatus(tdoc.domainId, course.docId, user._id);
     if (!assigned || !status?.attend || status.allow?.[tdoc.sourceNodeId] !== true) deny();
