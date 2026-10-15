@@ -235,7 +235,7 @@ test('classroom monitoring uses course owner and maintainer permissions, not con
     // A legitimate course student with contest-admin permission is still not a course teacher.
     groups = [{ name: 'class-a', archive: false }];
     await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
-    await assert.rejects(handler(42, [PERM.PERM_EDIT_CONTEST]).get('test', exam.docId), errors.ForbiddenError);
+    await assert.rejects(handler(42, [PERM.PERM_EDIT_CONTEST, PERM.PERM_VIEW_HOMEWORK]).get('test', exam.docId), errors.ForbiddenError);
 });
 test('classroom monitor rejects file-only questions before writing a contest', async () => {
     testProblemType = 'submit_answer';
@@ -681,13 +681,14 @@ test('OI scores remain hidden before the personal or global contest end', async 
 test('classroom access requires parent enrollment, an unlocked chapter, and an active assignment', async () => {
     const { course, exam } = await courseFixture();
     groups = [{ name: 'class-a' }];
-    await assert.rejects(access.assertCourseAssessmentAccess(actor(42), exam), errors.NotAssignedError);
+    const student = actor(42, [PERM.PERM_VIEW_HOMEWORK]);
+    await assert.rejects(access.assertCourseAssessmentAccess(student, exam), errors.NotAssignedError);
     await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: false } });
-    await assert.rejects(access.assertCourseAssessmentAccess(actor(42), exam), errors.NotAssignedError);
+    await assert.rejects(access.assertCourseAssessmentAccess(student, exam), errors.NotAssignedError);
     await contest.setStatus('test', course.docId, 42, { allow: { 1: true } });
-    await access.assertCourseAssessmentAccess(actor(42), exam);
+    await access.assertCourseAssessmentAccess(student, exam);
     groups = [{ name: 'class-a', archive: true }];
-    await assert.rejects(access.assertCourseAssessmentAccess(actor(42), exam), errors.NotAssignedError);
+    await assert.rejects(access.assertCourseAssessmentAccess(student, exam), errors.NotAssignedError);
     assert.equal(await access.assertCourseAssessmentAccess(actor(7), exam), true);
 });
 test('a forged chapter binding does not grant access to another contest', async () => {
