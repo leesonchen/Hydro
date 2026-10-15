@@ -13,7 +13,7 @@
   .col--detail
     width: rem(50px)
     text-align: center
-  
+
   &[lang="en"]
     .col--detail
       width: rem(75px)
@@ -21,17 +21,42 @@
   .col--ac
     width: rem(50px)
     text-align: center
-  
+
   &[lang="en"]
     .col--ac
       width: rem(70px)
 
   .col--bio
-    display: block;
+    display: block
 
   td.col--bio
-    height: 36px !important;
+    height: 36px !important
 
   +mobile()
     .col--bio, .col--detail
+      display: none
+
+.page--ranking
+  .col--rank
+    width: 7%
+
+  .col--user
+    width: 18%
+
+  .col--rp
+    width: 11%
+
+  .col--rating, .col--events, .col--growth, .col--submit, .col--accept
+    width: 7%
+    text-align: center
+
+  .col--bio
+    width: 29%
+
+  .col--user
+    a.user-profile-badge
+      display: none
+
+  +mobile()
+    .col--rating, .col--events, .col--growth, .col--submit, .col--accept
       display: none

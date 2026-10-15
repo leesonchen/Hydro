@@ -19,7 +19,7 @@
               <col class="col--user">
               <col class="col--rp">
               {% if ratingAlgorithm == 'v2_trial' %}
-                <col><col><col><col><col>
+                <col class="col--rating"><col class="col--events"><col class="col--growth"><col class="col--submit"><col class="col--accept">
               {% else %}
               {% for key, def in model.rp %}
                 {% if not def.hidden %}
@@ -36,7 +36,7 @@
                 <th class="col--user">{{ _('Username') }}</th>
                 <th class="col--rp">{{ '综合分' if ratingAlgorithm == 'v2_trial' else _('RP') }}</th>
                 {% if ratingAlgorithm == 'v2_trial' %}
-                  <th>等级分</th><th>测评场次</th><th>成长值</th><th>题目提交</th><th>通过数</th>
+                  <th class="col--rating">等级分</th><th class="col--events">测评场次</th><th class="col--growth">成长值</th><th class="col--submit">题目提交</th><th class="col--accept">通过数</th>
                 {% else %}
                 {% for key, def in model.rp %}
                   {% if not def.hidden %}
@@ -52,10 +52,10 @@
               {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
               <tr>
                 <td class="col--rank">{{ handler.user.rank|default('-') }}</td>
-                <td class="col--user">{{ user.render_inline(handler.user) }}</td>
+                <td class="col--user">{{ user.render_inline(handler.user, ratingbadge=false) }}</td>
                 <td class="col--rp">{{ handler.user.rp|default(0)|round(2) if ratingAlgorithm == 'v2_trial' else handler.user.rp|default(0)|round(0) }}</td>
                 {% if ratingAlgorithm == 'v2_trial' %}
-                  <td>{% if handler.user.rating is not none %}{{ handler.user.rating }}{% else %}未评级{% endif %}</td><td>{{ handler.user.ratedEvents|default(0) }}</td><td>{{ (handler.user.rpInfo|default({})).problem|default('—') }}</td><td>{{ handler.user.nSubmit|default(0) }}</td><td>{{ handler.user.nAccept|default(0) }}</td>
+                  <td class="col--rating">{% if handler.user.rating is not none %}{{ handler.user.rating }}{% else %}未评级{% endif %}</td><td class="col--events">{{ handler.user.ratedEvents|default(0) }}</td><td class="col--growth">{{ (handler.user.rpInfo|default({})).problem|default('—') }}</td><td class="col--submit">{{ handler.user.nSubmit|default(0) }}</td><td class="col--accept">{{ handler.user.nAccept|default(0) }}</td>
                 {% else %}
                 {% for key, def in model.rp %}
                   {% if not def.hidden %}
@@ -70,10 +70,10 @@
               {%- for udoc in udocs -%}
               <tr>
                 <td class="col--rank">{{ udoc.rank|default('-') if ratingAlgorithm == 'v2_trial' else (page - 1) * model.system.get('pagination.ranking') + loop.index }}</td>
-                <td class="col--user">{{ user.render_inline(udoc) }}</td>
+                <td class="col--user">{{ user.render_inline(udoc, ratingbadge=false) }}</td>
                 <td class="col--rp">{{ udoc.rp|default(0)|round(2) if ratingAlgorithm == 'v2_trial' else udoc.rp|default(0)|round(0) }}</td>
                 {% if ratingAlgorithm == 'v2_trial' %}
-                  <td>{% if udoc.rating is not none %}{{ udoc.rating }}{% else %}未评级{% endif %}</td><td>{{ udoc.ratedEvents|default(0) }}</td><td>{{ (udoc.rpInfo|default({})).problem|default('—') }}</td><td>{{ udoc.nSubmit|default(0) }}</td><td>{{ udoc.nAccept|default(0) }}</td>
+                  <td class="col--rating">{% if udoc.rating is not none %}{{ udoc.rating }}{% else %}未评级{% endif %}</td><td class="col--events">{{ udoc.ratedEvents|default(0) }}</td><td class="col--growth">{{ (udoc.rpInfo|default({})).problem|default('—') }}</td><td class="col--submit">{{ udoc.nSubmit|default(0) }}</td><td class="col--accept">{{ udoc.nAccept|default(0) }}</td>
                 {% else %}
                 {% for key, def in model.rp %}
                   {% if not def.hidden %}

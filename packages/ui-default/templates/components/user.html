@@ -1,4 +1,4 @@
-{% macro render_inline(udoc, avatar=true, badge=true, modbadge=true, levelbadge=true) %}
+{% macro render_inline(udoc, avatar=true, badge=true, modbadge=true, levelbadge=true, ratingbadge=true) %}
 {% if udoc %}
 <span class="user-profile-link">
   {% if avatar %}
@@ -16,7 +16,7 @@
       {% set _badge = udoc.badge.split('#') %}
       <span class="user-profile-badge v-center" style="background-color:#{{ _badge[1] }}{% if _badge[2] %};color:#{{ _badge[2] }}{% endif %}">{{ _badge[0] }}</span>
     {% endif %}
-    {% if udoc.ratingAlgorithm == 'v2_trial' and udoc.ratingTierName %}
+    {% if udoc.ratingAlgorithm == 'v2_trial' and ratingbadge and udoc.ratingTierName %}
       <a class="user-profile-badge v-center" href="{{ url('user_detail', uid=udoc._id) }}">{{ udoc.ratingTierName }}</a>
     {% elif udoc.ratingAlgorithm != 'v2_trial' and levelbadge and udoc.level %}
       {% set level = udoc.level %}
