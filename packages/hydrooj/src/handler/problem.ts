@@ -485,7 +485,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             if (isPracticeOpen(this.tdoc) && !this.practiceReady && !problem.canViewBy(this.pdoc, this.user)) {
                 throw new PermissionError(PERM.PERM_SUBMIT_PROBLEM);
             }
-            const canBypassTimeLimit = canBypassCourseTimeLimit(this.tdoc, this.user);
+            const canBypassTimeLimit = this.classroomTeacher || canBypassCourseTimeLimit(this.tdoc, this.user);
             if (contest.isNotStarted(this.tdoc) && !canBypassTimeLimit) {
                 if (this.tdoc.rule === 'course') throw new ForbiddenError((this as any).translate('This course is not live.'));
                 throw new ContestNotLiveError(tid);
