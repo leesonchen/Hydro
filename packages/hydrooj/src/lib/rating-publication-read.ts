@@ -1,5 +1,5 @@
-import db from '../service/db';
 import { PRIV } from '@hydrooj/common/permission';
+import db from '../service/db';
 import { ratingOverlay, RatingPointer, RatingPublicationStore } from './rating-publication-store';
 
 export const publicRatingStore = new RatingPublicationStore(db);

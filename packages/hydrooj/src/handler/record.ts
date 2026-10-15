@@ -10,6 +10,7 @@ import {
 import { ContestStatusDoc, RecordDoc, Tdoc, User } from '../interface';
 import { canManageFeedback } from '../lib/classroomFeedbackAccess';
 import { canManagePractice, canReadPractice, canSubmitPractice } from '../lib/contest-practice';
+import { assertCourseAssessmentAccess, canShowClassroomSelfRecord } from '../lib/course-assessment-access';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import domain from '../model/domain';
@@ -26,6 +27,20 @@ import {
 import { buildProjection, Time } from '../utils';
 import { ContestDetailBaseHandler } from './contest';
 import { postJudge } from './judge';
+
+/** Shared by HTTP reads and live delivery, after resolving the record's activity. */
+async function assertRecordActivityAccess(viewer: User, tdoc: Tdoc, rdoc: RecordDoc, requireManager = false) {
+    if (!tdoc) throw new ContestNotFoundError(rdoc.domainId, rdoc.practiceContest || rdoc.contest);
+    const classroomManager = await assertCourseAssessmentAccess(viewer, tdoc);
+    if (tdoc.sourceType === 'course_assessment') {
+        if (!classroomManager && (requireManager || rdoc.uid !== viewer._id
+            || (!rdoc.practiceContest && rdoc.contest?.toString() === tdoc.docId.toString()
+                && !canShowClassroomSelfRecord(tdoc)))) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+    }
+    if (rdoc.practiceContest && (!canReadPractice(viewer, tdoc, rdoc.uid, classroomManager)
+        || (requireManager && !canManagePractice(viewer, tdoc, classroomManager)))) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+    return classroomManager;
+}
 
 export class RecordListHandler extends ContestDetailBaseHandler {
     @param('page', Types.PositiveInt, true)
@@ -68,26 +83,47 @@ export class RecordListHandler extends ContestDetailBaseHandler {
         }
         const viewingTeammate = !!(tid && this.team && typeof q.uid === 'number'
             && this.tsdoc?.members?.includes(q.uid));
-        if (!practice && q.uid !== this.user._id && !teamMembers && !viewingTeammate) this.checkPerm(PERM.PERM_VIEW_RECORD);
+        if (!tid && !practice && q.uid !== this.user._id && !teamMembers && !viewingTeammate) {
+            this.checkPerm(PERM.PERM_VIEW_RECORD);
+        }
+        let classroomManager = false;
         if (tid) {
             tdoc = await contest.get(domainId, tid);
             this.tdoc = tdoc;
             if (!tdoc) throw new ContestNotFoundError(domainId, pid);
-            if (practice) {
-                if (!canManagePractice(this.user, tdoc) && q.uid === undefined) {
+            if (tdoc.sourceType === 'course_assessment') {
+                // Global record-list flags remove the contest predicate. A teacher's
+                // course-scoped grant must never authorize records in other activities.
+                if (all || allDomain) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+                classroomManager = await assertCourseAssessmentAccess(this.user, tdoc);
+                if (!practice && !classroomManager) {
+                    if (q.uid !== undefined && q.uid !== this.user._id) throw new PermissionError(PERM.PERM_VIEW_RECORD);
                     q.uid = this.user._id;
                     uidOrName = this.user._id.toString();
                 }
-                if (!canReadPractice(this.user, tdoc, typeof q.uid === 'number' ? q.uid : this.user._id)) {
+            } else if (!practice && q.uid !== this.user._id && !teamMembers && !viewingTeammate) {
+                this.checkPerm(PERM.PERM_VIEW_RECORD);
+            }
+            if (practice) {
+                if (tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(this.user, tdoc);
+                if (!canManagePractice(this.user, tdoc, classroomManager) && q.uid === undefined) {
+                    q.uid = this.user._id;
+                    uidOrName = this.user._id.toString();
+                }
+                if (!canReadPractice(this.user, tdoc, typeof q.uid === 'number' ? q.uid : this.user._id, classroomManager)) {
                     throw new PermissionError(PERM.PERM_VIEW_RECORD);
                 }
             }
-            if (!practice && !contest.canShowScoreboard.call(this, tdoc, true)) throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
+            if (!practice && tdoc.sourceType !== 'course_assessment'
+                && !contest.canShowScoreboard.call(this, tdoc, true)) throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             const viewingSelf = q.uid === this.user._id || !!teamMembers || viewingTeammate;
-            if (!practice && !contest[viewingSelf ? 'canShowSelfRecord' : 'canShowRecord'].call(this, tdoc, true)) {
+            if (!practice && !(tdoc.sourceType === 'course_assessment'
+                ? (classroomManager || canShowClassroomSelfRecord(tdoc))
+                : contest[viewingSelf ? 'canShowSelfRecord' : 'canShowRecord'].call(this, tdoc, true))) {
                 throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             }
-            if (!practice && !this.team && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) {
+            if (!practice && !classroomManager && !this.team
+                && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) {
                 const name = tdoc.rule === 'homework'
                     ? "You haven't claimed this homework yet."
                     : "You haven't attended this contest yet.";
@@ -121,6 +157,27 @@ export class RecordListHandler extends ContestDetailBaseHandler {
         let rdocs = invalid
             ? [] as RecordDoc[]
             : await cursor.skip((page - 1) * limit).limit(limit).toArray();
+        const recordPageHasRows = rdocs.length > 0;
+        if (all || allDomain) {
+            // Global contest permissions do not grant access to classroom records.
+            const activities = new Map<string, Promise<Tdoc>>();
+            const visible = await Promise.all(rdocs.map(async (rdoc) => {
+                if (!rdoc.contest || rdoc.contest.toString().startsWith('0'.repeat(23))) return rdoc;
+                const key = `${rdoc.domainId}/${rdoc.contest}`;
+                try {
+                    if (!activities.has(key)) activities.set(key, contest.get(rdoc.domainId, rdoc.contest));
+                    const activity = await activities.get(key);
+                    if (activity?.sourceType !== 'course_assessment') return rdoc;
+                    // Cross-domain privileges do not carry this domain's course role.
+                    const viewer = rdoc.domainId === domainId ? this.user : await user.getById(rdoc.domainId, this.user._id, this.user.scope);
+                    const manager = await assertRecordActivityAccess(viewer, activity, rdoc);
+                    return manager ? rdoc : contest.applyProjection(activity, { ...rdoc }, viewer);
+                } catch {
+                    return null;
+                }
+            }));
+            rdocs = visible.filter((rdoc) => rdoc !== null);
+        }
         const canViewHiddenProblem = this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN) || this.user._id;
         const [udict, pdict] = full ? [{}, {}]
             : await Promise.all([
@@ -131,12 +188,14 @@ export class RecordListHandler extends ContestDetailBaseHandler {
                         ? problem.getList(domainId, rdocs.map((rdoc) => rdoc.pid), canViewHiddenProblem, false, problem.PROJECTION_LIST)
                         : Object.fromEntries(uniqBy(rdocs, 'pid').map((rdoc) => [rdoc.pid, { ...problem.default, pid: rdoc.pid }])),
             ]);
-        if (!practice && this.tdoc && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+        if (!practice && this.tdoc && (this.tdoc.sourceType === 'course_assessment'
+            ? !classroomManager : !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST))) {
             rdocs = rdocs.map((i) => contest.applyProjection(tdoc, i, this.user));
         }
         this.response.body = {
             page,
             rdocs,
+            recordPageHasRows,
             tdoc,
             pdict,
             udict,
@@ -163,14 +222,27 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
     async prepare(domainId: string, rid: ObjectId) {
         this.rdoc = await record.get(domainId, rid);
         if (!this.rdoc) throw new RecordNotFoundError(rid);
+        let classroomManager = false;
         if (this.rdoc.practiceContest) {
             this.tdoc = await contest.get(domainId, this.rdoc.practiceContest);
-            if (!canReadPractice(this.user, this.tdoc, this.rdoc.uid)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            classroomManager = await assertRecordActivityAccess(this.user, this.tdoc, this.rdoc);
+            this.classroomTeacher = classroomManager;
+            if (!canReadPractice(this.user, this.tdoc, this.rdoc.uid, classroomManager)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
             this.args.tid = this.tdoc.docId;
             this.practiceReady = await canSubmitPractice(this.user, this.tdoc);
             return;
         }
-        if (!(await contest.isOwnOrTeammateRecord(domainId, this.rdoc, this.user._id))) this.checkPerm(PERM.PERM_VIEW_RECORD);
+        if (this.rdoc.contest && !this.rdoc.contest.toString().startsWith('0'.repeat(23))) {
+            const exam = await contest.get(domainId, this.rdoc.contest);
+            if (!exam) throw new ContestNotFoundError(domainId, this.rdoc.contest);
+            if (exam?.sourceType === 'course_assessment') {
+                classroomManager = await assertRecordActivityAccess(this.user, exam, this.rdoc);
+                this.classroomTeacher = classroomManager;
+            }
+        }
+        if (!classroomManager && !(await contest.isOwnOrTeammateRecord(domainId, this.rdoc, this.user._id))) {
+            this.checkPerm(PERM.PERM_VIEW_RECORD);
+        }
     }
 
     async download() {
@@ -201,20 +273,36 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
         }
         const isOwnOrTeammate = await contest.isOwnOrTeammateRecord(domainId, rdoc, this.user._id);
         let canViewDetail = true;
+        let classroomManager = false;
         if (rdoc.practiceContest) {
-            if (!canReadPractice(this.user, this.tdoc, rdoc.uid)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            if (this.tdoc.sourceType === 'course_assessment') {
+                classroomManager = await assertCourseAssessmentAccess(this.user, this.tdoc);
+            }
+            if (!canReadPractice(this.user, this.tdoc, rdoc.uid, classroomManager)) {
+                throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            }
         } else if (rdoc.contest?.toString().startsWith('0'.repeat(23))) {
             if (rdoc.uid !== this.user._id) throw new PermissionError(PERM.PERM_READ_RECORD_CODE);
         } else if (rdoc.contest) {
             this.tdoc = await contest.get(domainId, rdoc.contest);
-            let canView = this.user.own(this.tdoc);
-            canView ||= contest.canShowRecord.call(this, this.tdoc);
-            canView ||= contest.canShowSelfRecord.call(this, this.tdoc, true) && isOwnOrTeammate;
+            if (this.tdoc.sourceType === 'course_assessment') {
+                classroomManager = await assertCourseAssessmentAccess(this.user, this.tdoc);
+                if (!classroomManager && !isOwnOrTeammate) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            }
+            let canView = classroomManager || (this.tdoc.sourceType !== 'course_assessment' && this.user.own(this.tdoc));
+            if (this.tdoc.sourceType === 'course_assessment') {
+                canView ||= canShowClassroomSelfRecord(this.tdoc) && isOwnOrTeammate;
+            } else {
+                canView ||= contest.canShowRecord.call(this, this.tdoc);
+                canView ||= contest.canShowSelfRecord.call(this, this.tdoc, true) && isOwnOrTeammate;
+            }
             if (!canView) throw new PermissionError(rid);
             canViewDetail = canView;
             this.args.tid = this.tdoc.docId;
-            if (!this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
-                this.rdoc = contest.applyProjection(this.tdoc, this.rdoc, this.user);
+            if (this.tdoc.sourceType === 'course_assessment'
+                ? !classroomManager : !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+                rdoc = contest.applyProjection(this.tdoc, { ...rdoc }, this.user);
+                this.rdoc = rdoc;
             }
         }
 
@@ -235,12 +323,12 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
         if (this.tdoc) {
             const teamVid = this.tdoc.allowTeam ? await contest.getTeamVid(domainId, this.tdoc.docId, this.user._id) : null;
             this.tsdoc = await contest.getStatus(domainId, this.tdoc.docId, teamVid ?? this.user._id);
-            canViewCode ||= this.user.own(this.tdoc);
-            if (rdoc.practiceContest) canViewCode ||= canManagePractice(this.user, this.tdoc);
+            canViewCode ||= classroomManager || (this.tdoc.sourceType !== 'course_assessment' && this.user.own(this.tdoc));
+            if (rdoc.practiceContest) canViewCode ||= canManagePractice(this.user, this.tdoc, classroomManager);
             if (this.tdoc.allowViewCode && contest.isDone(this.tdoc)) {
                 canViewCode ||= !!this.tsdoc?.attend;
             }
-            if (!rdoc.practiceContest && !this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) {
+            if (!rdoc.practiceContest && !classroomManager && !this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) {
                 throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
             }
         } else if (pdoc && !problem.canViewBy(pdoc, this.user)) throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
@@ -330,14 +418,27 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
     }
 }
 
+interface LiveRecordAccess {
+    viewer: User;
+    tdoc: Tdoc;
+    classroomManager: boolean;
+}
+
+function recordVisibility(access?: LiveRecordAccess | false) {
+    return access && access.tdoc.sourceType === 'course_assessment'
+        ? JSON.stringify(pick(access.tdoc, ['rule', 'beginAt', 'endAt', 'lockAt', 'unlocked', 'keepScoreboardHidden'])) : '';
+}
+
 async function checkPracticeAccess(
     handler: RecordMainConnectionHandler | RecordDetailConnectionHandler, rdoc: RecordDoc, requireManager = false,
-) {
+): Promise<LiveRecordAccess | false> {
     if (handler.practiceStopped) return false;
     try {
         const [udoc, tdoc] = await Promise.all([
             user.coll.findOne({ _id: handler.user._id }),
-            contest.get(rdoc.domainId, rdoc.practiceContest),
+            contest.get(rdoc.domainId, !rdoc.practiceContest && rdoc.contest?.toString() === '0'.repeat(24)
+            && handler.tdoc?.sourceType === 'course_assessment'
+                ? handler.tdoc.docId : rdoc.practiceContest || rdoc.contest),
         ]);
         let viewer: User;
         if (udoc && (udoc.priv & PRIV.PRIV_USER_PROFILE)) {
@@ -350,9 +451,20 @@ async function checkPracticeAccess(
             viewer = await new user.User(udoc, dudoc, handler.user.scope).init();
         }
         if (handler.practiceStopped) return false;
-        if (viewer && canReadPractice(viewer, tdoc, rdoc.uid)
-            && (!requireManager || canManagePractice(viewer, tdoc))) return true;
+        if (viewer) {
+            // A connection opened as a course teacher must close on demotion,
+            // including when its original payload contained unprojected own records.
+            if (tdoc?.sourceType === 'course_assessment') {
+                const classroomManager = await assertRecordActivityAccess(viewer, tdoc, rdoc, requireManager || handler.classroomManager);
+                return { viewer, classroomManager, tdoc };
+            }
+            if (canReadPractice(viewer, tdoc, rdoc.uid)
+                && (!requireManager || canManagePractice(viewer, tdoc))) return { viewer, classroomManager: false, tdoc };
+        }
     } catch (error) {
+        // A global stream has no grant to this particular classroom. Skip that
+        // activity without interrupting unrelated ordinary contest updates.
+        if ('tid' in handler && (!handler.tid || handler.all || handler.allDomain) && !handler.practice) return false;
         if (!handler.practiceStopped) {
             handler.cleanup();
             await handler.onerror(error);
@@ -380,6 +492,7 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
     queue: Map<string, () => Promise<any>> = new Map();
     throttleQueueClear: ReturnType<typeof throttle>;
     practiceStopped = false;
+    classroomManager = false;
 
     @param('tid', Types.ObjectId, true)
     @param('pid', Types.ProblemId, true)
@@ -400,14 +513,23 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         if (tid) {
             this.tdoc = await contest.get(domainId, tid);
             if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
-            if (practice || pretest || contest.canShowScoreboard.call(this, this.tdoc, true)) this.tid = tid.toHexString();
-            else throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
-            if (!practice && !pretest
+            if (this.tdoc.sourceType === 'course_assessment') {
+                if (all || allDomain) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+                this.classroomManager = await assertCourseAssessmentAccess(this.user, this.tdoc);
+                if (!practice && !pretest && !this.classroomManager
+                    && !canShowClassroomSelfRecord(this.tdoc)) {
+                    throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
+                }
+            } else if (!practice && !pretest
                 && !contest.canShowRecord.call(this, this.tdoc, true)
                 && !contest.canShowSelfRecord.call(this, this.tdoc, true)) {
                 throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             }
-            if (!practice && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+            if (practice || pretest || this.tdoc.sourceType === 'course_assessment'
+                || contest.canShowScoreboard.call(this, this.tdoc, true)) this.tid = tid.toHexString();
+            else throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
+            if (!practice && (this.tdoc.sourceType === 'course_assessment'
+                ? !this.classroomManager : !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST))) {
                 this.applyProjection = true;
             }
         }
@@ -431,10 +553,22 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
             }
         }
         if (practice) {
-            if (!canManagePractice(this.user, this.tdoc) && this.uid === undefined) this.uid = this.user._id;
-            if (!canReadPractice(this.user, this.tdoc, this.uid ?? this.user._id)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            if (this.tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(this.user, this.tdoc);
+            if (!canManagePractice(this.user, this.tdoc, this.classroomManager) && this.uid === undefined) {
+                this.uid = this.user._id;
+            }
+            if (!canReadPractice(this.user, this.tdoc, this.uid ?? this.user._id, this.classroomManager)) {
+                throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            }
         }
-        if (!practice && this.uid !== this.user._id && !this.teamMembers) {
+        if (!practice && !pretest && this.tdoc?.sourceType === 'course_assessment'
+            && !this.classroomManager) {
+            if (this.uid !== undefined && this.uid !== this.user._id) {
+                throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            }
+            this.uid = this.user._id;
+        }
+        if (!practice && !this.classroomManager && this.uid !== this.user._id && !this.teamMembers) {
             const sameTeam = this.tdoc?.allowTeam && typeof this.uid === 'number'
                 && await contest.isSameTeam(domainId, this.tdoc.docId, this.uid, this.user._id);
             if (!sameTeam) this.checkPerm(PERM.PERM_VIEW_RECORD);
@@ -463,7 +597,7 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         const rids = msg.rids.map((id) => new ObjectId(id));
         const rdocs = await record.getMulti(this.args.domainId, { _id: { $in: rids } })
             .project<RecordDoc>(buildProjection(record.PROJECTION_LIST)).toArray();
-        for (const rdoc of rdocs) this.onRecordChange(rdoc);
+        await Promise.all(rdocs.map((rdoc) => this.onRecordChange(rdoc)));
     }
 
     @subscribe('record/change')
@@ -472,6 +606,14 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         if (rdoc.practiceContest) {
             if (!this.practice || rdoc.domainId !== this.args.domainId || rdoc.practiceContest.toHexString() !== this.tid) return;
         } else if (this.practice) return;
+        if (this.tdoc?.sourceType === 'course_assessment' && !rdoc.practiceContest
+            && rdoc.contest?.toString() !== this.tid) {
+            // Pretests carry no activity grant. Only an explicit pretest stream
+            // may receive the viewer's own runs for questions in this test.
+            if (!this.pretest || rdoc.contest?.toString() !== '0'.repeat(24)
+                || rdoc.uid !== this.user._id || !this.tdoc.pids.includes(rdoc.pid)) return;
+        }
+        if (rdoc.contest?.toString() === '0'.repeat(24) && rdoc.uid !== this.user._id) return;
         if (!this.allDomain) {
             if (rdoc.domainId !== this.args.domainId) return;
             if (!this.pretest && typeof rdoc.input === 'string') return;
@@ -480,8 +622,11 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
                 if (rdoc.contest && ![this.tid, '000000000000000000000000'].includes(rdoc.contest.toString())) return;
                 if (this.tid && rdoc.contest?.toString() !== '0'.repeat(24)) {
                     const own = await contest.isOwnOrTeammateRecord(this.args.domainId, rdoc, this.user._id);
-                    if (!own && !contest.canShowRecord.call(this, this.tdoc, true)) return;
-                    if (own && !contest.canShowSelfRecord.call(this, this.tdoc, true)) return;
+                    if (!own && !this.classroomManager && !contest.canShowRecord.call(this, this.tdoc, true)) return;
+                    if (own && !this.classroomManager
+                        && !(this.tdoc?.sourceType === 'course_assessment'
+                            ? canShowClassroomSelfRecord(this.tdoc)
+                            : contest.canShowSelfRecord.call(this, this.tdoc, true))) return;
                 }
             }
         }
@@ -489,37 +634,67 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         if (this.teamMembers) {
             if (!this.teamMembers.includes(rdoc.uid)) return;
         } else if (typeof this.uid === 'number' && rdoc.uid !== this.uid) return;
-        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return;
+        let activity: Tdoc;
+        if (!rdoc.practiceContest && rdoc.contest && !rdoc.contest.toString().startsWith('0'.repeat(23))) {
+            try {
+                activity = rdoc.contest.toString() === this.tid ? this.tdoc : await contest.get(rdoc.domainId, rdoc.contest);
+            } catch (error) {
+                if (error instanceof ContestNotFoundError) return;
+                throw error;
+            }
+        }
+        const liveAccess = !!rdoc.practiceContest || activity?.sourceType === 'course_assessment'
+            || this.tdoc?.sourceType === 'course_assessment';
+        const access = liveAccess ? await checkPracticeAccess(this, rdoc, this.uid === undefined) : null;
+        if (liveAccess && !access) return;
 
         let [udoc, pdoc] = await Promise.all([
             user.getById(this.args.domainId, rdoc.uid),
             problem.get(rdoc.domainId, rdoc.pid),
         ]);
-        const tdoc = this.tid ? this.tdoc : null;
+        const tdoc = access && access.tdoc.sourceType === 'course_assessment' ? access.tdoc : this.tid ? this.tdoc : null;
         if (pdoc && !rdoc.contest && !rdoc.practiceContest) {
             if (!problem.canViewBy(pdoc, this.user)) pdoc = null;
             if (!this.user.hasPerm(PERM.PERM_VIEW_PROBLEM)) pdoc = null;
         }
-        if (this.applyProjection && rdoc.contest?.toString() !== '0'.repeat(24)) rdoc = contest.applyProjection(tdoc, rdoc, this.user);
+        if (activity?.sourceType !== 'course_assessment' && this.applyProjection && rdoc.contest?.toString() !== '0'.repeat(24)) {
+            rdoc = contest.applyProjection(tdoc, rdoc, this.user);
+        }
+        const projected = (latest?: LiveRecordAccess | false) => (latest && latest.tdoc.sourceType === 'course_assessment'
+            && !rdoc.practiceContest && rdoc.contest?.toString() === latest.tdoc.docId.toString()
+            && !latest.classroomManager ? contest.applyProjection(latest.tdoc, { ...rdoc }, latest.viewer) : rdoc);
+        const requireManager = this.uid === undefined || !!(access && access.classroomManager);
         if (this.pretest) {
-            this.queueSend(rdoc._id.toHexString(), async () => ({ rdoc: omit(rdoc, ['code', 'input']) }), rdoc);
+            this.queueSend(
+                rdoc._id.toHexString(), async (latest) => ({ rdoc: omit(projected(latest), ['code', 'input']) }),
+                rdoc, liveAccess, requireManager,
+            );
         } else if (this.noTemplate) {
-            this.queueSend(rdoc._id.toHexString(), async () => ({ rdoc }), rdoc);
+            this.queueSend(rdoc._id.toHexString(), async (latest) => ({ rdoc: projected(latest) }), rdoc, liveAccess, requireManager);
         } else {
-            this.queueSend(rdoc._id.toHexString(), async () => ({
+            this.queueSend(rdoc._id.toHexString(), async (latest) => ({
                 html: await this.renderHTML('record_main_tr.html', {
-                    rdoc, udoc, pdoc, tdoc, allDomain: this.allDomain,
+                    rdoc: projected(latest), udoc, pdoc, tdoc, allDomain: this.allDomain,
                 }),
-            }), rdoc);
+            }), rdoc, liveAccess, requireManager);
         }
     }
 
-    queueSend(rid: string, fn: () => Promise<any>, rdoc?: RecordDoc) {
+    queueSend(
+        rid: string, fn: (access?: LiveRecordAccess | false) => Promise<any>, rdoc?: RecordDoc,
+        liveAccess = false, requireManager = this.uid === undefined,
+    ) {
         if (this.practiceStopped) return;
         this.queue.set(rid, async () => {
-            if (rdoc?.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
-            const payload = await fn();
-            if (rdoc?.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
+            const recheck = liveAccess || rdoc?.practiceContest || this.tdoc?.sourceType === 'course_assessment';
+            const access = recheck ? await checkPracticeAccess(this, rdoc, requireManager) : undefined;
+            if (recheck && !access) return null;
+            const visibility = recordVisibility(access);
+            const payload = await fn(access);
+            if (recheck) {
+                const latest = await checkPracticeAccess(this, rdoc, requireManager);
+                if (!latest || recordVisibility(latest) !== visibility) return null;
+            }
             return payload;
         });
         this.throttleQueueClear();
@@ -552,6 +727,7 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
     noTemplate = false;
     canViewCode = false;
     practiceStopped = false;
+    classroomManager = false;
 
     @param('rid', Types.ObjectId)
     @param('noTemplate', Types.Boolean, true)
@@ -559,22 +735,43 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
         const rdoc = await record.get(domainId, rid);
         if (!rdoc) return;
         const isOwnOrTeammate = await contest.isOwnOrTeammateRecord(domainId, rdoc, this.user._id);
+        let classroomManager = false;
         if (rdoc.practiceContest) {
             this.tdoc = await contest.get(domainId, rdoc.practiceContest);
-            if (!canReadPractice(this.user, this.tdoc, rdoc.uid)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            if (!this.tdoc) throw new ContestNotFoundError(domainId, rdoc.practiceContest);
+            if (this.tdoc.sourceType === 'course_assessment') {
+                classroomManager = await assertCourseAssessmentAccess(this.user, this.tdoc);
+            }
+            if (!canReadPractice(this.user, this.tdoc, rdoc.uid, classroomManager)) {
+                throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            }
         }
         if (rdoc.contest && ![record.RECORD_GENERATE, record.RECORD_PRETEST].some((i) => i.toHexString() === rdoc.contest.toHexString())) {
             this.tdoc = await contest.get(domainId, rdoc.contest);
-            let canView = this.user.own(this.tdoc);
-            canView ||= contest.canShowRecord.call(this, this.tdoc);
-            canView ||= isOwnOrTeammate && contest.canShowSelfRecord.call(this, this.tdoc);
+            if (!this.tdoc) throw new ContestNotFoundError(domainId, rdoc.contest);
+            if (this.tdoc.sourceType === 'course_assessment') {
+                classroomManager = await assertCourseAssessmentAccess(this.user, this.tdoc);
+                if (!classroomManager && !isOwnOrTeammate) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            }
+            let canView = classroomManager || (this.tdoc.sourceType !== 'course_assessment' && this.user.own(this.tdoc));
+            if (this.tdoc.sourceType === 'course_assessment') {
+                canView ||= isOwnOrTeammate && canShowClassroomSelfRecord(this.tdoc);
+            } else {
+                canView ||= contest.canShowRecord.call(this, this.tdoc);
+                canView ||= isOwnOrTeammate && contest.canShowSelfRecord.call(this, this.tdoc);
+            }
             if (!canView) throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
-            if (!this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+            if (this.tdoc.sourceType === 'course_assessment'
+                ? !classroomManager : !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
                 this.applyProjection = true;
             }
             const teamVid = this.tdoc.allowTeam ? await contest.getTeamVid(domainId, this.tdoc.docId, this.user._id) : null;
             this.tsdoc = await contest.getStatus(domainId, this.tdoc.docId, teamVid ?? this.user._id);
         }
+        if (rdoc.contest?.toString().startsWith('0'.repeat(23)) && rdoc.uid !== this.user._id) {
+            throw new PermissionError(PERM.PERM_READ_RECORD_CODE);
+        }
+        this.classroomManager = classroomManager;
         const [pdoc, self] = await Promise.all([
             problem.get(rdoc.domainId, rdoc.pid),
             problem.getVisibleStatus(
@@ -583,13 +780,13 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
             ),
         ]);
 
-        this.canViewCode = isOwnOrTeammate;
-        if (rdoc.practiceContest) this.canViewCode ||= canManagePractice(this.user, this.tdoc);
+        this.canViewCode = isOwnOrTeammate || classroomManager;
+        if (rdoc.practiceContest) this.canViewCode ||= canManagePractice(this.user, this.tdoc, classroomManager);
         this.canViewCode ||= this.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE);
         this.canViewCode ||= this.user.hasPerm(PERM.PERM_READ_RECORD_CODE);
         this.canViewCode ||= this.user.hasPerm(PERM.PERM_READ_RECORD_CODE_ACCEPT) && self?.status === STATUS.STATUS_ACCEPTED;
 
-        if (!rdoc.practiceContest && !this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) {
+        if (!rdoc.practiceContest && !classroomManager && !this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) {
             throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
         }
 
@@ -602,7 +799,13 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
 
     async sendUpdate(rdoc: RecordDoc) {
         if (this.practiceStopped) return;
-        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
+        const recheck = rdoc.practiceContest || (rdoc.contest && this.tdoc?.sourceType === 'course_assessment');
+        const access = recheck ? await checkPracticeAccess(this, rdoc) : undefined;
+        if (recheck && !access) return;
+        const visibility = recordVisibility(access);
+        if (access && access.tdoc.sourceType === 'course_assessment' && !rdoc.practiceContest && !access.classroomManager) {
+            rdoc = contest.applyProjection(access.tdoc, { ...rdoc }, access.viewer);
+        } else if (this.applyProjection) rdoc = contest.applyProjection(this.tdoc, rdoc, this.user);
         if (this.noTemplate) {
             this.send({ rdoc });
         } else {
@@ -612,7 +815,10 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
                 summary_html: await this.renderHTML('record_detail_summary.html', { rdoc, pdoc: this.pdoc }),
             };
             if (this.practiceStopped) return;
-            if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
+            if (recheck) {
+                const latest = await checkPracticeAccess(this, rdoc);
+                if (!latest || recordVisibility(latest) !== visibility) return;
+            }
             this.send(payload);
         }
     }
@@ -621,12 +827,12 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
     // eslint-disable-next-line
     async onRecordChange(rdoc: RecordDoc, $set?: any, $push?: any) {
         if (this.practiceStopped || rdoc.domainId !== this.args.domainId || rdoc._id.toString() !== this.rid) return;
-        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
+        if ((rdoc.practiceContest || (rdoc.contest && this.tdoc?.sourceType === 'course_assessment'))
+            && !await checkPracticeAccess(this, rdoc)) return;
         if (this.disconnectTimeout) {
             clearTimeout(this.disconnectTimeout);
             this.disconnectTimeout = null;
         }
-        if (this.applyProjection) rdoc = contest.applyProjection(this.tdoc, rdoc, this.user);
         // TODO: frontend doesn't support incremental update
         // if ($set) this.send({ $set, $push });
         if (!this.canViewCode) {

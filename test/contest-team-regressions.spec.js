@@ -19,6 +19,34 @@ function loadSource(file, dependencies = {}, globals = {}) {
     return exports;
 }
 
+function loadContestRuleMethod(ruleName, methodName) {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/model/contest.ts');
+    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    const rule = source.statements.find((node) => ts.isVariableStatement(node)
+        && node.declarationList.declarations.some((decl) => decl.name.getText(source) === ruleName))
+        .declarationList.declarations[0].initializer.arguments[0];
+    const method = rule.properties.find((property) => property.name?.getText(source) === methodName);
+    const code = ts.isMethodDeclaration(method)
+        ? `function ${methodName}(${method.parameters.map((param) => param.getText(source)).join(', ')}) ${method.body.getText(source)}\nexports.value = ${methodName};`
+        : `const ${methodName} = ${method.initializer.getText(source)};\nexports.value = ${methodName};`;
+    const exports = {};
+    vm.runInNewContext(ts.transpileModule(code, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, { exports }, { filename: file });
+    return exports.value;
+}
+
+function loadContestFunction(name) {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/model/contest.ts');
+    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    const fn = source.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === name);
+    const exports = {};
+    vm.runInNewContext(ts.transpileModule(`${fn.getText(source)}\nexports.value = ${name};`, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, { exports }, { filename: file });
+    return exports.value;
+}
+
 test('contest edit keeps problem order and does not mutate its expected snapshot', async () => {
     const file = path.resolve(__dirname, '../packages/hydrooj/src/handler/contest.ts');
     const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
@@ -144,6 +172,7 @@ test('practice opens only after the whole contest and keeps invitations and reco
         mongodb: { ObjectId },
         '../error': { ContestNotLiveError: codeError, InvalidTokenError: codeError, PermissionError: codeError },
         '../model/builtin': { PERM: perms },
+        './course-assessment-access': { assertCourseAssessmentAccess: async () => false },
         '../model/contest': {
             RULES: { oi: {}, course: { hidden: true }, homework: { hidden: true } },
             isDone: (tdoc) => tdoc.endAt <= new Date(),
@@ -164,6 +193,9 @@ test('practice opens only after the whole contest and keeps invitations and reco
     });
     const tdoc = { domainId: 'domain', docId: new ObjectId(), rule: 'oi', endAt: new Date(Date.now() - 1000) };
     assert.equal(practice.isPracticeOpen(tdoc), false);
+    assert.equal(practice.isPracticeOpen({ ...tdoc, sourceType: 'course_assessment' }), true);
+    assert.equal(practice.isPracticeOpen({ ...tdoc, sourceType: 'course_assessment', allowPractice: false }), false);
+    // Ordinary contests continue to require explicit opt-in.
     tdoc.allowPractice = true;
     assert.equal(await practice.canSubmitPractice(actor(1), tdoc), true);
     assert.equal(practice.canReadPractice(actor(2), tdoc, 1), false);
@@ -191,4 +223,119 @@ test('practice opens only after the whole contest and keeps invitations and reco
     assert.equal(practice.canReadPractice(actor(2), tdoc, 2), false);
     assert.equal(practice.isPracticeOpen({ ...tdoc, rule: 'course', allowPractice: true }), false);
     assert.equal(practice.isPracticeOpen({ ...tdoc, rule: 'homework', allowPractice: true }), false);
+});
+
+
+test('classroom subcontest refuses independent participant-list mutations', async () => {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/handler/contest.ts');
+    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    const handler = source.statements.find((n) => ts.isClassDeclaration(n) && n.name.text === 'ContestUserHandler');
+    const names = ['postAddUser', 'postRank', 'postResume', 'postRemoveUser'];
+    const methods = names.map((name) => {
+        const m = handler.members.find((member) => member.name?.getText(source) === name);
+        assert(m?.body, 'Missing participant mutation handler ' + name);
+        return 'async ' + name + '(' + m.parameters.map((param) => param.getText(source)).join(', ')
+            + ') ' + m.body.getText(source);
+    });
+    const exports = {};
+    vm.runInNewContext(ts.transpileModule('class Roster { ' + methods.join('\n') + ' }\nexports.Roster = Roster;', {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, { exports });
+    const roster = new exports.Roster();
+    roster.assertIndependentRoster = () => { throw new Error('Parent course owns classroom roster'); };
+    for (const name of names) {
+        await assert.rejects(roster[name]('d', 'tid'), /Parent course owns classroom roster/, name);
+    }
+});
+
+test('classroom scoreboard model accepts parent teachers without contest permissions and filters out nonattendees', async () => {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/model/contest.ts');
+    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    const fn = source.statements.find((n) => ts.isFunctionDeclaration(n) && n.name?.text === 'getScoreboard');
+    assert(fn?.body, 'Missing scoreboard model');
+    let tdoc = { domainId: 'd', docId: 'tid', rule: 'oi', sourceType: 'course_assessment',
+        pids: [1], statsRevision: 0 };
+    let selector;
+    const exports = {};
+    vm.runInNewContext(ts.transpileModule(fn.getText(source), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, {
+        exports,
+        get: async () => tdoc,
+        canShowScoreboard: () => false,
+        ContestScoreboardHiddenError: class extends Error {},
+        problem: { getList: async () => ({}), PROJECTION_CONTEST_DETAIL: [] },
+        getMultiStatus: (_d, query) => { selector = query; return { sort: () => ({}) }; },
+        RULES: { oi: { statusSort: {}, scoreboard: async () => [[], {}] } },
+        bus: { parallel: async () => {} },
+    });
+    const authorized = { user: {}, classroomTeacher: true, translate: (value) => value };
+    await exports.getScoreboard.call(authorized, 'd', 'tid', { isExport: false, showDisplayName: false });
+    assert.equal(selector.attend.$gt, 0);
+    await assert.rejects(
+        exports.getScoreboard.call({ ...authorized, classroomTeacher: false }, 'd', 'tid',
+            { isExport: false, showDisplayName: false }),
+    );
+    tdoc = { ...tdoc, sourceType: undefined };
+    await assert.rejects(
+        exports.getScoreboard.call(authorized, 'd', 'tid', { isExport: false, showDisplayName: false }),
+    );
+});
+
+test('classroom Ghost export excludes nonattendee staff and declares the filtered team count', () => {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/handler/contest.ts');
+    const code = fs.readFileSync(file, 'utf8');
+    const ghost = code.slice(code.indexOf("scoreboard.addView('ghost'"), code.indexOf("scoreboard.addView('html'"));
+    assert.match(ghost, /sourceType === 'course_assessment'.*attend: \{ \$gt: 0 \}/s);
+    assert.match(ghost, /sourceType === 'course_assessment' \? teams\.length : tdoc\.attend/);
+});
+
+test('classroom record list and socket deny global filter modes before course-scoped exemptions', () => {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/handler/record.ts');
+    const source = fs.readFileSync(file, 'utf8');
+    const list = source.slice(source.indexOf('export class RecordListHandler'), source.indexOf('export class RecordDetailHandler'));
+    const socket = source.slice(source.indexOf('export class RecordMainConnectionHandler'), source.indexOf('export class RecordDetailConnectionHandler'));
+    for (const handler of [list, socket]) {
+        assert.match(handler, /if \(all \|\| allDomain\) throw new PermissionError\(PERM\.PERM_VIEW_RECORD\)/);
+        assert(handler.indexOf('if (all || allDomain) throw new PermissionError(PERM.PERM_VIEW_RECORD)')
+            < handler.indexOf('classroomManager = await assertCourseAssessmentAccess')
+            || handler.indexOf('if (all || allDomain) throw new PermissionError(PERM.PERM_VIEW_RECORD)')
+            < handler.indexOf('this.classroomManager = await assertCourseAssessmentAccess'));
+    }
+});
+
+test('classroom own-record visibility ignores stale child assign but respects scoring windows', () => {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/lib/course-assessment-access.ts');
+    const source = fs.readFileSync(file, 'utf8');
+    assert.match(source, /export function canShowClassroomSelfRecord/);
+    assert.match(source, /rule\.showSelfRecord\(tdoc, new Date\(\)\)/);
+    assert.doesNotMatch(source.slice(source.indexOf('export function canShowClassroomSelfRecord')), /canAccessAssignedContest|user\.own/);
+});
+
+test('OI classroom projection uses the real OI result window and own-record scope', () => {
+    const showSelfRecord = loadContestRuleMethod('oi', 'showSelfRecord');
+    const applyProjection = loadContestRuleMethod('oi', 'applyProjection');
+    const tdoc = { sourceType: 'course_assessment', rule: 'oi', owner: 7,
+        assign: ['former-child-class'], beginAt: new Date(Date.now() - 120_000),
+        endAt: new Date(Date.now() - 60_000), keepScoreboardHidden: false };
+    const own = { uid: 7, score: 100, status: 1, compilerTexts: ['visible'], judgeTexts: ['visible'] };
+    const other = { uid: 8, score: 80, status: 1, compilerTexts: ['private'], judgeTexts: ['private'] };
+    applyProjection.call({ showSelfRecord }, tdoc, own, { _id: 7, own: () => true, hasPerm: () => true });
+    applyProjection.call({ showSelfRecord }, tdoc, other, { _id: 7, own: () => true, hasPerm: () => true });
+    assert.equal(own.score, 100);
+    assert.equal(other.score, undefined);
+    assert.deepEqual(Array.from(other.compilerTexts), []);
+    assert.deepEqual(Array.from(other.judgeTexts), []);
+
+    tdoc.endAt = new Date(Date.now() + 60_000);
+    const beforeEnd = { uid: 7, score: 100, status: 1, compilerTexts: [], judgeTexts: [] };
+    applyProjection.call({ showSelfRecord }, tdoc, beforeEnd, { _id: 7, own: () => true, hasPerm: () => true });
+    assert.equal(beforeEnd.score, undefined, 'child ownership and contest-admin permission do not bypass OI window');
+});
+
+test('classroom status summaries are unavailable without live parent-course authorization', () => {
+    const canShowProblemStatus = loadContestFunction('canShowProblemStatus');
+    const ownerAndContestAdmin = { _id: 7, own: () => true, hasPerm: () => true };
+    assert.equal(canShowProblemStatus(ownerAndContestAdmin, 7,
+        { sourceType: 'course_assessment', rule: 'oi', endAt: new Date(0) }), false);
 });

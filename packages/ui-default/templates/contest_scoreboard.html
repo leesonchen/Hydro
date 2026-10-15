@@ -3,6 +3,7 @@
 {{ set(UiContext, 'tdoc', tdoc) }}
 {{ set(UiContext, 'tsdoc', tsdoc) }}
 {% set type = 'homework' if tdoc.rule == 'homework' else 'contest' %}
+{% set scoreboardViewRoute = 'classroom_scoreboard_view' if tdoc.sourceType == 'course_assessment' else type + '_scoreboard_view' %}
 
 {% block content %}
 <div class="row"><div class="{{ 'medium-9' if tdoc.rule == 'course' else 'medium-12' }} columns scoreboard--{{ tdoc.rule }}">
@@ -17,13 +18,13 @@
       {{ tdoc.title }}&nbsp;&nbsp;
       {%- for ext in (['HTML', 'CSV'] if tdoc.rule == 'course' else ['HTML', 'CSV', 'Ghost']) -%}
         {% if tdoc.rule != 'course' or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF) %}
-        <a class="button" target="_blank" href="{{ url('course_scoreboard_download', tid=tdoc.docId, id=feedbackNodeId|default(0, true), ext=ext.toLowerCase()) if tdoc.rule == 'course' else url(type + '_scoreboard_view', tid=tdoc.docId, view=ext.toLowerCase()) }}">
+        <a class="button" target="_blank" href="{{ url('course_scoreboard_download', tid=tdoc.docId, id=feedbackNodeId|default(0, true), ext=ext.toLowerCase()) if tdoc.rule == 'course' else url(scoreboardViewRoute, tid=tdoc.docId, view=ext.toLowerCase()) }}">
           <span class="icon icon-download"></span> {{ _('Export as {0}').format(ext) }}
         </a>
         {% endif %}
       {%- endfor -%}
       {% for id, name in availableViews %}{% if not ['html', 'csv', 'default', 'ghost'].includes(id) %}
-        <a class="button" target="_blank" href="{{ url(type + '_scoreboard_view', tid=tdoc.docId, view=id) }}">
+        <a class="button" target="_blank" href="{{ url(scoreboardViewRoute, tid=tdoc.docId, view=id) }}">
           <span class="icon icon-copy"></span> {{ _(name) }}
         </a>
       {% endif %}{% endfor %}

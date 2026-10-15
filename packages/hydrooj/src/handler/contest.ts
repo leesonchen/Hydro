@@ -19,7 +19,7 @@ import { ContestStatusDoc, FileInfo, ScoreboardConfig, Tdoc } from '../interface
 import {
     canManagePractice, canReadPractice, canSubmitPractice, getPracticeResults, grantPracticeAccess, isPracticeOpen, supportsPractice,
 } from '../lib/contest-practice';
-import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
+import { assertCourseAssessmentAccess, canShowClassroomSelfRecord } from '../lib/course-assessment-access';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
@@ -91,13 +91,19 @@ export class ContestDetailBaseHandler extends Handler {
     tsdoc?: ContestStatusDoc;
     team?: number;
     practiceReady = false;
+    /** True only when the current parent course grants management rights. */
+    classroomTeacher = false;
 
     @param('tid', Types.ObjectId, true)
     async __prepare(domainId: string, tid: ObjectId) {
         if (!tid) return; // ProblemDetailHandler also extends from ContestDetailBaseHandler
         this.tdoc = await contest.get(domainId, tid);
-        const courseTeacher = await assertCourseAssessmentAccess(this.user, this.tdoc);
-        if (!courseTeacher && !contest.canAccessAssignedContest(this.user, this.tdoc)) {
+        if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
+        this.classroomTeacher = await assertCourseAssessmentAccess(this.user, this.tdoc);
+        // Classroom eligibility was already checked against the parent course above.
+        // Its copied contest assign field is not a second source of truth.
+        if (this.tdoc.sourceType !== 'course_assessment'
+            && !contest.canAccessAssignedContest(this.user, this.tdoc)) {
             throw new NotAssignedError('contest', tid);
         }
         if (this.tdoc.allowTeam) {
@@ -134,26 +140,26 @@ export class ContestDetailBaseHandler extends Handler {
             practiceOpen: isPracticeOpen(this.tdoc),
             practiceReady: this.practiceReady,
             practiceHistory,
-            practiceManager: supportsPractice(this.tdoc) && canManagePractice(this.user, this.tdoc),
+            practiceManager: supportsPractice(this.tdoc) && canManagePractice(this.user, this.tdoc, this.classroomTeacher),
         });
         const pdoc = 'pdoc' in this ? (this as any).pdoc : {};
         this.response.body.overrideNav = [
             {
-                name: 'contest_main',
-                args: {},
-                displayName: 'Back to contest list',
+                name: this.tdoc.sourceType === 'course_assessment' ? 'course_detail' : 'contest_main',
+                args: this.tdoc.sourceType === 'course_assessment' ? { tid: this.tdoc.sourceCourseTid } : {},
+                displayName: this.tdoc.sourceType === 'course_assessment' ? 'Back to course' : 'Back to contest list',
                 checker: () => true,
             },
             {
-                name: 'contest_detail',
+                name: this.tdoc.sourceType === 'course_assessment' ? 'classroom_test_detail' : 'contest_detail',
                 displayName: this.tdoc.title,
                 args: { tid, prefix: 'contest_detail' },
                 checker: () => true,
             },
             {
-                name: 'contest_problemlist',
+                name: this.tdoc.sourceType === 'course_assessment' ? 'classroom_test_problemlist' : 'contest_problemlist',
                 args: { tid, prefix: 'contest_problemlist' },
-                checker: () => this.tsdoc?.attend || contest.isDone(this.tdoc),
+                checker: () => this.classroomTeacher || this.tsdoc?.attend || contest.isDone(this.tdoc),
             },
             {
                 name: 'contest_print',
@@ -161,9 +167,10 @@ export class ContestDetailBaseHandler extends Handler {
                 checker: () => this.tdoc.allowPrint && (this.tsdoc?.attend || this.user.own(this.tdoc) || this.user.hasPerm(PERM.PERM_EDIT_CONTEST)),
             },
             {
-                name: 'contest_scoreboard',
+                name: this.tdoc.sourceType === 'course_assessment' ? 'classroom_scoreboard' : 'contest_scoreboard',
                 args: { tid, prefix: 'contest_scoreboard' },
-                checker: () => contest.canShowScoreboard.call(this, this.tdoc, true),
+                checker: () => this.tdoc.sourceType === 'course_assessment'
+                    ? this.classroomTeacher : contest.canShowScoreboard.call(this, this.tdoc, true),
             },
             {
                 name: 'problem_detail',
@@ -182,7 +189,7 @@ export class ContestDetailHandler extends ContestDetailBaseHandler {
         await this.limitRate('contest_practice_access', 60, 10, '{{user}}');
         const tdoc = await contest.get(domainId, tid);
         await grantPracticeAccess(this.user, tdoc, code);
-        this.response.redirect = this.url('contest_problemlist', { tid });
+        this.response.redirect = this.url(tdoc.sourceType === 'course_assessment' ? 'classroom_test_problemlist' : 'contest_problemlist', { tid });
     }
 
     @param('tid', Types.ObjectId)
@@ -217,7 +224,14 @@ export class ContestDetailHandler extends ContestDetailBaseHandler {
     @param('code', Types.String, true)
     @param('vuid', Types.Int, true)
     async postAttend(domainId: string, tid: ObjectId, code = '', vuid?: number) {
-        this.checkPerm(PERM.PERM_ATTEND_CONTEST);
+        if (this.tdoc.sourceType === 'course_assessment') {
+            // Student identity and the unlocked lesson are established by the parent course.
+            // A teacher reviews without creating a student's official attendance record.
+            if (await assertCourseAssessmentAccess(this.user, this.tdoc)) throw new ForbiddenError('教师不能作为学生参加课堂测试');
+            this.checkPerm(PERM.PERM_ATTEND_HOMEWORK);
+            if (contest.isNotStarted(this.tdoc) || contest.isDone(this.tdoc)) throw new ContestNotLiveError(domainId, tid);
+            if (vuid || this.tdoc.allowTeam) throw new ForbiddenError('课堂测试仅支持个人正式参赛');
+        } else this.checkPerm(PERM.PERM_ATTEND_CONTEST);
         if (contest.isDone(this.tdoc)) throw new ContestNotLiveError(domainId, tid);
         if (this.tdoc._code && code !== this.tdoc._code) throw new InvalidTokenError('Contest Invitation', code);
         if (vuid) {
@@ -245,6 +259,7 @@ export class ContestDetailHandler extends ContestDetailBaseHandler {
 
     @param('tid', Types.ObjectId)
     async postEarlyEnd(domainId: string, tid: ObjectId) {
+        if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('课堂测试结束时间由所属课程统一管理');
         if (this.tdoc.rule === 'homework') throw new ContestNotFoundError(domainId, tid);
         if (!this.tsdoc?.attend) throw new ContestNotAttendedError(domainId, tid);
         if (!contest.isOngoing(this.tdoc, this.tsdoc)) throw new ContestNotLiveError(domainId, tid);
@@ -346,8 +361,10 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
 
     @param('tid', Types.ObjectId)
     async get(domainId: string, tid: ObjectId) {
-        if (contest.isNotStarted(this.tdoc)) throw new ContestNotLiveError(domainId, tid);
-        if (!this.tsdoc?.attend && !contest.isDone(this.tdoc)) throw new ContestNotAttendedError(domainId, tid);
+        if (contest.isNotStarted(this.tdoc) && !this.classroomTeacher) throw new ContestNotLiveError(domainId, tid);
+        if (!this.tsdoc?.attend && !contest.isDone(this.tdoc) && !this.classroomTeacher) {
+            throw new ContestNotAttendedError(domainId, tid);
+        }
         const [pdict, udict, tcdocs] = await Promise.all([
             problem.getList(domainId, this.tdoc.pids, true, true, problem.PROJECTION_CONTEST_LIST),
             user.getList(domainId, [this.tdoc.owner, this.user._id]),
@@ -358,7 +375,7 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
         };
         this.response.template = 'contest_problemlist.html';
         this.response.body.showScore = Object.values(this.tdoc.score || {}).some((i) => i && i !== 100);
-        const practice = canReadPractice(this.user, this.tdoc, this.user._id)
+        const practice = canReadPractice(this.user, this.tdoc, this.user._id, this.classroomTeacher)
             ? await getPracticeResults(domainId, tid, this.user._id, this.tdoc.pids) : {};
         if (supportsPractice(this.tdoc) && (isPracticeOpen(this.tdoc) || Object.keys(practice).length)) {
             this.response.body.correction = practice;
@@ -372,7 +389,9 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
         }
         this.response.body.tsdoc = this.tsdocAsPublic();
         const rawPsdict = this.tsdoc.detail || {};
-        const canViewRecord = contest.canShowSelfRecord.call(this, this.tdoc);
+        const canViewRecord = this.tdoc.sourceType === 'course_assessment'
+            ? this.classroomTeacher || canShowClassroomSelfRecord(this.tdoc)
+            : contest.canShowSelfRecord.call(this, this.tdoc);
         this.response.body.canViewRecord = canViewRecord;
         this.response.body.psdict = canViewRecord
             ? rawPsdict
@@ -403,7 +422,8 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
         if (this.response.body.showPractice) {
             Object.assign(this.response.body.rdict, await record.getList(domainId, Object.values(practice).map((i) => i.rid)));
         }
-        if (canViewRecord && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+        if (canViewRecord && (this.tdoc.sourceType === 'course_assessment'
+            ? !this.classroomTeacher : !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST))) {
             this.response.body.rdocs = this.response.body.rdocs.map((rdoc) => contest.applyProjection(this.tdoc, rdoc, this.user));
             for (const key in this.response.body.rdict) {
                 if (!this.response.body.rdict[key].practiceContest) {
@@ -432,6 +452,23 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
             }), message.FLAG_I18N | message.FLAG_UNREAD);
         }
         this.back();
+    }
+}
+
+/** Course-authorized entrypoints for a distinct classroom-assessment business type. */
+export class ClassroomTestDetailHandler extends ContestDetailHandler {
+    @param('tid', Types.ObjectId)
+    async prepare(domainId: string, tid: ObjectId) {
+        if (this.tdoc?.sourceType !== 'course_assessment') throw new ContestNotFoundError(domainId, tid);
+        await super.prepare(domainId, tid);
+    }
+}
+
+export class ClassroomTestProblemListHandler extends ContestProblemListHandler {
+    @param('tid', Types.ObjectId)
+    async prepare(domainId: string, tid: ObjectId) {
+        if (this.tdoc?.sourceType !== 'course_assessment') throw new ContestNotFoundError(domainId, tid);
+        await super.prepare(domainId, tid);
     }
 }
 
@@ -611,6 +648,11 @@ export class ContestEditHandler extends Handler {
 
 export class ContestManagementBaseHandler extends ContestDetailBaseHandler {
     async prepare() {
+        if (this.tdoc.sourceType === 'course_assessment') {
+            // Classroom test tools belong to the course instructors, not standalone contest admins.
+            if (!await assertCourseAssessmentAccess(this.user, this.tdoc)) throw new ForbiddenError();
+            return;
+        }
         if (!this.user.own(this.tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
     }
 }
@@ -621,13 +663,18 @@ export class ContestCodeHandler extends Handler {
     async get(domainId: string, tid: ObjectId, all: boolean) {
         await this.limitRate('contest_code', 60, 10);
         const [tdoc, tsdocs] = await contest.getAndListStatus(domainId, tid);
-        if (!this.user.own(tdoc)) {
+        const classroomManager = tdoc.sourceType === 'course_assessment'
+            && await assertCourseAssessmentAccess(this.user, tdoc);
+        if (tdoc.sourceType === 'course_assessment' && !classroomManager) {
+            throw new ForbiddenError('只有课程教师和维护人可以导出课堂测试代码。');
+        }
+        if (!classroomManager && !this.user.own(tdoc)) {
             if (!this.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE)) {
                 this.checkPerm(PERM.PERM_READ_RECORD_CODE);
             }
             if (!contest.isDone(tdoc)) throw new ContestNotEndedError(domainId, tid);
         }
-        if (!contest.canShowRecord.call(this, tdoc as any, true)) {
+        if (!classroomManager && !contest.canShowRecord.call(this, tdoc as any, true)) {
             throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
         }
         const rnames = {};
@@ -666,7 +713,23 @@ export class ContestCodeHandler extends Handler {
     }
 }
 
+export class ClassroomTestCodeHandler extends ContestCodeHandler {
+    @param('tid', Types.ObjectId)
+    @param('all', Types.Boolean)
+    async get(domainId: string, tid: ObjectId, all: boolean) {
+        const tdoc = await contest.get(domainId, tid);
+        if (tdoc?.sourceType !== 'course_assessment') throw new ContestNotFoundError(domainId, tid);
+        await super.get(domainId, tid, all);
+    }
+}
+
 export class ContestManagementHandler extends ContestManagementBaseHandler {
+    async prepare() {
+        await super.prepare();
+        // Classroom score/fixture settings are controlled by the parent course, not this legacy page.
+        if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('请在课程管理中管理课堂测试。');
+    }
+
     @param('tid', Types.ObjectId)
     @param('d', Types.Range(['public', 'private']), true)
     @param('sidebar', Types.Boolean)
@@ -838,8 +901,18 @@ async function resolveContestRegistration(domainId: string, tdoc: Tdoc, uid: num
 }
 
 export class ContestUserHandler extends ContestManagementBaseHandler {
+    private assertIndependentRoster() {
+        if (this.tdoc.sourceType === 'course_assessment') {
+            throw new ForbiddenError('课堂测试的学生名单和章节权限请在所属课程中管理');
+        }
+    }
+
     @param('tid', Types.ObjectId)
     async get(domainId: string, tid: ObjectId) {
+        if (this.tdoc.sourceType === 'course_assessment') {
+            this.response.redirect = this.url('course_manage', { tid: this.tdoc.sourceCourseTid });
+            return;
+        }
         const tsdocs = await contest.getMultiStatus(domainId, { docId: tid }).project({
             uid: 1, attend: 1, startAt: 1, unrank: 1, endAt: 1, displayName: 1, members: 1,
         }).toArray();
@@ -866,6 +939,7 @@ export class ContestUserHandler extends ContestManagementBaseHandler {
     @param('uids', Types.NumericArray)
     @param('unrank', Types.Boolean)
     async postAddUser(domainId: string, tid: ObjectId, uids: number[], unrank = false) {
+        this.assertIndependentRoster();
         if (uids.some((uid) => !Number.isSafeInteger(uid) || uid === 0)) throw new ValidationError('uids');
         uids = Array.from(new Set(uids));
         const participantUids = uids.filter((uid) => uid > 0);
@@ -887,6 +961,7 @@ export class ContestUserHandler extends ContestManagementBaseHandler {
     @param('tid', Types.ObjectId)
     @param('uid', Types.Int)
     async postRank(domainId: string, tid: ObjectId, uid: number) {
+        this.assertIndependentRoster();
         const { targetUid, tsdoc } = await resolveContestRegistration(domainId, this.tdoc, uid);
         await contest.setStatus(domainId, tid, targetUid, { unrank: !tsdoc.unrank });
         this.back();
@@ -895,6 +970,7 @@ export class ContestUserHandler extends ContestManagementBaseHandler {
     @param('tid', Types.ObjectId)
     @param('uid', Types.Int)
     async postResume(domainId: string, tid: ObjectId, uid: number) {
+        this.assertIndependentRoster();
         const { targetUid, tsdoc } = await resolveContestRegistration(domainId, this.tdoc, uid);
         if (this.tdoc.endAt <= new Date()) throw new ContestNotLiveError(domainId, tid);
         if (this.tdoc.duration && tsdoc.startAt) {
@@ -908,6 +984,7 @@ export class ContestUserHandler extends ContestManagementBaseHandler {
     @param('tid', Types.ObjectId)
     @param('uid', Types.Int)
     async postRemoveUser(domainId: string, tid: ObjectId, uid: number) {
+        this.assertIndependentRoster();
         if (!contest.isNotStarted(this.tdoc)) throw new ContestAlreadyStartedError();
         const { targetUid } = await resolveContestRegistration(domainId, this.tdoc, uid);
         await contest.cancelAttend(domainId, tid, targetUid);
@@ -916,6 +993,12 @@ export class ContestUserHandler extends ContestManagementBaseHandler {
 }
 
 export class ContestBalloonHandler extends ContestManagementBaseHandler {
+    async prepare() {
+        await super.prepare();
+        // Classroom tests do not support an independent contest balloon workflow.
+        if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('课堂测试不开放独立气球管理');
+    }
+
     @param('tid', Types.ObjectId)
     @param('todo', Types.Boolean)
     async get(domainId: string, tid: ObjectId, todo = false) {
@@ -987,7 +1070,11 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
         if (contest.RULES[this.tdoc.rule].hidden && !contest.RULES[this.tdoc.rule].features?.includes('scoreboard')) {
             throw new ContestNotFoundError(domainId, tid);
         }
-        if (!this.user.own(this.tdoc)) {
+        const classroomManager = this.tdoc.sourceType === 'course_assessment'
+            && await assertCourseAssessmentAccess(this.user, this.tdoc);
+        // Standalone contest scoreboard permissions never authorize a student to view class results.
+        if (this.tdoc.sourceType === 'course_assessment' && !classroomManager) throw new ForbiddenError();
+        if (!classroomManager && !this.user.own(this.tdoc)) {
             if (!contest.canShowScoreboard.call(this, this.tdoc, true)) throw new ContestScoreboardHiddenError(tid);
             if (contest.isNotStarted(this.tdoc)) throw new ContestNotLiveError(domainId, tid);
         }
@@ -997,7 +1084,7 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
         const fetcher = {
             tdoc: () => this.tdoc,
             groups: async () => {
-                const allGroups = (this.user.hasPerm(PERM.PERM_EDIT_CONTEST_SELF) && this.user.own(this.tdoc))
+                const allGroups = classroomManager || (this.user.hasPerm(PERM.PERM_EDIT_CONTEST_SELF) && this.user.own(this.tdoc))
                     || this.user.hasPerm(PERM.PERM_EDIT_CONTEST);
                 return await user.listGroup(domainId, allGroups ? undefined : this.user._id);
             },
@@ -1022,10 +1109,19 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
 
     @param('tid', Types.ObjectId)
     async postUnlock(domainId: string, tid: ObjectId) {
+        if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('请在课程中控制课堂测试成绩展示。');
         if (!this.user.own(this.tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
         if (!contest.isDone(this.tdoc)) throw new ContestNotEndedError(domainId, tid);
         await contest.unlockScoreboard(domainId, tid);
         this.back();
+    }
+}
+
+/** Route aliases without contest-specific permission gates; the parent course enforces access. */
+export class ClassroomScoreboardHandler extends ContestScoreboardHandler {
+    async prepare() {
+        if (this.tdoc?.sourceType !== 'course_assessment') throw new ContestNotFoundError(this.args.domainId, this.args.tid);
+        if (!await assertCourseAssessmentAccess(this.user, this.tdoc)) throw new ForbiddenError();
     }
 }
 
@@ -1174,7 +1270,11 @@ export async function apply(ctx: Context) {
     ctx.Route('contest_main', '/contest', ContestListHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_team', '/contest/team', ContestTeamHandler); // before /contest/:tid: "team" is not a valid ObjectId
     ctx.Route('contest_detail', '/contest/:tid', ContestDetailHandler, PERM.PERM_VIEW_CONTEST);
+    // These routes deliberately do not require contest-specific permissions. Their
+    // handlers validate sourceType and the parent's current course enrollment/unlock.
+    ctx.Route('classroom_test_detail', '/course/assessment/:tid', ClassroomTestDetailHandler);
     ctx.Route('contest_problemlist', '/contest/:tid/problems', ContestProblemListHandler, PERM.PERM_VIEW_CONTEST);
+    ctx.Route('classroom_test_problemlist', '/course/assessment/:tid/problems', ClassroomTestProblemListHandler);
     ctx.Route('contest_edit', '/contest/:tid/edit', ContestEditHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_print', '/contest/:tid/print', ContestPrintHandler, PERM.PERM_VIEW_CONTEST);
     // Support for DOMJudge printfile
@@ -1182,6 +1282,7 @@ export async function apply(ctx: Context) {
     ctx.Route('contest_manage', '/contest/:tid/management', ContestManagementHandler);
     ctx.Route('contest_clarification', '/contest/:tid/clarification', ContestClarificationHandler);
     ctx.Route('contest_code', '/contest/:tid/code', ContestCodeHandler, PERM.PERM_VIEW_CONTEST);
+    ctx.Route('classroom_test_code', '/course/assessment/:tid/code', ClassroomTestCodeHandler);
     ctx.Route('contest_file_download', '/contest/:tid/file/:type/:filename', ContestFileDownloadHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_user', '/contest/:tid/user', ContestUserHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_balloon', '/contest/:tid/balloon', ContestBalloonHandler, PERM.PERM_VIEW_CONTEST);
@@ -1202,9 +1303,12 @@ export async function apply(ctx: Context) {
     await ctx.inject(['scoreboard'], ({ Route, scoreboard }) => {
         Route('contest_scoreboard', '/contest/:tid/scoreboard', ContestScoreboardHandler, PERM.PERM_VIEW_CONTEST_SCOREBOARD);
         Route('contest_scoreboard_view', '/contest/:tid/scoreboard/:view', ContestScoreboardHandler, PERM.PERM_VIEW_CONTEST_SCOREBOARD);
+        Route('classroom_scoreboard', '/classroom/:tid/scoreboard', ClassroomScoreboardHandler);
+        Route('classroom_scoreboard_view', '/classroom/:tid/scoreboard/:view', ClassroomScoreboardHandler);
         scoreboard.addView('default', 'Default', { tdoc: 'tdoc', groups: 'groups', realtime: Types.Boolean }, {
             async display({ realtime, tdoc, groups }) {
-                if (realtime && !this.user.own(tdoc)) {
+                if (realtime && !this.user.own(tdoc)
+                    && (tdoc.sourceType !== 'course_assessment' || !this.classroomTeacher)) {
                     this.checkPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
                 }
                 const config: ScoreboardConfig = { isExport: false, showDisplayName: this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO) };
@@ -1227,12 +1331,16 @@ export async function apply(ctx: Context) {
         });
         scoreboard.addView('ghost', 'Ghost', { tdoc: 'tdoc' }, {
             async display({ tdoc }) {
-                if (contest.isLocked(tdoc) && !this.user.own(tdoc)) {
+                if (contest.isLocked(tdoc) && !this.user.own(tdoc)
+                    && (tdoc.sourceType !== 'course_assessment' || !this.classroomTeacher)) {
                     this.checkPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
                 }
                 const [pdict, teams] = await Promise.all([
                     problem.getList(tdoc.domainId, tdoc.pids, true, false, problem.PROJECTION_LIST, true),
-                    contest.getMultiStatus(tdoc.domainId, { docId: tdoc._id }).toArray(),
+                    contest.getMultiStatus(tdoc.domainId, {
+                        docId: tdoc._id,
+                        ...(tdoc.sourceType === 'course_assessment' ? { attend: { $gt: 0 } } : {}),
+                    }).toArray(),
                 ]);
                 const udict = await user.getList(tdoc.domainId, teams.map((i) => i.uid));
                 const teamIds: Record<number, number> = {};
@@ -1262,7 +1370,7 @@ export async function apply(ctx: Context) {
                     `@contest "${escape(tdoc.title)}"`,
                     `@contlen ${Math.floor((tdoc.endAt.getTime() - tdoc.beginAt.getTime()) / Time.minute)}`,
                     `@problems ${tdoc.pids.length}`,
-                    `@teams ${tdoc.attend}`,
+                    `@teams ${tdoc.sourceType === 'course_assessment' ? teams.length : tdoc.attend}`,
                     `@submissions ${submissions.length}`,
                 ].concat(
                     tdoc.pids.map((i, idx) => `@p ${pid(idx)},${escape(pdict[i]?.title || 'Unknown Problem')},20,0`),

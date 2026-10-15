@@ -1,0 +1,670 @@
+TAP version 13
+# Subtest: monitor retries recover a failure at session-transition without repeating the transition
+ok 1 - monitor retries recover a failure at session-transition without repeating the transition
+  ---
+  duration_ms: 5423.187421
+  type: 'test'
+  ...
+# Subtest: monitor retries recover a failure at event-commit without repeating the transition
+ok 2 - monitor retries recover a failure at event-commit without repeating the transition
+  ---
+  duration_ms: 232.019088
+  type: 'test'
+  ...
+# Subtest: monitor retries recover a failure at session-clear without repeating the transition
+ok 3 - monitor retries recover a failure at session-clear without repeating the transition
+  ---
+  duration_ms: 257.105146
+  type: 'test'
+  ...
+# Subtest: concurrent retries commit one event and preserve the new page sequence
+ok 4 - concurrent retries commit one event and preserve the new page sequence
+  ---
+  duration_ms: 521.694999
+  type: 'test'
+  ...
+# Subtest: heartbeats remain bounded and do not clear an unfinished hidden interval
+ok 5 - heartbeats remain bounded and do not clear an unfinished hidden interval
+  ---
+  duration_ms: 126.366596
+  type: 'test'
+  ...
+# Subtest: reusing an event identity with a different event type is rejected
+ok 6 - reusing an event identity with a different event type is rejected
+  ---
+  duration_ms: 68.533611
+  type: 'test'
+  ...
+# Subtest: an admitted team member is monitored under their actual user ID
+ok 7 - an admitted team member is monitored under their actual user ID
+  ---
+  duration_ms: 118.545623
+  type: 'test'
+  ...
+# Subtest: nonparticipants, expired individual duration and outsiders cannot report events
+ok 8 - nonparticipants, expired individual duration and outsiders cannot report events
+  ---
+  duration_ms: 65.251741
+  type: 'test'
+  ...
+# Subtest: queued monitoring transitions are accepted after the exam ends within the grace period
+ok 9 - queued monitoring transitions are accepted after the exam ends within the grace period
+  ---
+  duration_ms: 144.528414
+  type: 'test'
+  ...
+# Subtest: uploads after the grace window are rejected
+ok 10 - uploads after the grace window are rejected
+  ---
+  duration_ms: 50.712043
+  type: 'test'
+  ...
+# Subtest: only authorized invigilators can read monitoring records; stale sessions are excluded
+ok 11 - only authorized invigilators can read monitoring records; stale sessions are excluded
+  ---
+  duration_ms: 35.143948
+  type: 'test'
+  ...
+# Subtest: classroom monitoring uses course owner and maintainer permissions, not contest administrator rights
+ok 12 - classroom monitoring uses course owner and maintainer permissions, not contest administrator rights
+  ---
+  duration_ms: 165.737393
+  type: 'test'
+  ...
+# Subtest: classroom monitor rejects file-only questions before writing a contest
+ok 13 - classroom monitor rejects file-only questions before writing a contest
+  ---
+  duration_ms: 25.38191
+  type: 'test'
+  ...
+# Subtest: course synchronization is idempotent and updates class assignment and invigilators
+ok 14 - course synchronization is idempotent and updates class assignment and invigilators
+  ---
+  duration_ms: 129.963342
+  type: 'test'
+  ...
+# Subtest: classroom subcontest owner and maintainer follow the live parent course
+ok 15 - classroom subcontest owner and maintainer follow the live parent course
+  ---
+  duration_ms: 131.354749
+  type: 'test'
+  ...
+# Subtest: staff code submissions without test attendance cannot complete a classroom assessment
+ok 16 - staff code submissions without test attendance cannot complete a classroom assessment
+  ---
+  duration_ms: 129.187702
+  type: 'test'
+  ...
+# Subtest: classroom post-test practice defaults on, supports opt-out, and persists course edits
+ok 17 - classroom post-test practice defaults on, supports opt-out, and persists course edits
+  ---
+  duration_ms: 148.5029
+  type: 'test'
+  ...
+# Subtest: classroom practice respects parent course enrollment, unlocks, staff and explicit opt-out
+ok 18 - classroom practice respects parent course enrollment, unlocks, staff and explicit opt-out
+  ---
+  duration_ms: 208.491656
+  type: 'test'
+  ...
+# Subtest: classroom post-test practice rejects non-boolean persisted flags
+ok 19 - classroom post-test practice rejects non-boolean persisted flags
+  ---
+  duration_ms: 60.517461
+  type: 'test'
+  ...
+# Subtest: course synchronization preserves explicit certification and invalidates changed classroom conditions
+ok 20 - course synchronization preserves explicit certification and invalidates changed classroom conditions
+  ---
+  duration_ms: 159.856397
+  type: 'test'
+  ...
+# Subtest: active classroom tests cannot change questions or rules, or enter Rating without certification
+ok 21 - active classroom tests cannot change questions or rules, or enter Rating without certification
+  ---
+  duration_ms: 125.381601
+  type: 'test'
+  ...
+# Subtest: ended classroom tests can reopen, record the editor and recalculate ACM time
+ok 22 - ended classroom tests can reopen, record the editor and recalculate ACM time
+  ---
+  duration_ms: 274.928501
+  type: 'test'
+  ...
+# Subtest: classroom time correction to the future keeps question and deletion protections
+ok 23 - classroom time correction to the future keeps question and deletion protections
+  ---
+  duration_ms: 111.045303
+  type: 'test'
+  ...
+# Subtest: contest time changes are atomic, keep history and reject stale editors
+ok 24 - contest time changes are atomic, keep history and reject stale editors
+  ---
+  duration_ms: 74.472306
+  type: 'test'
+  ...
+# Subtest: classroom time changes retain certification evidence and flag it for review
+ok 25 - classroom time changes retain certification evidence and flag it for review
+  ---
+  duration_ms: 133.956759
+  type: 'test'
+  ...
+# Subtest: failed classroom recalculation persists across saves and is recovered only by manual retry
+ok 26 - failed classroom recalculation persists across saves and is recovered only by manual retry
+  ---
+  duration_ms: 511.364607
+  type: 'test'
+  ...
+# Subtest: an old judge statistics write cannot overwrite recalculation for a newer start time
+ok 27 - an old judge statistics write cannot overwrite recalculation for a newer start time
+  ---
+  duration_ms: 191.436774
+  type: 'test'
+  ...
+# Subtest: a superseded recalculation cannot clear a newer configuration attempt
+ok 28 - a superseded recalculation cannot clear a newer configuration attempt
+  ---
+  duration_ms: 201.880838
+  type: 'test'
+  ...
+# Subtest: a preparation failure keeps the old time and can recover without inventing a time history entry
+ok 29 - a preparation failure keeps the old time and can recover without inventing a time history entry
+  ---
+  duration_ms: 89.637367
+  type: 'test'
+  ...
+# Subtest: conditional statistics write misses are retried and cannot silently complete a recalculation
+ok 30 - conditional statistics write misses are retried and cannot silently complete a recalculation
+  ---
+  duration_ms: 124.048237
+  type: 'test'
+  ...
+# Subtest: a concurrent judge failure cannot be hidden by successful completion of another recalculation writer
+ok 31 - a concurrent judge failure cannot be hidden by successful completion of another recalculation writer
+  ---
+  duration_ms: 306.133004
+  type: 'test'
+  ...
+# Subtest: manual recovery supersedes an interrupted running attempt without leaving per-user read fences
+ok 32 - manual recovery supersedes an interrupted running attempt without leaving per-user read fences
+  ---
+  duration_ms: 370.150231
+  type: 'test'
+  ...
+# Subtest: certification rejects a concurrent frozen configuration change before writing the policy
+ok 33 - certification rejects a concurrent frozen configuration change before writing the policy
+  ---
+  duration_ms: 31.93988
+  type: 'test'
+  ...
+# Subtest: removing an unused future test deletes its contest and monitor data
+ok 34 - removing an unused future test deletes its contest and monitor data
+  ---
+  duration_ms: 103.501527
+  type: 'test'
+  ...
+# Subtest: recovery reuses an existing contest even when the parent binding write was interrupted
+ok 35 - recovery reuses an existing contest even when the parent binding write was interrupted
+  ---
+  duration_ms: 126.344384
+  type: 'test'
+  ...
+# Subtest: acm uses finalized results and the correct passing metric
+ok 36 - acm uses finalized results and the correct passing metric
+  ---
+  duration_ms: 102.890155
+  type: 'test'
+  ...
+# Subtest: oi uses finalized results and the correct passing metric
+ok 37 - oi uses finalized results and the correct passing metric
+  ---
+  duration_ms: 72.842084
+  type: 'test'
+  ...
+# Subtest: ioi uses finalized results and the correct passing metric
+ok 38 - ioi uses finalized results and the correct passing metric
+  ---
+  duration_ms: 64.088447
+  type: 'test'
+  ...
+# Subtest: strictioi uses finalized results and the correct passing metric
+ok 39 - strictioi uses finalized results and the correct passing metric
+  ---
+  duration_ms: 77.989168
+  type: 'test'
+  ...
+# Subtest: OI scores remain hidden before the personal or global contest end
+ok 40 - OI scores remain hidden before the personal or global contest end
+  ---
+  duration_ms: 83.719419
+  type: 'test'
+  ...
+# Subtest: classroom teacher membership must not grant official student eligibility
+ok 41 - classroom teacher membership must not grant official student eligibility
+  ---
+  duration_ms: 94.813417
+  type: 'test'
+  ...
+# Subtest: non-class group membership and an empty assign do not grant classroom test eligibility
+ok 42 - non-class group membership and an empty assign do not grant classroom test eligibility
+  ---
+  duration_ms: 134.511983
+  type: 'test'
+  ...
+# Subtest: classroom access requires parent enrollment, an unlocked chapter, and an active assignment
+ok 43 - classroom access requires parent enrollment, an unlocked chapter, and an active assignment
+  ---
+  duration_ms: 123.093639
+  type: 'test'
+  ...
+# Subtest: a forged chapter binding does not grant access to another contest
+ok 44 - a forged chapter binding does not grant access to another contest
+  ---
+  duration_ms: 87.205657
+  type: 'test'
+  ...
+# Subtest: a delayed ACK removes only its matching event after bounded queue overflow
+ok 45 - a delayed ACK removes only its matching event after bounded queue overflow
+  ---
+  duration_ms: 21.689241
+  type: 'test'
+  ...
+# Subtest: page navigation preserves pending events and bfcache restores one set of listeners
+ok 46 - page navigation preserves pending events and bfcache restores one set of listeners
+  ---
+  duration_ms: 20.655248
+  type: 'test'
+  ...
+# Subtest: class schedule updates shift future assessment windows and keep their binding
+ok 47 - class schedule updates shift future assessment windows and keep their binding
+  ---
+  duration_ms: 137.336113
+  type: 'test'
+  ...
+# Subtest: subsecond page_hidden transitions survive retries and adjacent duplicates are ignored
+ok 48 - subsecond page_hidden transitions survive retries and adjacent duplicates are ignored
+  ---
+  duration_ms: 129.311205
+  type: 'test'
+  ...
+# Subtest: subsecond window_blur transitions survive retries and adjacent duplicates are ignored
+ok 49 - subsecond window_blur transitions survive retries and adjacent duplicates are ignored
+  ---
+  duration_ms: 120.636131
+  type: 'test'
+  ...
+# Subtest: subsecond fullscreen_enter transitions survive retries and adjacent duplicates are ignored
+ok 50 - subsecond fullscreen_enter transitions survive retries and adjacent duplicates are ignored
+  ---
+  duration_ms: 100.551952
+  type: 'test'
+  ...
+# Subtest: contest edit keeps problem order and does not mutate its expected snapshot
+ok 51 - contest edit keeps problem order and does not mutate its expected snapshot
+  ---
+  duration_ms: 943.840277
+  type: 'test'
+  ...
+# Subtest: migration backfills boolean and numeric registrations exactly once
+ok 52 - migration backfills boolean and numeric registrations exactly once
+  ---
+  duration_ms: 232.14131
+  type: 'test'
+  ...
+# Subtest: JSON responses omit participantUids without modifying internal status
+ok 53 - JSON responses omit participantUids without modifying internal status
+  ---
+  duration_ms: 23.849818
+  type: 'test'
+  ...
+# Subtest: practice opens only after the whole contest and keeps invitations and records personal
+ok 54 - practice opens only after the whole contest and keeps invitations and records personal
+  ---
+  duration_ms: 756.794675
+  type: 'test'
+  ...
+# Subtest: classroom subcontest refuses independent participant-list mutations
+ok 55 - classroom subcontest refuses independent participant-list mutations
+  ---
+  duration_ms: 273.855344
+  type: 'test'
+  ...
+# Subtest: classroom scoreboard model accepts parent teachers without contest permissions and filters out nonattendees
+ok 56 - classroom scoreboard model accepts parent teachers without contest permissions and filters out nonattendees
+  ---
+  duration_ms: 157.816815
+  type: 'test'
+  ...
+# Subtest: classroom Ghost export excludes nonattendee staff and declares the filtered team count
+ok 57 - classroom Ghost export excludes nonattendee staff and declares the filtered team count
+  ---
+  duration_ms: 1.462246
+  type: 'test'
+  ...
+# Subtest: classroom record list and socket deny global filter modes before course-scoped exemptions
+ok 58 - classroom record list and socket deny global filter modes before course-scoped exemptions
+  ---
+  duration_ms: 0.61513
+  type: 'test'
+  ...
+# Subtest: classroom own-record visibility ignores stale child assign but respects scoring windows
+ok 59 - classroom own-record visibility ignores stale child assign but respects scoring windows
+  ---
+  duration_ms: 0.90431
+  type: 'test'
+  ...
+# Subtest: OI classroom projection uses the real OI result window and own-record scope
+ok 60 - OI classroom projection uses the real OI result window and own-record scope
+  ---
+  duration_ms: 640.140226
+  type: 'test'
+  ...
+# Subtest: classroom status summaries are unavailable without live parent-course authorization
+ok 61 - classroom status summaries are unavailable without live parent-course authorization
+  ---
+  duration_ms: 196.783149
+  type: 'test'
+  ...
+# Subtest: classroom own-record visibility follows OI result windows and ignores stale child assignments
+ok 62 - classroom own-record visibility follows OI result windows and ignores stale child assignments
+  ---
+  duration_ms: 1585.824348
+  type: 'test'
+  ...
+# Subtest: classroom teacher formal stream ignores all-zero pretests for every uid
+ok 63 - classroom teacher formal stream ignores all-zero pretests for every uid
+  ---
+  duration_ms: 357.19656
+  type: 'test'
+  ...
+# Subtest: explicit classroom pretest stream only sends the viewer's own test-pid run
+ok 64 - explicit classroom pretest stream only sends the viewer's own test-pid run
+  ---
+  duration_ms: 286.533807
+  type: 'test'
+  ...
+# Subtest: demoted classroom teacher stream closes before sending an own formal record
+ok 65 - demoted classroom teacher stream closes before sending an own formal record
+  ---
+  duration_ms: 173.757904
+  type: 'test'
+  ...
+# Subtest: list classroom record payload is discarded when the OI endAt changes during HTML rendering
+ok 66 - list classroom record payload is discarded when the OI endAt changes during HTML rendering
+  ---
+  duration_ms: 157.483664
+  type: 'test'
+  ...
+# Subtest: list rejects former course teachers even if child-contest ownership is stale
+ok 67 - list rejects former course teachers even if child-contest ownership is stale
+  ---
+  duration_ms: 239.162476
+  type: 'test'
+  ...
+# Subtest: list formal classroom record stream closes when parent access is revoked
+ok 68 - list formal classroom record stream closes when parent access is revoked
+  ---
+  duration_ms: 180.403895
+  type: 'test'
+  ...
+# Subtest: list denies classroom classmates even with generic contest-admin permission
+ok 69 - list denies classroom classmates even with generic contest-admin permission
+  ---
+  duration_ms: 192.110836
+  type: 'test'
+  ...
+# Subtest: list permits parent course teachers to read formal student submissions
+ok 70 - list permits parent course teachers to read formal student submissions
+  ---
+  duration_ms: 258.00206
+  type: 'test'
+  ...
+# Subtest: list classroom practice stream closes when the parent course chapter is revoked
+ok 71 - list classroom practice stream closes when the parent course chapter is revoked
+  ---
+  duration_ms: 347.565391
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is demoted, despite a stale cached user
+ok 72 - list practice stream stops after viewer is demoted, despite a stale cached user
+  ---
+  duration_ms: 223.702427
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is removed from group, despite a stale cached user
+ok 73 - list practice stream stops after viewer is removed from group, despite a stale cached user
+  ---
+  duration_ms: 275.145401
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is disabled, despite a stale cached user
+ok 74 - list practice stream stops after viewer is disabled, despite a stale cached user
+  ---
+  duration_ms: 395.687762
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is deleted, despite a stale cached user
+ok 75 - list practice stream stops after viewer is deleted, despite a stale cached user
+  ---
+  duration_ms: 240.048478
+  type: 'test'
+  ...
+# Subtest: list practice stream rechecks permissions after a queued or throttled event
+ok 76 - list practice stream rechecks permissions after a queued or throttled event
+  ---
+  duration_ms: 246.577406
+  type: 'test'
+  ...
+# Subtest: list practice stream rechecks after asynchronous HTML rendering
+ok 77 - list practice stream rechecks after asynchronous HTML rendering
+  ---
+  duration_ms: 143.01446
+  type: 'test'
+  ...
+# Subtest: list practice stream fails closed on permission read errors and cancels later work
+ok 78 - list practice stream fails closed on permission read errors and cancels later work
+  ---
+  duration_ms: 185.467845
+  type: 'test'
+  ...
+# Subtest: list practice stream preserves the original scope when refreshing its actor
+ok 79 - list practice stream preserves the original scope when refreshing its actor
+  ---
+  duration_ms: 202.299113
+  type: 'test'
+  ...
+# Subtest: list practice stream continues to read personal history after practice closes
+ok 80 - list practice stream continues to read personal history after practice closes
+  ---
+  duration_ms: 195.299496
+  type: 'test'
+  ...
+# Subtest: list practice stream cancels a pending finished record when the connection closes
+ok 81 - list practice stream cancels a pending finished record when the connection closes
+  ---
+  duration_ms: 208.60848
+  type: 'test'
+  ...
+# Subtest: detail classroom record payload is discarded when the OI endAt changes during HTML rendering
+ok 82 - detail classroom record payload is discarded when the OI endAt changes during HTML rendering
+  ---
+  duration_ms: 305.080426
+  type: 'test'
+  ...
+# Subtest: detail rejects former course teachers even if child-contest ownership is stale
+ok 83 - detail rejects former course teachers even if child-contest ownership is stale
+  ---
+  duration_ms: 196.746966
+  type: 'test'
+  ...
+# Subtest: detail formal classroom record stream closes when parent access is revoked
+ok 84 - detail formal classroom record stream closes when parent access is revoked
+  ---
+  duration_ms: 206.338444
+  type: 'test'
+  ...
+# Subtest: detail denies classroom classmates even with generic contest-admin permission
+ok 85 - detail denies classroom classmates even with generic contest-admin permission
+  ---
+  duration_ms: 265.358737
+  type: 'test'
+  ...
+# Subtest: detail permits parent course teachers to read formal student submissions
+ok 86 - detail permits parent course teachers to read formal student submissions
+  ---
+  duration_ms: 191.004772
+  type: 'test'
+  ...
+# Subtest: detail classroom practice stream closes when the parent course chapter is revoked
+ok 87 - detail classroom practice stream closes when the parent course chapter is revoked
+  ---
+  duration_ms: 102.288627
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is demoted, despite a stale cached user
+ok 88 - detail practice stream stops after viewer is demoted, despite a stale cached user
+  ---
+  duration_ms: 220.379433
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is removed from group, despite a stale cached user
+ok 89 - detail practice stream stops after viewer is removed from group, despite a stale cached user
+  ---
+  duration_ms: 165.96819
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is disabled, despite a stale cached user
+ok 90 - detail practice stream stops after viewer is disabled, despite a stale cached user
+  ---
+  duration_ms: 156.505957
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is deleted, despite a stale cached user
+ok 91 - detail practice stream stops after viewer is deleted, despite a stale cached user
+  ---
+  duration_ms: 146.992486
+  type: 'test'
+  ...
+# Subtest: detail practice stream rechecks permissions after a queued or throttled event
+ok 92 - detail practice stream rechecks permissions after a queued or throttled event
+  ---
+  duration_ms: 152.169816
+  type: 'test'
+  ...
+# Subtest: detail practice stream rechecks after asynchronous HTML rendering
+ok 93 - detail practice stream rechecks after asynchronous HTML rendering
+  ---
+  duration_ms: 176.981626
+  type: 'test'
+  ...
+# Subtest: detail practice stream fails closed on permission read errors and cancels later work
+ok 94 - detail practice stream fails closed on permission read errors and cancels later work
+  ---
+  duration_ms: 104.880574
+  type: 'test'
+  ...
+# Subtest: detail practice stream preserves the original scope when refreshing its actor
+ok 95 - detail practice stream preserves the original scope when refreshing its actor
+  ---
+  duration_ms: 132.483842
+  type: 'test'
+  ...
+# Subtest: detail practice stream continues to read personal history after practice closes
+ok 96 - detail practice stream continues to read personal history after practice closes
+  ---
+  duration_ms: 154.880344
+  type: 'test'
+  ...
+# Subtest: detail practice stream cancels a pending finished record when the connection closes
+ok 97 - detail practice stream cancels a pending finished record when the connection closes
+  ---
+  duration_ms: 140.389645
+  type: 'test'
+  ...
+# Subtest: all-practice list still requires manager permissions for an event belonging to the viewer
+ok 98 - all-practice list still requires manager permissions for an event belonging to the viewer
+  ---
+  duration_ms: 139.876015
+  type: 'test'
+  ...
+# Subtest: personal practice list ignores unrelated users, domains, contests and problems without disconnecting
+ok 99 - personal practice list ignores unrelated users, domains, contests and problems without disconnecting
+  ---
+  duration_ms: 143.487615
+  type: 'test'
+  ...
+# Subtest: a practice list update arriving during an HTML flush remains queued for the next flush
+ok 100 - a practice list update arriving during an HTML flush remains queued for the next flush
+  ---
+  duration_ms: 158.980136
+  type: 'test'
+  ...
+# Subtest: resolver follows explicit references and snapshots local plus canonical evidence
+ok 101 - resolver follows explicit references and snapshots local plus canonical evidence
+  ---
+  duration_ms: 4861.558051
+  type: 'test'
+  ...
+# Subtest: resolver leaves evidence unknown for missing and cyclic references
+ok 102 - resolver leaves evidence unknown for missing and cyclic references
+  ---
+  duration_ms: 47.05495
+  type: 'test'
+  ...
+# Subtest: objective answer alternatives use the maximum attainable score per question
+ok 103 - objective answer alternatives use the maximum attainable score per question
+  ---
+  duration_ms: 33.342224
+  type: 'test'
+  ...
+# Subtest: malformed scoring config stays unknown and top-level cases match the judge precedence
+ok 104 - malformed scoring config stays unknown and top-level cases match the judge precedence
+  ---
+  duration_ms: 37.239833
+  type: 'test'
+  ...
+# Subtest: full scores follow sum, min and max case aggregation without changing revision inputs
+ok 105 - full scores follow sum, min and max case aggregation without changing revision inputs
+  ---
+  duration_ms: 136.333672
+  type: 'test'
+  ...
+# Subtest: automatic file recognition provides a full score only for recognized testcases
+ok 106 - automatic file recognition provides a full score only for recognized testcases
+  ---
+  duration_ms: 156.079872
+  type: 'test'
+  ...
+# Subtest: the submission handler persists source-domain maintainers as staff while preserving ordinary modes
+ok 107 - the submission handler persists source-domain maintainers as staff while preserving ordinary modes
+  ---
+  duration_ms: 1069.350362
+  type: 'test'
+  ...
+# Subtest: record creation, reset and linked rejudge preserve immutable provenance
+ok 108 - record creation, reset and linked rejudge preserve immutable provenance
+  ---
+  duration_ms: 131.525681
+  type: 'test'
+  ...
+# Subtest: legacy linked rejudge keeps missing facts unknown and special kinds are classified
+ok 109 - legacy linked rejudge keeps missing facts unknown and special kinds are classified
+  ---
+  duration_ms: 74.570815
+  type: 'test'
+  ...
+# Subtest: record updates keep provenance context while deletion and judge updates remain mutable
+ok 110 - record updates keep provenance context while deletion and judge updates remain mutable
+  ---
+  duration_ms: 25.649121
+  type: 'test'
+  ...
+1..110
+# tests 110
+# suites 0
+# pass 110
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16087.753459

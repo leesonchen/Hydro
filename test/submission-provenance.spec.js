@@ -156,20 +156,32 @@ test('the submission handler persists source-domain maintainers as staff while p
     const handler = source.statements.find((s) => ts.isClassDeclaration(s) && s.name?.text === 'ProblemSubmitHandler');
     const post = handler.members.find((s) => s.name?.getText(source) === 'post');
     const { PERM } = load('packages/common/permission.ts');
+    const { canShowClassroomSelfRecord } = load('packages/hydrooj/src/lib/course-assessment-access.ts', {
+        '../error': { NotAssignedError: class extends Error {} },
+        '../model/builtin': { PERM }, '../model/contest': { RULES: {} },
+        '../model/user': { default: { listGroup: async () => [] } },
+    });
     const tid = new ObjectId();
     const tdoc = { docId: tid, owner: 99, rule: 'oi', pids: [1] };
     let classroomTeacher = false;
     let attended = true;
+    let practiceReady = false;
+    let childAssigned = true;
+    let parentAllowed = true;
     const user = (perms = []) => ({ _id: 2,
         own: (doc) => doc.owner === 2 || doc.maintainer?.includes(2), hasPerm: (p) => perms.includes(p) });
     const context = {
         exports: {}, PERM, param: () => () => {}, Types: { ArrayOf: () => {} },
         record: { add: (domainId, pid, uid, lang, code, _addTask, args) => recordModel.add(domainId, pid, uid, lang, code, false, args) },
-        contest: { get: async () => tdoc, canAccessAssignedContest: () => true, isOngoing: () => true,
+        contest: { get: async () => tdoc, canAccessAssignedContest: () => childAssigned, isOngoing: () => true,
             updateStatus: async () => {}, canShowSelfRecord: () => true, getStatus: async () => ({ attend: attended }) },
-        assertCourseAssessmentAccess: async () => classroomTeacher,
-        ContestNotAttendedError: class extends Error {},
-        canSubmitPractice: async () => false,
+        assertCourseAssessmentAccess: async () => {
+            if (!parentAllowed) throw new context.ContestNotFoundError();
+            return classroomTeacher;
+        },
+        canShowClassroomSelfRecord,
+        ContestNotAttendedError: class extends Error {}, ContestNotFoundError: class extends Error {},
+        canSubmitPractice: async () => practiceReady,
         setting: { langs: { cpp: { pretest: 'cpp' } } }, system: { get: () => 1000 },
     };
     vm.runInNewContext(ts.transpileModule(`${helper.getText(source)}\nclass Submit { ${post.getText(source)} }\nexports.Submit = Submit;`, {
@@ -214,6 +226,30 @@ test('the submission handler persists source-domain maintainers as staff while p
     assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'staff');
     classroomTeacher = false; attended = false;
     await assert.rejects(h.post('d', 'cpp', 'code', false, [], tid), context.ContestNotAttendedError);
+    // Chapter-authorized students can practice after the test without official enrollment.
+    practiceReady = true;
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    const practiceRecord = await recordModel.get('d', h.response.body.rid);
+    assert.equal(practiceRecord.practiceContest.toString(), tid.toString());
+    assert.equal(practiceRecord.contest, undefined);
+    assert.equal(practiceRecord.participationMode, 'practice');
+    assert.equal(practiceRecord.classroomSession, undefined);
+    // A global course teacher may submit even when not assigned to the child contest's class.
+    childAssigned = false;
+    classroomTeacher = true;
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    const teacherPractice = await recordModel.get('d', h.response.body.rid);
+    assert.equal(teacherPractice.practiceContest.toString(), tid.toString());
+    assert.equal(teacherPractice.contest, undefined);
+    assert.equal(teacherPractice.participationMode, 'practice');
+    // Child-contest group assignments cannot revoke a valid parent-authorized practice submission.
+    classroomTeacher = false;
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'practice');
+    // Revocation must be enforced by the live parent-course authorization instead.
+    parentAllowed = false;
+    await assert.rejects(h.post('d', 'cpp', 'code', false, [], tid), context.ContestNotFoundError);
+    practiceReady = false;
 });
 
 test('record creation, reset and linked rejudge preserve immutable provenance', async () => {

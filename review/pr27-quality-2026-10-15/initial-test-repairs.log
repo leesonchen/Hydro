@@ -1,0 +1,1364 @@
+BASELINE 2026-10-15 before edits
+$ node --check test/contest-team-regressions.spec.js
+exit=0
+$ node --check test/practice-record-connection.spec.js
+exit=0
+$ node --check test/submission-provenance.spec.js
+exit=0
+$ node test/contest-team-regressions.spec.js
+TAP version 13
+# Subtest: contest edit keeps problem order and does not mutate its expected snapshot
+ok 1 - contest edit keeps problem order and does not mutate its expected snapshot
+  ---
+  duration_ms: 148.13935
+  type: 'test'
+  ...
+# Subtest: migration backfills boolean and numeric registrations exactly once
+ok 2 - migration backfills boolean and numeric registrations exactly once
+  ---
+  duration_ms: 55.664242
+  type: 'test'
+  ...
+# Subtest: JSON responses omit participantUids without modifying internal status
+ok 3 - JSON responses omit participantUids without modifying internal status
+  ---
+  duration_ms: 7.103148
+  type: 'test'
+  ...
+# Subtest: practice opens only after the whole contest and keeps invitations and records personal
+ok 4 - practice opens only after the whole contest and keeps invitations and records personal
+  ---
+  duration_ms: 147.622267
+  type: 'test'
+  ...
+# Subtest: classroom subcontest refuses independent participant-list mutations
+ok 5 - classroom subcontest refuses independent participant-list mutations
+  ---
+  duration_ms: 33.6457
+  type: 'test'
+  ...
+# Subtest: classroom scoreboard model accepts parent teachers without contest permissions and filters out nonattendees
+ok 6 - classroom scoreboard model accepts parent teachers without contest permissions and filters out nonattendees
+  ---
+  duration_ms: 41.988925
+  type: 'test'
+  ...
+# Subtest: classroom Ghost export excludes nonattendee staff and declares the filtered team count
+ok 7 - classroom Ghost export excludes nonattendee staff and declares the filtered team count
+  ---
+  duration_ms: 0.955212
+  type: 'test'
+  ...
+# Subtest: classroom record list and socket deny global filter modes before course-scoped exemptions
+ok 8 - classroom record list and socket deny global filter modes before course-scoped exemptions
+  ---
+  duration_ms: 0.340584
+  type: 'test'
+  ...
+# Subtest: classroom own-record visibility ignores stale child assign but respects scoring windows
+ok 9 - classroom own-record visibility ignores stale child assign but respects scoring windows
+  ---
+  duration_ms: 0.477456
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 452.03839
+exit=0
+$ node test/practice-record-connection.spec.js
+TAP version 13
+# Subtest: list rejects former course teachers even if child-contest ownership is stale
+ok 1 - list rejects former course teachers even if child-contest ownership is stale
+  ---
+  duration_ms: 231.899912
+  type: 'test'
+  ...
+# Subtest: list formal classroom record stream closes when parent access is revoked
+ok 2 - list formal classroom record stream closes when parent access is revoked
+  ---
+  duration_ms: 132.394105
+  type: 'test'
+  ...
+# Subtest: list denies classroom classmates even with generic contest-admin permission
+ok 3 - list denies classroom classmates even with generic contest-admin permission
+  ---
+  duration_ms: 100.284236
+  type: 'test'
+  ...
+# Subtest: list permits parent course teachers to read formal student submissions
+ok 4 - list permits parent course teachers to read formal student submissions
+  ---
+  duration_ms: 68.693043
+  type: 'test'
+  ...
+# Subtest: list classroom practice stream closes when the parent course chapter is revoked
+ok 5 - list classroom practice stream closes when the parent course chapter is revoked
+  ---
+  duration_ms: 71.708693
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is demoted, despite a stale cached user
+ok 6 - list practice stream stops after viewer is demoted, despite a stale cached user
+  ---
+  duration_ms: 75.209936
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is removed from group, despite a stale cached user
+ok 7 - list practice stream stops after viewer is removed from group, despite a stale cached user
+  ---
+  duration_ms: 80.243748
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is disabled, despite a stale cached user
+ok 8 - list practice stream stops after viewer is disabled, despite a stale cached user
+  ---
+  duration_ms: 73.530956
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is deleted, despite a stale cached user
+ok 9 - list practice stream stops after viewer is deleted, despite a stale cached user
+  ---
+  duration_ms: 79.038083
+  type: 'test'
+  ...
+# Subtest: list practice stream rechecks permissions after a queued or throttled event
+ok 10 - list practice stream rechecks permissions after a queued or throttled event
+  ---
+  duration_ms: 67.199552
+  type: 'test'
+  ...
+# Subtest: list practice stream rechecks after asynchronous HTML rendering
+ok 11 - list practice stream rechecks after asynchronous HTML rendering
+  ---
+  duration_ms: 81.32021
+  type: 'test'
+  ...
+# Subtest: list practice stream fails closed on permission read errors and cancels later work
+ok 12 - list practice stream fails closed on permission read errors and cancels later work
+  ---
+  duration_ms: 67.328295
+  type: 'test'
+  ...
+# Subtest: list practice stream preserves the original scope when refreshing its actor
+ok 13 - list practice stream preserves the original scope when refreshing its actor
+  ---
+  duration_ms: 88.226596
+  type: 'test'
+  ...
+# Subtest: list practice stream continues to read personal history after practice closes
+ok 14 - list practice stream continues to read personal history after practice closes
+  ---
+  duration_ms: 85.939292
+  type: 'test'
+  ...
+# Subtest: list practice stream cancels a pending finished record when the connection closes
+ok 15 - list practice stream cancels a pending finished record when the connection closes
+  ---
+  duration_ms: 88.670282
+  type: 'test'
+  ...
+# Subtest: detail rejects former course teachers even if child-contest ownership is stale
+ok 16 - detail rejects former course teachers even if child-contest ownership is stale
+  ---
+  duration_ms: 93.825853
+  type: 'test'
+  ...
+# Subtest: detail formal classroom record stream closes when parent access is revoked
+ok 17 - detail formal classroom record stream closes when parent access is revoked
+  ---
+  duration_ms: 97.828155
+  type: 'test'
+  ...
+# Subtest: detail denies classroom classmates even with generic contest-admin permission
+ok 18 - detail denies classroom classmates even with generic contest-admin permission
+  ---
+  duration_ms: 90.63405
+  type: 'test'
+  ...
+# Subtest: detail permits parent course teachers to read formal student submissions
+ok 19 - detail permits parent course teachers to read formal student submissions
+  ---
+  duration_ms: 85.675522
+  type: 'test'
+  ...
+# Subtest: detail classroom practice stream closes when the parent course chapter is revoked
+ok 20 - detail classroom practice stream closes when the parent course chapter is revoked
+  ---
+  duration_ms: 83.398763
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is demoted, despite a stale cached user
+ok 21 - detail practice stream stops after viewer is demoted, despite a stale cached user
+  ---
+  duration_ms: 73.108358
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is removed from group, despite a stale cached user
+ok 22 - detail practice stream stops after viewer is removed from group, despite a stale cached user
+  ---
+  duration_ms: 83.718749
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is disabled, despite a stale cached user
+ok 23 - detail practice stream stops after viewer is disabled, despite a stale cached user
+  ---
+  duration_ms: 78.438042
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is deleted, despite a stale cached user
+ok 24 - detail practice stream stops after viewer is deleted, despite a stale cached user
+  ---
+  duration_ms: 83.646788
+  type: 'test'
+  ...
+# Subtest: detail practice stream rechecks permissions after a queued or throttled event
+ok 25 - detail practice stream rechecks permissions after a queued or throttled event
+  ---
+  duration_ms: 84.60687
+  type: 'test'
+  ...
+# Subtest: detail practice stream rechecks after asynchronous HTML rendering
+ok 26 - detail practice stream rechecks after asynchronous HTML rendering
+  ---
+  duration_ms: 84.773507
+  type: 'test'
+  ...
+# Subtest: detail practice stream fails closed on permission read errors and cancels later work
+ok 27 - detail practice stream fails closed on permission read errors and cancels later work
+  ---
+  duration_ms: 82.276354
+  type: 'test'
+  ...
+# Subtest: detail practice stream preserves the original scope when refreshing its actor
+ok 28 - detail practice stream preserves the original scope when refreshing its actor
+  ---
+  duration_ms: 65.807227
+  type: 'test'
+  ...
+# Subtest: detail practice stream continues to read personal history after practice closes
+ok 29 - detail practice stream continues to read personal history after practice closes
+  ---
+  duration_ms: 81.22899
+  type: 'test'
+  ...
+# Subtest: detail practice stream cancels a pending finished record when the connection closes
+ok 30 - detail practice stream cancels a pending finished record when the connection closes
+  ---
+  duration_ms: 68.612894
+  type: 'test'
+  ...
+# Subtest: all-practice list still requires manager permissions for an event belonging to the viewer
+ok 31 - all-practice list still requires manager permissions for an event belonging to the viewer
+  ---
+  duration_ms: 70.303001
+  type: 'test'
+  ...
+# Subtest: personal practice list ignores unrelated users, domains, contests and problems without disconnecting
+ok 32 - personal practice list ignores unrelated users, domains, contests and problems without disconnecting
+  ---
+  duration_ms: 88.747554
+  type: 'test'
+  ...
+# Subtest: a practice list update arriving during an HTML flush remains queued for the next flush
+ok 33 - a practice list update arriving during an HTML flush remains queued for the next flush
+  ---
+  duration_ms: 71.509471
+  type: 'test'
+  ...
+1..33
+# tests 33
+# suites 0
+# pass 33
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2901.533556
+exit=0
+$ node test/submission-provenance.spec.js
+TAP version 13
+Starting the MongoMemoryServer Instance failed, enable debug log for more information. Error:
+ Error: listen EPERM: operation not permitted 0.0.0.0
+    at Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    at new Promise (<anonymous>)
+    at tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    at getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    at MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    at MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    at MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49) {
+  code: 'EPERM',
+  errno: -1,
+  syscall: 'listen',
+  address: '0.0.0.0'
+}
+# Subtest: resolver follows explicit references and snapshots local plus canonical evidence
+not ok 1 - resolver follows explicit references and snapshots local plus canonical evidence
+  ---
+  duration_ms: 49.862247
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:57:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: resolver leaves evidence unknown for missing and cyclic references
+not ok 2 - resolver leaves evidence unknown for missing and cyclic references
+  ---
+  duration_ms: 0.218734
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:82:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: objective answer alternatives use the maximum attainable score per question
+not ok 3 - objective answer alternatives use the maximum attainable score per question
+  ---
+  duration_ms: 0.085147
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:97:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: malformed scoring config stays unknown and top-level cases match the judge precedence
+not ok 4 - malformed scoring config stays unknown and top-level cases match the judge precedence
+  ---
+  duration_ms: 0.076764
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:107:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: full scores follow sum, min and max case aggregation without changing revision inputs
+not ok 5 - full scores follow sum, min and max case aggregation without changing revision inputs
+  ---
+  duration_ms: 0.218563
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:118:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: automatic file recognition provides a full score only for recognized testcases
+not ok 6 - automatic file recognition provides a full score only for recognized testcases
+  ---
+  duration_ms: 0.071302
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:138:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: the submission handler persists source-domain maintainers as staff while preserving ordinary modes
+not ok 7 - the submission handler persists source-domain maintainers as staff while preserving ordinary modes
+  ---
+  duration_ms: 0.061446
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:152:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: record creation, reset and linked rejudge preserve immutable provenance
+not ok 8 - record creation, reset and linked rejudge preserve immutable provenance
+  ---
+  duration_ms: 0.19077
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:255:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: legacy linked rejudge keeps missing facts unknown and special kinds are classified
+not ok 9 - legacy linked rejudge keeps missing facts unknown and special kinds are classified
+  ---
+  duration_ms: 0.373995
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:294:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: record updates keep provenance context while deletion and judge updates remain mutable
+not ok 10 - record updates keep provenance context while deletion and judge updates remain mutable
+  ---
+  duration_ms: 0.271372
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:316:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 0
+# fail 10
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 84.931095
+exit=1
+AFTER REPAIRS 2026-10-15
+$ node --check test/contest-team-regressions.spec.js
+exit=0
+$ node --check test/practice-record-connection.spec.js
+exit=0
+$ node --check test/submission-provenance.spec.js
+exit=0
+$ node test/contest-team-regressions.spec.js
+TAP version 13
+# Subtest: contest edit keeps problem order and does not mutate its expected snapshot
+ok 1 - contest edit keeps problem order and does not mutate its expected snapshot
+  ---
+  duration_ms: 148.379881
+  type: 'test'
+  ...
+# Subtest: migration backfills boolean and numeric registrations exactly once
+ok 2 - migration backfills boolean and numeric registrations exactly once
+  ---
+  duration_ms: 50.741486
+  type: 'test'
+  ...
+# Subtest: JSON responses omit participantUids without modifying internal status
+ok 3 - JSON responses omit participantUids without modifying internal status
+  ---
+  duration_ms: 8.020236
+  type: 'test'
+  ...
+# Subtest: practice opens only after the whole contest and keeps invitations and records personal
+ok 4 - practice opens only after the whole contest and keeps invitations and records personal
+  ---
+  duration_ms: 132.612471
+  type: 'test'
+  ...
+# Subtest: classroom subcontest refuses independent participant-list mutations
+ok 5 - classroom subcontest refuses independent participant-list mutations
+  ---
+  duration_ms: 37.567533
+  type: 'test'
+  ...
+# Subtest: classroom scoreboard model accepts parent teachers without contest permissions and filters out nonattendees
+ok 6 - classroom scoreboard model accepts parent teachers without contest permissions and filters out nonattendees
+  ---
+  duration_ms: 39.071122
+  type: 'test'
+  ...
+# Subtest: classroom Ghost export excludes nonattendee staff and declares the filtered team count
+ok 7 - classroom Ghost export excludes nonattendee staff and declares the filtered team count
+  ---
+  duration_ms: 0.834811
+  type: 'test'
+  ...
+# Subtest: classroom record list and socket deny global filter modes before course-scoped exemptions
+ok 8 - classroom record list and socket deny global filter modes before course-scoped exemptions
+  ---
+  duration_ms: 0.531492
+  type: 'test'
+  ...
+# Subtest: classroom own-record visibility ignores stale child assign but respects scoring windows
+ok 9 - classroom own-record visibility ignores stale child assign but respects scoring windows
+  ---
+  duration_ms: 0.514318
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 441.059688
+exit=0
+$ node test/practice-record-connection.spec.js
+TAP version 13
+# Subtest: list rejects former course teachers even if child-contest ownership is stale
+ok 1 - list rejects former course teachers even if child-contest ownership is stale
+  ---
+  duration_ms: 163.947784
+  type: 'test'
+  ...
+# Subtest: list formal classroom record stream closes when parent access is revoked
+ok 2 - list formal classroom record stream closes when parent access is revoked
+  ---
+  duration_ms: 103.656807
+  type: 'test'
+  ...
+# Subtest: list denies classroom classmates even with generic contest-admin permission
+ok 3 - list denies classroom classmates even with generic contest-admin permission
+  ---
+  duration_ms: 82.76937
+  type: 'test'
+  ...
+# Subtest: list permits parent course teachers to read formal student submissions
+ok 4 - list permits parent course teachers to read formal student submissions
+  ---
+  duration_ms: 59.984284
+  type: 'test'
+  ...
+# Subtest: list classroom practice stream closes when the parent course chapter is revoked
+ok 5 - list classroom practice stream closes when the parent course chapter is revoked
+  ---
+  duration_ms: 48.901296
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is demoted, despite a stale cached user
+ok 6 - list practice stream stops after viewer is demoted, despite a stale cached user
+  ---
+  duration_ms: 60.777377
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is removed from group, despite a stale cached user
+ok 7 - list practice stream stops after viewer is removed from group, despite a stale cached user
+  ---
+  duration_ms: 65.659713
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is disabled, despite a stale cached user
+ok 8 - list practice stream stops after viewer is disabled, despite a stale cached user
+  ---
+  duration_ms: 63.649522
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is deleted, despite a stale cached user
+ok 9 - list practice stream stops after viewer is deleted, despite a stale cached user
+  ---
+  duration_ms: 57.032197
+  type: 'test'
+  ...
+# Subtest: list practice stream rechecks permissions after a queued or throttled event
+ok 10 - list practice stream rechecks permissions after a queued or throttled event
+  ---
+  duration_ms: 53.86738
+  type: 'test'
+  ...
+# Subtest: list practice stream rechecks after asynchronous HTML rendering
+ok 11 - list practice stream rechecks after asynchronous HTML rendering
+  ---
+  duration_ms: 48.194566
+  type: 'test'
+  ...
+# Subtest: list practice stream fails closed on permission read errors and cancels later work
+ok 12 - list practice stream fails closed on permission read errors and cancels later work
+  ---
+  duration_ms: 59.189043
+  type: 'test'
+  ...
+# Subtest: list practice stream preserves the original scope when refreshing its actor
+ok 13 - list practice stream preserves the original scope when refreshing its actor
+  ---
+  duration_ms: 48.769978
+  type: 'test'
+  ...
+# Subtest: list practice stream continues to read personal history after practice closes
+ok 14 - list practice stream continues to read personal history after practice closes
+  ---
+  duration_ms: 50.784023
+  type: 'test'
+  ...
+# Subtest: list practice stream cancels a pending finished record when the connection closes
+ok 15 - list practice stream cancels a pending finished record when the connection closes
+  ---
+  duration_ms: 55.883525
+  type: 'test'
+  ...
+# Subtest: detail rejects former course teachers even if child-contest ownership is stale
+ok 16 - detail rejects former course teachers even if child-contest ownership is stale
+  ---
+  duration_ms: 49.641137
+  type: 'test'
+  ...
+# Subtest: detail formal classroom record stream closes when parent access is revoked
+ok 17 - detail formal classroom record stream closes when parent access is revoked
+  ---
+  duration_ms: 56.20692
+  type: 'test'
+  ...
+# Subtest: detail denies classroom classmates even with generic contest-admin permission
+ok 18 - detail denies classroom classmates even with generic contest-admin permission
+  ---
+  duration_ms: 57.820171
+  type: 'test'
+  ...
+# Subtest: detail permits parent course teachers to read formal student submissions
+ok 19 - detail permits parent course teachers to read formal student submissions
+  ---
+  duration_ms: 55.974567
+  type: 'test'
+  ...
+# Subtest: detail classroom practice stream closes when the parent course chapter is revoked
+ok 20 - detail classroom practice stream closes when the parent course chapter is revoked
+  ---
+  duration_ms: 62.47713
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is demoted, despite a stale cached user
+ok 21 - detail practice stream stops after viewer is demoted, despite a stale cached user
+  ---
+  duration_ms: 57.546867
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is removed from group, despite a stale cached user
+ok 22 - detail practice stream stops after viewer is removed from group, despite a stale cached user
+  ---
+  duration_ms: 60.45113
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is disabled, despite a stale cached user
+ok 23 - detail practice stream stops after viewer is disabled, despite a stale cached user
+  ---
+  duration_ms: 59.407878
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is deleted, despite a stale cached user
+ok 24 - detail practice stream stops after viewer is deleted, despite a stale cached user
+  ---
+  duration_ms: 55.906417
+  type: 'test'
+  ...
+# Subtest: detail practice stream rechecks permissions after a queued or throttled event
+ok 25 - detail practice stream rechecks permissions after a queued or throttled event
+  ---
+  duration_ms: 60.230983
+  type: 'test'
+  ...
+# Subtest: detail practice stream rechecks after asynchronous HTML rendering
+ok 26 - detail practice stream rechecks after asynchronous HTML rendering
+  ---
+  duration_ms: 61.326043
+  type: 'test'
+  ...
+# Subtest: detail practice stream fails closed on permission read errors and cancels later work
+ok 27 - detail practice stream fails closed on permission read errors and cancels later work
+  ---
+  duration_ms: 64.447561
+  type: 'test'
+  ...
+# Subtest: detail practice stream preserves the original scope when refreshing its actor
+ok 28 - detail practice stream preserves the original scope when refreshing its actor
+  ---
+  duration_ms: 48.376289
+  type: 'test'
+  ...
+# Subtest: detail practice stream continues to read personal history after practice closes
+ok 29 - detail practice stream continues to read personal history after practice closes
+  ---
+  duration_ms: 66.290343
+  type: 'test'
+  ...
+# Subtest: detail practice stream cancels a pending finished record when the connection closes
+ok 30 - detail practice stream cancels a pending finished record when the connection closes
+  ---
+  duration_ms: 60.214392
+  type: 'test'
+  ...
+# Subtest: all-practice list still requires manager permissions for an event belonging to the viewer
+ok 31 - all-practice list still requires manager permissions for an event belonging to the viewer
+  ---
+  duration_ms: 63.623682
+  type: 'test'
+  ...
+# Subtest: personal practice list ignores unrelated users, domains, contests and problems without disconnecting
+ok 32 - personal practice list ignores unrelated users, domains, contests and problems without disconnecting
+  ---
+  duration_ms: 81.013076
+  type: 'test'
+  ...
+# Subtest: a practice list update arriving during an HTML flush remains queued for the next flush
+ok 33 - a practice list update arriving during an HTML flush remains queued for the next flush
+  ---
+  duration_ms: 54.050134
+  type: 'test'
+  ...
+1..33
+# tests 33
+# suites 0
+# pass 33
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2128.644347
+exit=0
+$ node test/submission-provenance.spec.js
+TAP version 13
+Starting the MongoMemoryServer Instance failed, enable debug log for more information. Error:
+ Error: listen EPERM: operation not permitted 0.0.0.0
+    at Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    at new Promise (<anonymous>)
+    at tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    at getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    at MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    at MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    at MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49) {
+  code: 'EPERM',
+  errno: -1,
+  syscall: 'listen',
+  address: '0.0.0.0'
+}
+# Subtest: resolver follows explicit references and snapshots local plus canonical evidence
+not ok 1 - resolver follows explicit references and snapshots local plus canonical evidence
+  ---
+  duration_ms: 43.787529
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:57:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: resolver leaves evidence unknown for missing and cyclic references
+not ok 2 - resolver leaves evidence unknown for missing and cyclic references
+  ---
+  duration_ms: 0.191779
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:82:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: objective answer alternatives use the maximum attainable score per question
+not ok 3 - objective answer alternatives use the maximum attainable score per question
+  ---
+  duration_ms: 0.086147
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:97:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: malformed scoring config stays unknown and top-level cases match the judge precedence
+not ok 4 - malformed scoring config stays unknown and top-level cases match the judge precedence
+  ---
+  duration_ms: 0.122011
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:107:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: full scores follow sum, min and max case aggregation without changing revision inputs
+not ok 5 - full scores follow sum, min and max case aggregation without changing revision inputs
+  ---
+  duration_ms: 0.111237
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:118:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: automatic file recognition provides a full score only for recognized testcases
+not ok 6 - automatic file recognition provides a full score only for recognized testcases
+  ---
+  duration_ms: 0.148031
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:138:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: the submission handler persists source-domain maintainers as staff while preserving ordinary modes
+not ok 7 - the submission handler persists source-domain maintainers as staff while preserving ordinary modes
+  ---
+  duration_ms: 0.063351
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:152:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: record creation, reset and linked rejudge preserve immutable provenance
+not ok 8 - record creation, reset and linked rejudge preserve immutable provenance
+  ---
+  duration_ms: 0.215852
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:255:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: legacy linked rejudge keeps missing facts unknown and special kinds are classified
+not ok 9 - legacy linked rejudge keeps missing facts unknown and special kinds are classified
+  ---
+  duration_ms: 0.39639
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:294:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+# Subtest: record updates keep provenance context while deletion and judge updates remain mutable
+not ok 10 - record updates keep provenance context while deletion and judge updates remain mutable
+  ---
+  duration_ms: 0.686257
+  type: 'test'
+  location: '/home/leeson/work/Hydro/test/submission-provenance.spec.js:316:1'
+  failureType: 'hookFailed'
+  error: 'listen EPERM: operation not permitted 0.0.0.0'
+  code: 'EPERM'
+  stack: |-
+    Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    listenInCluster (node:net:1997:12)
+    Server.listen (node:net:2102:7)
+    /home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:137:12
+    new Promise (<anonymous>)
+    tryPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:122:10)
+    getFreePort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/util/getport/index.ts:73:29)
+    MongoMemoryServer.getNewPort (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:401:38)
+    MongoMemoryServer.getStartOptions (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:445:25)
+    MongoMemoryServer._startUpInstance (/home/leeson/work/Hydro/node_modules/mongodb-memory-server-core/src/MongoMemoryServer.ts:527:49)
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 0
+# fail 10
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 80.425424
+exit=1
+FOLLOW-UP TEST REPAIRS 2026-10-15
+$ node --check test/contest-team-regressions.spec.js
+exit=0
+$ node --check test/practice-record-connection.spec.js
+exit=0
+$ node --check test/submission-provenance.spec.js
+exit=0
+$ node test/contest-team-regressions.spec.js
+TAP version 13
+# Subtest: contest edit keeps problem order and does not mutate its expected snapshot
+ok 1 - contest edit keeps problem order and does not mutate its expected snapshot
+  ---
+  duration_ms: 114.078617
+  type: 'test'
+  ...
+# Subtest: migration backfills boolean and numeric registrations exactly once
+ok 2 - migration backfills boolean and numeric registrations exactly once
+  ---
+  duration_ms: 43.679687
+  type: 'test'
+  ...
+# Subtest: JSON responses omit participantUids without modifying internal status
+ok 3 - JSON responses omit participantUids without modifying internal status
+  ---
+  duration_ms: 9.222236
+  type: 'test'
+  ...
+# Subtest: practice opens only after the whole contest and keeps invitations and records personal
+ok 4 - practice opens only after the whole contest and keeps invitations and records personal
+  ---
+  duration_ms: 113.581877
+  type: 'test'
+  ...
+# Subtest: classroom subcontest refuses independent participant-list mutations
+ok 5 - classroom subcontest refuses independent participant-list mutations
+  ---
+  duration_ms: 26.565321
+  type: 'test'
+  ...
+# Subtest: classroom scoreboard model accepts parent teachers without contest permissions and filters out nonattendees
+ok 6 - classroom scoreboard model accepts parent teachers without contest permissions and filters out nonattendees
+  ---
+  duration_ms: 31.571693
+  type: 'test'
+  ...
+# Subtest: classroom Ghost export excludes nonattendee staff and declares the filtered team count
+ok 7 - classroom Ghost export excludes nonattendee staff and declares the filtered team count
+  ---
+  duration_ms: 1.813699
+  type: 'test'
+  ...
+# Subtest: classroom record list and socket deny global filter modes before course-scoped exemptions
+ok 8 - classroom record list and socket deny global filter modes before course-scoped exemptions
+  ---
+  duration_ms: 0.436679
+  type: 'test'
+  ...
+# Subtest: classroom own-record visibility ignores stale child assign but respects scoring windows
+ok 9 - classroom own-record visibility ignores stale child assign but respects scoring windows
+  ---
+  duration_ms: 0.415324
+  type: 'test'
+  ...
+# Subtest: OI classroom projection uses the real OI result window and own-record scope
+ok 10 - OI classroom projection uses the real OI result window and own-record scope
+  ---
+  duration_ms: 64.897736
+  type: 'test'
+  ...
+# Subtest: classroom status summaries are unavailable without live parent-course authorization
+ok 11 - classroom status summaries are unavailable without live parent-course authorization
+  ---
+  duration_ms: 25.578432
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 448.244606
+exit=0
+$ node test/practice-record-connection.spec.js
+TAP version 13
+# Subtest: classroom own-record visibility follows OI result windows and ignores stale child assignments
+ok 1 - classroom own-record visibility follows OI result windows and ignores stale child assignments
+  ---
+  duration_ms: 185.111734
+  type: 'test'
+  ...
+# Subtest: classroom teacher formal stream ignores all-zero pretests for every uid
+ok 2 - classroom teacher formal stream ignores all-zero pretests for every uid
+  ---
+  duration_ms: 90.373545
+  type: 'test'
+  ...
+# Subtest: explicit classroom pretest stream only sends the viewer's own test-pid run
+ok 3 - explicit classroom pretest stream only sends the viewer's own test-pid run
+  ---
+  duration_ms: 71.014712
+  type: 'test'
+  ...
+# Subtest: demoted classroom teacher stream closes before sending an own formal record
+ok 4 - demoted classroom teacher stream closes before sending an own formal record
+  ---
+  duration_ms: 58.181376
+  type: 'test'
+  ...
+# Subtest: list rejects former course teachers even if child-contest ownership is stale
+ok 5 - list rejects former course teachers even if child-contest ownership is stale
+  ---
+  duration_ms: 58.927323
+  type: 'test'
+  ...
+# Subtest: list formal classroom record stream closes when parent access is revoked
+ok 6 - list formal classroom record stream closes when parent access is revoked
+  ---
+  duration_ms: 57.633181
+  type: 'test'
+  ...
+# Subtest: list denies classroom classmates even with generic contest-admin permission
+ok 7 - list denies classroom classmates even with generic contest-admin permission
+  ---
+  duration_ms: 58.626853
+  type: 'test'
+  ...
+# Subtest: list permits parent course teachers to read formal student submissions
+ok 8 - list permits parent course teachers to read formal student submissions
+  ---
+  duration_ms: 51.085135
+  type: 'test'
+  ...
+# Subtest: list classroom practice stream closes when the parent course chapter is revoked
+ok 9 - list classroom practice stream closes when the parent course chapter is revoked
+  ---
+  duration_ms: 46.665942
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is demoted, despite a stale cached user
+ok 10 - list practice stream stops after viewer is demoted, despite a stale cached user
+  ---
+  duration_ms: 66.109573
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is removed from group, despite a stale cached user
+ok 11 - list practice stream stops after viewer is removed from group, despite a stale cached user
+  ---
+  duration_ms: 53.505155
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is disabled, despite a stale cached user
+ok 12 - list practice stream stops after viewer is disabled, despite a stale cached user
+  ---
+  duration_ms: 48.041269
+  type: 'test'
+  ...
+# Subtest: list practice stream stops after viewer is deleted, despite a stale cached user
+ok 13 - list practice stream stops after viewer is deleted, despite a stale cached user
+  ---
+  duration_ms: 52.805063
+  type: 'test'
+  ...
+# Subtest: list practice stream rechecks permissions after a queued or throttled event
+ok 14 - list practice stream rechecks permissions after a queued or throttled event
+  ---
+  duration_ms: 57.395047
+  type: 'test'
+  ...
+# Subtest: list practice stream rechecks after asynchronous HTML rendering
+ok 15 - list practice stream rechecks after asynchronous HTML rendering
+  ---
+  duration_ms: 54.511861
+  type: 'test'
+  ...
+# Subtest: list practice stream fails closed on permission read errors and cancels later work
+ok 16 - list practice stream fails closed on permission read errors and cancels later work
+  ---
+  duration_ms: 57.204529
+  type: 'test'
+  ...
+# Subtest: list practice stream preserves the original scope when refreshing its actor
+ok 17 - list practice stream preserves the original scope when refreshing its actor
+  ---
+  duration_ms: 59.427576
+  type: 'test'
+  ...
+# Subtest: list practice stream continues to read personal history after practice closes
+ok 18 - list practice stream continues to read personal history after practice closes
+  ---
+  duration_ms: 58.064136
+  type: 'test'
+  ...
+# Subtest: list practice stream cancels a pending finished record when the connection closes
+ok 19 - list practice stream cancels a pending finished record when the connection closes
+  ---
+  duration_ms: 51.866682
+  type: 'test'
+  ...
+# Subtest: detail rejects former course teachers even if child-contest ownership is stale
+ok 20 - detail rejects former course teachers even if child-contest ownership is stale
+  ---
+  duration_ms: 51.090344
+  type: 'test'
+  ...
+# Subtest: detail formal classroom record stream closes when parent access is revoked
+ok 21 - detail formal classroom record stream closes when parent access is revoked
+  ---
+  duration_ms: 41.090443
+  type: 'test'
+  ...
+# Subtest: detail denies classroom classmates even with generic contest-admin permission
+ok 22 - detail denies classroom classmates even with generic contest-admin permission
+  ---
+  duration_ms: 52.028064
+  type: 'test'
+  ...
+# Subtest: detail permits parent course teachers to read formal student submissions
+ok 23 - detail permits parent course teachers to read formal student submissions
+  ---
+  duration_ms: 50.660706
+  type: 'test'
+  ...
+# Subtest: detail classroom practice stream closes when the parent course chapter is revoked
+ok 24 - detail classroom practice stream closes when the parent course chapter is revoked
+  ---
+  duration_ms: 54.397997
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is demoted, despite a stale cached user
+ok 25 - detail practice stream stops after viewer is demoted, despite a stale cached user
+  ---
+  duration_ms: 53.225109
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is removed from group, despite a stale cached user
+ok 26 - detail practice stream stops after viewer is removed from group, despite a stale cached user
+  ---
+  duration_ms: 53.69864
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is disabled, despite a stale cached user
+ok 27 - detail practice stream stops after viewer is disabled, despite a stale cached user
+  ---
+  duration_ms: 76.240816
+  type: 'test'
+  ...
+# Subtest: detail practice stream stops after viewer is deleted, despite a stale cached user
+ok 28 - detail practice stream stops after viewer is deleted, despite a stale cached user
+  ---
+  duration_ms: 42.471662
+  type: 'test'
+  ...
+# Subtest: detail practice stream rechecks permissions after a queued or throttled event
+ok 29 - detail practice stream rechecks permissions after a queued or throttled event
+  ---
+  duration_ms: 55.114985
+  type: 'test'
+  ...
+# Subtest: detail practice stream rechecks after asynchronous HTML rendering
+ok 30 - detail practice stream rechecks after asynchronous HTML rendering
+  ---
+  duration_ms: 54.14892
+  type: 'test'
+  ...
+# Subtest: detail practice stream fails closed on permission read errors and cancels later work
+ok 31 - detail practice stream fails closed on permission read errors and cancels later work
+  ---
+  duration_ms: 45.769125
+  type: 'test'
+  ...
+# Subtest: detail practice stream preserves the original scope when refreshing its actor
+ok 32 - detail practice stream preserves the original scope when refreshing its actor
+  ---
+  duration_ms: 59.545938
+  type: 'test'
+  ...
+# Subtest: detail practice stream continues to read personal history after practice closes
+ok 33 - detail practice stream continues to read personal history after practice closes
+  ---
+  duration_ms: 46.396124
+  type: 'test'
+  ...
+# Subtest: detail practice stream cancels a pending finished record when the connection closes
+ok 34 - detail practice stream cancels a pending finished record when the connection closes
+  ---
+  duration_ms: 49.937779
+  type: 'test'
+  ...
+# Subtest: all-practice list still requires manager permissions for an event belonging to the viewer
+ok 35 - all-practice list still requires manager permissions for an event belonging to the viewer
+  ---
+  duration_ms: 52.215977
+  type: 'test'
+  ...
+# Subtest: personal practice list ignores unrelated users, domains, contests and problems without disconnecting
+ok 36 - personal practice list ignores unrelated users, domains, contests and problems without disconnecting
+  ---
+  duration_ms: 52.923152
+  type: 'test'
+  ...
+# Subtest: a practice list update arriving during an HTML flush remains queued for the next flush
+ok 37 - a practice list update arriving during an HTML flush remains queued for the next flush
+  ---
+  duration_ms: 43.505264
+  type: 'test'
+  ...
+1..37
+# tests 37
+# suites 0
+# pass 37
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2193.549158
+exit=0
+submission-provenance execution deferred: requires MongoDB socket permission

@@ -1,0 +1,101 @@
+2:42:29 PM - Projects in this build: 
+    * tsconfig.ui.json
+    * tsconfig.ui-next.json
+    * plugins/tsconfig.json
+    * packages/hydrooj/tsconfig.json
+    * packages/a11y/tsconfig.json
+    * packages/ai-assistant/tsconfig.json
+    * packages/blog/tsconfig.json
+    * packages/center/tsconfig.json
+    * packages/common/tsconfig.json
+    * packages/elastic/tsconfig.json
+    * packages/fps-importer/tsconfig.json
+    * packages/geoip/tsconfig.json
+    * packages/hydrojudge/tsconfig.json
+    * packages/import-hoj/tsconfig.json
+    * packages/import-qduoj/tsconfig.json
+    * packages/login-with-github/tsconfig.json
+    * packages/login-with-google/tsconfig.json
+    * packages/login-with-oidc/tsconfig.json
+    * packages/migrate/tsconfig.json
+    * packages/onlyoffice/tsconfig.json
+    * packages/onsite-toolkit/tsconfig.json
+    * packages/prom-client/tsconfig.json
+    * packages/scoreboard-xcpcio/tsconfig.json
+    * packages/sonic/tsconfig.json
+    * packages/telegram/tsconfig.json
+    * packages/url-audit/tsconfig.json
+    * packages/vjudge/tsconfig.json
+    * packages/xxwl-review/tsconfig.json
+    * framework/eslint-config/tsconfig.json
+    * framework/framework/tsconfig.json
+    * tsconfig.json
+
+2:42:29 PM - Project 'tsconfig.ui.json' is up to date because newest input 'packages/ui-default/utils/course-datetime.ts' is older than output '.cache/ts-out/ui/tsconfig.ui.tsbuildinfo'
+
+2:42:29 PM - Project 'tsconfig.ui-next.json' is up to date because newest input 'packages/ui-next/src/globals.ts' is older than output '.cache/ts-out/ui-next/tsconfig.ui-next.tsbuildinfo'
+
+2:42:29 PM - Project 'plugins/tsconfig.json' is up to date but needs to update timestamps of output files that are older than input files
+
+2:42:29 PM - Updating output timestamps of project '/home/leeson/work/Hydro/plugins/tsconfig.json'...
+
+2:42:29 PM - Project 'packages/hydrooj/tsconfig.json' is out of date because output '.cache/ts-out/packages/tsconfig.tsbuildinfo' is older than input 'packages/hydrooj/src/handler/record.ts'
+
+2:42:29 PM - Building project '/home/leeson/work/Hydro/packages/hydrooj/tsconfig.json'...
+
+2:42:43 PM - Project 'packages/a11y/tsconfig.json' is up to date because newest input 'packages/a11y/index.ts' is older than output '.cache/ts-out/packages/a11y/tsconfig.tsbuildinfo'
+
+2:42:43 PM - Project 'packages/ai-assistant/tsconfig.json' is up to date because newest input 'packages/ai-assistant/index.ts' is older than output '.cache/ts-out/packages/ai-assistant/tsconfig.tsbuildinfo'
+
+2:42:43 PM - Project 'packages/blog/tsconfig.json' is up to date because newest input 'packages/blog/index.ts' is older than output '.cache/ts-out/packages/blog/tsconfig.tsbuildinfo'
+
+2:42:43 PM - Project 'packages/center/tsconfig.json' is up to date because newest input 'packages/center/index.ts' is older than output '.cache/ts-out/packages/center/tsconfig.tsbuildinfo'
+
+2:42:43 PM - Project 'packages/common/tsconfig.json' is up to date because newest input 'packages/common/lang.ts' is older than output '.cache/ts-out/packages/common/tsconfig.tsbuildinfo'
+
+2:42:43 PM - Project 'packages/elastic/tsconfig.json' is up to date because newest input 'packages/elastic/index.ts' is older than output '.cache/ts-out/packages/elastic/tsconfig.tsbuildinfo'
+
+2:42:43 PM - Project 'packages/fps-importer/tsconfig.json' is up to date because newest input 'packages/fps-importer/index.ts' is older than output '.cache/ts-out/packages/fps-importer/tsconfig.tsbuildinfo'
+
+2:42:43 PM - Project 'packages/geoip/tsconfig.json' is up to date because newest input 'packages/geoip/index.ts' is older than output '.cache/ts-out/packages/geoip/tsconfig.tsbuildinfo'
+
+2:42:43 PM - Project 'packages/hydrojudge/tsconfig.json' is out of date because buildinfo file '.cache/ts-out/packages/tsconfig.tsbuildinfo' indicates that file 'packages/hydrooj/src/error.ts' was root file of compilation but not any more.
+
+2:42:43 PM - Building project '/home/leeson/work/Hydro/packages/hydrojudge/tsconfig.json'...
+
+2:42:49 PM - Project 'packages/import-hoj/tsconfig.json' is up to date because newest input 'packages/import-hoj/index.ts' is older than output '.cache/ts-out/packages/import-hoj/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/import-qduoj/tsconfig.json' is up to date because newest input 'packages/import-qduoj/index.ts' is older than output '.cache/ts-out/packages/import-qduoj/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/login-with-github/tsconfig.json' is up to date because newest input 'packages/login-with-github/index.ts' is older than output '.cache/ts-out/packages/login-with-github/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/login-with-google/tsconfig.json' is up to date because newest input 'packages/login-with-google/index.ts' is older than output '.cache/ts-out/packages/login-with-google/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/login-with-oidc/tsconfig.json' is up to date because newest input 'packages/login-with-oidc/index.ts' is older than output '.cache/ts-out/packages/login-with-oidc/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/migrate/tsconfig.json' is up to date because newest input 'packages/migrate/exam.ts' is older than output '.cache/ts-out/packages/migrate/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/onlyoffice/tsconfig.json' is up to date because newest input 'packages/onlyoffice/index.ts' is older than output '.cache/ts-out/packages/onlyoffice/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/onsite-toolkit/tsconfig.json' is up to date because newest input 'packages/onsite-toolkit/submit.ts' is older than output '.cache/ts-out/packages/onsite-toolkit/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/prom-client/tsconfig.json' is up to date because newest input 'packages/prom-client/index.ts' is older than output '.cache/ts-out/packages/prom-client/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/scoreboard-xcpcio/tsconfig.json' is up to date because newest input 'packages/scoreboard-xcpcio/index.ts' is older than output '.cache/ts-out/packages/scoreboard-xcpcio/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/sonic/tsconfig.json' is up to date because newest input 'packages/sonic/index.ts' is older than output '.cache/ts-out/packages/sonic/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/telegram/tsconfig.json' is up to date because newest input 'packages/telegram/index.ts' is older than output '.cache/ts-out/packages/telegram/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/url-audit/tsconfig.json' is up to date because newest input 'packages/url-audit/index.ts' is older than output '.cache/ts-out/packages/url-audit/tsconfig.tsbuildinfo'
+
+2:42:49 PM - Project 'packages/vjudge/tsconfig.json' is out of date because buildinfo file '.cache/ts-out/packages/tsconfig.tsbuildinfo' indicates that file 'packages/hydrojudge/src/error.ts' was root file of compilation but not any more.
+
+2:42:49 PM - Building project '/home/leeson/work/Hydro/packages/vjudge/tsconfig.json'...
+
+2:42:53 PM - Project 'packages/xxwl-review/tsconfig.json' is up to date because newest input 'packages/xxwl-review/index.ts' is older than output '.cache/ts-out/packages/xxwl-review/tsconfig.tsbuildinfo'
+
+2:42:53 PM - Project 'framework/eslint-config/tsconfig.json' is up to date because newest input 'framework/eslint-config/build.ts' is older than output '.cache/ts-out/framework/eslint-config/tsconfig.tsbuildinfo'
+
+2:42:53 PM - Project 'framework/framework/tsconfig.json' is up to date because newest input 'framework/framework/server.ts' is older than output '.cache/ts-out/framework/framework/tsconfig.tsbuildinfo'
+

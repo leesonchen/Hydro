@@ -24,7 +24,7 @@ import {
     ProblemDoc, ProblemSearchOptions, ProblemStatusDoc, RecordDoc, Tdoc, User,
 } from '../interface';
 import { canSubmitPractice, isPracticeOpen } from '../lib/contest-practice';
-import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
+import { assertCourseAssessmentAccess, canShowClassroomSelfRecord } from '../lib/course-assessment-access';
 import { REFERENCE_CODE_TITLE } from '../lib/referenceCode';
 import { Logger } from '../logger';
 import { PERM, PRIV, STATUS } from '../model/builtin';
@@ -35,8 +35,8 @@ import domain from '../model/domain';
 import feedback from '../model/feedback';
 import * as oplog from '../model/oplog';
 import problem from '../model/problem';
-import record from '../model/record';
 import { getV2ProblemDifficulties } from '../model/rating-publication';
+import record from '../model/record';
 import * as setting from '../model/setting';
 import solution from '../model/solution';
 import storage from '../model/storage';
@@ -485,7 +485,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             if (isPracticeOpen(this.tdoc) && !this.practiceReady && !problem.canViewBy(this.pdoc, this.user)) {
                 throw new PermissionError(PERM.PERM_SUBMIT_PROBLEM);
             }
-            const canBypassTimeLimit = canBypassCourseTimeLimit(this.tdoc, this.user);
+            const canBypassTimeLimit = this.classroomTeacher || canBypassCourseTimeLimit(this.tdoc, this.user);
             if (contest.isNotStarted(this.tdoc) && !canBypassTimeLimit) {
                 if (this.tdoc.rule === 'course') throw new ForbiddenError((this as any).translate('This course is not live.'));
                 throw new ContestNotLiveError(tid);
@@ -803,14 +803,19 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
         let classroomTeacher = false;
         if (tid) {
             const tdoc = await contest.get(domainId, tid);
+            if (!tdoc) throw new ContestNotFoundError(domainId, tid);
             classroomTeacher = await assertCourseAssessmentAccess(this.user, tdoc);
-            if (tdoc.sourceType === 'course_assessment' && !classroomTeacher
-                && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) throw new ContestNotAttendedError(tid);
-            if (!tdoc.pids.includes(this.pdoc.docId) || !contest.canAccessAssignedContest(this.user, tdoc)) {
+            if (!tdoc.pids.includes(this.pdoc.docId)
+                || (tdoc.sourceType !== 'course_assessment'
+                    && !contest.canAccessAssignedContest(this.user, tdoc))) {
                 throw new ContestNotFoundError(domainId, tid);
             }
             this.tdoc = tdoc;
             practice = await canSubmitPractice(this.user, tdoc);
+            // A student may join post-test practice without having attended the timed assessment.
+            // Practice is isolated from the official contest journal and classroom pass criteria.
+            if (tdoc.sourceType === 'course_assessment' && !classroomTeacher && !practice
+                && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) throw new ContestNotAttendedError(tid);
             if (!practice && !contest.isOngoing(tdoc, this.tsdoc) && !canBypassCourseTimeLimit(tdoc, this.user)) {
                 throw new ContestNotLiveError(tid);
             }
@@ -840,9 +845,12 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
                 ]);
             }
         }
-        if (tid && !practice && !pretest && !contest.canShowSelfRecord.call(this, this.tdoc)) {
+        if (tid && !practice && !pretest && !(this.tdoc.sourceType === 'course_assessment'
+            ? classroomTeacher || canShowClassroomSelfRecord(this.tdoc)
+            : contest.canShowSelfRecord.call(this, this.tdoc))) {
             this.response.body = { tid };
-            this.response.redirect = this.url(this.tdoc.rule === 'homework' ? 'homework_detail' : 'contest_problemlist', { tid });
+            this.response.redirect = this.url(this.tdoc.sourceType === 'course_assessment'
+                ? 'classroom_test_problemlist' : this.tdoc.rule === 'homework' ? 'homework_detail' : 'contest_problemlist', { tid });
         } else {
             this.response.body = { rid };
             this.response.redirect = this.url('record_detail', { rid });

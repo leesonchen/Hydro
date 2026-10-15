@@ -270,6 +270,7 @@ const acm = buildContestRule({
                     docType: document.TYPE_CONTEST,
                     docId: tdoc.docId,
                     accept: { $gte: 1 },
+                    ...(tdoc.sourceType === 'course_assessment' ? { attend: { $gt: 0 } } : {}),
                 },
             },
             { $project: { r: { $objectToArray: '$detail' } } },
@@ -474,8 +475,13 @@ const oi = buildContestRule({
     },
     applyProjection(tdoc, rdoc, udoc) {
         // The shared policy helper is declared after RULES is initialized.
-        // eslint-disable-next-line ts/no-use-before-define
-        if (canShowProblemStatus(udoc, rdoc.uid, tdoc)) return rdoc;
+        const visible = tdoc.sourceType === 'course_assessment'
+            // The caller authorizes the current parent course. Child assignments
+            // and contest-admin overrides must not change a student's result window.
+            ? rdoc.uid === udoc._id && this.showSelfRecord(tdoc, new Date())
+            // eslint-disable-next-line ts/no-use-before-define
+            : canShowProblemStatus(udoc, rdoc.uid, tdoc);
+        if (visible) return rdoc;
         delete rdoc.status;
         rdoc.compilerTexts = [];
         rdoc.judgeTexts = [];
@@ -1448,6 +1454,9 @@ export function canShowSelfRecord(this: { user: User }, tdoc: Tdoc, allowPermOve
 }
 
 export function canShowProblemStatus(user: User | null, targetUid: number, tdoc: Tdoc, allowPermOverride = true) {
+    // Global problem/profile summaries have no live parent-course authorization.
+    // Classroom results are exposed by the course-authorized handlers instead.
+    if (tdoc.sourceType === 'course_assessment') return false;
     const isCourseOrHomework = tdoc.rule === 'course' || tdoc.rule === 'homework';
     if (!user) {
         if (tdoc.allowTeam) return false;
@@ -1474,7 +1483,11 @@ export async function getScoreboard(
     this: Handler, domainId: string, tid: ObjectId, config: ScoreboardConfig,
 ): Promise<[Tdoc, ScoreboardRow[], BaseUserDict, ProblemDict]> {
     const tdoc = await get(domainId, tid);
-    if (!canShowScoreboard.call(this, tdoc)) throw new ContestScoreboardHiddenError(tid);
+    // Classroom scoreboards are authorized by the handler's live parent-course check.
+    // Never require the separate contest scoreboard permission for a course teacher.
+    const classroomManager = tdoc.sourceType === 'course_assessment'
+        && (this as Handler & { classroomTeacher?: boolean }).classroomTeacher === true;
+    if (!classroomManager && !canShowScoreboard.call(this, tdoc)) throw new ContestScoreboardHiddenError(tid);
     const pdict = await problem.getList(domainId, tdoc.pids, true, true, problem.PROJECTION_CONTEST_DETAIL);
     if (tdoc.statsRecalc) {
         if (config.isExport) throw new BadRequestError('成绩重算尚未完成，请完成重算后再导出。');
@@ -1483,6 +1496,9 @@ export async function getScoreboard(
     const revision = tdoc.statsRevision || 0;
     const tsdocsCursor = getMultiStatus(domainId, {
         docId: tid,
+        // Staff preview submissions may have a journal but no genuine test attendance.
+        // Only actual classroom test attendees belong on the classroom scoreboard.
+        ...(tdoc.sourceType === 'course_assessment' ? { attend: { $gt: 0 } } : {}),
         $and: [
             revision ? { statsRevision: revision } : { $or: [{ statsRevision: 0 }, { statsRevision: { $exists: false } }] },
             { $or: [{ statsJournalRevision: { $exists: false } }, {
