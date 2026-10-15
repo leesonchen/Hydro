@@ -238,8 +238,32 @@ test('course synchronization is idempotent and updates class assignment and invi
     assert.deepEqual(synced.assign, ['class-b', '42']);
     assert.deepEqual(synced.maintainer, [9]);
     assert.equal(synced.monitorMode, 'browser');
+    assert.equal(synced.allowPractice, false);
     assert.equal(synced.rated, false);
     assert.equal(await document.coll.countDocuments({ sourceType: 'course_assessment' }), 1);
+});
+test('classroom post-test practice is opt-in, persisted, and synchronized on course edits', async () => {
+    const { course, exam } = await courseFixture('oi', false);
+    assert.equal(exam.allowPractice, false);
+    const dag = structuredClone(course.dag);
+    dag[0].assessment.allowPractice = true;
+    await contest.edit('test', course.docId, { dag });
+    let synced = await contest.get('test', exam.docId);
+    assert.equal(synced.allowPractice, true);
+    assert.equal(contest.isDone(synced), true);
+    await contest.edit('test', course.docId, { title: 'Updated Course' });
+    synced = await contest.get('test', exam.docId);
+    assert.equal(synced.allowPractice, true);
+    const reset = structuredClone((await contest.get('test', course.docId)).dag);
+    reset[0].assessment.allowPractice = false;
+    await contest.edit('test', course.docId, { dag: reset });
+    assert.equal((await contest.get('test', exam.docId)).allowPractice, false);
+});
+test('classroom post-test practice rejects non-boolean persisted flags', async () => {
+    const { course } = await courseFixture();
+    const dag = structuredClone(course.dag);
+    dag[0].assessment.allowPractice = 'true';
+    await assert.rejects(contest.edit('test', course.docId, { dag }), errors.BadRequestError);
 });
 test('course synchronization preserves explicit certification and invalidates changed classroom conditions', async () => {
     const { course, exam } = await courseFixture();
