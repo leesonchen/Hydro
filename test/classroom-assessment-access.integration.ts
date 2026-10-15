@@ -279,12 +279,18 @@ export function register() {
             for (const row of [formal, practice]) {
                 const flag = row.practiceContest ? '&practice=true' : '';
                 const main = await connect(actors.teacher, `/record-conn?tid=${f.tid}&noTemplate=true${flag}`);
-                await main.ready(row._id);
+                const initialList = (await main.ready(row._id)).rdoc;
+                assert.equal(initialList.code, undefined, 'list WebSocket must not send source code');
+                assert.equal(initialList.testCases, undefined, 'initial DB fetch uses HTTP summary projection');
                 const detail = await connect(actors.teacher, `/record-detail-conn?rid=${row._id}&noTemplate=true`);
                 await detail.ready(row._id, true);
                 global.app.broadcast('record/change', { ...row, score: 91 });
                 await waitFor(() => main.frames.some((frame) => frame.rdoc?.score === 91)
                     && detail.frames.some((frame) => frame.rdoc?.score === 91), 'both authorized subscriptions must receive the bus update');
+                const liveRow = main.frames.find((frame) => frame.rdoc?.score === 91).rdoc;
+                assert.equal(liveRow.code, undefined, 'live list update must not send source code');
+                if (row.practiceContest) assert.equal(liveRow.testCases[0].score, 80);
+                else assert.equal(liveRow.testCases, undefined, 'formal list uses HTTP summary fields');
                 for (const actor of [actors.peer, actors.admin, actors.oldOwner]) {
                     const denied = await connect(actor, `/record-detail-conn?rid=${row._id}&noTemplate=true`);
                     await denied.denied();
@@ -525,6 +531,51 @@ export function register() {
             const record = await model.record.coll.findOne({ _id: new ObjectId(result.body.rid) });
             assert.equal(record.practiceContest.toString(), tid.toString());
             await get(actors.teacher, `/contest/${tid}`).expect(403);
+        });
+
+        it('never exposes other students source code in ordinary record list WebSockets', async () => {
+            const pid = await model.problem.add(domainId, '', 'Ordinary record-list privacy regression', 'Statement', ownerUid);
+            const row = {
+                _id: new ObjectId(), domainId, pid, uid: actors.peer.uid, lang: 'cc',
+                status: STATUS.STATUS_ACCEPTED, score: 80, time: 12, memory: 32,
+                code: '// private source\\nint main(){return 7;}',
+                input: ['private stdin'], compilerTexts: ['private compiler output'],
+                judgeTexts: ['private judge output'], testCases: [{ message: 'private test data' }],
+                submissionContext: { marker: 'private submission context' },
+                files: {}, judgeAt: new Date(),
+            };
+            await model.record.coll.insertOne(row);
+            const http = await get(actors.student, `/record?pid=${pid}`).expect(200);
+            const listed = http.body.rdocs.find((rdoc) => rdoc._id === row._id.toString());
+            assert(listed, 'the default user may see the public ordinary record list');
+            const forbiddenFields = ['code', 'input', 'compilerTexts', 'judgeTexts',
+                'testCases', 'submissionContext'];
+            const assertPublicList = (rdoc: any) => {
+                assert.deepEqual(Object.keys(rdoc).sort(), Object.keys(listed).sort(),
+                    'WebSocket summary fields must match the HTTP record-list projection');
+                for (const field of forbiddenFields) assert.equal(rdoc[field], undefined, field);
+            };
+
+            // A generic record subscription receives events for other students.
+            // It must carry only metadata, never the record/change bus's raw source.
+            const list = await connect(actors.student, '/record-conn?noTemplate=true');
+            const initial = await list.ready(row._id);
+            assertPublicList(initial.rdoc);
+            global.app.broadcast('record/change', { ...row, score: 91, code: 'updated private source' });
+            await waitFor(() => list.frames.some((frame) => frame.rdoc?._id === row._id.toString()
+                && frame.rdoc.score === 91), 'the ordinary record update must reach the public list');
+            const updated = list.frames.find((frame) => frame.rdoc?.score === 91)?.rdoc;
+            assertPublicList(updated);
+            list.ws.close();
+
+            // The normal detail channel still enforces its independent code ACL:
+            // an author can read their code while another student cannot.
+            const author = await connect(actors.peer, `/record-detail-conn?rid=${row._id}&noTemplate=true`);
+            assert.equal((await author.ready(row._id, true)).rdoc.code, row.code);
+            author.ws.close();
+            const other = await connect(actors.student, `/record-detail-conn?rid=${row._id}&noTemplate=true`);
+            assert.equal((await other.ready(row._id, true)).rdoc.code, '');
+            other.ws.close();
         });
 
         it('keeps the next-page link when a full global record page is removed by classroom authorization', async () => {

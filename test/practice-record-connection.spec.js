@@ -127,6 +127,10 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, clas
         },
         '../model/record': {
             get: async () => rdoc,
+            // Keep the handler mock's public summary contract aligned with RecordModel.
+            PROJECTION_LIST: ['_id', 'score', 'time', 'memory', 'lang', 'uid', 'pid',
+                'rejudged', 'progress', 'domainId', 'contest', 'judger', 'judgeAt',
+                'status', 'source', 'files', 'hackTarget', 'practiceContest'],
             RECORD_GENERATE: new ObjectId('000000000000000000000001'),
             RECORD_PRETEST: new ObjectId('000000000000000000000002'),
         }, '../model/setting': {}, '../model/storage': {},
@@ -154,6 +158,28 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, clas
     };
     return { state, cached, tdoc, rdoc, connect, push, canShowClassroomSelfRecord: courseAssessmentAccess.canShowClassroomSelfRecord };
 }
+
+test('record-list push strips source and private judge fields from JSON and HTML payloads', async () => {
+    for (const noTemplate of [true, false]) {
+        const f = fixture({ manager: false, classroom: true, formal: true });
+        const h = await f.connect('list', { noTemplate });
+        let rendered;
+        h.renderHTML = async (_template, { rdoc }) => { rendered = rdoc; return '<div>summary</div>'; };
+        const busPayload = { ...f.rdoc, code: 'private source', input: ['private input'],
+            compilerTexts: ['compiler secret'], judgeTexts: ['judge secret'],
+            testCases: [{ message: 'private case' }], submissionContext: { token: 'private token' } };
+        await f.push(h, 'list', busPayload);
+        assert.equal(h.sent.length, 1);
+        const publicRecord = noTemplate ? h.sent[0].rdoc : rendered;
+        assert(publicRecord, 'list handler must produce a projected record');
+        assert.equal(publicRecord.uid, f.rdoc.uid);
+        assert.equal(publicRecord.status, f.rdoc.status);
+        for (const field of ['code', 'input', 'compilerTexts', 'judgeTexts', 'testCases', 'submissionContext']) {
+            assert.equal(publicRecord[field], undefined, `unexpected list field: ${field}`);
+        }
+        h.cleanup();
+    }
+});
 
 test('classroom own-record visibility follows OI result windows and ignores stale child assignments', () => {
     const f = fixture({ manager: false, classroom: true });
@@ -196,6 +222,43 @@ test('explicit classroom pretest stream only sends the viewer\'s own test-pid ru
     assert.equal(h.sent.length, 1);
     h.cleanup?.();
     h.cleanup?.();
+});
+
+test('explicit pretest connections preserve the IDE output but never the source/input', async () => {
+    for (const classroom of [false, true]) {
+        const f = fixture({ manager: false, classroom });
+        const h = await f.connect('list', { pretest: true });
+        await f.push(h, 'list', {
+            ...f.rdoc, contest: new ObjectId('000000000000000000000000'),
+            practiceContest: undefined, uid: f.cached._id, pid: 42,
+            code: 'source private', input: ['stdin private'],
+            compilerTexts: ['compile diagnostic'], testCases: [{ message: 'runtime output' }],
+            submissionContext: { private: 'runtime internal context' },
+        });
+        assert.equal(h.sent.length, 1);
+        const rdoc = h.sent[0].rdoc;
+        assert.equal(rdoc.compilerTexts[0], 'compile diagnostic');
+        assert.equal(rdoc.testCases[0].message, 'runtime output');
+        assert.equal(rdoc.code, undefined);
+        assert.equal(rdoc.input, undefined);
+        assert.equal(rdoc.submissionContext, undefined);
+        h.cleanup();
+    }
+});
+
+test('authorized practice updates retain test-case status for scratchpad without sharing source', async () => {
+    const f = fixture({ manager: false });
+    const h = await f.connect('list');
+    await f.push(h, 'list', { ...f.rdoc, code: 'private source',
+        input: ['private input'], compilerTexts: ['private diagnostics'],
+        testCases: [{ status: STATUS.STATUS_ACCEPTED, message: 'sample output' }] });
+    assert.equal(h.sent.length, 1);
+    const rdoc = h.sent[0].rdoc;
+    assert.equal(rdoc.testCases[0].message, 'sample output');
+    assert.equal(rdoc.code, undefined);
+    assert.equal(rdoc.input, undefined);
+    assert.equal(rdoc.compilerTexts, undefined);
+    h.cleanup();
 });
 
 test('demoted classroom teacher stream closes before sending an own formal record', async () => {
