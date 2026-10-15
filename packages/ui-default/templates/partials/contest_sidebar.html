@@ -67,14 +67,16 @@
         <span class="icon icon-award"></span> {{ tdoc.rule == 'course' and _('View Course') or _('View Contest') }}
       </a></li>
     {% endif %}
-    {% if not (tsdoc.attend) and not model.contest.isDone(tdoc) %}
+    {% if not (tsdoc.attend) and not model.contest.isDone(tdoc)
+        and (not isClassroomTest or (model.contest.isOngoing(tdoc) and not practiceManager)) %}
       <li class="menu__item">
-    {% if handler.user.hasPerm(perm.PERM_ATTEND_CONTEST) and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+    {% if (handler.user.hasPerm(perm.PERM_ATTEND_HOMEWORK) if isClassroomTest else handler.user.hasPerm(perm.PERM_ATTEND_CONTEST))
+        and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
       {% set team_vdocs = team_vdocs|default([]) %}
       <form action="{{ url(testDetailRoute, tid=tdoc.docId) }}" method="POST" data-contest-attend-form{% if tdoc.allowTeam or tdoc._code %} data-contest-needs-dialog{% endif %}>
         <input type="hidden" name="operation" value="attend">
         <button class="menu__link" data-contest-attend {% if tdoc._code %}data-contest-code{% endif %} type="submit">
-          <span class="icon icon-add"></span> {{ tdoc.rule == 'course' and _('Enter Course') or _('Attend Contest') }}
+          <span class="icon icon-add"></span> {{ '开始课堂测试' if isClassroomTest else (tdoc.rule == 'course' and _('Enter Course') or _('Attend Contest')) }}
         </button>
       </form>
       <div style="display:none" class="dialog__body--contest-attend">
