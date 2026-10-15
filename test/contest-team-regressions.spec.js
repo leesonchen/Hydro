@@ -253,3 +253,33 @@ test('classroom scoreboard model accepts parent teachers without contest permiss
         exports.getScoreboard.call(authorized, 'd', 'tid', { isExport: false, showDisplayName: false }),
     );
 });
+
+test('classroom Ghost export excludes nonattendee staff and declares the filtered team count', () => {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/handler/contest.ts');
+    const code = fs.readFileSync(file, 'utf8');
+    const ghost = code.slice(code.indexOf("scoreboard.addView('ghost'"), code.indexOf("scoreboard.addView('html'"));
+    assert.match(ghost, /sourceType === 'course_assessment'.*attend: \{ \$gt: 0 \}/s);
+    assert.match(ghost, /sourceType === 'course_assessment' \? teams\.length : tdoc\.attend/);
+});
+
+test('classroom record list and socket deny global filter modes before course-scoped exemptions', () => {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/handler/record.ts');
+    const source = fs.readFileSync(file, 'utf8');
+    const list = source.slice(source.indexOf('export class RecordListHandler'), source.indexOf('export class RecordDetailHandler'));
+    const socket = source.slice(source.indexOf('export class RecordMainConnectionHandler'), source.indexOf('export class RecordDetailConnectionHandler'));
+    for (const handler of [list, socket]) {
+        assert.match(handler, /if \(all \|\| allDomain\) throw new PermissionError\(PERM\.PERM_VIEW_RECORD\)/);
+        assert(handler.indexOf('if (all || allDomain) throw new PermissionError(PERM.PERM_VIEW_RECORD)')
+            < handler.indexOf('classroomManager = await assertCourseAssessmentAccess')
+            || handler.indexOf('if (all || allDomain) throw new PermissionError(PERM.PERM_VIEW_RECORD)')
+            < handler.indexOf('this.classroomManager = await assertCourseAssessmentAccess'));
+    }
+});
+
+test('classroom own-record visibility ignores stale child assign but respects scoring windows', () => {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/lib/course-assessment-access.ts');
+    const source = fs.readFileSync(file, 'utf8');
+    assert.match(source, /export function canShowClassroomSelfRecord/);
+    assert.match(source, /rule\.showSelfRecord\(tdoc, new Date\(\)\)/);
+    assert.doesNotMatch(source.slice(source.indexOf('export function canShowClassroomSelfRecord')), /canAccessAssignedContest|user\.own/);
+});
