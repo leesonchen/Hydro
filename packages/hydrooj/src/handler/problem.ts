@@ -803,6 +803,7 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
         let classroomTeacher = false;
         if (tid) {
             const tdoc = await contest.get(domainId, tid);
+            if (!tdoc) throw new ContestNotFoundError(domainId, tid);
             classroomTeacher = await assertCourseAssessmentAccess(this.user, tdoc);
             if (!tdoc.pids.includes(this.pdoc.docId)
                 || (tdoc.sourceType !== 'course_assessment'
