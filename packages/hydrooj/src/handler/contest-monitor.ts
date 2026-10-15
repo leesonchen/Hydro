@@ -38,7 +38,8 @@ export class ContestMonitorHandler extends Handler {
         const tdoc = await contest.get(domainId, tid);
         if (tdoc.monitorMode !== 'browser') throw new ContestNotFoundError(domainId, tid);
         await assertCourseAssessmentAccess(this.user, tdoc);
-        if (!contest.canAccessAssignedContest(this.user, tdoc)) throw new ForbiddenError();
+        if (tdoc.sourceType !== 'course_assessment'
+            && !contest.canAccessAssignedContest(this.user, tdoc)) throw new ForbiddenError();
         if (!monitorEventTypes.includes(eventType as MonitorEventType)) throw new ValidationError('eventType');
         if (!/^[a-zA-Z0-9-]{10,100}$/.test(sessionId)
             || !/^[a-zA-Z0-9-]{10,100}$/.test(pageInstanceId)
