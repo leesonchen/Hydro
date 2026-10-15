@@ -6,7 +6,7 @@ import UserSelectAutoComplete from 'vj/components/autocomplete/UserSelectAutoCom
 import { confirm } from 'vj/components/dialog';
 import { NamedPage } from 'vj/misc/Page';
 import { api } from 'vj/utils';
-import { assessmentDateTimeToIso, formatDateTime, parseDateTime } from 'vj/utils/course-datetime';
+import { formatDateTime, parseDateTime } from 'vj/utils/course-datetime';
 
 const page = new NamedPage(['course_edit', 'course_create'], () => {
   const ensureAutocompleteMounted = (instance: any, retries = 4, delay = 80) => {
@@ -69,20 +69,15 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     }
   })().catch(() => undefined);
 
-  const initDateTimePickers = ($inputs: JQuery) => {
+  const initAssessmentDatePickers = ($inputs: JQuery) => {
     $inputs.each(function () {
       if ((this as HTMLInputElement & { _flatpickr?: unknown })._flatpickr) return;
-      const assessmentTime = $(this).hasClass('dag-assessment-begin') || $(this).hasClass('dag-assessment-end');
-      flatpickr(this, {
-        allowInput: true,
-        enableTime: true,
-        time_24hr: true,
-        enableSeconds: assessmentTime,
-        dateFormat: assessmentTime ? 'Y-m-d H:i:S' : 'Y-m-d H:i',
-      });
+      const isDate = $(this).hasClass('dag-assessment-begin-date');
+      flatpickr(this, isDate
+        ? { allowInput: true, dateFormat: 'Y-m-d' }
+        : { allowInput: true, enableTime: true, noCalendar: true, time_24hr: true, dateFormat: 'H:i' });
     });
   };
-  initDateTimePickers($('[data-pick-datetime]'));
 
   const setDateTimeValue = ($input: JQuery, value: string) => {
     const picker = ($input[0] as HTMLInputElement & { _flatpickr?: flatpickr.Instance })?._flatpickr;
@@ -248,7 +243,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
     };
 
     render = () => {
-      $list.find('[data-pick-datetime]').each(function () {
+      $list.find('.dag-assessment-begin-date, .dag-assessment-begin-time').each(function () {
         (this as HTMLInputElement & { _flatpickr?: flatpickr.Instance })._flatpickr?.destroy();
       });
       $list.empty();
@@ -280,12 +275,13 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
               + '<div class="row dag-assessment-row"><div class="columns"><label>赛制<select class="select dag-assessment-rule">'
               + '<option value="oi">OI</option><option value="ioi">IOI</option><option value="strictioi">Strict IOI</option>'
               + '<option value="acm">ACM</option></select></label></div></div>'
-              + '<div class="row dag-assessment-row"><div class="columns">'
-              + '<label>开始时间（浏览器本地时间）<input data-pick-datetime placeholder="YYYY-mm-dd HH:MM" class="textbox dag-assessment-begin" /></label></div>'
+              + '<div class="row dag-assessment-row">'
+              + '<div class="medium-4 columns"><label>开始日期（浏览器本地时间）<input placeholder="YYYY-mm-dd" class="textbox dag-assessment-begin-date" /></label></div>'
+              + '<div class="medium-4 columns"><label>开始时间<input placeholder="HH:MM" class="textbox dag-assessment-begin-time" /></label></div>'
+              + '<div class="medium-4 columns"><label>持续时间（分钟）<input type="number" min="1" step="1" placeholder="60" class="textbox dag-assessment-duration" /></label></div>'
               + '</div>'
               + '<div class="row dag-assessment-row"><div class="columns">'
-              + '<label>结束时间（浏览器本地时间）<input data-pick-datetime placeholder="YYYY-mm-dd HH:MM" class="textbox dag-assessment-end" />'
-              + '</label></div></div>'
+              + '<label>结束时间（自动计算）<input disabled class="textbox dag-assessment-end" /></label></div></div>'
               + '<div class="row dag-assessment-row"><div class="columns"><label>'
               + '<span class="dag-assessment-pass-label">达标分数</span>（默认 0，须在考试结束且有提交记录后完成）'
               + '<input class="textbox dag-assessment-pass" type="number" min="0" step="1" />'
@@ -361,7 +357,9 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         const $kind = $section.find('.dag-kind');
         const $assessmentRows = $section.find('.dag-assessment-row');
         const $rule = $section.find('.dag-assessment-rule');
-        const $begin = $section.find('.dag-assessment-begin');
+        const $beginDate = $section.find('.dag-assessment-begin-date');
+        const $beginTime = $section.find('.dag-assessment-begin-time');
+        const $duration = $section.find('.dag-assessment-duration');
         const $end = $section.find('.dag-assessment-end');
         const $pass = $section.find('.dag-assessment-pass');
         const $monitor = $section.find('.dag-assessment-monitor');
@@ -386,19 +384,48 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         };
         const originalBegin = node.assessment?.beginAt || '';
         const originalEnd = node.assessment?.endAt || '';
-        const initialBeginDisplay = toLocalTime(originalBegin);
-        const initialEndDisplay = toLocalTime(originalEnd);
-        $begin.val(initialBeginDisplay);
-        $end.val(initialEndDisplay);
+        const defaultBegin = parseDateTime($lessonBeginAt.val(), courseTimeZone);
+        const defaultEnd = parseDateTime($lessonEndAt.val(), courseTimeZone);
+        const beginDate = originalBegin ? new Date(originalBegin) : defaultBegin;
+        const endDate = originalEnd ? new Date(originalEnd) : defaultEnd;
+        const beginDisplay = beginDate && Number.isFinite(beginDate.getTime()) ? toLocalTime(beginDate.toISOString()) : '';
+        const initialBeginDate = beginDisplay.slice(0, 10);
+        const initialBeginTime = beginDisplay.slice(11, 16);
+        const initialDuration = beginDate && endDate && Number.isFinite(endDate.getTime())
+          ? Math.max(1, Math.round((endDate.getTime() - beginDate.getTime()) / 60000))
+          : 60;
+        $beginDate.val(initialBeginDate);
+        $beginTime.val(initialBeginTime);
+        $duration.val(initialDuration);
+        const updateAssessmentEnd = () => {
+          const start = parseDateTime(`${$beginDate.val()} ${$beginTime.val()}`);
+          const minutes = Number($duration.val());
+          if (!start || !Number.isFinite(minutes) || minutes <= 0) {
+            $end.val('');
+            return;
+          }
+          $end.val(formatDateTime(new Date(start.getTime() + minutes * 60000)));
+        };
+        updateAssessmentEnd();
         $pass.val(node.assessment?.passScore ?? 0);
         function syncAssessment() {
           node.kind = String($kind.val());
           $assessmentRows.toggle(node.kind === 'assessment');
           if (node.kind === 'assessment') {
+            const beginText = `${$beginDate.val()} ${$beginTime.val()}`;
+            const begin = parseDateTime(beginText);
+            const minutes = Number($duration.val());
+            const unchanged = beginText === `${initialBeginDate} ${initialBeginTime}` && minutes === initialDuration;
+            const nextBeginAt = unchanged && originalBegin ? originalBegin : begin?.toISOString() || '';
+            const nextEndAt = unchanged && originalEnd
+              ? originalEnd
+              : begin && Number.isFinite(minutes) && minutes > 0
+                ? new Date(begin.getTime() + minutes * 60000).toISOString()
+                : '';
             node.assessment = {
               ...(node.assessment || {}), rule: String($rule.val()),
-              beginAt: assessmentDateTimeToIso($begin.val(), originalBegin, initialBeginDisplay),
-              endAt: assessmentDateTimeToIso($end.val(), originalEnd, initialEndDisplay), rated: false,
+              beginAt: nextBeginAt,
+              endAt: nextEndAt, rated: false,
               passScore: Math.max(0, Number($pass.val()) || 0), monitorMode: String($monitor.val() || 'off'),
               allowPractice: $practice.prop('checked') === true,
             };
@@ -408,18 +435,24 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         }
         $kind.on('change', () => {
           if ($kind.val() === 'assessment' && node.kind !== 'assessment') {
-            const defaultTime = ($input: JQuery) => {
-              const date = parseDateTime($input.val(), courseTimeZone);
-              return date ? formatDateTime(date, undefined, true) : '';
-            };
-            if (!$begin.val()) setDateTimeValue($begin, defaultTime($lessonBeginAt));
-            if (!$end.val()) setDateTimeValue($end, defaultTime($lessonEndAt));
+            const lessonBegin = parseDateTime($lessonBeginAt.val(), courseTimeZone);
+            const lessonEnd = parseDateTime($lessonEndAt.val(), courseTimeZone);
+            if (!$beginDate.val() && lessonBegin) {
+              const localBegin = formatDateTime(lessonBegin, undefined, true);
+              $beginDate.val(localBegin.slice(0, 10));
+              $beginTime.val(localBegin.slice(11, 16));
+            }
+            if (lessonBegin && lessonEnd && !$duration.val()) {
+              $duration.val(Math.max(1, Math.round((lessonEnd.getTime() - lessonBegin.getTime()) / 60000)));
+            }
           }
           syncAssessment();
         });
         $rule.on('change', syncAssessment);
-        $begin.on('change blur', syncAssessment);
-        $end.on('change blur', syncAssessment);
+        $beginDate.add($beginTime).add($duration).on('input change blur', () => {
+          updateAssessmentEnd();
+          syncAssessment();
+        });
         $pass.on('change blur', syncAssessment);
         $monitor.on('change', syncAssessment);
         $practice.on('change', syncAssessment);
@@ -564,7 +597,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
           updateCompleteVisibility();
         };
         $list.append($section);
-        initDateTimePickers($section.find('[data-pick-datetime]'));
+        initAssessmentDatePickers($section.find('.dag-assessment-begin-date, .dag-assessment-begin-time'));
         const depsSelect = CustomSelectAutoComplete.getOrConstruct<CustomSelectAutoComplete<true>>($deps, {
           multi: true,
           data: nodeOptions.filter((n) => `${n._id}` !== `${node._id}`),

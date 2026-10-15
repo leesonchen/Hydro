@@ -8,7 +8,6 @@ import type { CourseTdoc, DagNode } from './course';
 const rules = ['acm', 'oi', 'ioi', 'strictioi'];
 
 function hasStarted(exam: Tdoc) {
-    // Correcting a start time must not erase the protection for existing questions and records.
     return exam.beginAt <= new Date() || exam.timeChangeHistory?.some((change) => change.state !== 'upcoming');
 }
 
@@ -50,11 +49,6 @@ export async function validateAssessmentPlan(
                 throw new BadRequestError(`课堂测试监控模式不支持文件提交题 P${filePid}。请先调整题目。`);
             }
         }
-        const recorded = linked.find((exam) => exam.sourceNodeId === node._id);
-        if (recorded && hasStarted(recorded) && (
-            recorded.rule !== assessment.rule
-            || JSON.stringify(recorded.pids) !== JSON.stringify(node.pids)
-        )) throw new ForbiddenError('已开赛的课堂测试不能修改赛制或题目。');
     }
     for (const recorded of linked) {
         if (dag.some((node) => node.kind === 'assessment' && node._id === recorded.sourceNodeId)) continue;
@@ -81,12 +75,6 @@ export async function syncAssessmentContests(
         if (matches.length > 1) throw new ForbiddenError('Multiple contests bound to one classroom test');
         const current = matches[0];
         if (current) {
-            if (hasStarted(current)) {
-                if (current.rule !== assessment.rule
-                    || JSON.stringify(current.pids) !== JSON.stringify(node.pids)) {
-                    throw new ForbiddenError('Started classroom test rules and problems cannot be modified');
-                }
-            }
             const beginAt = new Date(assessment.beginAt);
             const endAt = new Date(assessment.endAt);
             const timeChanged = current.beginAt.getTime() !== beginAt.getTime() || current.endAt.getTime() !== endAt.getTime();

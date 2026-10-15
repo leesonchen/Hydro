@@ -82,6 +82,10 @@ export async function apply(ctx: Context, config: any) {
         course_manage: '课程管理',
         course_scoreboard: '课程成绩',
         course_detail_problem: '题目详情',
+        classroom_test_detail: '课堂测试',
+        classroom_test_problemlist: '题目列表',
+        classroom_scoreboard: '课堂测试成绩板',
+        classroom_scoreboard_view: '课堂测试成绩板',
         domain_class: '管理班级',
         domain_class_create: '创建班级',
         domain_class_edit: '编辑班级',
@@ -216,6 +220,10 @@ export async function apply(ctx: Context, config: any) {
         course_manage: 'Course Manage',
         course_scoreboard: 'Course Scoreboard',
         course_detail_problem: 'Course Problem Detail',
+        classroom_test_detail: 'Classroom Test',
+        classroom_test_problemlist: 'Problem List',
+        classroom_scoreboard: 'Classroom Test Scoreboard',
+        classroom_scoreboard_view: 'Classroom Test Scoreboard',
         domain_class: 'Class Management',
         domain_class_create: 'Create Class',
         domain_class_edit: 'Edit Class',
@@ -329,6 +337,13 @@ export async function apply(ctx: Context, config: any) {
         'Confirm to clear unranked status for all extra students?': 'Confirm to clear unranked status for all extra students?',
         'Edit Extra Students': 'Edit Extra Students',
         'No extra students.': 'No extra students.',
+    });
+
+    ctx.i18n.load('zh_TW', {
+        classroom_test_detail: '課堂測驗',
+        classroom_test_problemlist: '題目列表',
+        classroom_scoreboard: '課堂測驗成績板',
+        classroom_scoreboard_view: '課堂測驗成績板',
     });
 
     const isCourseEnabled = (handler: any) => config.enable || handler.domain?.enableCourse;
