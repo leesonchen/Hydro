@@ -9,6 +9,7 @@ import {
 } from '../error';
 import { ContestStatusDoc, RecordDoc, Tdoc, User } from '../interface';
 import { canManageFeedback } from '../lib/classroomFeedbackAccess';
+import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
 import { canManagePractice, canReadPractice, canSubmitPractice } from '../lib/contest-practice';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
@@ -74,6 +75,7 @@ export class RecordListHandler extends ContestDetailBaseHandler {
             this.tdoc = tdoc;
             if (!tdoc) throw new ContestNotFoundError(domainId, pid);
             if (practice) {
+                if (tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(this.user, tdoc);
                 if (!canManagePractice(this.user, tdoc) && q.uid === undefined) {
                     q.uid = this.user._id;
                     uidOrName = this.user._id.toString();
@@ -165,6 +167,7 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
         if (!this.rdoc) throw new RecordNotFoundError(rid);
         if (this.rdoc.practiceContest) {
             this.tdoc = await contest.get(domainId, this.rdoc.practiceContest);
+            if (this.tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(this.user, this.tdoc);
             if (!canReadPractice(this.user, this.tdoc, this.rdoc.uid)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
             this.args.tid = this.tdoc.docId;
             this.practiceReady = await canSubmitPractice(this.user, this.tdoc);
@@ -350,6 +353,7 @@ async function checkPracticeAccess(
             viewer = await new user.User(udoc, dudoc, handler.user.scope).init();
         }
         if (handler.practiceStopped) return false;
+        if (viewer && tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(viewer, tdoc);
         if (viewer && canReadPractice(viewer, tdoc, rdoc.uid)
             && (!requireManager || canManagePractice(viewer, tdoc))) return true;
     } catch (error) {
@@ -431,6 +435,7 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
             }
         }
         if (practice) {
+            if (this.tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(this.user, this.tdoc);
             if (!canManagePractice(this.user, this.tdoc) && this.uid === undefined) this.uid = this.user._id;
             if (!canReadPractice(this.user, this.tdoc, this.uid ?? this.user._id)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
         }
@@ -561,6 +566,7 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
         const isOwnOrTeammate = await contest.isOwnOrTeammateRecord(domainId, rdoc, this.user._id);
         if (rdoc.practiceContest) {
             this.tdoc = await contest.get(domainId, rdoc.practiceContest);
+            if (this.tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(this.user, this.tdoc);
             if (!canReadPractice(this.user, this.tdoc, rdoc.uid)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
         }
         if (rdoc.contest && ![record.RECORD_GENERATE, record.RECORD_PRETEST].some((i) => i.toHexString() === rdoc.contest.toHexString())) {
