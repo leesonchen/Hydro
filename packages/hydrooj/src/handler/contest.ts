@@ -611,7 +611,12 @@ export class ContestEditHandler extends Handler {
 
 export class ContestManagementBaseHandler extends ContestDetailBaseHandler {
     async prepare() {
-        if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('请在课程管理中管理课堂测试。');
+        if (this.tdoc.sourceType === 'course_assessment') {
+            // Classroom test tools belong to the course instructors, not standalone contest admins.
+            if (!await assertCourseAssessmentAccess(this.user, this.tdoc)
+                || !canManagePractice(this.user, this.tdoc)) throw new ForbiddenError();
+            return;
+        }
         if (!this.user.own(this.tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
     }
 }
@@ -668,6 +673,12 @@ export class ContestCodeHandler extends Handler {
 }
 
 export class ContestManagementHandler extends ContestManagementBaseHandler {
+    async prepare() {
+        await super.prepare();
+        // Classroom score/fixture settings are controlled by the parent course, not this legacy page.
+        if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('请在课程管理中管理课堂测试。');
+    }
+
     @param('tid', Types.ObjectId)
     @param('d', Types.Range(['public', 'private']), true)
     @param('sidebar', Types.Boolean)
