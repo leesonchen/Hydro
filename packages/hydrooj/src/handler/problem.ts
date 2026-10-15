@@ -804,13 +804,15 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
         if (tid) {
             const tdoc = await contest.get(domainId, tid);
             classroomTeacher = await assertCourseAssessmentAccess(this.user, tdoc);
-            if (tdoc.sourceType === 'course_assessment' && !classroomTeacher
-                && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) throw new ContestNotAttendedError(tid);
             if (!tdoc.pids.includes(this.pdoc.docId) || !contest.canAccessAssignedContest(this.user, tdoc)) {
                 throw new ContestNotFoundError(domainId, tid);
             }
             this.tdoc = tdoc;
             practice = await canSubmitPractice(this.user, tdoc);
+            // A student may join post-test practice without having attended the timed assessment.
+            // Practice is isolated from the official contest journal and classroom pass criteria.
+            if (tdoc.sourceType === 'course_assessment' && !classroomTeacher && !practice
+                && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) throw new ContestNotAttendedError(tid);
             if (!practice && !contest.isOngoing(tdoc, this.tsdoc) && !canBypassCourseTimeLimit(tdoc, this.user)) {
                 throw new ContestNotLiveError(tid);
             }
