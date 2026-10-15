@@ -280,8 +280,8 @@ test('classroom practice respects parent course enrollment, unlocks, staff and e
         './course-assessment-access': access,
     });
     const submitPerms = [PERM.PERM_VIEW_CONTEST, PERM.PERM_VIEW_PROBLEM, PERM.PERM_SUBMIT_PROBLEM];
-    const student = actor(42, submitPerms);
     groups = [{ name: 'class-a', archive: false }];
+    const student = actor(42, submitPerms);
     await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
     assert.equal((await contest.getStatus('test', exam.docId, 42))?.attend, undefined);
     assert.equal(await practice.canSubmitPractice(student, exam), true);
