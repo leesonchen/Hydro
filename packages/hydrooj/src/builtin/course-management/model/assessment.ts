@@ -94,7 +94,7 @@ export async function syncAssessmentContests(
             const updated = await ContestModel.edit(domainId, current.docId, {
                 ...(!hasStarted(current) ? { title: `${title} - ${node.title}` } : {}),
                 assign, maintainer, rule: assessment.rule, monitorMode: assessment.monitorMode || 'off',
-                allowPractice: assessment.allowPractice === true,
+                allowPractice: assessment.allowPractice !== false,
                 beginAt, endAt, pids: node.pids, rated: false,
             }, current, ['beginAt', 'endAt', 'rule', 'pids'], actorUid);
             if (recalculate && (timeChanged || (updated.statsRevision || 0) !== (current.statsRevision || 0))) {
@@ -113,7 +113,7 @@ export async function syncAssessmentContests(
                 domainId, `${title} - ${node.title}`, '', owner, assessment.rule,
                 new Date(assessment.beginAt), new Date(assessment.endAt), node.pids, false,
                 { ...selector, assign, maintainer, monitorMode: assessment.monitorMode || 'off',
-                    allowPractice: assessment.allowPractice === true },
+                    allowPractice: assessment.allowPractice !== false },
             );
         } catch (error: any) {
             // Concurrent saves may race on the unique binding index. Reuse the winning instance.
