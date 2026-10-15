@@ -628,13 +628,23 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
             if (this.tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(this.user, this.tdoc);
             if (!canReadPractice(this.user, this.tdoc, rdoc.uid)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
         }
+        let classroomManager = false;
         if (rdoc.contest && ![record.RECORD_GENERATE, record.RECORD_PRETEST].some((i) => i.toHexString() === rdoc.contest.toHexString())) {
             this.tdoc = await contest.get(domainId, rdoc.contest);
-            let canView = this.user.own(this.tdoc);
-            canView ||= contest.canShowRecord.call(this, this.tdoc);
-            canView ||= isOwnOrTeammate && contest.canShowSelfRecord.call(this, this.tdoc);
+            if (this.tdoc.sourceType === 'course_assessment') {
+                classroomManager = await assertCourseAssessmentAccess(this.user, this.tdoc);
+                if (!classroomManager && !isOwnOrTeammate) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            }
+            let canView = classroomManager || this.user.own(this.tdoc);
+            if (this.tdoc.sourceType === 'course_assessment') {
+                canView ||= isOwnOrTeammate && contest.canShowSelfRecord.call(this, this.tdoc);
+            } else {
+                canView ||= contest.canShowRecord.call(this, this.tdoc);
+                canView ||= isOwnOrTeammate && contest.canShowSelfRecord.call(this, this.tdoc);
+            }
             if (!canView) throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
-            if (!this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+            if (this.tdoc.sourceType === 'course_assessment'
+                ? !classroomManager : !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
                 this.applyProjection = true;
             }
             const teamVid = this.tdoc.allowTeam ? await contest.getTeamVid(domainId, this.tdoc.docId, this.user._id) : null;
@@ -648,13 +658,13 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
             ),
         ]);
 
-        this.canViewCode = isOwnOrTeammate;
+        this.canViewCode = isOwnOrTeammate || classroomManager;
         if (rdoc.practiceContest) this.canViewCode ||= canManagePractice(this.user, this.tdoc);
         this.canViewCode ||= this.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE);
         this.canViewCode ||= this.user.hasPerm(PERM.PERM_READ_RECORD_CODE);
         this.canViewCode ||= this.user.hasPerm(PERM.PERM_READ_RECORD_CODE_ACCEPT) && self?.status === STATUS.STATUS_ACCEPTED;
 
-        if (!rdoc.practiceContest && !this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) {
+        if (!rdoc.practiceContest && !classroomManager && !this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) {
             throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
         }
 
@@ -667,7 +677,8 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
 
     async sendUpdate(rdoc: RecordDoc) {
         if (this.practiceStopped) return;
-        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
+        if ((rdoc.practiceContest || (rdoc.contest && this.tdoc?.sourceType === 'course_assessment'))
+            && !await checkPracticeAccess(this, rdoc)) return;
         if (this.noTemplate) {
             this.send({ rdoc });
         } else {
@@ -677,7 +688,8 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
                 summary_html: await this.renderHTML('record_detail_summary.html', { rdoc, pdoc: this.pdoc }),
             };
             if (this.practiceStopped) return;
-            if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
+            if ((rdoc.practiceContest || (rdoc.contest && this.tdoc?.sourceType === 'course_assessment'))
+            && !await checkPracticeAccess(this, rdoc)) return;
             this.send(payload);
         }
     }
@@ -686,7 +698,8 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
     // eslint-disable-next-line
     async onRecordChange(rdoc: RecordDoc, $set?: any, $push?: any) {
         if (this.practiceStopped || rdoc.domainId !== this.args.domainId || rdoc._id.toString() !== this.rid) return;
-        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc)) return;
+        if ((rdoc.practiceContest || (rdoc.contest && this.tdoc?.sourceType === 'course_assessment'))
+            && !await checkPracticeAccess(this, rdoc)) return;
         if (this.disconnectTimeout) {
             clearTimeout(this.disconnectTimeout);
             this.disconnectTimeout = null;
