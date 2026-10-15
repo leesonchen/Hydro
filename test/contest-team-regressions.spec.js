@@ -196,3 +196,60 @@ test('practice opens only after the whole contest and keeps invitations and reco
     assert.equal(practice.isPracticeOpen({ ...tdoc, rule: 'course', allowPractice: true }), false);
     assert.equal(practice.isPracticeOpen({ ...tdoc, rule: 'homework', allowPractice: true }), false);
 });
+
+
+test('classroom subcontest refuses independent participant-list mutations', async () => {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/handler/contest.ts');
+    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    const handler = source.statements.find((n) => ts.isClassDeclaration(n) && n.name.text === 'ContestUserHandler');
+    const names = ['postAddUser', 'postRank', 'postResume', 'postRemoveUser'];
+    const methods = names.map((name) => {
+        const m = handler.members.find((member) => member.name?.getText(source) === name);
+        assert(m?.body, 'Missing participant mutation handler ' + name);
+        return 'async ' + name + '(' + m.parameters.map((param) => param.getText(source)).join(', ')
+            + ') ' + m.body.getText(source);
+    });
+    const exports = {};
+    vm.runInNewContext(ts.transpileModule('class Roster { ' + methods.join('\n') + ' }\nexports.Roster = Roster;', {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, { exports });
+    const roster = new exports.Roster();
+    roster.assertIndependentRoster = () => { throw new Error('Parent course owns classroom roster'); };
+    for (const name of names) {
+        await assert.rejects(roster[name]('d', 'tid'), /Parent course owns classroom roster/, name);
+    }
+});
+
+test('classroom scoreboard model accepts parent teachers without contest permissions and filters out nonattendees', async () => {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/model/contest.ts');
+    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    const fn = source.statements.find((n) => ts.isFunctionDeclaration(n) && n.name?.text === 'getScoreboard');
+    assert(fn?.body, 'Missing scoreboard model');
+    let tdoc = { domainId: 'd', docId: 'tid', rule: 'oi', sourceType: 'course_assessment',
+        pids: [1], statsRevision: 0 };
+    let selector;
+    const exports = {};
+    vm.runInNewContext(ts.transpileModule(fn.getText(source), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, {
+        exports,
+        get: async () => tdoc,
+        canShowScoreboard: () => false,
+        ContestScoreboardHiddenError: class extends Error {},
+        problem: { getList: async () => ({}), PROJECTION_CONTEST_DETAIL: [] },
+        getMultiStatus: (_d, query) => { selector = query; return { sort: () => ({}) }; },
+        RULES: { oi: { statusSort: {}, scoreboard: async () => [[], {}] } },
+        bus: { parallel: async () => {} },
+    });
+    const authorized = { user: {}, classroomTeacher: true, translate: (value) => value };
+    await exports.getScoreboard.call(authorized, 'd', 'tid', { isExport: false, showDisplayName: false });
+    assert.equal(selector.attend.$gt, 0);
+    await assert.rejects(
+        exports.getScoreboard.call({ ...authorized, classroomTeacher: false }, 'd', 'tid',
+            { isExport: false, showDisplayName: false }),
+    );
+    tdoc = { ...tdoc, sourceType: undefined };
+    await assert.rejects(
+        exports.getScoreboard.call(authorized, 'd', 'tid', { isExport: false, showDisplayName: false }),
+    );
+});
