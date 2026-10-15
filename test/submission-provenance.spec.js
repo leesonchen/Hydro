@@ -161,15 +161,16 @@ test('the submission handler persists source-domain maintainers as staff while p
     let classroomTeacher = false;
     let attended = true;
     let practiceReady = false;
+    let childAssigned = true;
     const user = (perms = []) => ({ _id: 2,
         own: (doc) => doc.owner === 2 || doc.maintainer?.includes(2), hasPerm: (p) => perms.includes(p) });
     const context = {
         exports: {}, PERM, param: () => () => {}, Types: { ArrayOf: () => {} },
         record: { add: (domainId, pid, uid, lang, code, _addTask, args) => recordModel.add(domainId, pid, uid, lang, code, false, args) },
-        contest: { get: async () => tdoc, canAccessAssignedContest: () => true, isOngoing: () => true,
+        contest: { get: async () => tdoc, canAccessAssignedContest: () => childAssigned, isOngoing: () => true,
             updateStatus: async () => {}, canShowSelfRecord: () => true, getStatus: async () => ({ attend: attended }) },
         assertCourseAssessmentAccess: async () => classroomTeacher,
-        ContestNotAttendedError: class extends Error {},
+        ContestNotAttendedError: class extends Error {}, ContestNotFoundError: class extends Error {},
         canSubmitPractice: async () => practiceReady,
         setting: { langs: { cpp: { pretest: 'cpp' } } }, system: { get: () => 1000 },
     };
@@ -223,6 +224,16 @@ test('the submission handler persists source-domain maintainers as staff while p
     assert.equal(practiceRecord.contest, undefined);
     assert.equal(practiceRecord.participationMode, 'practice');
     assert.equal(practiceRecord.classroomSession, undefined);
+    // A global course teacher may submit even when not assigned to the child contest's class.
+    childAssigned = false;
+    classroomTeacher = true;
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    const teacherPractice = await recordModel.get('d', h.response.body.rid);
+    assert.equal(teacherPractice.practiceContest.toString(), tid.toString());
+    assert.equal(teacherPractice.contest, undefined);
+    assert.equal(teacherPractice.participationMode, 'practice');
+    classroomTeacher = false;
+    await assert.rejects(h.post('d', 'cpp', 'code', false, [], tid), context.ContestNotFoundError);
     practiceReady = false;
 });
 
