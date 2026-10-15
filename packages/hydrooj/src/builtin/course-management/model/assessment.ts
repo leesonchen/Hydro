@@ -93,7 +93,7 @@ export async function syncAssessmentContests(
             // Enrollment and schedule may change, but rating still requires explicit certification.
             const updated = await ContestModel.edit(domainId, current.docId, {
                 ...(!hasStarted(current) ? { title: `${title} - ${node.title}` } : {}),
-                assign, maintainer, rule: assessment.rule, monitorMode: assessment.monitorMode || 'off',
+                owner, assign, maintainer, rule: assessment.rule, monitorMode: assessment.monitorMode || 'off',
                 allowPractice: assessment.allowPractice !== false,
                 beginAt, endAt, pids: node.pids, rated: false,
             }, current, ['beginAt', 'endAt', 'rule', 'pids'], actorUid);
