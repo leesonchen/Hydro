@@ -85,7 +85,7 @@
                 {% if exam %}
                   <p><b>课堂测试 · {{ exam.rule|upper }}</b> · 开始 {{ datetimeSpan(exam.beginAt)|safe }} · 结束 {{ datetimeSpan(exam.endAt)|safe }}</p>
                   {% if isTeacherEditor or (not isTemplate and tsdoc.allow[node._id]) %}
-                    <p><a class="rounded primary button" href="{{ url('contest_detail', tid=exam.tid) }}">进入课堂测试</a></p>
+                    <p><a class="rounded primary button" href="{{ url('classroom_test_detail', tid=exam.tid) }}">进入课堂测试</a></p>
                   {% endif %}
                   {% if exam.score != null %}<p>我的测试成绩：{{ exam.score }}{% if exam.metric == 'accepted' %} 题通过{% else %} 分{% endif %}</p>{% endif %}
                   {% if exam.updating %}
