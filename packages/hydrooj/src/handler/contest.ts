@@ -629,6 +629,9 @@ export class ContestCodeHandler extends Handler {
         const [tdoc, tsdocs] = await contest.getAndListStatus(domainId, tid);
         const classroomManager = tdoc.sourceType === 'course_assessment'
             && await assertCourseAssessmentAccess(this.user, tdoc) && canManagePractice(this.user, tdoc);
+        if (tdoc.sourceType === 'course_assessment' && !classroomManager) {
+            throw new ForbiddenError('只有课程教师和维护人可以导出课堂测试代码。');
+        }
         if (!classroomManager && !this.user.own(tdoc)) {
             if (!this.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE)) {
                 this.checkPerm(PERM.PERM_READ_RECORD_CODE);
