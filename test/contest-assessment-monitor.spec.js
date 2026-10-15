@@ -229,7 +229,7 @@ async function courseFixture(rule = 'oi', future = true, passScore = 1) {
 test('classroom monitoring uses course owner and maintainer permissions, not contest administrator rights', async () => {
     const { course, exam } = await courseFixture();
     await contest.edit('test', course.docId, { maintainer: [9] });
-    await assert.rejects(handler(7).get('test', exam.docId), errors.ForbiddenError);
+    await assert.rejects(handler(7).get('test', exam.docId), errors.NotAssignedError);
     await handler(7, [PERM.PERM_EDIT_HOMEWORK_SELF]).get('test', exam.docId);
     await handler(9, [PERM.PERM_EDIT_HOMEWORK_SELF]).get('test', exam.docId);
     // A legitimate course student with contest-admin permission is still not a course teacher.
@@ -717,7 +717,9 @@ test('classroom teacher membership must not grant official student eligibility',
     assert.equal(await access.assertCourseAssessmentAccess(actor(42, [PERM.PERM_VIEW_HOMEWORK]), exam), false);
     groups[0].students = [9, 42]; // An inconsistent roster must still prefer staff classification.
     await assert.rejects(access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_VIEW_HOMEWORK]), exam), errors.NotAssignedError);
-    assert.equal(await access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_EDIT_HOMEWORK_SELF, PERM.PERM_VIEW_HOMEWORK]), exam), false);
+    await assert.rejects(access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_EDIT_HOMEWORK_SELF, PERM.PERM_VIEW_HOMEWORK]), exam), errors.NotAssignedError);
+    await contest.edit('test', course.docId, { maintainer: [9] });
+    assert.equal(await access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_EDIT_HOMEWORK_SELF]), exam), true);
 });
 test('non-class group membership and an empty assign do not grant classroom test eligibility', async () => {
     const { course, exam } = await courseFixture();

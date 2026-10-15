@@ -96,6 +96,7 @@ describe('App', () => {
     });
 
     require('./contest-assessment-http').register(() => agent);
+    require('./classroom-assessment-access.integration').register();
 
     it('enforces IP and account login quotas within a case and recovers after counters are cleared', async () => {
         const counters = global.app.get('db').db.collection('opcount');
