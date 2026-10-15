@@ -5,7 +5,7 @@ import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
 import { PERM } from '../model/builtin';
 import * as contest from '../model/contest';
 import {
-    events, initializeMonitor, monitorUploadGraceMs, MonitorEventType, monitorEventTypes, recordEvent, retentionMs, sessions,
+    events, initializeMonitor, MonitorEventType, monitorEventTypes, monitorUploadGraceMs, recordEvent, retentionMs, sessions,
 } from '../model/contestMonitor';
 import { Handler, param, Types } from '../service/server';
 

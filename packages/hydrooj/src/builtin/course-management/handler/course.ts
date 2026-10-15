@@ -401,7 +401,9 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
                 }
                 if (!pids.length) throw new Error('Assessment requires at least one problem');
                 if (!['off', 'browser', undefined].includes(settings.monitorMode)) throw new Error('Invalid monitoring mode');
-                if (settings.allowPractice !== undefined && typeof settings.allowPractice !== 'boolean') throw new Error('Invalid post-test practice setting');
+                if (settings.allowPractice !== undefined && typeof settings.allowPractice !== 'boolean') {
+                    throw new Error('Invalid post-test practice setting');
+                }
                 assessment = {
                     rule: settings.rule,
                     monitorMode: settings.monitorMode || 'off',

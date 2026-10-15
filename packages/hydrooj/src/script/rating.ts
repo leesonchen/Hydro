@@ -12,8 +12,8 @@ import * as contest from '../model/contest';
 import * as document from '../model/document';
 import domain from '../model/domain';
 import problem from '../model/problem';
-import UserModel from '../model/user';
 import { rankRatingRows, refreshRating } from '../model/rating-publication';
+import UserModel from '../model/user';
 import db from '../service/db';
 
 export const description = 'Calculate rp of a domain, or all domains';

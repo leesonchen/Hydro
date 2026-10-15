@@ -4,8 +4,8 @@ import moment from 'moment-timezone';
 import { ObjectId } from 'mongodb';
 import { Context } from '../context';
 import {
-    RatingJob, RatingPointer, RatingPublicationStore, RatingRow, RATING_COLLECTIONS,
-} from '../lib/rating-publication-store';
+    RATING_COLLECTIONS,
+    RatingJob, RatingPointer, RatingPublicationStore, RatingRow } from '../lib/rating-publication-store';
 import { TIERS } from '../lib/rating-v2/composite';
 import { runShadowReplay } from '../lib/rating-v2/shadow-replay';
 import { Logger } from '../logger';
@@ -85,22 +85,34 @@ async function buildV2(job: RatingJob, report: (data: any) => void) {
     const publicInputs = { collection(name: string) {
         const coll = db.collection(name as any);
         return new Proxy(coll, { get(target, key) {
-            if (key === 'find') return (filter: any, ...args: any[]) => {
-                if (name === 'document.status' && filter.docType === 10) return (async function* visible() {
-                    for (const status of visibleStatuses) if (status.rid) yield status;
-                }());
-                if (name === 'document' && filter.docType === 30) return target.find({ $and: [filter, {
-                    keepScoreboardHidden: { $ne: true }, $or: [{ lockAt: { $exists: false } }, { lockAt: null }, { unlocked: true }],
-                }] }, ...args);
-                return target.find(filter, ...args);
-            };
+            if (key === 'find') {
+                return (filter: any, ...args: any[]) => {
+                    if (name === 'document.status' && filter.docType === 10) {
+                        return (async function* visible() {
+                            for (const status of visibleStatuses) if (status.rid) yield status;
+                        }());
+                    }
+                    if (name === 'document' && filter.docType === 30) {
+                        return target.find({ $and: [filter, {
+                            keepScoreboardHidden: { $ne: true }, $or: [{ lockAt: { $exists: false } }, { lockAt: null }, { unlocked: true }],
+                        }] }, ...args);
+                    }
+                    return target.find(filter, ...args);
+                };
+            }
             const value = target[key];
             return typeof value === 'function' ? value.bind(target) : value;
         } });
     } };
-    const summary = await runShadowReplay(publicInputs, options, (data) => report(typeof data === 'string' ? { message: data } : data), (result) => { docs = result; });
+    const summary = await runShadowReplay(
+        publicInputs, options,
+        (data) => report(typeof data === 'string' ? { message: data } : data),
+        (result) => { docs = result; },
+    );
     if (summary.contests.failed) throw new Error('V2 比赛计算失败，本批次未发布');
-    const projections = new Map(docs.filter((doc) => doc.kind === 'projection').map((doc) => [doc.uid, doc]));
+    const projections = new Map(
+        docs.filter((doc) => doc.kind === 'projection').map((doc) => [doc.uid, doc]),
+    );
     const population = await members(job.domainId, [...projections.keys()]);
     const rows: RatingRow[] = population.map((member) => {
         const projection = member.visible ? projections.get(member.uid) : null;
@@ -127,7 +139,9 @@ async function buildV2(job: RatingJob, report: (data: any) => void) {
 export async function executeRatingJob(job: RatingJob, report: (data: any) => void = () => {}) {
     await ratingStore.claim(job);
     let heartbeatError: Error;
-    const heartbeat = setInterval(() => { ratingStore.renew(job).catch((error) => { heartbeatError = error; }); }, 30000);
+    const heartbeat = setInterval(() => {
+        ratingStore.renew(job).catch((error) => { heartbeatError = error; });
+    }, 30000);
     heartbeat.unref();
     try {
         await ratingStore.renew(job);
@@ -202,7 +216,9 @@ export async function ratingDashboard() {
     for (const domain of domains) {
         const domainId = domain._id;
         const active = await ratingStore.active(domainId);
-        const savedRuns = await db.collection(RATING_COLLECTIONS.runs).find({ domainId, referenceOnly: { $ne: true } }).sort({ asOf: -1 }).limit(5).toArray();
+        const savedRuns = await db.collection(RATING_COLLECTIONS.runs)
+            .find({ domainId, referenceOnly: { $ne: true } })
+            .sort({ asOf: -1 }).limit(5).toArray();
         const runs = await Promise.all(savedRuns.map(async (run) => {
             const receipt = await ratingStore.receipt(run);
             if (!receipt) return run;
@@ -235,7 +251,10 @@ export async function ratingDashboard() {
 }
 
 export async function recoverRatingJobs() {
-    const jobs = [...await db.collection(RATING_COLLECTIONS.runs).find({ status: { $in: ['queued', 'running', 'ready'] }, referenceOnly: { $ne: true } }).toArray(),
+    const jobs = [
+        ...await db.collection(RATING_COLLECTIONS.runs).find({
+            status: { $in: ['queued', 'running', 'ready'] }, referenceOnly: { $ne: true },
+        }).toArray(),
         ...await ratingStore.legacyPendingJobs()];
     for (const job of jobs) {
         try {

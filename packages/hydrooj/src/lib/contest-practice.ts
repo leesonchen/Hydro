@@ -2,11 +2,11 @@ import { createHash } from 'crypto';
 import { ObjectId } from 'mongodb';
 import { ContestNotLiveError, InvalidTokenError, PermissionError } from '../error';
 import type { RecordDoc, Tdoc, User } from '../interface';
-import { assertCourseAssessmentAccess } from './course-assessment-access';
 import { PERM, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import record from '../model/record';
 import db from '../service/db';
+import { assertCourseAssessmentAccess } from './course-assessment-access';
 
 interface PracticeAccessDoc {
     domainId: string;
