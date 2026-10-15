@@ -255,6 +255,7 @@ export class ContestDetailHandler extends ContestDetailBaseHandler {
 
     @param('tid', Types.ObjectId)
     async postEarlyEnd(domainId: string, tid: ObjectId) {
+        if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('课堂测试结束时间由所属课程统一管理');
         if (this.tdoc.rule === 'homework') throw new ContestNotFoundError(domainId, tid);
         if (!this.tsdoc?.attend) throw new ContestNotAttendedError(domainId, tid);
         if (!contest.isOngoing(this.tdoc, this.tsdoc)) throw new ContestNotLiveError(domainId, tid);
