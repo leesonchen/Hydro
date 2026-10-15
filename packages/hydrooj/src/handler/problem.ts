@@ -805,7 +805,8 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
             const tdoc = await contest.get(domainId, tid);
             classroomTeacher = await assertCourseAssessmentAccess(this.user, tdoc);
             if (!tdoc.pids.includes(this.pdoc.docId)
-                || (!classroomTeacher && !contest.canAccessAssignedContest(this.user, tdoc))) {
+                || (tdoc.sourceType !== 'course_assessment'
+                    && !contest.canAccessAssignedContest(this.user, tdoc))) {
                 throw new ContestNotFoundError(domainId, tid);
             }
             this.tdoc = tdoc;
