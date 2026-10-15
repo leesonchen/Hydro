@@ -23,9 +23,11 @@
         <span class="icon icon-edit"></span> {{ _('Edit Contest') }}
       </a></li>
       {% endif %}
+      {% if tdoc.sourceType != 'course_assessment' %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_user', tid=tdoc.docId) }}">
         <span class="icon icon-user"></span> {{ _('Attendee Manage') }}
       </a></li>
+      {% endif %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_code', tid=tdoc.docId) }}" data-no-instant>
         <span class="icon icon-download"></span> {{ _('Export All Code') }}
       </a></li>
