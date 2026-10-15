@@ -188,6 +188,7 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             this.tdoc = await contest.get(domainId, this.rdoc.practiceContest);
             if (this.tdoc.sourceType === 'course_assessment') {
                 classroomManager = await assertCourseAssessmentAccess(this.user, this.tdoc);
+                this.classroomTeacher = classroomManager;
             }
             if (!canReadPractice(this.user, this.tdoc, this.rdoc.uid, classroomManager)) {
                 throw new PermissionError(PERM.PERM_VIEW_RECORD);
@@ -200,6 +201,7 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             const exam = await contest.get(domainId, this.rdoc.contest);
             if (exam?.sourceType === 'course_assessment') {
                 classroomManager = await assertCourseAssessmentAccess(this.user, exam);
+                this.classroomTeacher = classroomManager;
                 if (!classroomManager && this.rdoc.uid !== this.user._id) {
                     throw new PermissionError(PERM.PERM_VIEW_RECORD);
                 }
@@ -564,7 +566,8 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         if (this.teamMembers) {
             if (!this.teamMembers.includes(rdoc.uid)) return;
         } else if (typeof this.uid === 'number' && rdoc.uid !== this.uid) return;
-        if ((rdoc.practiceContest || (rdoc.contest && this.tdoc?.sourceType === 'course_assessment'))
+        if ((rdoc.practiceContest || (rdoc.contest?.toString() === this.tid
+            && this.tdoc?.sourceType === 'course_assessment'))
             && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return;
 
         let [udoc, pdoc] = await Promise.all([
@@ -593,10 +596,12 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
     queueSend(rid: string, fn: () => Promise<any>, rdoc?: RecordDoc) {
         if (this.practiceStopped) return;
         this.queue.set(rid, async () => {
-            if ((rdoc?.practiceContest || (rdoc?.contest && this.tdoc?.sourceType === 'course_assessment'))
+            if ((rdoc?.practiceContest || (rdoc?.contest?.toString() === this.tid
+                && this.tdoc?.sourceType === 'course_assessment'))
                 && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
             const payload = await fn();
-            if ((rdoc?.practiceContest || (rdoc?.contest && this.tdoc?.sourceType === 'course_assessment'))
+            if ((rdoc?.practiceContest || (rdoc?.contest?.toString() === this.tid
+                && this.tdoc?.sourceType === 'course_assessment'))
                 && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
             return payload;
         });
