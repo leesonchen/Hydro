@@ -19,6 +19,34 @@ function loadSource(file, dependencies = {}, globals = {}) {
     return exports;
 }
 
+function loadContestRuleMethod(ruleName, methodName) {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/model/contest.ts');
+    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    const rule = source.statements.find((node) => ts.isVariableStatement(node)
+        && node.declarationList.declarations.some((decl) => decl.name.getText(source) === ruleName))
+        .declarationList.declarations[0].initializer.arguments[0];
+    const method = rule.properties.find((property) => property.name?.getText(source) === methodName);
+    const code = ts.isMethodDeclaration(method)
+        ? `function ${methodName}(${method.parameters.map((param) => param.getText(source)).join(', ')}) ${method.body.getText(source)}\nexports.value = ${methodName};`
+        : `const ${methodName} = ${method.initializer.getText(source)};\nexports.value = ${methodName};`;
+    const exports = {};
+    vm.runInNewContext(ts.transpileModule(code, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, { exports }, { filename: file });
+    return exports.value;
+}
+
+function loadContestFunction(name) {
+    const file = path.resolve(__dirname, '../packages/hydrooj/src/model/contest.ts');
+    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    const fn = source.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === name);
+    const exports = {};
+    vm.runInNewContext(ts.transpileModule(`${fn.getText(source)}\nexports.value = ${name};`, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, { exports }, { filename: file });
+    return exports.value;
+}
+
 test('contest edit keeps problem order and does not mutate its expected snapshot', async () => {
     const file = path.resolve(__dirname, '../packages/hydrooj/src/handler/contest.ts');
     const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
@@ -282,4 +310,32 @@ test('classroom own-record visibility ignores stale child assign but respects sc
     assert.match(source, /export function canShowClassroomSelfRecord/);
     assert.match(source, /rule\.showSelfRecord\(tdoc, new Date\(\)\)/);
     assert.doesNotMatch(source.slice(source.indexOf('export function canShowClassroomSelfRecord')), /canAccessAssignedContest|user\.own/);
+});
+
+test('OI classroom projection uses the real OI result window and own-record scope', () => {
+    const showSelfRecord = loadContestRuleMethod('oi', 'showSelfRecord');
+    const applyProjection = loadContestRuleMethod('oi', 'applyProjection');
+    const tdoc = { sourceType: 'course_assessment', rule: 'oi', owner: 7,
+        assign: ['former-child-class'], beginAt: new Date(Date.now() - 120_000),
+        endAt: new Date(Date.now() - 60_000), keepScoreboardHidden: false };
+    const own = { uid: 7, score: 100, status: 1, compilerTexts: ['visible'], judgeTexts: ['visible'] };
+    const other = { uid: 8, score: 80, status: 1, compilerTexts: ['private'], judgeTexts: ['private'] };
+    applyProjection.call({ showSelfRecord }, tdoc, own, { _id: 7, own: () => true, hasPerm: () => true });
+    applyProjection.call({ showSelfRecord }, tdoc, other, { _id: 7, own: () => true, hasPerm: () => true });
+    assert.equal(own.score, 100);
+    assert.equal(other.score, undefined);
+    assert.deepEqual(Array.from(other.compilerTexts), []);
+    assert.deepEqual(Array.from(other.judgeTexts), []);
+
+    tdoc.endAt = new Date(Date.now() + 60_000);
+    const beforeEnd = { uid: 7, score: 100, status: 1, compilerTexts: [], judgeTexts: [] };
+    applyProjection.call({ showSelfRecord }, tdoc, beforeEnd, { _id: 7, own: () => true, hasPerm: () => true });
+    assert.equal(beforeEnd.score, undefined, 'child ownership and contest-admin permission do not bypass OI window');
+});
+
+test('classroom status summaries are unavailable without live parent-course authorization', () => {
+    const canShowProblemStatus = loadContestFunction('canShowProblemStatus');
+    const ownerAndContestAdmin = { _id: 7, own: () => true, hasPerm: () => true };
+    assert.equal(canShowProblemStatus(ownerAndContestAdmin, 7,
+        { sourceType: 'course_assessment', rule: 'oi', endAt: new Date(0) }), false);
 });

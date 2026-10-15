@@ -156,6 +156,11 @@ test('the submission handler persists source-domain maintainers as staff while p
     const handler = source.statements.find((s) => ts.isClassDeclaration(s) && s.name?.text === 'ProblemSubmitHandler');
     const post = handler.members.find((s) => s.name?.getText(source) === 'post');
     const { PERM } = load('packages/common/permission.ts');
+    const { canShowClassroomSelfRecord } = load('packages/hydrooj/src/lib/course-assessment-access.ts', {
+        '../error': { NotAssignedError: class extends Error {} },
+        '../model/builtin': { PERM }, '../model/contest': { RULES: {} },
+        '../model/user': { default: { listGroup: async () => [] } },
+    });
     const tid = new ObjectId();
     const tdoc = { docId: tid, owner: 99, rule: 'oi', pids: [1] };
     let classroomTeacher = false;
@@ -174,6 +179,7 @@ test('the submission handler persists source-domain maintainers as staff while p
             if (!parentAllowed) throw new context.ContestNotFoundError();
             return classroomTeacher;
         },
+        canShowClassroomSelfRecord,
         ContestNotAttendedError: class extends Error {}, ContestNotFoundError: class extends Error {},
         canSubmitPractice: async () => practiceReady,
         setting: { langs: { cpp: { pretest: 'cpp' } } }, system: { get: () => 1000 },

@@ -422,7 +422,8 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
         if (this.response.body.showPractice) {
             Object.assign(this.response.body.rdict, await record.getList(domainId, Object.values(practice).map((i) => i.rid)));
         }
-        if (canViewRecord && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+        if (canViewRecord && (this.tdoc.sourceType === 'course_assessment'
+            ? !this.classroomTeacher : !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST))) {
             this.response.body.rdocs = this.response.body.rdocs.map((rdoc) => contest.applyProjection(this.tdoc, rdoc, this.user));
             for (const key in this.response.body.rdict) {
                 if (!this.response.body.rdict[key].practiceContest) {
@@ -1307,7 +1308,7 @@ export async function apply(ctx: Context) {
         scoreboard.addView('default', 'Default', { tdoc: 'tdoc', groups: 'groups', realtime: Types.Boolean }, {
             async display({ realtime, tdoc, groups }) {
                 if (realtime && !this.user.own(tdoc)
-                    && !(tdoc.sourceType === 'course_assessment' && this.classroomTeacher)) {
+                    && (tdoc.sourceType !== 'course_assessment' || !this.classroomTeacher)) {
                     this.checkPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
                 }
                 const config: ScoreboardConfig = { isExport: false, showDisplayName: this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO) };
@@ -1331,7 +1332,7 @@ export async function apply(ctx: Context) {
         scoreboard.addView('ghost', 'Ghost', { tdoc: 'tdoc' }, {
             async display({ tdoc }) {
                 if (contest.isLocked(tdoc) && !this.user.own(tdoc)
-                    && !(tdoc.sourceType === 'course_assessment' && this.classroomTeacher)) {
+                    && (tdoc.sourceType !== 'course_assessment' || !this.classroomTeacher)) {
                     this.checkPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
                 }
                 const [pdict, teams] = await Promise.all([

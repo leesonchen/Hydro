@@ -475,8 +475,13 @@ const oi = buildContestRule({
     },
     applyProjection(tdoc, rdoc, udoc) {
         // The shared policy helper is declared after RULES is initialized.
-        // eslint-disable-next-line ts/no-use-before-define
-        if (canShowProblemStatus(udoc, rdoc.uid, tdoc)) return rdoc;
+        const visible = tdoc.sourceType === 'course_assessment'
+            // The caller authorizes the current parent course. Child assignments
+            // and contest-admin overrides must not change a student's result window.
+            ? rdoc.uid === udoc._id && this.showSelfRecord(tdoc, new Date())
+            // eslint-disable-next-line ts/no-use-before-define
+            : canShowProblemStatus(udoc, rdoc.uid, tdoc);
+        if (visible) return rdoc;
         delete rdoc.status;
         rdoc.compilerTexts = [];
         rdoc.judgeTexts = [];
@@ -1449,6 +1454,9 @@ export function canShowSelfRecord(this: { user: User }, tdoc: Tdoc, allowPermOve
 }
 
 export function canShowProblemStatus(user: User | null, targetUid: number, tdoc: Tdoc, allowPermOverride = true) {
+    // Global problem/profile summaries have no live parent-course authorization.
+    // Classroom results are exposed by the course-authorized handlers instead.
+    if (tdoc.sourceType === 'course_assessment') return false;
     const isCourseOrHomework = tdoc.rule === 'course' || tdoc.rule === 'homework';
     if (!user) {
         if (tdoc.allowTeam) return false;
