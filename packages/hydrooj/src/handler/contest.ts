@@ -989,6 +989,12 @@ export class ContestUserHandler extends ContestManagementBaseHandler {
 }
 
 export class ContestBalloonHandler extends ContestManagementBaseHandler {
+    async prepare() {
+        await super.prepare();
+        // Classroom tests do not support an independent contest balloon workflow.
+        if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('课堂测试不开放独立气球管理');
+    }
+
     @param('tid', Types.ObjectId)
     @param('todo', Types.Boolean)
     async get(domainId: string, tid: ObjectId, todo = false) {
