@@ -165,6 +165,9 @@ test('practice opens only after the whole contest and keeps invitations and reco
     });
     const tdoc = { domainId: 'domain', docId: new ObjectId(), rule: 'oi', endAt: new Date(Date.now() - 1000) };
     assert.equal(practice.isPracticeOpen(tdoc), false);
+    assert.equal(practice.isPracticeOpen({ ...tdoc, sourceType: 'course_assessment' }), true);
+    assert.equal(practice.isPracticeOpen({ ...tdoc, sourceType: 'course_assessment', allowPractice: false }), false);
+    // Ordinary contests continue to require explicit opt-in.
     tdoc.allowPractice = true;
     assert.equal(await practice.canSubmitPractice(actor(1), tdoc), true);
     assert.equal(practice.canReadPractice(actor(2), tdoc, 1), false);
