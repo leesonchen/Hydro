@@ -144,6 +144,7 @@ test('practice opens only after the whole contest and keeps invitations and reco
         mongodb: { ObjectId },
         '../error': { ContestNotLiveError: codeError, InvalidTokenError: codeError, PermissionError: codeError },
         '../model/builtin': { PERM: perms },
+        './course-assessment-access': { assertCourseAssessmentAccess: async () => false },
         '../model/contest': {
             RULES: { oi: {}, course: { hidden: true }, homework: { hidden: true } },
             isDone: (tdoc) => tdoc.endAt <= new Date(),
