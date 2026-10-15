@@ -16,8 +16,6 @@ export class ContestMonitorHandler extends Handler {
         if (tdoc.monitorMode !== 'browser') throw new ContestNotFoundError(domainId, tid);
         if (tdoc.sourceType === 'course_assessment') {
             if (!await assertCourseAssessmentAccess(this.user, tdoc)) throw new ForbiddenError();
-            if (!this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
-                && !(this.user.own(tdoc) && this.user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF))) throw new ForbiddenError();
         } else if (!this.user.own(tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) throw new ForbiddenError();
         const [eventDocs, sessionDocs] = await Promise.all([
             events.find({ domainId, contestTid: tid, eventType: { $ne: 'heartbeat' } }).sort({ serverAt: -1 }).limit(500).toArray(),
