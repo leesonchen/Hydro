@@ -6,6 +6,7 @@ import { PERM, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import record from '../model/record';
 import db from '../service/db';
+import { assertCourseAssessmentAccess } from './course-assessment-access';
 
 interface PracticeAccessDoc {
     domainId: string;
@@ -25,26 +26,38 @@ export function supportsPractice(tdoc: Tdoc) {
 }
 
 export function isPracticeOpen(tdoc: Tdoc) {
-    return supportsPractice(tdoc) && tdoc.allowPractice === true && contest.isDone(tdoc);
+    // Classroom tests default to practice, including existing tests without this setting.
+    // Ordinary contests keep their explicit opt-in behavior.
+    return supportsPractice(tdoc) && contest.isDone(tdoc)
+        && (tdoc.sourceType === 'course_assessment' ? tdoc.allowPractice !== false : tdoc.allowPractice === true);
 }
 
-export function canManagePractice(user: User, tdoc: Tdoc) {
+export function canManagePractice(user: User, tdoc: Tdoc, parentCourseTeacher = false) {
+    // The child contest's owner/maintainer fields are only synchronized copies.
+    // Never use them to grant classroom management rights after a course role changes.
+    if (tdoc.sourceType === 'course_assessment') return parentCourseTeacher;
     return user.own(tdoc) || user.hasPerm(PERM.PERM_EDIT_CONTEST);
 }
 
-export function canReadPractice(user: User, tdoc: Tdoc, uid: number) {
-    return supportsPractice(tdoc) && user._id > 0
-        && user.hasPerm(PERM.PERM_VIEW_CONTEST) && user.hasPerm(PERM.PERM_VIEW_PROBLEM)
-        && contest.canAccessAssignedContest(user, tdoc)
-        && (uid === user._id || canManagePractice(user, tdoc));
+export function canReadPractice(user: User, tdoc: Tdoc, uid: number, parentCourseTeacher = false) {
+    if (!supportsPractice(tdoc) || user._id <= 0) return false;
+    const manager = canManagePractice(user, tdoc, parentCourseTeacher);
+    if (tdoc.sourceType === 'course_assessment') {
+        // Caller must have validated the live parent-course enrollment and node grant.
+        // The child contest's stale assign or standalone contest perms are not authorities.
+        return (manager || (user.hasPerm(PERM.PERM_VIEW_HOMEWORK) && user.hasPerm(PERM.PERM_VIEW_PROBLEM)))
+            && (uid === user._id || manager);
+    }
+    return user.hasPerm(PERM.PERM_VIEW_CONTEST) && user.hasPerm(PERM.PERM_VIEW_PROBLEM)
+        && (manager || contest.canAccessAssignedContest(user, tdoc)) && (uid === user._id || manager);
 }
 
 function codeHash(tdoc: Tdoc) {
     return createHash('sha256').update(tdoc._code || '').digest('hex');
 }
 
-async function hasInvitationAccess(user: User, tdoc: Tdoc) {
-    if (!tdoc._code || canManagePractice(user, tdoc)) return true;
+async function hasInvitationAccess(user: User, tdoc: Tdoc, parentCourseTeacher = false) {
+    if (!tdoc._code || canManagePractice(user, tdoc, parentCourseTeacher)) return true;
     const status = await contest.getStatus(tdoc.domainId, tdoc.docId, user._id);
     if (status?.attend) return true;
     if (tdoc.allowTeam) {
@@ -57,16 +70,18 @@ async function hasInvitationAccess(user: User, tdoc: Tdoc) {
 }
 
 export async function canSubmitPractice(user: User, tdoc: Tdoc) {
-    return isPracticeOpen(tdoc) && canReadPractice(user, tdoc, user._id)
-        && user.hasPerm(PERM.PERM_SUBMIT_PROBLEM) && await hasInvitationAccess(user, tdoc);
+    const parentCourseTeacher = await assertCourseAssessmentAccess(user, tdoc);
+    return isPracticeOpen(tdoc) && canReadPractice(user, tdoc, user._id, parentCourseTeacher)
+        && user.hasPerm(PERM.PERM_SUBMIT_PROBLEM) && await hasInvitationAccess(user, tdoc, parentCourseTeacher);
 }
 
 export async function grantPracticeAccess(user: User, tdoc: Tdoc, code: string) {
+    const parentCourseTeacher = await assertCourseAssessmentAccess(user, tdoc);
     if (!isPracticeOpen(tdoc)) throw new ContestNotLiveError(tdoc.docId);
-    if (!canReadPractice(user, tdoc, user._id) || !user.hasPerm(PERM.PERM_SUBMIT_PROBLEM)) {
+    if (!canReadPractice(user, tdoc, user._id, parentCourseTeacher) || !user.hasPerm(PERM.PERM_SUBMIT_PROBLEM)) {
         throw new PermissionError(PERM.PERM_SUBMIT_PROBLEM);
     }
-    if (await hasInvitationAccess(user, tdoc)) return;
+    if (await hasInvitationAccess(user, tdoc, parentCourseTeacher)) return;
     if (code !== tdoc._code) throw new InvalidTokenError('Contest Invitation');
     await db.collection('contest.practiceAccess').updateOne(
         { domainId: tdoc.domainId, tid: tdoc.docId, uid: user._id },

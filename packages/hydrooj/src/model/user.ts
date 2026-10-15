@@ -540,7 +540,7 @@ class UserModel {
             udict[key].displayName ||= udict[key].uname;
         }
         const projected = await projectUserRatings(domainId, Object.values(udict) as any[]);
-        for (const udoc of projected) if (udict[udoc._id]) udict[udoc._id] = udoc;
+        for (const udoc of projected) udict[udoc._id] &&= udoc;
         return udict as BaseUserDict;
     }
 

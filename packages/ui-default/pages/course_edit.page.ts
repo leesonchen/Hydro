@@ -292,6 +292,10 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
               + '</label></div></div>'
               + '<div class="row dag-assessment-row"><div class="columns"><label>考试监控<select class="select dag-assessment-monitor">'
               + '<option value="off">关闭</option><option value="browser">浏览器切屏提醒与记录</option></select></label></div></div>'
+              + '<div class="row dag-assessment-row"><div class="columns"><label>'
+              + '<input type="checkbox" class="dag-assessment-practice" /> 允许赛后补提交（默认开启）'
+              + '<span class="help-text" style="display:block;margin:4px 0 0 20px;">测试结束后允许继续提交，仅计入独立练习记录，不改变测试成绩、达标状态或比赛 Rating。</span>'
+              + '</label></div></div>'
               + '<div class="row"><div class="columns">'
                 + '<label>章节标题<input class="textbox dag-title" /></label>'
               + '</div></div>'
@@ -361,7 +365,9 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         const $end = $section.find('.dag-assessment-end');
         const $pass = $section.find('.dag-assessment-pass');
         const $monitor = $section.find('.dag-assessment-monitor');
+        const $practice = $section.find('.dag-assessment-practice');
         $monitor.val(node.assessment?.monitorMode || 'off');
+        $practice.prop('checked', node.assessment?.allowPractice !== false);
         function updateAssessmentMetric() {
           const acm = $rule.val() === 'acm';
           $section.find('.dag-assessment-pass-label').text(acm ? '达标通过题数' : '达标分数');
@@ -394,6 +400,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
               beginAt: assessmentDateTimeToIso($begin.val(), originalBegin, initialBeginDisplay),
               endAt: assessmentDateTimeToIso($end.val(), originalEnd, initialEndDisplay), rated: false,
               passScore: Math.max(0, Number($pass.val()) || 0), monitorMode: String($monitor.val() || 'off'),
+              allowPractice: $practice.prop('checked') === true,
             };
           } else delete node.assessment;
           updateAssessmentMetric();
@@ -415,6 +422,7 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
         $end.on('change blur', syncAssessment);
         $pass.on('change blur', syncAssessment);
         $monitor.on('change', syncAssessment);
+        $practice.on('change', syncAssessment);
         $assessmentRows.toggle((node.kind || 'lesson') === 'assessment');
         $title.val(node.title);
         $title.on('input', () => {

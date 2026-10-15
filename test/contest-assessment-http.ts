@@ -123,7 +123,10 @@ export function register(getTeacher: () => any) {
             await student.client.get(`${prefix}/course/${courseId}`).accept('html').expect(200)
                 .then((res) => assert.match(res.text, /进入课堂测试/));
             await teacher.get(`${prefix}/contest/${examId}/monitor`).accept('html').expect(200)
-                .then((res) => assert.match(res.text, /page_hidden/));
+                .then((res) => {
+                    assert.match(res.text, /切换到其他标签页/);
+                    assert.match(res.text, /session-http-123456/);
+                });
             const newClassName = `${className}-renamed`;
             await ContestModel.replaceAssignGroup(domainId, courseId, className, newClassName);
             exam = await ContestModel.get(domainId, examId);

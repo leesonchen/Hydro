@@ -90,7 +90,7 @@ async function getCourseAudience(domainId: string, tdoc: CourseTdoc) {
     const teacherUids = new Set<number>([
         ...(group?.teachers || []),
         tdoc.owner,
-        (tdoc as any).editor,
+        ...(tdoc.maintainer || []),
     ].filter(Boolean));
     const studentUids = new Set<number>([
         ...(group?.students || []),
@@ -401,9 +401,13 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
                 }
                 if (!pids.length) throw new Error('Assessment requires at least one problem');
                 if (!['off', 'browser', undefined].includes(settings.monitorMode)) throw new Error('Invalid monitoring mode');
+                if (settings.allowPractice !== undefined && typeof settings.allowPractice !== 'boolean') {
+                    throw new Error('Invalid post-test practice setting');
+                }
                 assessment = {
                     rule: settings.rule,
                     monitorMode: settings.monitorMode || 'off',
+                    allowPractice: settings.allowPractice !== false,
                     beginAt: beginAt.toISOString(),
                     endAt: endAt.toISOString(),
                     rated: false, // explicit certification is required before rating
@@ -694,6 +698,8 @@ export class CourseMainHandler extends Handler {
                     { assign: null },
                     { assign: { $exists: false } },
                     { assign: userId.toString() },
+                    { owner: userId },
+                    { maintainer: userId },
                 ],
             }),
         })
@@ -707,6 +713,7 @@ export class CourseMainHandler extends Handler {
                 assign: 1,
                 rule: 1,
                 owner: 1,
+                maintainer: 1,
                 editor: 1,
                 updateAt: 1,
                 lessonDurationHours: 1,
@@ -728,7 +735,9 @@ export class CourseMainHandler extends Handler {
         );
 
         // 判断是否为"我的课程"
-        const isMyCourse = (t: any) => t.assign?.some((g: string) => userGroups.has(g));
+        const isMyCourse = (t: any) => t.owner === userId
+            || t.maintainer?.includes(userId)
+            || t.assign?.some((g: string) => userGroups.has(g));
 
         // 处理课程数据
         const courses = tdocs.map((t) => ({
@@ -894,6 +903,8 @@ export class CourseMain1Handler extends Handler {
                     { assign: null },
                     { assign: { $exists: false } },
                     { assign: userId.toString() },
+                    { owner: userId },
+                    { maintainer: userId },
                 ],
             }),
         })
@@ -907,6 +918,7 @@ export class CourseMain1Handler extends Handler {
                 assign: 1,
                 rule: 1,
                 owner: 1,
+                maintainer: 1,
                 editor: 1,
                 updateAt: 1,
                 lessonDurationHours: 1,
@@ -927,7 +939,9 @@ export class CourseMain1Handler extends Handler {
             {},
         );
 
-        const isMyCourse = (t: any) => t.assign?.some((g: string) => userGroups.has(g));
+        const isMyCourse = (t: any) => t.owner === userId
+            || t.maintainer?.includes(userId)
+            || t.assign?.some((g: string) => userGroups.has(g));
 
         const courses = tdocs.map((t) => ({
             ...t,
@@ -992,6 +1006,8 @@ export class CourseMain2Handler extends Handler {
                     { assign: null },
                     { assign: { $exists: false } },
                     { assign: userId.toString() },
+                    { owner: userId },
+                    { maintainer: userId },
                 ],
             }),
         })
@@ -1005,6 +1021,7 @@ export class CourseMain2Handler extends Handler {
                 assign: 1,
                 rule: 1,
                 owner: 1,
+                maintainer: 1,
                 editor: 1,
                 updateAt: 1,
                 lessonDurationHours: 1,
@@ -1025,7 +1042,9 @@ export class CourseMain2Handler extends Handler {
             {},
         );
 
-        const isMyCourse = (t: any) => t.assign?.some((g: string) => userGroups.has(g));
+        const isMyCourse = (t: any) => t.owner === userId
+            || t.maintainer?.includes(userId)
+            || t.assign?.some((g: string) => userGroups.has(g));
 
         const courses = tdocs.map((t) => ({
             ...t,
@@ -1921,10 +1940,8 @@ export class CourseProblemReferenceHandler extends Handler {
         this.tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
         if (this.tdoc.rule !== 'course') throw new ContestNotFoundError(domainId, tid);
 
-        const canBypassAssign = this.user.hasPerm(
-            PERM.PERM_CREATE_HOMEWORK,
-            PERM.PERM_VIEW_HIDDEN_HOMEWORK,
-        );
+        const canBypassAssign = canEditCourse(this, this.tdoc)
+            || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
         const userIdStr = this.user._id.toString();
         const isInAssign = this.tdoc.assign?.some((g: string) => this.user.group?.includes(g) || g === userIdStr);
         if (this.tdoc.assign?.length && !this.user.own(this.tdoc) && !isInAssign && !canBypassAssign) {
@@ -1937,7 +1954,7 @@ export class CourseProblemReferenceHandler extends Handler {
         if (!inCourse) throw new ProblemNotFoundError(domainId, pid);
 
         this.tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
-        this.canEdit = this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
+        this.canEdit = canEditCourse(this, this.tdoc);
 
         const accepted = this.tsdoc?.detail?.[pid]?.status === STATUS.STATUS_ACCEPTED;
         if (!this.canEdit && !accepted) throw new ForbiddenError('通过后才可查看参考代码。');
@@ -2079,8 +2096,8 @@ export class CourseScoreboardHandler extends Handler {
             if (!canEditCourse(this, tdoc)) throw new ForbiddenError('无权限查看课堂测试成绩板');
             const contestTid = new ObjectId(assessmentNode.assessment.contestTid);
             this.response.redirect = ext
-                ? this.url('contest_scoreboard_view', { tid: contestTid, view: ext })
-                : this.url('contest_scoreboard', { tid: contestTid });
+                ? this.url('classroom_scoreboard_view', { tid: contestTid, view: ext })
+                : this.url('classroom_scoreboard', { tid: contestTid });
             return;
         }
         if (ext) {

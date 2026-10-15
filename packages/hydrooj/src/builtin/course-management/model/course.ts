@@ -17,6 +17,8 @@ export interface DagNode {
         endAt: string;
         rated?: boolean;
         monitorMode?: 'off' | 'browser';
+        /** Opt-in post-test submissions, separate from official assessment results. */
+        allowPractice?: boolean;
         passScore?: number;
     };
     lecture?: string | boolean;

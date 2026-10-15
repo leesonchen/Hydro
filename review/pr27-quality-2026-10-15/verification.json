@@ -1,0 +1,75 @@
+{
+  "date": "2026-10-15",
+  "repository": "leesonchen/hydromod",
+  "pr": 27,
+  "branch": "fix/classroom-test-post-contest-practice-20261015",
+  "tested_code_commit": "0fde974a7a7bef32ef360c3b68620e733b92d7aa",
+  "base_commit": "a4d13fa527c0d628164fc08456da7482390e1fd3",
+  "contract_sha256": "a85de9558982d44b81bca88c0bf55660e0e12179ba402f31c04501be1aebc657",
+  "environment": {
+    "node": "v22.20.0",
+    "yarn": "4.14.1",
+    "typescript": "6.0.3",
+    "mongodb": "8.2.1"
+  },
+  "checks": [
+    {
+      "command": "node --check <each tracked .js/.cjs/.mjs>",
+      "exit_code": 0,
+      "files": 124,
+      "log": "syntax.log"
+    },
+    {
+      "command": "yarn build",
+      "exit_code": 0,
+      "log": "build.log"
+    },
+    {
+      "command": "yarn build:ui:production:webpack",
+      "exit_code": 0,
+      "log": "ui-build.log"
+    },
+    {
+      "command": "yarn lint:ci",
+      "exit_code": 0,
+      "log": "lint.log"
+    },
+    {
+      "command": "node --test test/contest-assessment-monitor.spec.js test/submission-provenance.spec.js test/contest-team-regressions.spec.js test/practice-record-connection.spec.js",
+      "exit_code": 0,
+      "tests": 110,
+      "pass": 110,
+      "log": "permissions.log"
+    },
+    {
+      "command": "MONGOMS_SYSTEM_BINARY=/home/leeson/.cache/mongodb-binaries/mongod-x64-ubuntu-8.2.1 node --test test/classroom-assessment-entry.js",
+      "exit_code": 0,
+      "tests": 17,
+      "pass": 17,
+      "log": "runtime.log"
+    },
+    {
+      "command": "COREPACK_HOME=/home/leeson/.cache/node/corepack MONGOMS_SYSTEM_BINARY=/home/leeson/.cache/mongodb-binaries/mongod-x64-ubuntu-8.2.1 NODE_OPTIONS=--require=/home/leeson/work/Hydro/test/classroom-feedback-test-isolate.cjs yarn test",
+      "exit_code": 0,
+      "tap_process_summaries": 27,
+      "tap": {
+        "tests": 691,
+        "pass": 691,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "app_tests": 89,
+      "app_pass": 89,
+      "log": "full-test.log"
+    }
+  ],
+  "blocking_findings": [],
+  "remaining_findings": [
+    {
+      "severity": "P3",
+      "description": "Global record pages may contain fewer visible rows after per-record access filtering. Empty filtered pages retain pagination; ordinary records on later pages remain accessible."
+    }
+  ],
+  "conclusion": "ready_to_merge_technically"
+}

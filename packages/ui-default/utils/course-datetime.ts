@@ -6,7 +6,7 @@ export function parseDateTime(value: unknown, timeZone?: string): Date | null {
   if (!parts) return null;
   if (timeZone && !moment.tz.zone(timeZone)) return null;
   const [, year, month, day, hour, minute, second = '00'] = parts;
-  const pad = (value: string) => value.padStart(2, '0');
+  const pad = (part: string) => part.padStart(2, '0');
   const normalized = `${year}-${pad(month)}-${pad(day)} ${pad(hour)}:${minute}:${second}`;
   const format = 'YYYY-MM-DD HH:mm:ss';
   const parsed = timeZone ? moment.tz(normalized, format, true, timeZone) : moment(normalized, format, true);

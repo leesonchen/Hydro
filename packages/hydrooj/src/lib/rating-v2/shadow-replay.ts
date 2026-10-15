@@ -187,11 +187,17 @@ export async function runShadowReplay(
 
     // 1. candidates ------------------------------------------------------------
     const tdocs = await docColl.find(
-        { docType: DOC_TYPE_CONTEST, rule: { $in: rules }, ...(options.domainId ? { domainId: options.domainId } : {}), beginAt: { $lte: asOf }, endAt: { $lte: asOf }, ...(certified ? {
-            $or: [{ rated: true }, { sourceType: 'course_assessment', 'ratingPolicy.enabled': true }],
-        } : options.includeClassroomAssessments
-            ? { $or: [{ rated: true }, { sourceType: 'course_assessment' }] }
-            : { rated: true }) },
+        {
+            docType: DOC_TYPE_CONTEST,
+            rule: { $in: rules },
+            ...(options.domainId ? { domainId: options.domainId } : {}),
+            beginAt: { $lte: asOf },
+            endAt: { $lte: asOf },
+            ...(certified ? {
+                $or: [{ rated: true }, { sourceType: 'course_assessment', 'ratingPolicy.enabled': true }],
+            } : options.includeClassroomAssessments
+                ? { $or: [{ rated: true }, { sourceType: 'course_assessment' }] }
+                : { rated: true }) },
         { projection: {
             docId: 1, rated: 1, pids: 1, beginAt: 1, endAt: 1, duration: 1, assign: 1,
             allowTeam: 1, domainId: 1, rule: 1, ratingPolicy: 1, keepScoreboardHidden: 1, score: 1,
@@ -230,7 +236,10 @@ export async function runShadowReplay(
             // never include a test whose results are intentionally still hidden.
             const binding = options.includeClassroomAssessments && !t.keepScoreboardHidden
                 && (!t.lockAt || t.unlocked) ? await resolveClassroomBinding(dbh, { ...t, docId: t.docId || t._id }) : null;
-            if (!binding) { classroomExcluded++; continue; }
+            if (!binding) {
+                classroomExcluded++;
+                continue;
+            }
             const groupNames = (binding.course.assign || []).filter((name: string) => name !== 'teachers' && !/^\d+$/.test(name));
             const groups = groupNames.length ? await dbh.collection('user.group').find({
                 domainId: t.domainId, name: { $in: groupNames },
@@ -286,7 +295,7 @@ export async function runShadowReplay(
     let skipped = 0;
     let frozenContests = 0;
     let failedContests = 0;
-    let precisionFallbacks = 0;
+    const precisionFallbacks = { count: 0 };
     const personalDurationExcluded = { missingStart: 0, invalidStart: 0, outsideWindow: 0 };
     for (const contest of contests) {
         if (overlaps.has(String(contest.docId))) {
@@ -341,8 +350,10 @@ export async function runShadowReplay(
         const fallbackCutoff = Math.floor(cutoff / 1000) * 1000;
         records = records.filter((r) => {
             if (r.domainId !== contest.domainId || String(r.contest) !== String(contest.docId)) return false;
-            if (certified) return (!(r.submittedAt instanceof Date) || r.submittedAt.getTime() <= cutoff)
-                && (!(r.judgeAt instanceof Date) || r.judgeAt.getTime() <= cutoff);
+            if (certified) {
+                return (!(r.submittedAt instanceof Date) || r.submittedAt.getTime() <= cutoff)
+                    && (!(r.judgeAt instanceof Date) || r.judgeAt.getTime() <= cutoff);
+            }
             if (!Number.isInteger(r.pid) || !(contest.pids || []).includes(r.pid)) return false;
             // Historic ordinary records may lack provenance; explicitly marked practice,
             // virtual or non-normal submissions must never affect timed trial rankings.
@@ -356,14 +367,17 @@ export async function runShadowReplay(
             if (effective.precise) {
                 if (at < beginMs || at >= endMs || at > cutoff) return false;
             } else {
-                precisionFallbacks++;
+                precisionFallbacks.count++;
                 if (at < fallbackBegin || at >= fallbackEnd || at > fallbackCutoff) return false;
             }
             if (!Number.isFinite(r.score) || r.score < 0 || !Number.isInteger(r.status) || r.status < 1 || r.status > 7) return false;
             if (contest.duration) {
                 const attendance = statusByUid.get(r.uid);
                 const start = attendance?.startAt;
-                if (!start) { personalDurationExcluded.missingStart++; return false; }
+                if (!start) {
+                    personalDurationExcluded.missingStart++;
+                    return false;
+                }
                 if (!(start instanceof Date) || !Number.isFinite(start.getTime()) || !Number.isFinite(contest.duration) || contest.duration <= 0
                     || start.getTime() < beginMs || start.getTime() >= endMs
                     || (attendance.endAt !== undefined && (!(attendance.endAt instanceof Date) || !Number.isFinite(attendance.endAt.getTime())))) {
@@ -374,12 +388,17 @@ export async function runShadowReplay(
                     attendance.endAt instanceof Date ? attendance.endAt.getTime() : endMs);
                 const personalStartBoundary = effective.precise ? start.getTime() : Math.floor(start.getTime() / 1000) * 1000;
                 const personalEndBoundary = effective.precise ? personalEnd : Math.floor(personalEnd / 1000) * 1000;
-                if (at < personalStartBoundary || at >= personalEndBoundary) { personalDurationExcluded.outsideWindow++; return false; }
+                if (at < personalStartBoundary || at >= personalEndBoundary) {
+                    personalDurationExcluded.outsideWindow++;
+                    return false;
+                }
             }
             return true;
         });
-        if (!certified) records.sort((a, b) => effectiveSubmissionTime(a).time - effectiveSubmissionTime(b).time
-            || String(a._id).localeCompare(String(b._id)));
+        if (!certified) {
+            records.sort((a, b) => effectiveSubmissionTime(a).time - effectiveSubmissionTime(b).time
+                || String(a._id).localeCompare(String(b._id)));
+        }
         const problemKeys = new Map<number, string>();
         const fullScores = new Map<number, number>();
         if (certified) {
@@ -474,7 +493,8 @@ export async function runShadowReplay(
         if (contest.sourceType === 'course_assessment') classroomProcessed++;
         else ratedProcessed++;
     }
-    report(`[replay] processed=${processed} rated=${ratedProcessed} classroom=${classroomProcessed} skipped=${skipped} frozen=${frozenContests} failed=${failedContests}`);
+    report(`[replay] processed=${processed} rated=${ratedProcessed} classroom=${classroomProcessed} `
+        + `skipped=${skipped} frozen=${frozenContests} failed=${failedContests}`);
 
     // 3. difficulty fits -------------------------------------------------------
     const fits: any[] = [];
@@ -593,9 +613,11 @@ export async function runShadowReplay(
     for (const ach of achievementByUser.values()) projectionUsers.set(`${ach.domainId}|${ach.uid}`, ach);
     // State users are scoped to the replay domain when one is requested. In unscoped
     // mode achievement rows provide the only safe domain association for projections.
-    if (options.domainId) for (const uid of states.keys()) {
-        const key = `${options.domainId}|${uid}`;
-        if (!projectionUsers.has(key)) projectionUsers.set(key, { domainId: options.domainId, uid, a: 0, problems: 0 });
+    if (options.domainId) {
+        for (const uid of states.keys()) {
+            const key = `${options.domainId}|${uid}`;
+            if (!projectionUsers.has(key)) projectionUsers.set(key, { domainId: options.domainId, uid, a: 0, problems: 0 });
+        }
     }
     for (const ach of projectionUsers.values()) {
         const st = states.get(ach.uid);
@@ -663,7 +685,7 @@ export async function runShadowReplay(
             teamExcluded,
             teamFlagMismatch,
             personalDurationExcluded,
-            precisionFallbacks,
+            precisionFallbacks: precisionFallbacks.count,
         },
         ratingUsers: rated.length,
         provisionalUsers: rated.filter((s) => s.events < provisionalEvents).length,
@@ -713,7 +735,10 @@ export async function runShadowReplay(
     const docs: any[] = [];
     for (const [uid, s] of states) {
         if (s.events === 0) continue;
-        docs.push({ poolId, kind: 'rating_state', uid, ...s, ...(options.domainId ? { domainId: options.domainId } : (certified ? { domainId: [...poolDomains][0] } : {})) });
+        docs.push({
+            poolId, kind: 'rating_state', uid, ...s,
+            ...(options.domainId ? { domainId: options.domainId } : (certified ? { domainId: [...poolDomains][0] } : {})),
+        });
     }
     for (const f of fits) docs.push({ poolId, kind: 'difficulty', ...f });
     for (const o of observationRaw) docs.push({ poolId, kind: 'observation', ...o });

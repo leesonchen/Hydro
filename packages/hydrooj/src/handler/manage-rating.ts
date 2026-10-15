@@ -1,8 +1,8 @@
+import { Context } from '../context';
 import { ValidationError } from '../error';
 import { PRIV } from '../model/builtin';
-import * as ratingPublication from '../model/rating-publication';
 import * as oplog from '../model/oplog';
-import { Context } from '../context';
+import * as ratingPublication from '../model/rating-publication';
 import { Handler, requireSudo } from '../service/server';
 
 class ManageRatingHandler extends Handler {

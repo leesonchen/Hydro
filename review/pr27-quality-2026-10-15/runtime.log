@@ -1,0 +1,491 @@
+TAP version 13
+# Process 2742142 running as master
+# Using mongodb external event bus
+# 15 14:42:21   common [I] Locale init: /home/leeson/work/Hydro/packages/hydrooj
+# 15 14:42:21 settings [I] Successfully loaded config
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/service/worker.ts with scope worker
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/service/server.ts with scope server
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/service/storage.ts with scope file
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/blacklist.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/classroomFeedback.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/contest.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/discussion.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/document.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/domain.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/feedback.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/message.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/oauth.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/opcount.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/problem.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/rating-publication.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/record.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/schedule.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/setting.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/solution.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/storage.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/task.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/token.ts 
+# 15 14:42:25   loader [I] apply plugin packages/hydrooj/src/model/user.ts 
+# 15 14:42:25model/setting [I] Ensuring settings
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/aiedu.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/classroom-feedback.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/compat.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/connection.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/contest-homework-stats.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/contest-monitor.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/contest.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/course-management.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/discussion.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/domain.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/home.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/homework.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/import.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/judge.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/manage-rating.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/manage.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/misc.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/practice-rating.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/problem.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/record.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/status.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/training.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/user.ts 
+# 15 14:42:27   loader [I] apply plugin packages/hydrooj/src/handler/userlist.ts 
+# 15 14:42:27    mongo [I] Indexing blacklist.expire with key { expireAt: -1 }
+# 15 14:42:27    mongo [I] Indexing domain.lower with key { lower: 1 }
+# 15 14:42:27    mongo [I] Indexing contest.balloon.basic with key { domainId: 1, tid: 1, pid: 1, uid: 1 }
+# 15 14:42:27    mongo [I] Indexing message.to with key { to: 1, _id: -1 }
+# 15 14:42:27    mongo [I] Indexing oauth.platform_id with key { platform: 1, id: 1 }
+# 15 14:42:27    mongo [I] Indexing opcount.expire with key { expireAt: -1 }
+# 15 14:42:27    mongo [I] Indexing domain.user.uid with key { domainId: 1, uid: 1 }
+# 15 14:42:27    mongo [I] Indexing feedback.reporter with key { reporter: 1, updatedAt: -1 }
+# 15 14:42:27    mongo [I] Indexing record.stat.basic with key { domainId: 1, pid: 1, uid: 1, _id: -1 }
+# 15 14:42:27    mongo [I] Indexing record.history.basic with key { rid: 1, _id: -1 }
+# 15 14:42:27    mongo [I] Indexing event.expire with key { expire: 1 }
+# 15 14:42:27    mongo [I] Indexing token.basic with key { uid: 1, tokenType: 1, updateAt: -1 }
+# 15 14:42:27    mongo [I] Indexing user.uname with key { unameLower: 1 }
+# 15 14:42:27    mongo [I] Indexing contest.practiceAccess.practiceAccess with key { domainId: 1, tid: 1, uid: 1 }
+# 15 14:42:27    mongo [I] Indexing record.practice with key { domainId: 1, practiceContest: 1, uid: 1, pid: 1, _id: -1 }
+# 15 14:42:27    mongo [I] Indexing storage.path with key { path: 1 }
+# 15 14:42:27model/task [I] No replica set found.
+# 15 14:42:27    mongo [I] Indexing contest.monitor.monitorDedupe with key { domainId: 1, contestTid: 1, uid: 1, sessionId: 1, pageInstanceId: 1, sequence: 1 }
+# 15 14:42:27    mongo [I] Indexing document.classroomAssessmentBinding with key { domainId: 1, docType: 1, sourceType: 1, sourceCourseTid: 1, sourceNodeId: 1 }
+# 15 14:42:27    mongo [I] Indexing status.expire with key { updateAt: 1 }
+# 15 14:42:27    mongo [I] Indexing document.basic with key { domainId: 1, docType: 1, docId: 1 }
+# 15 14:42:27    mongo [I] Indexing vuser.uname with key { unameLower: 1 }
+# 15 14:42:27    mongo [I] Indexing user.group.name with key { domainId: 1, name: 1 }
+# 15 14:42:27    mongo [I] Indexing domain.host with key { host: 1 }
+# 15 14:42:27    mongo [I] Indexing contest.balloon.first with key { domainId: 1, tid: 1, pid: 1 }
+# 15 14:42:27    mongo [I] Indexing oauth.uid_platform with key { uid: 1, platform: 1 }
+# 15 14:42:27    mongo [I] Indexing opcount.unique with key { op: 1, ident: 1, expireAt: 1 }
+# 15 14:42:27    mongo [I] Indexing domain.user.rp with key { domainId: 1, rp: -1, uid: 1 }
+# 15 14:42:27    mongo [I] Indexing feedback.domain with key { domainId: 1, updatedAt: -1 }
+# 15 14:42:27    mongo [I] Indexing record.stat.time with key { domainId: 1, pid: 1, uid: 1, time: 1 }
+# 15 14:42:27    mongo [I] Indexing message.from with key { from: 1, _id: -1 }
+# 15 14:42:27    mongo [I] Indexing token.expire with key { expireAt: -1 }
+# 15 14:42:27    mongo [I] Indexing schedule.schedule with key { type: 1, subType: 1, executeAfter: -1 }
+# 15 14:42:27   server [W] HandlerCommon.prototype[url] already exists.
+# 15 14:42:27   server [W] HandlerCommon.prototype[translate] already exists.
+# 15 14:42:27   server [W] HandlerCommon.prototype[checkPerm] already exists.
+# 15 14:42:27   server [W] HandlerCommon.prototype[checkPriv] already exists.
+# 15 14:42:27   server [W] Handler.prototype[onerror] already exists.
+# 15 14:42:27   server [W] ConnectionHandler.prototype[onerror] already exists.
+# 15 14:42:27    mongo [I] Indexing user.mail with key { mailLower: 1 }
+# 15 14:42:27    mongo [I] Indexing contest.monitor.monitorListing with key { domainId: 1, contestTid: 1, serverAt: -1 }
+# 15 14:42:27    mongo [I] Indexing vuser.mail with key { mailLower: 1 }
+# 15 14:42:28    mongo [I] Indexing user.group.uid with key { domainId: 1, uids: 1 }
+# 15 14:42:28    mongo [I] Indexing storage.autoDelete with key { path: 1, autoDelete: 1 }
+# 15 14:42:28    mongo [I] Indexing record.delete with key { domainId: 1, pid: 1 }
+# 15 14:42:28    mongo [I] Indexing feedback.updated with key { updatedAt: -1 }
+# 15 14:42:28    mongo [I] Indexing record.stat.memory with key { domainId: 1, pid: 1, uid: 1, memory: 1 }
+# 15 14:42:28    mongo [I] Indexing message.feedback with key { feedbackId: 1, _id: -1 }
+# 15 14:42:28    mongo [I] Indexing contest.monitor.monitorEventsExpire with key { expiresAt: 1 }
+# 15 14:42:28    mongo [I] Indexing user.group.invitationCode with key { domainId: 1, invitationCode: 1 }
+# 15 14:42:28    mongo [I] Indexing storage.link with key { link: 1 }
+# 15 14:42:28    mongo [I] Indexing record.basic with key { domainId: 1, contest: 1, _id: -1 }
+# 15 14:42:28    mongo [I] Indexing record.stat.length with key { domainId: 1, pid: 1, uid: 1, length: 1 }
+# 15 14:42:28    mongo [I] Indexing document.owner with key { domainId: 1, docType: 1, owner: 1, docId: -1 }
+# 15 14:42:28    mongo [I] Indexing contest.monitor.sessions.monitorSession with key { domainId: 1, contestTid: 1, uid: 1, sessionId: 1 }
+# 15 14:42:28    mongo [I] Indexing record.withUser with key { domainId: 1, contest: 1, uid: 1, _id: -1 }
+# 15 14:42:28    mongo [I] Indexing task.task with key { type: 1, subType: 1, priority: -1 }
+# 15 14:42:28    mongo [I] Indexing document.search with key { domainId: 1, docType: 1, search: 'text', title: 'text' }
+# 15 14:42:28    mongo [I] Indexing record.withProblem with key { domainId: 1, contest: 1, pid: 1, _id: -1 }
+# 15 14:42:28    mongo [I] Indexing contest.monitor.sessions.monitorLiveSessions with key { domainId: 1, contestTid: 1, lastSeenAt: -1 }
+# 15 14:42:28    mongo [I] Indexing document.sort with key { domainId: 1, docType: 1, sort: 1, docId: 1 }
+# 15 14:42:28    mongo [I] Indexing record.withUserAndProblem with key { domainId: 1, contest: 1, pid: 1, uid: 1, _id: -1 }
+# 15 14:42:28    mongo [I] Indexing contest.monitor.sessions.monitorSessionsExpire with key { expiresAt: 1 }
+# 15 14:42:28    mongo [I] Indexing document.problemReference with key { docType: 1, 'reference.domainId': 1, 'reference.pid': 1 }
+# 15 14:42:28    mongo [I] Indexing record.withStatus with key { domainId: 1, contest: 1, status: 1, _id: -1 }
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/blacklist.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/checkUpdate.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/contest-team-audit.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/course-feedback-structure.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/deleteUser.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/fixStorage.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/practice-rating.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/problemStat.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/rating-v2-audit.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/rating-v2-certify.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/rating-v2-replay.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/rating.ts 
+# 15 14:42:28   loader [I] apply plugin packages/hydrooj/src/script/storageUsage.ts 
+# 15 14:42:28    mongo [I] Indexing document.solution with key { domainId: 1, docType: 1, parentType: 1, parentId: 1, pin: -1, vote: -1, docId: -1 }
+# 15 14:42:28    mongo [I] Indexing document.discussionSort with key { docType: 1, domainId: 1, hidden: 1, pin: -1, docId: -1 }
+# 15 14:42:28    mongo [I] Indexing document.discussionNodeSort with key { docType: 1, domainId: 1, hidden: 1, parentType: 1, parentId: 1, pin: -1, docId: -1 }
+# 15 14:42:28    mongo [I] Indexing document.hiddenDoc with key { domainId: 1, docType: 1, hidden: 1, docId: -1 }
+# 15 14:42:28    mongo [I] Indexing document.contest with key { domainId: 1, docType: 1, pids: 1 }
+# 15 14:42:28    mongo [I] Indexing document.contestRule with key { domainId: 1, docType: 1, rule: 1, docId: -1 }
+# 15 14:42:28    mongo [I] Indexing document.training with key { domainId: 1, docType: 1, 'dag.pids': 1 }
+# 15 14:42:28    mongo [I] Indexing document.status.basic with key { domainId: 1, docType: 1, docId: 1, uid: 1 }
+# 15 14:42:28    mongo [I] Indexing document.status.rp with key { domainId: 1, docType: 1, docId: 1, status: 1, rid: 1, rp: 1 }
+# 15 14:42:28    mongo [I] Indexing document.status.contestRuleOI with key { domainId: 1, docType: 1, docId: 1, score: -1 }
+# 15 14:42:29   server [S] Server listening at: 127.0.0.1:42753
+# 15 14:42:29   worker [S] Server started
+# 15 14:42:29    mongo [I] Indexing document.status.contestRuleACM with key { domainId: 1, docType: 1, docId: 1, accept: -1, time: 1 }
+# 15 14:42:29    mongo [I] Indexing document.status.contestTeam with key { domainId: 1, docType: 1, docId: 1, members: 1 }
+# 15 14:42:29    mongo [I] Indexing document.status.training with key { domainId: 1, docType: 1, uid: 1, enroll: 1, docId: 1 }
+# 15 14:42:30   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/p/1 This contest is not live. [ new ObjectId('6ad075d676fe0dace0574054') ]
+# 15 14:42:30   server [E] User: 8(camv968vp8admin) get: /d/assessment-access-mv968uu5/p/1 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075d676fe0dace0574054') ]
+# 15 14:42:30   server [E] User: 7(camv968vjeoldOwner) get: /d/assessment-access-mv968uu5/p/1 This contest is not live. [ new ObjectId('6ad075d676fe0dace0574054') ]
+# Subtest: Classroom assessment runtime
+    # Subtest: Classroom assessment HTTP and WebSocket access
+        # Subtest: allows parent teachers to preview before the exam without manufacturing attendance
+        ok 1 - allows parent teachers to preview before the exam without manufacturing attendance
+          ---
+          duration_ms: 468.387026
+          type: 'test'
+          ...
+# 15 14:42:31   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/p/2 You haven't attended this contest yet. [ new ObjectId('6ad075d776fe0dace0574060') ]
+# 15 14:42:31   server [E] User: 3(camv968uxnteacher) post: /d/assessment-access-mv968uu5/course/assessment/6ad075d776fe0dace0574060 ForbiddenError [ '教师不能作为学生参加课堂测试' ]
+# 15 14:42:31   server [E] User: 9(camv968vv6outsider) post: /d/assessment-access-mv968uu5/course/assessment/6ad075d776fe0dace0574060 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075d776fe0dace0574060') ]
+        # Subtest: creates formal attendance only through an eligible student start and marks teacher submissions as staff
+        ok 2 - creates formal attendance only through an eligible student start and marks teacher submissions as staff
+          ---
+          duration_ms: 711.176852
+          type: 'test'
+          ...
+# 15 14:42:32   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/classroom/6ad075d776fe0dace0574079/scoreboard ForbiddenError []
+# 15 14:42:32   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/course/assessment/6ad075d776fe0dace0574079/code ForbiddenError [ '只有课程教师和维护人可以导出课堂测试代码。' ]
+# 15 14:42:32   server [E] User: 8(camv968vp8admin) get: /d/assessment-access-mv968uu5/classroom/6ad075d776fe0dace0574079/scoreboard You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075d776fe0dace0574079') ]
+# 15 14:42:32   server [E] User: 8(camv968vp8admin) get: /d/assessment-access-mv968uu5/course/assessment/6ad075d776fe0dace0574079/code You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075d776fe0dace0574079') ]
+# 15 14:42:32   server [E] User: 7(camv968vjeoldOwner) get: /d/assessment-access-mv968uu5/classroom/6ad075d776fe0dace0574079/scoreboard ForbiddenError []
+# 15 14:42:32   server [E] User: 7(camv968vjeoldOwner) get: /d/assessment-access-mv968uu5/course/assessment/6ad075d776fe0dace0574079/code ForbiddenError [ '只有课程教师和维护人可以导出课堂测试代码。' ]
+        # Subtest: serves live default, csv and ghost scoreboards and code exports solely through current course authority
+        ok 3 - serves live default, csv and ghost scoreboards and code exports solely through current course authority
+          ---
+          duration_ms: 704.231512
+          type: 'test'
+          ...
+# 15 14:42:32   server [E] User: 5(camv968v9lpeer) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace057408f You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:32   server [E] User: 5(camv968v9lpeer) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace057408f You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:32   server [E] User: 8(camv968vp8admin) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace057408f You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075d876fe0dace057408e') ]
+# 15 14:42:32   server [E] User: 8(camv968vp8admin) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace057408f You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075d876fe0dace057408e') ]
+# 15 14:42:32   server [E] User: 7(camv968vjeoldOwner) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace057408f You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:32   server [E] User: 7(camv968vjeoldOwner) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace057408f You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:32   server [E] User: 5(camv968v9lpeer) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace0574092 You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:32   server [E] User: 5(camv968v9lpeer) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace0574092 You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:32   server [E] User: 8(camv968vp8admin) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace0574092 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075d876fe0dace057408e') ]
+# 15 14:42:32   server [E] User: 8(camv968vp8admin) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace0574092 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075d876fe0dace057408e') ]
+# 15 14:42:33   server [E] User: 7(camv968vjeoldOwner) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace0574092 You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:33   server [E] User: 7(camv968vjeoldOwner) get: /d/assessment-access-mv968uu5/record/6ad075d876fe0dace0574092 You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:33   server [E] User: 5(camv968v9lpeer) get: /d/assessment-access-mv968uu5/record You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:33   server [E] User: 7(camv968vjeoldOwner) get: /d/assessment-access-mv968uu5/record You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:33   server [E] User: 5(camv968v9lpeer) get: /d/assessment-access-mv968uu5/record You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:33   server [E] User: 7(camv968vjeoldOwner) get: /d/assessment-access-mv968uu5/record You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+        # Subtest: uses parent ACL for formal and practice HTTP records and keeps students limited to themselves
+        ok 4 - uses parent ACL for formal and practice HTTP records and keeps students limited to themselves
+          ---
+          duration_ms: 972.282399
+          type: 'test'
+          ...
+        # Subtest: applies the rule projection to students even when their child owner copy is stale
+        ok 5 - applies the rule projection to students even when their child owner copy is stale
+          ---
+          duration_ms: 1339.905614
+          type: 'test'
+          ...
+# 15 14:42:35   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:5(camv968v9lpeer) You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:35   server [E] PermissionError: You don't have the required permission ({0}) in this domain.
+#                              at RecordDetailConnectionHandler.prepare (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:754:66)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at Proxy.handleWS (/home/leeson/work/Hydro/framework/framework/server.ts:693:28)
+#                              at WebSocketLayer.callback (/home/leeson/work/Hydro/framework/framework/server.ts:792:17)
+# 15 14:42:36   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:8(camv968vp8admin) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075da76fe0dace05740d6') ]
+# 15 14:42:36   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:33:85)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at RecordDetailConnectionHandler.prepare (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:753:36)
+#                              at Proxy.handleWS (/home/leeson/work/Hydro/framework/framework/server.ts:693:28)
+#                              at WebSocketLayer.callback (/home/leeson/work/Hydro/framework/framework/server.ts:792:17)
+# 15 14:42:36   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:7(camv968vjeoldOwner) You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:36   server [E] PermissionError: You don't have the required permission ({0}) in this domain.
+#                              at RecordDetailConnectionHandler.prepare (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:754:66)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at Proxy.handleWS (/home/leeson/work/Hydro/framework/framework/server.ts:693:28)
+#                              at WebSocketLayer.callback (/home/leeson/work/Hydro/framework/framework/server.ts:792:17)
+# 15 14:42:37   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:5(camv968v9lpeer) You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:37   server [E] PermissionError: You don't have the required permission ({0}) in this domain.
+#                              at RecordDetailConnectionHandler.prepare (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:746:23)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at Proxy.handleWS (/home/leeson/work/Hydro/framework/framework/server.ts:693:28)
+#                              at WebSocketLayer.callback (/home/leeson/work/Hydro/framework/framework/server.ts:792:17)
+# 15 14:42:37   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:8(camv968vp8admin) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075da76fe0dace05740d6') ]
+# 15 14:42:37   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:33:85)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at RecordDetailConnectionHandler.prepare (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:743:36)
+#                              at Proxy.handleWS (/home/leeson/work/Hydro/framework/framework/server.ts:693:28)
+#                              at WebSocketLayer.callback (/home/leeson/work/Hydro/framework/framework/server.ts:792:17)
+# 15 14:42:37   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:7(camv968vjeoldOwner) You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:37   server [E] PermissionError: You don't have the required permission ({0}) in this domain.
+#                              at RecordDetailConnectionHandler.prepare (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:746:23)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at Proxy.handleWS (/home/leeson/work/Hydro/framework/framework/server.ts:693:28)
+#                              at WebSocketLayer.callback (/home/leeson/work/Hydro/framework/framework/server.ts:792:17)
+        # Subtest: streams authorized formal and practice records through both real WebSocket routes
+        ok 6 - streams authorized formal and practice records through both real WebSocket routes
+          ---
+          duration_ms: 2556.644575
+          type: 'test'
+          ...
+        # Subtest: does not leak other students or unrelated all-zero pretests into a classroom formal subscription
+        ok 7 - does not leak other students or unrelated all-zero pretests into a classroom formal subscription
+          ---
+          duration_ms: 576.26193
+          type: 'test'
+          ...
+        # Subtest: reprojects existing student streams against a classroom time extension instead of their ended contest snapshot
+        ok 8 - reprojects existing student streams against a classroom time extension instead of their ended contest snapshot
+          ---
+          duration_ms: 1207.571622
+          type: 'test'
+          ...
+# 15 14:42:39   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:4(camv968v50student) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075df76fe0dace057413d') ]
+# 15 14:42:39   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:33:85)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordDetailConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:831:17)
+#                              at async Promise.allSettled (index 3)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:39   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:4(camv968v50student) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075df76fe0dace057413d') ]
+# 15 14:42:39   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:33:85)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordDetailConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:831:17)
+#                              at async Promise.allSettled (index 1)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:39   server [E] Path:/d/assessment-access-mv968uu5/record-conn, User:4(camv968v50student) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075df76fe0dace057413d') ]
+# 15 14:42:39   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:33:85)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordMainConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:648:37)
+#                              at async Promise.allSettled (index 2)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:39   server [E] Path:/d/assessment-access-mv968uu5/record-conn, User:4(camv968v50student) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075df76fe0dace057413d') ]
+# 15 14:42:39   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:33:85)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordMainConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:648:37)
+#                              at async Promise.allSettled (index 0)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:39   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/record/6ad075df76fe0dace057413e You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075df76fe0dace057413d') ]
+# 15 14:42:39   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/record/6ad075df76fe0dace057413e You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075df76fe0dace057413d') ]
+# 15 14:42:39   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/record/6ad075df76fe0dace0574141 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075df76fe0dace057413d') ]
+# 15 14:42:39   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/record/6ad075df76fe0dace0574141 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075df76fe0dace057413d') ]
+        # Subtest: rechecks roster revocation for HTTP and queued formal/practice WebSocket deliveries
+        ok 9 - rechecks roster revocation for HTTP and queued formal/practice WebSocket deliveries
+          ---
+          duration_ms: 1699.922008
+          type: 'test'
+          ...
+# 15 14:42:41   server [E] Path:/d/assessment-access-mv968uu5/record-conn, User:4(camv968v50student) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e076fe0dace0574182') ]
+# 15 14:42:41   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:33:85)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordMainConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:648:37)
+#                              at async Promise.allSettled (index 2)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:41   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:4(camv968v50student) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e076fe0dace0574182') ]
+# 15 14:42:41   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:33:85)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordDetailConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:831:17)
+#                              at async Promise.allSettled (index 3)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:41   server [E] Path:/d/assessment-access-mv968uu5/record-conn, User:4(camv968v50student) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e076fe0dace0574182') ]
+# 15 14:42:41   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:33:85)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordMainConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:648:37)
+#                              at async Promise.allSettled (index 0)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:41   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:4(camv968v50student) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e076fe0dace0574182') ]
+# 15 14:42:41   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:33:85)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordDetailConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:831:17)
+#                              at async Promise.allSettled (index 1)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:41   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/record/6ad075e076fe0dace0574183 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e076fe0dace0574182') ]
+# 15 14:42:41   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/record/6ad075e076fe0dace0574183 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e076fe0dace0574182') ]
+# 15 14:42:41   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/record/6ad075e076fe0dace0574186 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e076fe0dace0574182') ]
+# 15 14:42:41   server [E] User: 4(camv968v50student) get: /d/assessment-access-mv968uu5/record/6ad075e076fe0dace0574186 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e076fe0dace0574182') ]
+        # Subtest: rechecks node revocation for HTTP and queued formal/practice WebSocket deliveries
+        ok 10 - rechecks node revocation for HTTP and queued formal/practice WebSocket deliveries
+          ---
+          duration_ms: 1723.815468
+          type: 'test'
+          ...
+# 15 14:42:42   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:3(camv968uxnteacher) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e276fe0dace05741c7') ]
+# 15 14:42:42   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:27:102)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordDetailConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:831:17)
+#                              at async Promise.allSettled (index 1)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:42   server [E] Path:/d/assessment-access-mv968uu5/record-conn, User:3(camv968uxnteacher) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e276fe0dace05741c7') ]
+# 15 14:42:42   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:27:102)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordMainConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:648:37)
+#                              at async Promise.allSettled (index 2)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:42   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:3(camv968uxnteacher) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e276fe0dace05741c7') ]
+# 15 14:42:42   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:27:102)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordDetailConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:831:17)
+#                              at async Promise.allSettled (index 3)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:42   server [E] Path:/d/assessment-access-mv968uu5/record-conn, User:3(camv968uxnteacher) You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e276fe0dace05741c7') ]
+# 15 14:42:42   server [E] NotAssignedError: You are not assigned to this {0}.
+#                              at deny (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:10:32)
+#                              at assertCourseAssessmentAccess (/home/leeson/work/Hydro/packages/hydrooj/src/lib/course-assessment-access.ts:27:102)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:34:30)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordMainConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:648:37)
+#                              at async Promise.allSettled (index 0)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:42   server [E] User: 3(camv968uxnteacher) get: /d/assessment-access-mv968uu5/record/6ad075e276fe0dace05741c8 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e276fe0dace05741c7') ]
+# 15 14:42:43   server [E] User: 3(camv968uxnteacher) get: /d/assessment-access-mv968uu5/record/6ad075e276fe0dace05741c8 You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e276fe0dace05741c7') ]
+# 15 14:42:43   server [E] User: 3(camv968uxnteacher) get: /d/assessment-access-mv968uu5/record/6ad075e276fe0dace05741cb You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e276fe0dace05741c7') ]
+# 15 14:42:43   server [E] User: 3(camv968uxnteacher) get: /d/assessment-access-mv968uu5/record/6ad075e276fe0dace05741cb You are not assigned to this {0}. [ 'contest', new ObjectId('6ad075e276fe0dace05741c7') ]
+        # Subtest: rechecks maintainer revocation for HTTP and queued formal/practice WebSocket deliveries
+        ok 11 - rechecks maintainer revocation for HTTP and queued formal/practice WebSocket deliveries
+          ---
+          duration_ms: 1692.819722
+          type: 'test'
+          ...
+# 15 14:42:44   server [E] Path:/d/assessment-access-mv968uu5/record-conn, User:7(camv968vjeoldOwner) You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:44   server [E] PermissionError: You don't have the required permission ({0}) in this domain.
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:38:63)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordMainConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:648:37)
+#                              at async Promise.allSettled (index 0)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+# 15 14:42:44   server [E] Path:/d/assessment-access-mv968uu5/record-detail-conn, User:7(camv968vjeoldOwner) You don't have the required permission ({0}) in this domain. [ "View other's records" ]
+# 15 14:42:44   server [E] PermissionError: You don't have the required permission ({0}) in this domain.
+#                              at assertRecordActivityAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:38:63)
+#                              at processTicksAndRejections (node:internal/process/task_queues:105:5)
+#                              at checkPracticeAccess (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:458:42)
+#                              at RecordDetailConnectionHandler.onRecordChange (/home/leeson/work/Hydro/packages/hydrooj/src/handler/record.ts:831:17)
+#                              at async Promise.allSettled (index 1)
+#                              at Proxy.parallel (file:///home/leeson/work/Hydro/node_modules/cordis/lib/index.js:305:21)
+        # Subtest: terminates teacher subscriptions on demotion even when the former maintainer remains an enrolled student viewing their own record
+        ok 12 - terminates teacher subscriptions on demotion even when the former maintainer remains an enrolled student viewing their own record
+          ---
+          duration_ms: 276.700782
+          type: 'test'
+          ...
+        # Subtest: filters classroom records from global all/allDomain lists and subscriptions using each current parent ACL
+        ok 13 - filters classroom records from global all/allDomain lists and subscriptions using each current parent ACL
+          ---
+          duration_ms: 1353.873933
+          type: 'test'
+          ...
+        # Subtest: projects a classroom student own ACM record on global HTTP and WebSocket reads even with an unrelated contest filter
+        ok 14 - projects a classroom student own ACM record on global HTTP and WebSocket reads even with an unrelated contest filter
+          ---
+          duration_ms: 967.396728
+          type: 'test'
+          ...
+# 15 14:42:47   server [E] User: 6(camv968ve0late) post: /d/assessment-access-mv968uu5/p/15/submit This contest is not live. [ new ObjectId('6ad075e676fe0dace05742b7') ]
+        # Subtest: lets an absent enrolled student practice after the exam without attendance, formal score or rating evidence
+        ok 15 - lets an absent enrolled student practice after the exam without attendance, formal score or rating evidence
+          ---
+          duration_ms: 289.805986
+          type: 'test'
+          ...
+# 15 14:42:47   server [E] User: 8(camv968vp8admin) get: /d/assessment-access-mv968uu5/p/16 You haven't attended this contest yet. [ new ObjectId('6ad075e776fe0dace05742c8') ]
+# 15 14:42:47   server [E] User: 8(camv968vp8admin) post: /d/assessment-access-mv968uu5/p/16/submit This contest is not live. [ new ObjectId('6ad075e776fe0dace05742c8') ]
+# 15 14:42:47   server [E] User: 3(camv968uxnteacher) get: /d/assessment-access-mv968uu5/contest/6ad075e776fe0dace05742c8 You don't have the required permission ({0}) in this domain. [ 'View contests' ]
+        # Subtest: preserves ordinary contest attendance and explicit practice opt-in
+        ok 16 - preserves ordinary contest attendance and explicit practice opt-in
+          ---
+          duration_ms: 252.339305
+          type: 'test'
+          ...
+        # Subtest: keeps the next-page link when a full global record page is removed by classroom authorization
+        ok 17 - keeps the next-page link when a full global record page is removed by classroom authorization
+          ---
+          duration_ms: 1317.072675
+          type: 'test'
+          ...
+        1..17
+    ok 1 - Classroom assessment HTTP and WebSocket access
+      ---
+      duration_ms: 19647.077505
+      type: 'suite'
+      ...
+    1..1
+ok 1 - Classroom assessment runtime
+  ---
+  duration_ms: 27096.385616
+  type: 'suite'
+  ...
+1..1
+# tests 17
+# suites 2
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 44935.251793

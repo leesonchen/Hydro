@@ -13,9 +13,9 @@ import {
 } from '../error';
 import { DomainDoc, Setting } from '../interface';
 import avatar, { validate } from '../lib/avatar';
+import * as mail from '../lib/mail';
 import { projectUserRatings, publicRatingStore } from '../lib/rating-publication-read';
 import type { RatingPointer } from '../lib/rating-publication-store';
-import * as mail from '../lib/mail';
 import { verifyTFA } from '../lib/verifyTFA';
 import BlackListModel from '../model/blacklist';
 import { PERM, PRIV } from '../model/builtin';

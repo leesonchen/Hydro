@@ -24,6 +24,7 @@
         "test:rating-publication": "node -r @hydrooj/register test/rating-v2.spec.ts && node -r @hydrooj/register test/rating-v2-evidence.spec.ts && node -r @hydrooj/register test/rating-v2-public-replay.spec.ts && node -r @hydrooj/register test/rating-publication-store.spec.ts && node -r @hydrooj/register test/rating-publication-runtime.spec.ts && node --test test/rating-publication-ui.spec.js",
         "test:classroom-feedback": "node --test test/classroom-feedback.spec.js test/classroom-feedback-state.spec.js test/course-feedback-structure.spec.js",
         "test:classroom-feedback:integration": "node --test test/classroom-feedback-entry.js",
+        "test:classroom-assessment:integration": "node --test test/classroom-assessment-entry.js",
         "test:domain-invitations": "node --test test/domain-invitation-roles.spec.js",
         "test:practice-rating": "node -r @hydrooj/register test/practice-rating.spec.ts && node -r @hydrooj/register test/practice-rating-model.spec.ts && node -r @hydrooj/register test/practice-rating-quality.spec.ts",
         "test:practice-rating:integration": "node -r @hydrooj/register test/practice-rating-integration.spec.ts && node -r @hydrooj/register test/practice-rating-validation.spec.ts",

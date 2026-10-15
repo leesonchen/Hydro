@@ -2,7 +2,7 @@
 {% import "components/contest.html" as contest with context %}
 <div class="section side">
 {% set isTemplate = tdoc.assign and ('teachers' in tdoc.assign) %}
-{% set canEditCourse = handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+{% set canEditCourse = handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or (handler.user.own(tdoc) and handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
 {% set canManageCourse = handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or (handler.user.own(tdoc) and handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
 {% set canEditLecture = handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) or (handler.user.own(tdoc) and handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK_SELF)) %}
 {% if page_name != 'training_detail' %}
@@ -35,7 +35,7 @@
     {% endif %}
     {% if not isTemplate %}
       {% set isCourseTeacher = handler.user.own(tdoc) %}
-      {% set isTeacherEditor = isCourseTeacher or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK) %}
+      {% set isTeacherEditor = canManageCourse %}
       {% if not isCourseTeacher and not (tsdoc and tsdoc.attend) and not model.contest.isDone(tdoc) %}
         <li class="menu__item">
       {% if (handler.user.hasPerm(perm.PERM_ATTEND_HOMEWORK) or handler.user.hasPerm(perm.PERM_EDIT_HOMEWORK)) and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}

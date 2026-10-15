@@ -44,7 +44,8 @@ function reloadContestModel() {
     });
 }
 const actor = (uid, perms = []) => ({ _id: uid, group: groups.map((g) => g.name),
-    own: (doc) => doc.owner === uid, hasPerm: (...items) => items.some((p) => perms.includes(p)) });
+    own: (doc) => doc.owner === uid || doc.maintainer?.includes(uid),
+    hasPerm: (...items) => items.some((p) => perms.includes(p)) });
 
 before(async () => {
     mongod = await MongoMemoryServer.create();
@@ -157,8 +158,8 @@ async function monitoredContest(extra = {}) {
         { monitorMode: 'browser', ...extra });
     return tid;
 }
-function handler(uid = 42) {
-    const h = new MonitorHandler(); h.user = actor(uid); h.response = {}; h.limitRate = async () => {}; return h;
+function handler(uid = 42, perms = []) {
+    const h = new MonitorHandler(); h.user = actor(uid, perms); h.response = {}; h.limitRate = async () => {}; return h;
 }
 test('an admitted team member is monitored under their actual user ID', async () => {
     team = -100;
@@ -225,6 +226,17 @@ async function courseFixture(rule = 'oi', future = true, passScore = 1) {
     const exam = await contest.get('test', new ObjectId(course.dag[0].assessment.contestTid));
     return { course, exam };
 }
+test('classroom monitoring uses course owner and maintainer permissions, not contest administrator rights', async () => {
+    const { course, exam } = await courseFixture();
+    await contest.edit('test', course.docId, { maintainer: [9] });
+    await assert.rejects(handler(7).get('test', exam.docId), errors.NotAssignedError);
+    await handler(7, [PERM.PERM_EDIT_HOMEWORK_SELF]).get('test', exam.docId);
+    await handler(9, [PERM.PERM_EDIT_HOMEWORK_SELF]).get('test', exam.docId);
+    // A legitimate course student with contest-admin permission is still not a course teacher.
+    groups = [{ name: 'class-a', class: true, students: [42], teachers: [], archive: false }];
+    await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
+    await assert.rejects(handler(42, [PERM.PERM_EDIT_CONTEST, PERM.PERM_VIEW_HOMEWORK]).get('test', exam.docId), errors.ForbiddenError);
+});
 test('classroom monitor rejects file-only questions before writing a contest', async () => {
     testProblemType = 'submit_answer';
     await assert.rejects(courseFixture(), /课堂测试监控模式不支持文件提交题/);
@@ -238,8 +250,96 @@ test('course synchronization is idempotent and updates class assignment and invi
     assert.deepEqual(synced.assign, ['class-b', '42']);
     assert.deepEqual(synced.maintainer, [9]);
     assert.equal(synced.monitorMode, 'browser');
+    assert.equal(synced.allowPractice, true);
     assert.equal(synced.rated, false);
     assert.equal(await document.coll.countDocuments({ sourceType: 'course_assessment' }), 1);
+});
+test('classroom subcontest owner and maintainer follow the live parent course', async () => {
+    const { course, exam } = await courseFixture();
+    const originalOwner = actor(7, [PERM.PERM_EDIT_HOMEWORK_SELF]);
+    assert.equal(await access.assertCourseAssessmentAccess(originalOwner, exam), true);
+    await contest.edit('test', course.docId, { owner: 9, maintainer: [11] });
+    const synced = await contest.get('test', exam.docId);
+    assert.equal(synced.owner, 9);
+    assert.deepEqual(synced.maintainer, [11]);
+    await assert.rejects(access.assertCourseAssessmentAccess(originalOwner, synced), errors.NotAssignedError);
+    assert.equal(await access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_EDIT_HOMEWORK_SELF]), synced), true);
+    assert.equal(await access.assertCourseAssessmentAccess(actor(11, [PERM.PERM_EDIT_HOMEWORK_SELF]), synced), true);
+});
+
+test('staff code submissions without test attendance cannot complete a classroom assessment', async () => {
+    const { course, exam } = await courseFixture('oi', false);
+    const rid = ObjectId.createFromTime(Math.floor((exam.beginAt.getTime() + 1000) / 1000));
+    await contest.updateStatus('test', exam.docId, 7, rid, 1, {
+        status: STATUS.STATUS_ACCEPTED, score: 100,
+    });
+    const staff = await contest.getStatus('test', exam.docId, 7);
+    assert.equal(staff?.attend, undefined);
+    const result = (await assessment.getAssessmentResults('test', course, 7))[1];
+    assert.equal(result.attend, false);
+    assert.equal(result.completed, false);
+    assert.equal(result.score, null);
+    assert.equal((await contest.getMultiStatus('test', {
+        docId: exam.docId, attend: { $gt: 0 },
+    }).toArray()).some((row) => row.uid === 7), false);
+});
+
+test('classroom post-test practice defaults on, supports opt-out, and persists course edits', async () => {
+    const { course, exam } = await courseFixture('oi', false);
+    assert.equal(exam.allowPractice, true);
+    const dag = structuredClone(course.dag);
+    dag[0].assessment.allowPractice = false;
+    await contest.edit('test', course.docId, { dag });
+    let synced = await contest.get('test', exam.docId);
+    assert.equal(synced.allowPractice, false);
+    assert.equal(contest.isDone(synced), true);
+    await contest.edit('test', course.docId, { title: 'Updated Course' });
+    synced = await contest.get('test', exam.docId);
+    assert.equal(synced.allowPractice, false);
+    const reset = structuredClone((await contest.get('test', course.docId)).dag);
+    reset[0].assessment.allowPractice = true;
+    await contest.edit('test', course.docId, { dag: reset });
+    assert.equal((await contest.get('test', exam.docId)).allowPractice, true);
+});
+test('classroom practice respects parent course enrollment, unlocks, staff and explicit opt-out', async () => {
+    const { course, exam } = await courseFixture('oi', false);
+    const practice = load('packages/hydrooj/src/lib/contest-practice.ts', {
+        '../error': errors, '../model/builtin': { PERM, STATUS },
+        '../model/contest': contest, '../model/record': {},
+        '../service/db': { __esModule: true, default: { collection: (name) => db.collection(name) } },
+        './course-assessment-access': access,
+    });
+    const submitPerms = [PERM.PERM_VIEW_HOMEWORK, PERM.PERM_VIEW_PROBLEM, PERM.PERM_SUBMIT_PROBLEM];
+    groups = [{ name: 'class-a', class: true, students: [42], teachers: [], archive: false }];
+    const student = actor(42, submitPerms);
+    await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
+    assert.equal((await contest.getStatus('test', exam.docId, 42))?.attend, undefined);
+    assert.equal(await practice.canSubmitPractice(student, exam), true);
+    const noCourseView = actor(42, [PERM.PERM_VIEW_CONTEST, PERM.PERM_VIEW_PROBLEM, PERM.PERM_SUBMIT_PROBLEM]);
+    await assert.rejects(practice.canSubmitPractice(noCourseView, exam), errors.NotAssignedError);
+
+    await contest.setStatus('test', course.docId, 42, { 'allow.1': false });
+    await assert.rejects(practice.canSubmitPractice(student, exam), errors.NotAssignedError);
+    await contest.setStatus('test', course.docId, 42, { 'allow.1': true });
+
+    // Global course teachers do not need to belong to the child contest's assigned class.
+    groups = [];
+    const teacher = actor(99, [...submitPerms, PERM.PERM_EDIT_HOMEWORK]);
+    assert.equal(contest.canAccessAssignedContest(teacher, exam), false);
+    assert.equal(await practice.canSubmitPractice(teacher, exam), true);
+
+    const disabled = structuredClone((await contest.get('test', course.docId)).dag);
+    disabled[0].assessment.allowPractice = false;
+    await contest.edit('test', course.docId, { dag: disabled });
+    const updatedExam = await contest.get('test', exam.docId);
+    assert.equal(await practice.canSubmitPractice(teacher, updatedExam), false);
+});
+
+test('classroom post-test practice rejects non-boolean persisted flags', async () => {
+    const { course } = await courseFixture();
+    const dag = structuredClone(course.dag);
+    dag[0].assessment.allowPractice = 'true';
+    await assert.rejects(contest.edit('test', course.docId, { dag }), errors.BadRequestError);
 });
 test('course synchronization preserves explicit certification and invalidates changed classroom conditions', async () => {
     const { course, exam } = await courseFixture();
@@ -608,17 +708,40 @@ test('OI scores remain hidden before the personal or global contest end', async 
     const result = (await assessment.getAssessmentResults('test', course, 42))[1];
     assert.equal(result.score, null); assert.equal(result.completed, false);
 });
+test('classroom teacher membership must not grant official student eligibility', async () => {
+    const { course, exam } = await courseFixture();
+    groups = [{ name: 'class-a', class: true, students: [42], teachers: [9], uids: [9, 42], archive: false }];
+    await contest.setStatus('test', course.docId, 9, { attend: 1, allow: { 1: true } });
+    await assert.rejects(access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_VIEW_HOMEWORK]), exam), errors.NotAssignedError);
+    await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
+    assert.equal(await access.assertCourseAssessmentAccess(actor(42, [PERM.PERM_VIEW_HOMEWORK]), exam), false);
+    groups[0].students = [9, 42]; // An inconsistent roster must still prefer staff classification.
+    await assert.rejects(access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_VIEW_HOMEWORK]), exam), errors.NotAssignedError);
+    await assert.rejects(access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_EDIT_HOMEWORK_SELF, PERM.PERM_VIEW_HOMEWORK]), exam), errors.NotAssignedError);
+    await contest.edit('test', course.docId, { maintainer: [9] });
+    assert.equal(await access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_EDIT_HOMEWORK_SELF]), exam), true);
+});
+test('non-class group membership and an empty assign do not grant classroom test eligibility', async () => {
+    const { course, exam } = await courseFixture();
+    groups = [{ name: 'class-a', uids: [42], class: false, archive: false }];
+    await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
+    await assert.rejects(access.assertCourseAssessmentAccess(actor(42, [PERM.PERM_VIEW_HOMEWORK]), exam), errors.NotAssignedError);
+    await contest.edit('test', course.docId, { assign: [] });
+    const updated = await contest.get('test', exam.docId);
+    await assert.rejects(access.assertCourseAssessmentAccess(actor(42, [PERM.PERM_VIEW_HOMEWORK]), updated), errors.NotAssignedError);
+});
 test('classroom access requires parent enrollment, an unlocked chapter, and an active assignment', async () => {
     const { course, exam } = await courseFixture();
-    groups = [{ name: 'class-a' }];
-    await assert.rejects(access.assertCourseAssessmentAccess(actor(42), exam), errors.NotAssignedError);
+    groups = [{ name: 'class-a', class: true, students: [42], teachers: [], archive: false }];
+    const student = actor(42, [PERM.PERM_VIEW_HOMEWORK]);
+    await assert.rejects(access.assertCourseAssessmentAccess(student, exam), errors.NotAssignedError);
     await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: false } });
-    await assert.rejects(access.assertCourseAssessmentAccess(actor(42), exam), errors.NotAssignedError);
+    await assert.rejects(access.assertCourseAssessmentAccess(student, exam), errors.NotAssignedError);
     await contest.setStatus('test', course.docId, 42, { allow: { 1: true } });
-    await access.assertCourseAssessmentAccess(actor(42), exam);
-    groups = [{ name: 'class-a', archive: true }];
-    await assert.rejects(access.assertCourseAssessmentAccess(actor(42), exam), errors.NotAssignedError);
-    assert.equal(await access.assertCourseAssessmentAccess(actor(7), exam), true);
+    await access.assertCourseAssessmentAccess(student, exam);
+    groups = [{ name: 'class-a', class: true, students: [42], teachers: [], archive: true }];
+    await assert.rejects(access.assertCourseAssessmentAccess(student, exam), errors.NotAssignedError);
+    assert.equal(await access.assertCourseAssessmentAccess(actor(7, [PERM.PERM_EDIT_HOMEWORK_SELF]), exam), true);
 });
 test('a forged chapter binding does not grant access to another contest', async () => {
     const { course, exam } = await courseFixture();

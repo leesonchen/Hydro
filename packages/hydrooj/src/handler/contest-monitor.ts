@@ -5,7 +5,7 @@ import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
 import { PERM } from '../model/builtin';
 import * as contest from '../model/contest';
 import {
-    events, initializeMonitor, monitorUploadGraceMs, MonitorEventType, monitorEventTypes, recordEvent, retentionMs, sessions,
+    events, initializeMonitor, MonitorEventType, monitorEventTypes, monitorUploadGraceMs, recordEvent, retentionMs, sessions,
 } from '../model/contestMonitor';
 import { Handler, param, Types } from '../service/server';
 
@@ -14,7 +14,9 @@ export class ContestMonitorHandler extends Handler {
     async get(domainId: string, tid: ObjectId) {
         const tdoc = await contest.get(domainId, tid);
         if (tdoc.monitorMode !== 'browser') throw new ContestNotFoundError(domainId, tid);
-        if (!this.user.own(tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) throw new ForbiddenError();
+        if (tdoc.sourceType === 'course_assessment') {
+            if (!await assertCourseAssessmentAccess(this.user, tdoc)) throw new ForbiddenError();
+        } else if (!this.user.own(tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) throw new ForbiddenError();
         const [eventDocs, sessionDocs] = await Promise.all([
             events.find({ domainId, contestTid: tid, eventType: { $ne: 'heartbeat' } }).sort({ serverAt: -1 }).limit(500).toArray(),
             sessions.find({ domainId, contestTid: tid, lastSeenAt: { $gte: new Date(Date.now() - 60000) } })
@@ -34,7 +36,8 @@ export class ContestMonitorHandler extends Handler {
         const tdoc = await contest.get(domainId, tid);
         if (tdoc.monitorMode !== 'browser') throw new ContestNotFoundError(domainId, tid);
         await assertCourseAssessmentAccess(this.user, tdoc);
-        if (!contest.canAccessAssignedContest(this.user, tdoc)) throw new ForbiddenError();
+        if (tdoc.sourceType !== 'course_assessment'
+            && !contest.canAccessAssignedContest(this.user, tdoc)) throw new ForbiddenError();
         if (!monitorEventTypes.includes(eventType as MonitorEventType)) throw new ValidationError('eventType');
         if (!/^[a-zA-Z0-9-]{10,100}$/.test(sessionId)
             || !/^[a-zA-Z0-9-]{10,100}$/.test(pageInstanceId)

@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { PRIV } from '@hydrooj/common/permission';
 
 export type RatingAlgorithm = 'legacy' | 'v2_trial';
-export interface RatingConfig { algorithm: RatingAlgorithm; domains: string[]; revision: number }
+export interface RatingConfig { algorithm: RatingAlgorithm, domains: string[], revision: number }
 export interface RatingPointer {
     domainId: string;
     algorithm: RatingAlgorithm;
@@ -71,7 +71,9 @@ declare module '../service/db' {
         rating_publication_problems: RatingProblemDifficulty;
     }
 }
-export const RATING_COLLECTIONS = { runs: 'rating_publication_runs', users: 'rating_publication_users', problems: 'rating_publication_problems' } as const;
+export const RATING_COLLECTIONS = {
+    runs: 'rating_publication_runs', users: 'rating_publication_users', problems: 'rating_publication_problems',
+} as const;
 const CONTROL_ID = 'rating.publication';
 const QUEUE_LEASE_MS = 30 * 60 * 1000;
 const EXECUTION_LEASE_MS = 90 * 1000;
@@ -269,7 +271,7 @@ export class RatingPublicationStore {
             [this.receiptPath(job)]: { $exists: false },
             [`value.active.${key}.runId`]: { $ne: job._id }, [`value.active.${key}.previous.runId`]: { $ne: job._id },
         }, { $set: { [`${lock}.phase`]: 'executing', [`${lock}.legacyReady`]: true },
-        $min: { [`${lock}.expiresAt`]: this.now() + EXECUTION_LEASE_MS } });
+            $min: { [`${lock}.expiresAt`]: this.now() + EXECUTION_LEASE_MS } });
         return !!result.matchedCount;
     }
 
@@ -422,7 +424,9 @@ export class RatingPublicationStore {
         let liveUids: number[];
         let liveRanks: Map<number, number> | null = null;
         if (active) {
-            const scored = await this.database.collection(RATING_COLLECTIONS.users).distinct('uid', { domainId, runId: active.runId, visible: true, rp: { $gt: 0 } });
+            const scored = await this.database.collection(RATING_COLLECTIONS.users).distinct('uid', {
+                domainId, runId: active.runId, visible: true, rp: { $gt: 0 },
+            });
             const live = await this.database.collection('user').find({ _id: { $in: scored },
                 priv: { $bitsAllSet: PRIV.PRIV_USER_PROFILE } }, { projection: { _id: 1 } }).toArray();
             liveUids = live.map((user) => user._id);
@@ -469,7 +473,10 @@ export class RatingPublicationStore {
         for (const algorithm of ['legacy', 'v2_trial']) {
             const recent = await this.database.collection(RATING_COLLECTIONS.runs).find({ domainId, algorithm, status: 'complete' })
                 .sort({ asOf: -1 }).limit(10).toArray();
-            for (const run of recent) { keep.add(run._id); if (run.legacyRunId) keep.add(run.legacyRunId); }
+            for (const run of recent) {
+                keep.add(run._id);
+                if (run.legacyRunId) keep.add(run.legacyRunId);
+            }
         }
         const linked = await this.database.collection(RATING_COLLECTIONS.runs).find({ domainId, _id: { $in: [...keep] } },
             { projection: { legacyRunId: 1 } }).toArray();

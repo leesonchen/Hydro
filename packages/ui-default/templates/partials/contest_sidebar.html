@@ -1,8 +1,11 @@
 {% import "components/user.html" as user with context %}
 {% import "components/contest.html" as contest with context %}
+{% set isClassroomTest = tdoc.sourceType == 'course_assessment' %}
+{% set testDetailRoute = 'classroom_test_detail' if isClassroomTest else 'contest_detail' %}
+{% set testProblemRoute = 'classroom_test_problemlist' if isClassroomTest else 'contest_problemlist' %}
 <div class="section side">
-{% if page_name != 'contest_detail' %}
-  <a class="contest-sidebar__bg" href="{{ url('contest_detail', tid=tdoc.docId) }}">
+{% if page_name not in ['contest_detail', 'classroom_test_detail'] %}
+  <a class="contest-sidebar__bg" href="{{ url(testDetailRoute, tid=tdoc.docId) }}">
     <div class="section__body">
       <h1>{{ tdoc.title }}</h1>
       <div class="contest-sidebar__status">
@@ -20,9 +23,9 @@
     {% if practiceOpen %}
       <li class="menu__item">
         {% if practiceReady %}
-          <a class="menu__link highlight" href="{{ url('contest_problemlist', tid=tdoc.docId) }}"><span class="icon icon-send"></span> {{ _('Start Practice') }}</a>
+          <a class="menu__link highlight" href="{{ url(testProblemRoute, tid=tdoc.docId) }}"><span class="icon icon-send"></span> {{ _('Start Practice') }}</a>
         {% elif handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) and handler.user.hasPerm(perm.PERM_SUBMIT_PROBLEM) %}
-          <form action="{{ url('contest_detail', tid=tdoc.docId) }}" method="POST">
+          <form action="{{ url(testDetailRoute, tid=tdoc.docId) }}" method="POST">
             <input type="hidden" name="operation" value="practice">
             <label>{{ _('Invitation Code') }} <input class="textbox" name="code" type="password" autocomplete="off" required></label>
             <button class="menu__link" type="submit"><span class="icon icon-send"></span> {{ _('Start Practice') }}</button>
@@ -59,19 +62,21 @@
     {% endif %}
       <li class="menu__seperator"></li>
     {% endif %}
-    {% if page_name != 'contest_detail' %}
-      <li class="menu__item"><a class="menu__link" href="{{ url('contest_detail', tid=tdoc.docId) }}">
+    {% if page_name not in ['contest_detail', 'classroom_test_detail'] %}
+      <li class="menu__item"><a class="menu__link" href="{{ url(testDetailRoute, tid=tdoc.docId) }}">
         <span class="icon icon-award"></span> {{ tdoc.rule == 'course' and _('View Course') or _('View Contest') }}
       </a></li>
     {% endif %}
-    {% if not (tsdoc.attend) and not model.contest.isDone(tdoc) %}
+    {% if not (tsdoc.attend) and not model.contest.isDone(tdoc)
+        and (not isClassroomTest or (model.contest.isOngoing(tdoc) and not practiceManager)) %}
       <li class="menu__item">
-    {% if handler.user.hasPerm(perm.PERM_ATTEND_CONTEST) and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+    {% if (handler.user.hasPerm(perm.PERM_ATTEND_HOMEWORK) if isClassroomTest else handler.user.hasPerm(perm.PERM_ATTEND_CONTEST))
+        and handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
       {% set team_vdocs = team_vdocs|default([]) %}
-      <form action="{{ url('contest_detail', tid=tdoc.docId) }}" method="POST" data-contest-attend-form{% if tdoc.allowTeam or tdoc._code %} data-contest-needs-dialog{% endif %}>
+      <form action="{{ url(testDetailRoute, tid=tdoc.docId) }}" method="POST" data-contest-attend-form{% if tdoc.allowTeam or tdoc._code %} data-contest-needs-dialog{% endif %}>
         <input type="hidden" name="operation" value="attend">
         <button class="menu__link" data-contest-attend {% if tdoc._code %}data-contest-code{% endif %} type="submit">
-          <span class="icon icon-add"></span> {{ tdoc.rule == 'course' and _('Enter Course') or _('Attend Contest') }}
+          <span class="icon icon-add"></span> {{ '开始课堂测试' if isClassroomTest else (tdoc.rule == 'course' and _('Enter Course') or _('Attend Contest')) }}
         </button>
       </form>
       <div style="display:none" class="dialog__body--contest-attend">
@@ -138,12 +143,12 @@
       </li>
     {% else %}
       {% if tdoc.rule != 'course' %}
-      <li class="menu__item"><a class="menu__link" href="{{ url('contest_problemlist', tid=tdoc.docId) }}">
+      <li class="menu__item"><a class="menu__link" href="{{ url(testProblemRoute, tid=tdoc.docId) }}">
         <span class="icon icon-unordered_list"></span> {{ _('Problem List') }}
       </a></li>
-      {% if page_name == 'contest_detail' and tsdoc.attend and model.contest.isOngoing(tdoc, tsdoc) and tdoc.rule != 'homework' %}
+      {% if page_name == 'contest_detail' and not isClassroomTest and tsdoc.attend and model.contest.isOngoing(tdoc, tsdoc) and tdoc.rule != 'homework' %}
       <li class="menu__item">
-        <form action="{{ url('contest_detail', tid=tdoc.docId) }}" method="POST" onsubmit='return confirm({{ _("Confirm end contest early? You will not be able to submit after this.")|json|safe }});'>
+        <form action="{{ url(testDetailRoute, tid=tdoc.docId) }}" method="POST" onsubmit='return confirm({{ _("Confirm end contest early? You will not be able to submit after this.")|json|safe }});'>
           <input type="hidden" name="operation" value="early_end">
           <button class="menu__link" type="submit">
             <span class="icon icon-delete"></span> {{ _('End Contest Early') }}
@@ -153,7 +158,13 @@
       {% endif %}
       {% endif %}
     {% endif %}{# not attend and not done #}
-    {% if model.contest.canShowScoreboard.call(handler, tdoc, False) %}
+    {% if isClassroomTest %}
+      {% if practiceManager %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('classroom_scoreboard', tid=tdoc.docId) }}">
+        <span class="icon icon-statistics"></span> 课堂测试成绩
+      </a></li>
+      {% endif %}
+    {% elif model.contest.canShowScoreboard.call(handler, tdoc, False) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_scoreboard', tid=tdoc.docId) }}">
         <span class="icon icon-statistics"></span> {{ _('Scoreboard') }}
       </a></li>
@@ -167,10 +178,10 @@
         <span class="icon icon-print"></span> {{ _('Print') }}
       </a></li>
     {% endif %}
-    {% if tdoc.monitorMode == 'browser' and (handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST)) %}
+    {% if tdoc.monitorMode == 'browser' and (practiceManager if tdoc.sourceType == 'course_assessment' else (handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST))) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_monitor', tid=tdoc.docId) }}"><span class="icon icon-flag"></span> 监考记录</a></li>
     {% endif %}
-    {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST) %}
+    {% if tdoc.sourceType != 'course_assessment' and (handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST)) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_edit', tid=tdoc.docId) }}">
         <span class="icon icon-edit"></span> {{ tdoc.rule == 'course' and _('Edit Course') or _('Edit Contest') }}
       </a></li>
@@ -178,7 +189,11 @@
         <span class="icon icon-settings"></span> {{ tdoc.rule == 'course' and _('Course Management') or _('Contest Management') }}
       </a></li>
     {% endif %}
-    {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}
+    {% if isClassroomTest and practiceManager %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('classroom_test_code', tid=tdoc.docId) }}" data-no-instant>
+        <span class="icon icon-download"></span> {{ _('Export All Code') }}
+      </a></li>
+    {% elif not isClassroomTest and (handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE)) %}
       {% if model.contest.canShowRecord.call(handler, tdoc, true) %}
         <li class="menu__item"><a class="menu__link" href="{{ url('contest_code', tid=tdoc.docId) }}" data-no-instant>
           <span class="icon icon-download"></span> {{ _('Export All Code') }}
@@ -200,7 +215,7 @@
         <span class="icon icon-comment--text"></span> {{ _('Solutions') }}{% if solutionCount !== undefined %} ({{ solutionCount }}){% endif %}
       </a></li>
     {% endif %}
-    {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}
+    {% if not isClassroomTest and (handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE)) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={tid:tdoc.docId}) }}">
         <span class="icon icon-flag"></span> {{ _('All Submissions') }}
       </a></li>

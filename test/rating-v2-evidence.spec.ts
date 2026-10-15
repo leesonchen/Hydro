@@ -192,8 +192,12 @@ async function classroomFixture() {
     const users = { getById: async (_domain, uid) => [2, 3, 99].includes(uid) ? {
         _id: uid, own: (doc) => doc.owner === uid || doc.maintainer?.includes(uid),
         hasPriv: (priv) => priv === PRIV.PRIV_USER_PROFILE || uid === 99,
-        hasPerm: (perm) => teacher && uid === 3 && perm === PERM.PERM_EDIT_HOMEWORK,
-    } : null, listGroup: async () => [{ name: 'class', archive: archived }] };
+        hasPerm: (perm) => uid === 99
+            ? perm === PERM.PERM_EDIT_HOMEWORK_SELF
+            : perm === PERM.PERM_VIEW_HOMEWORK
+                || (teacher && uid === 3 && perm === PERM.PERM_EDIT_HOMEWORK),
+    } : null, listGroup: async () => [{ name: 'class', class: true, archive: archived,
+        students: [2, 3], teachers: [99], uids: [2, 3, 99] }] };
     const contests = {
         get: async (_domain, tid) => db.collection('document').findOne({ domainId: 'd', docId: tid }),
         getStatus: async (_domain, tid, uid) => db.collection('document.status').findOne({ domainId: 'd', docId: tid, uid }),

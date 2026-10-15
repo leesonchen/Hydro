@@ -187,6 +187,7 @@ describe('Private content feedback', () => {
                 canViewBy: (doc, actor) => !doc.hidden || actor.own(doc) || actor.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN),
                 getVisibleStatus: async () => null,
             },
+            '../model/rating-publication': {},
             '../model/record': { STAT_QUERY: {} }, '../model/setting': { langs: {} }, '../model/solution': { count: async () => 0 },
             '../model/storage': {}, '../model/system': {}, '../model/user': user,
             '../service/server': {
