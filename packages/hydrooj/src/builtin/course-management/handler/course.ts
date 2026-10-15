@@ -90,6 +90,7 @@ async function getCourseAudience(domainId: string, tdoc: CourseTdoc) {
     const teacherUids = new Set<number>([
         ...(group?.teachers || []),
         tdoc.owner,
+        ...(tdoc.maintainer || []),
         (tdoc as any).editor,
     ].filter(Boolean));
     const studentUids = new Set<number>([
@@ -696,6 +697,8 @@ export class CourseMainHandler extends Handler {
                     { assign: null },
                     { assign: { $exists: false } },
                     { assign: userId.toString() },
+                    { owner: userId },
+                    { maintainer: userId },
                 ],
             }),
         })
@@ -709,6 +712,7 @@ export class CourseMainHandler extends Handler {
                 assign: 1,
                 rule: 1,
                 owner: 1,
+                maintainer: 1,
                 editor: 1,
                 updateAt: 1,
                 lessonDurationHours: 1,
@@ -730,7 +734,9 @@ export class CourseMainHandler extends Handler {
         );
 
         // 判断是否为"我的课程"
-        const isMyCourse = (t: any) => t.assign?.some((g: string) => userGroups.has(g));
+        const isMyCourse = (t: any) => t.owner === userId
+            || t.maintainer?.includes(userId)
+            || t.assign?.some((g: string) => userGroups.has(g));
 
         // 处理课程数据
         const courses = tdocs.map((t) => ({
@@ -896,6 +902,8 @@ export class CourseMain1Handler extends Handler {
                     { assign: null },
                     { assign: { $exists: false } },
                     { assign: userId.toString() },
+                    { owner: userId },
+                    { maintainer: userId },
                 ],
             }),
         })
@@ -909,6 +917,7 @@ export class CourseMain1Handler extends Handler {
                 assign: 1,
                 rule: 1,
                 owner: 1,
+                maintainer: 1,
                 editor: 1,
                 updateAt: 1,
                 lessonDurationHours: 1,
@@ -929,7 +938,9 @@ export class CourseMain1Handler extends Handler {
             {},
         );
 
-        const isMyCourse = (t: any) => t.assign?.some((g: string) => userGroups.has(g));
+        const isMyCourse = (t: any) => t.owner === userId
+            || t.maintainer?.includes(userId)
+            || t.assign?.some((g: string) => userGroups.has(g));
 
         const courses = tdocs.map((t) => ({
             ...t,
@@ -994,6 +1005,8 @@ export class CourseMain2Handler extends Handler {
                     { assign: null },
                     { assign: { $exists: false } },
                     { assign: userId.toString() },
+                    { owner: userId },
+                    { maintainer: userId },
                 ],
             }),
         })
@@ -1007,6 +1020,7 @@ export class CourseMain2Handler extends Handler {
                 assign: 1,
                 rule: 1,
                 owner: 1,
+                maintainer: 1,
                 editor: 1,
                 updateAt: 1,
                 lessonDurationHours: 1,
@@ -1027,7 +1041,9 @@ export class CourseMain2Handler extends Handler {
             {},
         );
 
-        const isMyCourse = (t: any) => t.assign?.some((g: string) => userGroups.has(g));
+        const isMyCourse = (t: any) => t.owner === userId
+            || t.maintainer?.includes(userId)
+            || t.assign?.some((g: string) => userGroups.has(g));
 
         const courses = tdocs.map((t) => ({
             ...t,
