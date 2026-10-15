@@ -141,21 +141,21 @@ export class ContestDetailBaseHandler extends Handler {
         const pdoc = 'pdoc' in this ? (this as any).pdoc : {};
         this.response.body.overrideNav = [
             {
-                name: 'contest_main',
-                args: {},
-                displayName: 'Back to contest list',
+                name: this.tdoc.sourceType === 'course_assessment' ? 'course_detail' : 'contest_main',
+                args: this.tdoc.sourceType === 'course_assessment' ? { tid: this.tdoc.sourceCourseTid } : {},
+                displayName: this.tdoc.sourceType === 'course_assessment' ? 'Back to course' : 'Back to contest list',
                 checker: () => true,
             },
             {
-                name: 'contest_detail',
+                name: this.tdoc.sourceType === 'course_assessment' ? 'classroom_test_detail' : 'contest_detail',
                 displayName: this.tdoc.title,
                 args: { tid, prefix: 'contest_detail' },
                 checker: () => true,
             },
             {
-                name: 'contest_problemlist',
+                name: this.tdoc.sourceType === 'course_assessment' ? 'classroom_test_problemlist' : 'contest_problemlist',
                 args: { tid, prefix: 'contest_problemlist' },
-                checker: () => this.tsdoc?.attend || contest.isDone(this.tdoc),
+                checker: () => this.classroomTeacher || this.tsdoc?.attend || contest.isDone(this.tdoc),
             },
             {
                 name: 'contest_print',
@@ -163,9 +163,10 @@ export class ContestDetailBaseHandler extends Handler {
                 checker: () => this.tdoc.allowPrint && (this.tsdoc?.attend || this.user.own(this.tdoc) || this.user.hasPerm(PERM.PERM_EDIT_CONTEST)),
             },
             {
-                name: 'contest_scoreboard',
+                name: this.tdoc.sourceType === 'course_assessment' ? 'classroom_scoreboard' : 'contest_scoreboard',
                 args: { tid, prefix: 'contest_scoreboard' },
-                checker: () => contest.canShowScoreboard.call(this, this.tdoc, true),
+                checker: () => this.tdoc.sourceType === 'course_assessment'
+                    ? this.classroomTeacher : contest.canShowScoreboard.call(this, this.tdoc, true),
             },
             {
                 name: 'problem_detail',
@@ -184,7 +185,7 @@ export class ContestDetailHandler extends ContestDetailBaseHandler {
         await this.limitRate('contest_practice_access', 60, 10, '{{user}}');
         const tdoc = await contest.get(domainId, tid);
         await grantPracticeAccess(this.user, tdoc, code);
-        this.response.redirect = this.url('contest_problemlist', { tid });
+        this.response.redirect = this.url(tdoc.sourceType === 'course_assessment' ? 'classroom_test_problemlist' : 'contest_problemlist', { tid });
     }
 
     @param('tid', Types.ObjectId)
@@ -443,6 +444,23 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
             }), message.FLAG_I18N | message.FLAG_UNREAD);
         }
         this.back();
+    }
+}
+
+/** Course-authorized entrypoints for a distinct classroom-assessment business type. */
+export class ClassroomTestDetailHandler extends ContestDetailHandler {
+    @param('tid', Types.ObjectId)
+    async prepare(domainId: string, tid: ObjectId) {
+        if (this.tdoc?.sourceType !== 'course_assessment') throw new ContestNotFoundError(domainId, tid);
+        await super.prepare(domainId, tid);
+    }
+}
+
+export class ClassroomTestProblemListHandler extends ContestProblemListHandler {
+    @param('tid', Types.ObjectId)
+    async prepare(domainId: string, tid: ObjectId) {
+        if (this.tdoc?.sourceType !== 'course_assessment') throw new ContestNotFoundError(domainId, tid);
+        await super.prepare(domainId, tid);
     }
 }
 
@@ -1230,7 +1248,11 @@ export async function apply(ctx: Context) {
     ctx.Route('contest_main', '/contest', ContestListHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_team', '/contest/team', ContestTeamHandler); // before /contest/:tid: "team" is not a valid ObjectId
     ctx.Route('contest_detail', '/contest/:tid', ContestDetailHandler, PERM.PERM_VIEW_CONTEST);
+    // These routes deliberately do not require contest-specific permissions. Their
+    // handlers validate sourceType and the parent's current course enrollment/unlock.
+    ctx.Route('classroom_test_detail', '/course/assessment/:tid', ClassroomTestDetailHandler);
     ctx.Route('contest_problemlist', '/contest/:tid/problems', ContestProblemListHandler, PERM.PERM_VIEW_CONTEST);
+    ctx.Route('classroom_test_problemlist', '/course/assessment/:tid/problems', ClassroomTestProblemListHandler);
     ctx.Route('contest_edit', '/contest/:tid/edit', ContestEditHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_print', '/contest/:tid/print', ContestPrintHandler, PERM.PERM_VIEW_CONTEST);
     // Support for DOMJudge printfile
