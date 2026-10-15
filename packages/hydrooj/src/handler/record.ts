@@ -191,16 +191,19 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             this.practiceReady = await canSubmitPractice(this.user, this.tdoc);
             return;
         }
+        let classroomManager = false;
         if (this.rdoc.contest && !this.rdoc.contest.toString().startsWith('0'.repeat(23))) {
             const exam = await contest.get(domainId, this.rdoc.contest);
             if (exam?.sourceType === 'course_assessment') {
-                const classroomManager = await assertCourseAssessmentAccess(this.user, exam);
+                classroomManager = await assertCourseAssessmentAccess(this.user, exam);
                 if (!classroomManager && this.rdoc.uid !== this.user._id) {
                     throw new PermissionError(PERM.PERM_VIEW_RECORD);
                 }
             }
         }
-        if (!(await contest.isOwnOrTeammateRecord(domainId, this.rdoc, this.user._id))) this.checkPerm(PERM.PERM_VIEW_RECORD);
+        if (!classroomManager && !(await contest.isOwnOrTeammateRecord(domainId, this.rdoc, this.user._id))) {
+            this.checkPerm(PERM.PERM_VIEW_RECORD);
+        }
     }
 
     async download() {
