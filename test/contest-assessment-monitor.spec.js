@@ -233,7 +233,7 @@ test('classroom monitoring uses course owner and maintainer permissions, not con
     await handler(7, [PERM.PERM_EDIT_HOMEWORK_SELF]).get('test', exam.docId);
     await handler(9, [PERM.PERM_EDIT_HOMEWORK_SELF]).get('test', exam.docId);
     // A legitimate course student with contest-admin permission is still not a course teacher.
-    groups = [{ name: 'class-a', archive: false }];
+    groups = [{ name: 'class-a', class: true, students: [42], teachers: [], archive: false }];
     await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
     await assert.rejects(handler(42, [PERM.PERM_EDIT_CONTEST, PERM.PERM_VIEW_HOMEWORK]).get('test', exam.docId), errors.ForbiddenError);
 });
@@ -310,7 +310,7 @@ test('classroom practice respects parent course enrollment, unlocks, staff and e
         './course-assessment-access': access,
     });
     const submitPerms = [PERM.PERM_VIEW_HOMEWORK, PERM.PERM_VIEW_PROBLEM, PERM.PERM_SUBMIT_PROBLEM];
-    groups = [{ name: 'class-a', archive: false }];
+    groups = [{ name: 'class-a', class: true, students: [42], teachers: [], archive: false }];
     const student = actor(42, submitPerms);
     await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
     assert.equal((await contest.getStatus('test', exam.docId, 42))?.attend, undefined);
@@ -708,18 +708,38 @@ test('OI scores remain hidden before the personal or global contest end', async 
     const result = (await assessment.getAssessmentResults('test', course, 42))[1];
     assert.equal(result.score, null); assert.equal(result.completed, false);
 });
+test('classroom teacher membership must not grant official student eligibility', async () => {
+    const { course, exam } = await courseFixture();
+    groups = [{ name: 'class-a', class: true, students: [42], teachers: [9], uids: [9, 42], archive: false }];
+    await contest.setStatus('test', course.docId, 9, { attend: 1, allow: { 1: true } });
+    await assert.rejects(access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_VIEW_HOMEWORK]), exam), errors.NotAssignedError);
+    await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
+    assert.equal(await access.assertCourseAssessmentAccess(actor(42, [PERM.PERM_VIEW_HOMEWORK]), exam), false);
+    groups[0].students = [9, 42]; // An inconsistent roster must still prefer staff classification.
+    await assert.rejects(access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_VIEW_HOMEWORK]), exam), errors.NotAssignedError);
+    assert.equal(await access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_EDIT_HOMEWORK_SELF, PERM.PERM_VIEW_HOMEWORK]), exam), false);
+});
+test('non-class group membership and an empty assign do not grant classroom test eligibility', async () => {
+    const { course, exam } = await courseFixture();
+    groups = [{ name: 'class-a', uids: [42], class: false, archive: false }];
+    await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
+    await assert.rejects(access.assertCourseAssessmentAccess(actor(42, [PERM.PERM_VIEW_HOMEWORK]), exam), errors.NotAssignedError);
+    await contest.edit('test', course.docId, { assign: [] });
+    const updated = await contest.get('test', exam.docId);
+    await assert.rejects(access.assertCourseAssessmentAccess(actor(42, [PERM.PERM_VIEW_HOMEWORK]), updated), errors.NotAssignedError);
+});
 test('classroom access requires parent enrollment, an unlocked chapter, and an active assignment', async () => {
     const { course, exam } = await courseFixture();
-    groups = [{ name: 'class-a' }];
+    groups = [{ name: 'class-a', class: true, students: [42], teachers: [], archive: false }];
     const student = actor(42, [PERM.PERM_VIEW_HOMEWORK]);
     await assert.rejects(access.assertCourseAssessmentAccess(student, exam), errors.NotAssignedError);
     await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: false } });
     await assert.rejects(access.assertCourseAssessmentAccess(student, exam), errors.NotAssignedError);
     await contest.setStatus('test', course.docId, 42, { allow: { 1: true } });
     await access.assertCourseAssessmentAccess(student, exam);
-    groups = [{ name: 'class-a', archive: true }];
+    groups = [{ name: 'class-a', class: true, students: [42], teachers: [], archive: true }];
     await assert.rejects(access.assertCourseAssessmentAccess(student, exam), errors.NotAssignedError);
-    assert.equal(await access.assertCourseAssessmentAccess(actor(7), exam), true);
+    assert.equal(await access.assertCourseAssessmentAccess(actor(7, [PERM.PERM_EDIT_HOMEWORK_SELF]), exam), true);
 });
 test('a forged chapter binding does not grant access to another contest', async () => {
     const { course, exam } = await courseFixture();
