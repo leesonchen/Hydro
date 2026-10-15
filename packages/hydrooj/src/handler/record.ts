@@ -191,6 +191,15 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             this.practiceReady = await canSubmitPractice(this.user, this.tdoc);
             return;
         }
+        if (this.rdoc.contest && !this.rdoc.contest.toString().startsWith('0'.repeat(23))) {
+            const exam = await contest.get(domainId, this.rdoc.contest);
+            if (exam?.sourceType === 'course_assessment') {
+                const classroomManager = await assertCourseAssessmentAccess(this.user, exam);
+                if (!classroomManager && this.rdoc.uid !== this.user._id) {
+                    throw new PermissionError(PERM.PERM_VIEW_RECORD);
+                }
+            }
+        }
         if (!(await contest.isOwnOrTeammateRecord(domainId, this.rdoc, this.user._id))) this.checkPerm(PERM.PERM_VIEW_RECORD);
     }
 
@@ -222,19 +231,29 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
         }
         const isOwnOrTeammate = await contest.isOwnOrTeammateRecord(domainId, rdoc, this.user._id);
         let canViewDetail = true;
+        let classroomManager = false;
         if (rdoc.practiceContest) {
             if (!canReadPractice(this.user, this.tdoc, rdoc.uid)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
         } else if (rdoc.contest?.toString().startsWith('0'.repeat(23))) {
             if (rdoc.uid !== this.user._id) throw new PermissionError(PERM.PERM_READ_RECORD_CODE);
         } else if (rdoc.contest) {
             this.tdoc = await contest.get(domainId, rdoc.contest);
-            let canView = this.user.own(this.tdoc);
-            canView ||= contest.canShowRecord.call(this, this.tdoc);
-            canView ||= contest.canShowSelfRecord.call(this, this.tdoc, true) && isOwnOrTeammate;
+            if (this.tdoc.sourceType === 'course_assessment') {
+                classroomManager = await assertCourseAssessmentAccess(this.user, this.tdoc);
+                if (!classroomManager && !isOwnOrTeammate) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            }
+            let canView = classroomManager || this.user.own(this.tdoc);
+            if (this.tdoc.sourceType === 'course_assessment') {
+                canView ||= contest.canShowSelfRecord.call(this, this.tdoc, true) && isOwnOrTeammate;
+            } else {
+                canView ||= contest.canShowRecord.call(this, this.tdoc);
+                canView ||= contest.canShowSelfRecord.call(this, this.tdoc, true) && isOwnOrTeammate;
+            }
             if (!canView) throw new PermissionError(rid);
             canViewDetail = canView;
             this.args.tid = this.tdoc.docId;
-            if (!this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+            if (this.tdoc.sourceType === 'course_assessment'
+                ? !classroomManager : !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
                 this.rdoc = contest.applyProjection(this.tdoc, this.rdoc, this.user);
             }
         }
@@ -256,12 +275,12 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
         if (this.tdoc) {
             const teamVid = this.tdoc.allowTeam ? await contest.getTeamVid(domainId, this.tdoc.docId, this.user._id) : null;
             this.tsdoc = await contest.getStatus(domainId, this.tdoc.docId, teamVid ?? this.user._id);
-            canViewCode ||= this.user.own(this.tdoc);
+            canViewCode ||= this.user.own(this.tdoc) || classroomManager;
             if (rdoc.practiceContest) canViewCode ||= canManagePractice(this.user, this.tdoc);
             if (this.tdoc.allowViewCode && contest.isDone(this.tdoc)) {
                 canViewCode ||= !!this.tsdoc?.attend;
             }
-            if (!rdoc.practiceContest && !this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) {
+            if (!rdoc.practiceContest && !classroomManager && !this.tsdoc?.attend && pdoc && !problem.canViewBy(pdoc, this.user)) {
                 throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
             }
         } else if (pdoc && !problem.canViewBy(pdoc, this.user)) throw new PermissionError(PERM.PERM_VIEW_PROBLEM_HIDDEN);
