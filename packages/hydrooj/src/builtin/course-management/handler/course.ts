@@ -405,7 +405,7 @@ export async function parseDag(domainId: string, dagJson: string): Promise<DagNo
                 assessment = {
                     rule: settings.rule,
                     monitorMode: settings.monitorMode || 'off',
-                    allowPractice: settings.allowPractice === true,
+                    allowPractice: settings.allowPractice !== false,
                     beginAt: beginAt.toISOString(),
                     endAt: endAt.toISOString(),
                     rated: false, // explicit certification is required before rating
