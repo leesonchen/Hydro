@@ -157,8 +157,8 @@ async function monitoredContest(extra = {}) {
         { monitorMode: 'browser', ...extra });
     return tid;
 }
-function handler(uid = 42) {
-    const h = new MonitorHandler(); h.user = actor(uid); h.response = {}; h.limitRate = async () => {}; return h;
+function handler(uid = 42, perms = []) {
+    const h = new MonitorHandler(); h.user = actor(uid, perms); h.response = {}; h.limitRate = async () => {}; return h;
 }
 test('an admitted team member is monitored under their actual user ID', async () => {
     team = -100;
@@ -225,6 +225,14 @@ async function courseFixture(rule = 'oi', future = true, passScore = 1) {
     const exam = await contest.get('test', new ObjectId(course.dag[0].assessment.contestTid));
     return { course, exam };
 }
+test('classroom monitoring uses course owner and maintainer permissions, not contest administrator rights', async () => {
+    const { course, exam } = await courseFixture();
+    await contest.edit('test', course.docId, { maintainer: [9] });
+    await assert.rejects(handler(7).get('test', exam.docId), errors.ForbiddenError);
+    await handler(7, [PERM.PERM_EDIT_HOMEWORK_SELF]).get('test', exam.docId);
+    await handler(9, [PERM.PERM_EDIT_HOMEWORK_SELF]).get('test', exam.docId);
+    await assert.rejects(handler(42, [PERM.PERM_EDIT_CONTEST]).get('test', exam.docId), errors.ForbiddenError);
+});
 test('classroom monitor rejects file-only questions before writing a contest', async () => {
     testProblemType = 'submit_answer';
     await assert.rejects(courseFixture(), /课堂测试监控模式不支持文件提交题/);
