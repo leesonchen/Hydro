@@ -156,7 +156,13 @@
       {% endif %}
       {% endif %}
     {% endif %}{# not attend and not done #}
-    {% if model.contest.canShowScoreboard.call(handler, tdoc, False) %}
+    {% if isClassroomTest %}
+      {% if practiceManager %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('classroom_scoreboard', tid=tdoc.docId) }}">
+        <span class="icon icon-statistics"></span> 课堂测试成绩
+      </a></li>
+      {% endif %}
+    {% elif model.contest.canShowScoreboard.call(handler, tdoc, False) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_scoreboard', tid=tdoc.docId) }}">
         <span class="icon icon-statistics"></span> {{ _('Scoreboard') }}
       </a></li>
@@ -181,7 +187,11 @@
         <span class="icon icon-settings"></span> {{ tdoc.rule == 'course' and _('Course Management') or _('Contest Management') }}
       </a></li>
     {% endif %}
-    {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}
+    {% if isClassroomTest and practiceManager %}
+      <li class="menu__item"><a class="menu__link" href="{{ url('classroom_test_code', tid=tdoc.docId) }}" data-no-instant>
+        <span class="icon icon-download"></span> {{ _('Export All Code') }}
+      </a></li>
+    {% elif not isClassroomTest and (handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE)) %}
       {% if model.contest.canShowRecord.call(handler, tdoc, true) %}
         <li class="menu__item"><a class="menu__link" href="{{ url('contest_code', tid=tdoc.docId) }}" data-no-instant>
           <span class="icon icon-download"></span> {{ _('Export All Code') }}
@@ -203,7 +213,7 @@
         <span class="icon icon-comment--text"></span> {{ _('Solutions') }}{% if solutionCount !== undefined %} ({{ solutionCount }}){% endif %}
       </a></li>
     {% endif %}
-    {% if handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE) %}
+    {% if not isClassroomTest and (handler.user.own(tdoc) or handler.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE) or handler.user.hasPerm(perm.PERM_READ_RECORD_CODE)) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={tid:tdoc.docId}) }}">
         <span class="icon icon-flag"></span> {{ _('All Submissions') }}
       </a></li>
