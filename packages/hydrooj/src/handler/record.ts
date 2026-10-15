@@ -660,13 +660,22 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         if (activity?.sourceType !== 'course_assessment' && this.applyProjection && rdoc.contest?.toString() !== '0'.repeat(24)) {
             rdoc = contest.applyProjection(tdoc, rdoc, this.user);
         }
+        // record/change contains complete submissions, including source code.
+        // Use the HTTP record-list field allowlist for every WebSocket summary.
+        // The user's own pretest needs compiler and testcase output; authorized
+        // practice records need testcase summaries for the scratchpad UI.
+        // No list mode sends code, input, or other unlisted internal fields.
+        const listFields: (keyof RecordDoc)[] = [...record.PROJECTION_LIST];
+        if (this.pretest) listFields.push('compilerTexts', 'testCases');
+        else if (this.practice) listFields.push('testCases');
+        const listRdoc = pick(rdoc, listFields);
         const projected = (latest?: LiveRecordAccess | false) => (latest && latest.tdoc.sourceType === 'course_assessment'
-            && !rdoc.practiceContest && rdoc.contest?.toString() === latest.tdoc.docId.toString()
-            && !latest.classroomManager ? contest.applyProjection(latest.tdoc, { ...rdoc }, latest.viewer) : rdoc);
+            && !listRdoc.practiceContest && listRdoc.contest?.toString() === latest.tdoc.docId.toString()
+            && !latest.classroomManager ? contest.applyProjection(latest.tdoc, { ...listRdoc }, latest.viewer) : listRdoc);
         const requireManager = this.uid === undefined || !!(access && access.classroomManager);
         if (this.pretest) {
             this.queueSend(
-                rdoc._id.toHexString(), async (latest) => ({ rdoc: omit(projected(latest), ['code', 'input']) }),
+                rdoc._id.toHexString(), async (latest) => ({ rdoc: projected(latest) }),
                 rdoc, liveAccess, requireManager,
             );
         } else if (this.noTemplate) {
