@@ -1923,10 +1923,8 @@ export class CourseProblemReferenceHandler extends Handler {
         this.tdoc = await ContestModel.get(domainId, tid) as CourseTdoc;
         if (this.tdoc.rule !== 'course') throw new ContestNotFoundError(domainId, tid);
 
-        const canBypassAssign = this.user.hasPerm(
-            PERM.PERM_CREATE_HOMEWORK,
-            PERM.PERM_VIEW_HIDDEN_HOMEWORK,
-        );
+        const canBypassAssign = canEditCourse(this, this.tdoc)
+            || this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK);
         const userIdStr = this.user._id.toString();
         const isInAssign = this.tdoc.assign?.some((g: string) => this.user.group?.includes(g) || g === userIdStr);
         if (this.tdoc.assign?.length && !this.user.own(this.tdoc) && !isInAssign && !canBypassAssign) {
@@ -1939,7 +1937,7 @@ export class CourseProblemReferenceHandler extends Handler {
         if (!inCourse) throw new ProblemNotFoundError(domainId, pid);
 
         this.tsdoc = await ContestModel.getStatus(domainId, tid, this.user._id);
-        this.canEdit = this.user.hasPerm(PERM.PERM_CREATE_HOMEWORK);
+        this.canEdit = canEditCourse(this, this.tdoc);
 
         const accepted = this.tsdoc?.detail?.[pid]?.status === STATUS.STATUS_ACCEPTED;
         if (!this.canEdit && !accepted) throw new ForbiddenError('通过后才可查看参考代码。');
