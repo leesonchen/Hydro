@@ -627,13 +627,15 @@ export class ContestCodeHandler extends Handler {
     async get(domainId: string, tid: ObjectId, all: boolean) {
         await this.limitRate('contest_code', 60, 10);
         const [tdoc, tsdocs] = await contest.getAndListStatus(domainId, tid);
-        if (!this.user.own(tdoc)) {
+        const classroomManager = tdoc.sourceType === 'course_assessment'
+            && await assertCourseAssessmentAccess(this.user, tdoc) && canManagePractice(this.user, tdoc);
+        if (!classroomManager && !this.user.own(tdoc)) {
             if (!this.user.hasPriv(PRIV.PRIV_READ_RECORD_CODE)) {
                 this.checkPerm(PERM.PERM_READ_RECORD_CODE);
             }
             if (!contest.isDone(tdoc)) throw new ContestNotEndedError(domainId, tid);
         }
-        if (!contest.canShowRecord.call(this, tdoc as any, true)) {
+        if (!classroomManager && !contest.canShowRecord.call(this, tdoc as any, true)) {
             throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
         }
         const rnames = {};
@@ -999,7 +1001,9 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
         if (contest.RULES[this.tdoc.rule].hidden && !contest.RULES[this.tdoc.rule].features?.includes('scoreboard')) {
             throw new ContestNotFoundError(domainId, tid);
         }
-        if (!this.user.own(this.tdoc)) {
+        const classroomManager = this.tdoc.sourceType === 'course_assessment'
+            && await assertCourseAssessmentAccess(this.user, this.tdoc) && canManagePractice(this.user, this.tdoc);
+        if (!classroomManager && !this.user.own(this.tdoc)) {
             if (!contest.canShowScoreboard.call(this, this.tdoc, true)) throw new ContestScoreboardHiddenError(tid);
             if (contest.isNotStarted(this.tdoc)) throw new ContestNotLiveError(domainId, tid);
         }
@@ -1009,7 +1013,7 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
         const fetcher = {
             tdoc: () => this.tdoc,
             groups: async () => {
-                const allGroups = (this.user.hasPerm(PERM.PERM_EDIT_CONTEST_SELF) && this.user.own(this.tdoc))
+                const allGroups = classroomManager || (this.user.hasPerm(PERM.PERM_EDIT_CONTEST_SELF) && this.user.own(this.tdoc))
                     || this.user.hasPerm(PERM.PERM_EDIT_CONTEST);
                 return await user.listGroup(domainId, allGroups ? undefined : this.user._id);
             },
@@ -1034,6 +1038,7 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
 
     @param('tid', Types.ObjectId)
     async postUnlock(domainId: string, tid: ObjectId) {
+        if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('请在课程中控制课堂测试成绩展示。');
         if (!this.user.own(this.tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
         if (!contest.isDone(this.tdoc)) throw new ContestNotEndedError(domainId, tid);
         await contest.unlockScoreboard(domainId, tid);
