@@ -44,7 +44,8 @@ function reloadContestModel() {
     });
 }
 const actor = (uid, perms = []) => ({ _id: uid, group: groups.map((g) => g.name),
-    own: (doc) => doc.owner === uid, hasPerm: (...items) => items.some((p) => perms.includes(p)) });
+    own: (doc) => doc.owner === uid || doc.maintainer?.includes(uid),
+    hasPerm: (...items) => items.some((p) => perms.includes(p)) });
 
 before(async () => {
     mongod = await MongoMemoryServer.create();
@@ -231,6 +232,9 @@ test('classroom monitoring uses course owner and maintainer permissions, not con
     await assert.rejects(handler(7).get('test', exam.docId), errors.ForbiddenError);
     await handler(7, [PERM.PERM_EDIT_HOMEWORK_SELF]).get('test', exam.docId);
     await handler(9, [PERM.PERM_EDIT_HOMEWORK_SELF]).get('test', exam.docId);
+    // A legitimate course student with contest-admin permission is still not a course teacher.
+    groups = [{ name: 'class-a', archive: false }];
+    await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
     await assert.rejects(handler(42, [PERM.PERM_EDIT_CONTEST]).get('test', exam.docId), errors.ForbiddenError);
 });
 test('classroom monitor rejects file-only questions before writing a contest', async () => {
@@ -246,26 +250,26 @@ test('course synchronization is idempotent and updates class assignment and invi
     assert.deepEqual(synced.assign, ['class-b', '42']);
     assert.deepEqual(synced.maintainer, [9]);
     assert.equal(synced.monitorMode, 'browser');
-    assert.equal(synced.allowPractice, false);
+    assert.equal(synced.allowPractice, true);
     assert.equal(synced.rated, false);
     assert.equal(await document.coll.countDocuments({ sourceType: 'course_assessment' }), 1);
 });
-test('classroom post-test practice is opt-in, persisted, and synchronized on course edits', async () => {
+test('classroom post-test practice defaults on, supports opt-out, and persists course edits', async () => {
     const { course, exam } = await courseFixture('oi', false);
-    assert.equal(exam.allowPractice, false);
+    assert.equal(exam.allowPractice, true);
     const dag = structuredClone(course.dag);
-    dag[0].assessment.allowPractice = true;
+    dag[0].assessment.allowPractice = false;
     await contest.edit('test', course.docId, { dag });
     let synced = await contest.get('test', exam.docId);
-    assert.equal(synced.allowPractice, true);
+    assert.equal(synced.allowPractice, false);
     assert.equal(contest.isDone(synced), true);
     await contest.edit('test', course.docId, { title: 'Updated Course' });
     synced = await contest.get('test', exam.docId);
-    assert.equal(synced.allowPractice, true);
+    assert.equal(synced.allowPractice, false);
     const reset = structuredClone((await contest.get('test', course.docId)).dag);
-    reset[0].assessment.allowPractice = false;
+    reset[0].assessment.allowPractice = true;
     await contest.edit('test', course.docId, { dag: reset });
-    assert.equal((await contest.get('test', exam.docId)).allowPractice, false);
+    assert.equal((await contest.get('test', exam.docId)).allowPractice, true);
 });
 test('classroom post-test practice rejects non-boolean persisted flags', async () => {
     const { course } = await courseFixture();
