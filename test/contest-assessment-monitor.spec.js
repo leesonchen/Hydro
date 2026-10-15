@@ -279,12 +279,14 @@ test('classroom practice respects parent course enrollment, unlocks, staff and e
         '../service/db': { __esModule: true, default: { collection: (name) => db.collection(name) } },
         './course-assessment-access': access,
     });
-    const submitPerms = [PERM.PERM_VIEW_CONTEST, PERM.PERM_VIEW_PROBLEM, PERM.PERM_SUBMIT_PROBLEM];
+    const submitPerms = [PERM.PERM_VIEW_HOMEWORK, PERM.PERM_VIEW_PROBLEM, PERM.PERM_SUBMIT_PROBLEM];
     groups = [{ name: 'class-a', archive: false }];
     const student = actor(42, submitPerms);
     await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
     assert.equal((await contest.getStatus('test', exam.docId, 42))?.attend, undefined);
     assert.equal(await practice.canSubmitPractice(student, exam), true);
+    const noCourseView = actor(42, [PERM.PERM_VIEW_CONTEST, PERM.PERM_VIEW_PROBLEM, PERM.PERM_SUBMIT_PROBLEM]);
+    await assert.rejects(practice.canSubmitPractice(noCourseView, exam), errors.NotAssignedError);
 
     await contest.setStatus('test', course.docId, 42, { 'allow.1': false });
     await assert.rejects(practice.canSubmitPractice(student, exam), errors.NotAssignedError);
