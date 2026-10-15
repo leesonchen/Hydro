@@ -270,6 +270,7 @@ const acm = buildContestRule({
                     docType: document.TYPE_CONTEST,
                     docId: tdoc.docId,
                     accept: { $gte: 1 },
+                    ...(tdoc.sourceType === 'course_assessment' ? { attend: { $gt: 0 } } : {}),
                 },
             },
             { $project: { r: { $objectToArray: '$detail' } } },
@@ -1487,6 +1488,9 @@ export async function getScoreboard(
     const revision = tdoc.statsRevision || 0;
     const tsdocsCursor = getMultiStatus(domainId, {
         docId: tid,
+        // Staff preview submissions may have a journal but no genuine test attendance.
+        // Only actual classroom test attendees belong on the classroom scoreboard.
+        ...(tdoc.sourceType === 'course_assessment' ? { attend: { $gt: 0 } } : {}),
         $and: [
             revision ? { statsRevision: revision } : { $or: [{ statsRevision: 0 }, { statsRevision: { $exists: false } }] },
             { $or: [{ statsJournalRevision: { $exists: false } }, {
