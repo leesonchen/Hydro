@@ -317,7 +317,11 @@ export async function runShadowReplay(
             continue;
         }
         const statusByUid = new Map<number, any>();
-        if (contest.duration || (!certified && contest.sourceType === 'course_assessment')) {
+        // Certified classroom rosters are frozen before the test starts, while
+        // official attendance is created only inside the live test window.
+        // Replay must therefore load the child attendance status at replay time
+        // instead of requiring it during certification.
+        if (contest.duration || contest.sourceType === 'course_assessment') {
             const attendance = await statusColl.find({ domainId: contest.domainId, docType: DOC_TYPE_CONTEST,
                 docId: contest._id, $or: [{ attend: true }, { attend: { $gt: 0 } }],
             }, { projection: { uid: 1, startAt: 1, endAt: 1 } }).toArray();
@@ -351,6 +355,8 @@ export async function runShadowReplay(
         records = records.filter((r) => {
             if (r.domainId !== contest.domainId || String(r.contest) !== String(contest.docId)) return false;
             if (certified) {
+                if (contest.sourceType === 'course_assessment'
+                    && (!statusByUid.has(r.uid) || contest.excludedClassroomTeachers?.includes(r.uid))) return false;
                 return (!(r.submittedAt instanceof Date) || r.submittedAt.getTime() <= cutoff)
                     && (!(r.judgeAt instanceof Date) || r.judgeAt.getTime() <= cutoff);
             }

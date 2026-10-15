@@ -149,6 +149,29 @@ test('automatic file recognition provides a full score only for recognized testc
     }
 });
 
+test('problem detail uses the classroom self-record window instead of child contest ownership', () => {
+    const source = ts.createSourceFile('problem.ts', fs.readFileSync(path.resolve(__dirname,
+        '../packages/hydrooj/src/handler/problem.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
+    const helper = source.statements.find((s) => ts.isFunctionDeclaration(s)
+        && s.name?.text === 'canShowProblemDetailRecord');
+    const context = {
+        exports: {},
+        contest: { canShowSelfRecord: () => true },
+        canShowClassroomSelfRecord: (tdoc) => !tdoc.beginAt || new Date() > tdoc.beginAt,
+    };
+    vm.runInNewContext(ts.transpileModule(`${helper.getText(source)}\nexports.check = canShowProblemDetailRecord;`, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, context);
+    const future = new Date(Date.now() + 60_000);
+    assert.equal(context.exports.check({
+        tdoc: { sourceType: 'course_assessment', beginAt: future }, classroomTeacher: false,
+    }), false);
+    assert.equal(context.exports.check({
+        tdoc: { sourceType: 'course_assessment', beginAt: future }, classroomTeacher: true,
+    }), true);
+    assert.equal(context.exports.check({ tdoc: { sourceType: 'oi' }, classroomTeacher: false }), true);
+});
+
 test('the submission handler persists source-domain maintainers as staff while preserving ordinary modes', async () => {
     const source = ts.createSourceFile('problem.ts', fs.readFileSync(path.resolve(__dirname,
         '../packages/hydrooj/src/handler/problem.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
@@ -218,6 +241,17 @@ test('the submission handler persists source-domain maintainers as staff while p
     assert.equal(saved.participationMode, 'official');
     assert.equal(saved.classroomSession.sessionId, 'frozen-session');
     assert.equal(saved.classroomSession.courseId, tdoc.ratingPolicy.classroom.courseId);
+    // Child-contest ownership and contest-edit permission do not turn a parent-course
+    // student into staff. The parent course remains the authority for classroom roles.
+    tdoc.ratingPolicy.classroom.participantUids = [2];
+    tdoc.owner = 2;
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'official');
+    tdoc.owner = 99;
+    h.user = user([PERM.PERM_EDIT_CONTEST]);
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'official');
+    h.user = user();
     tdoc.ratingPolicy.classroom.participantUids = [3];
     await h.post('d', 'cpp', 'code', false, [], tid);
     assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'unknown');

@@ -1084,6 +1084,26 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
         const fetcher = {
             tdoc: () => this.tdoc,
             groups: async () => {
+                if (classroomManager) {
+                    // Classroom scoreboards may only expose the groups assigned
+                    // by the live parent course. The child contest's copied
+                    // `assign` field and unrelated domain groups are not an
+                    // authorization source.
+                    const course = await contest.get(domainId, this.tdoc.sourceCourseTid);
+                    const assignments = course?.assign || [];
+                    const groupNames = assignments.filter((name) => !Number.isSafeInteger(+name));
+                    const groups = groupNames.length
+                        ? await user.listGroup(domainId, undefined, groupNames)
+                        : [];
+                    const result = groups.filter((group) => group.class === true && !group.archive);
+                    for (const name of assignments.filter((item) => Number.isSafeInteger(+item))) {
+                        const uid = +name;
+                        if (uid > 0 && !result.some((group) => group.name === name)) {
+                            result.push({ _id: new ObjectId(), domainId, name, uids: [uid] });
+                        }
+                    }
+                    return result;
+                }
                 const allGroups = classroomManager || (this.user.hasPerm(PERM.PERM_EDIT_CONTEST_SELF) && this.user.own(this.tdoc))
                     || this.user.hasPerm(PERM.PERM_EDIT_CONTEST);
                 return await user.listGroup(domainId, allGroups ? undefined : this.user._id);

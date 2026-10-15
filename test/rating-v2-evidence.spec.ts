@@ -183,7 +183,6 @@ async function classroomFixture() {
     }, $unset: { ratingPolicy: '' } });
     await db.collection('document.status').insertMany([2, 3].flatMap((uid) => [
         { docType: 30, domainId: 'd', docId: courseId, uid, attend: 1, allow: { 1: true } },
-        { docType: 30, domainId: 'd', docId: contest.docId, uid, attend: 1, startAt: beginAt },
     ]));
     const { PERM, PRIV } = require('../packages/common/permission');
     let teacher = false;
@@ -230,6 +229,9 @@ async function classroomFixture() {
     const options = { domainId: 'd', tid: String(contest.docId), approvedBy: 99, operation: 'certify',
         poolId: 'certified-test', minParticipants: 2, participantUids: [2, 3] };
     return { contest, record, courseId, options, cli, get: () => contests.get('d', contest.docId),
+        attend: async (uids: number[]) => db.collection('document.status').insertMany(uids.map((uid) => ({
+            docType: 30, domainId: 'd', docId: contest.docId, uid, attend: 1, startAt: beginAt,
+        }))),
         finish: () => { clock = endAt.getTime() + 1000; }, setTeacher: (value) => { teacher = value; },
         setArchived: (value) => { archived = value; }, ValidationError };
 }
@@ -248,12 +250,14 @@ test('classroom certification freezes an admitted student session and releases o
     await assert.rejects(f.cli.run(f.options, () => {}));
     await db.collection('document.status').updateOne({ docId: f.courseId, uid: 3 }, { $set: { 'allow.1': true } });
     await f.cli.run(f.options, () => {});
+    assert.equal(await db.collection('document.status').countDocuments({ docId: f.contest.docId, attend: { $gt: 0 } }), 0);
     const saved = await f.get();
     assert.equal(saved.rated, false);
     assert.equal(saved.ratingPolicy.eventKind, 'classroom_assessment');
     const session = saved.ratingPolicy.classroom;
     assert.deepEqual(session.participantUids, [2, 3]);
     const classroomSession = { courseId: session.courseId, nodeId: session.nodeId, sessionId: session.sessionId };
+    await f.attend([2, 3]);
     await db.collection('record').insertMany([
         f.record(2, 200, { classroomSession, rejudged: true }), f.record(3, 50, { classroomSession }),
         f.record(4, 200, { classroomSession }), f.record(3, 100),
@@ -269,15 +273,37 @@ test('classroom certification freezes an admitted student session and releases o
     replay = await runShadowReplay(db, { eligibilityMode: 'certified', poolId: 'certified-test', write: true });
     assert.equal(replay.contests.processed, 1);
     assert.equal(replay.ratingUsers, 2);
-    assert(replay.exclusions.CLASSROOM_SESSION_MISMATCH >= 2);
+    assert(replay.exclusions.CLASSROOM_SESSION_MISMATCH >= 1);
     assert.equal((await runShadowReplay(db)).contests.processed, 0);
     assert.equal(await db.collection('domain.user').countDocuments({}), 0);
     assert.equal((await f.get()).rated, false);
 });
 
+test('certified classroom replay requires attendance recorded during the test window', async () => {
+    const f = await classroomFixture();
+    await f.cli.run(f.options, () => {});
+    const saved = await f.get();
+    const session = saved.ratingPolicy.classroom;
+    const classroomSession = { courseId: session.courseId, nodeId: session.nodeId, sessionId: session.sessionId };
+    await f.attend([2]);
+    await db.collection('record').insertMany([
+        f.record(2, 200, { classroomSession }), f.record(3, 50, { classroomSession }),
+    ]);
+    f.finish();
+    await f.cli.run({ ...f.options, operation: 'release' }, () => {});
+    let replay = await runShadowReplay(db, { eligibilityMode: 'certified', poolId: 'certified-test' });
+    assert.equal(replay.contests.processed, 0);
+    assert(replay.exclusions.INSUFFICIENT_FIELD);
+    await f.attend([3]);
+    replay = await runShadowReplay(db, { eligibilityMode: 'certified', poolId: 'certified-test' });
+    assert.equal(replay.contests.processed, 1);
+    assert.equal(replay.ratingUsers, 2);
+});
+
 test('classroom binding changes, forged sessions and insufficient fields fail closed', async () => {
     const f = await classroomFixture();
     await f.cli.run(f.options, () => {});
+    await f.attend([2, 3]);
     const saved = await f.get();
     const session = saved.ratingPolicy.classroom;
     const classroomSession = { courseId: session.courseId, nodeId: session.nodeId, sessionId: session.sessionId };
@@ -303,12 +329,13 @@ test('classroom binding changes, forged sessions and insufficient fields fail cl
 test('certified classroom and ordinary contests share a pool without admitting courses or unsupported assessment modes', async () => {
     const f = await classroomFixture();
     for (const patch of [{ rule: 'course' }, { rule: 'homework' }, { rule: 'ioi' }, { allowTeam: true }, { duration: 1 }]) {
-        const before = await f.get();
+        const previous = await f.get();
         await db.collection('document').updateOne({ docId: f.contest.docId }, { $set: patch });
         await assert.rejects(f.cli.run(f.options, () => {}));
-        await db.collection('document').replaceOne({ docId: f.contest.docId }, before);
+        await db.collection('document').replaceOne({ docId: f.contest.docId }, previous);
     }
     await f.cli.run(f.options, () => {});
+    await f.attend([2, 3]);
     const session = (await f.get()).ratingPolicy.classroom;
     const classroomSession = { courseId: session.courseId, nodeId: session.nodeId, sessionId: session.sessionId };
     await db.collection('record').insertMany([f.record(2, 200, { classroomSession }), f.record(3, 50, { classroomSession })]);

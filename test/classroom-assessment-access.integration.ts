@@ -211,22 +211,34 @@ export function register() {
             const f = await fixture('during', 'acm');
             const official = await f.seedRecord();
             await f.seedRecord(actors.teacher, false, false);
-            const scoreboard = await get(actors.teacher, `/classroom/${f.tid}/scoreboard?realtime=true`).expect(200);
-            assert(scoreboard.body.rows.some((row) => row.some((cell) => cell.type === 'user' && +cell.raw === actors.student.uid)));
-            assert(!scoreboard.body.rows.some((row) => row.some((cell) => cell.type === 'user' && +cell.raw === actors.teacher.uid)));
-            const csv = await get(actors.teacher, `/classroom/${f.tid}/scoreboard/csv`).expect(200);
-            assert.match(csv.headers['content-disposition'], /\.csv/);
-            const ghost = await get(actors.teacher, `/classroom/${f.tid}/scoreboard/ghost`).expect(200);
-            const ghostText = ghost.text || ghost.body.toString();
-            assert.match(ghostText, /@teams 1\b/);
-            assert(!ghostText.includes(actors.teacher.uname));
-            await get(actors.teacher, `/course/assessment/${f.tid}/code?all=true`).expect(200)
-                .then((res) => assert.match(res.headers['content-disposition'], /\.zip/));
-            await get(actors.teacher, `/record/${official._id}?download=true`).expect(200)
-                .then((res) => assert.match(res.text || res.body.toString(), /int main/));
-            for (const actor of [actors.student, actors.admin, actors.oldOwner]) {
-                await get(actor, `/classroom/${f.tid}/scoreboard`).expect(403);
-                await get(actor, `/course/assessment/${f.tid}/code`).expect(403);
+            const unrelatedGroup = `unrelated-${new ObjectId().toHexString()}`;
+            await model.user.collGroup.insertOne({
+                domainId, name: unrelatedGroup, class: true, archive: false,
+                students: [actors.outsider.uid], uids: [actors.outsider.uid], teachers: [],
+            });
+            try {
+                const scoreboard = await get(actors.teacher, `/classroom/${f.tid}/scoreboard?realtime=true`).expect(200);
+                assert(scoreboard.body.rows.some((row) => row.some((cell) => cell.type === 'user' && +cell.raw === actors.student.uid)));
+                assert(!scoreboard.body.rows.some((row) => row.some((cell) => cell.type === 'user' && +cell.raw === actors.teacher.uid)));
+                const groupNames = (scoreboard.body.groups || []).map((group) => group.name);
+                assert(groupNames.includes(className), 'scoreboard must expose the parent course class filter');
+                assert(!groupNames.includes(unrelatedGroup), 'scoreboard must not expose unrelated domain groups');
+                const csv = await get(actors.teacher, `/classroom/${f.tid}/scoreboard/csv`).expect(200);
+                assert.match(csv.headers['content-disposition'], /\.csv/);
+                const ghost = await get(actors.teacher, `/classroom/${f.tid}/scoreboard/ghost`).expect(200);
+                const ghostText = ghost.text || ghost.body.toString();
+                assert.match(ghostText, /@teams 1\b/);
+                assert(!ghostText.includes(actors.teacher.uname));
+                await get(actors.teacher, `/course/assessment/${f.tid}/code?all=true`).expect(200)
+                    .then((res) => assert.match(res.headers['content-disposition'], /\.zip/));
+                await get(actors.teacher, `/record/${official._id}?download=true`).expect(200)
+                    .then((res) => assert.match(res.text || res.body.toString(), /int main/));
+                for (const actor of [actors.student, actors.admin, actors.oldOwner]) {
+                    await get(actor, `/classroom/${f.tid}/scoreboard`).expect(403);
+                    await get(actor, `/course/assessment/${f.tid}/code`).expect(403);
+                }
+            } finally {
+                await model.user.collGroup.deleteOne({ domainId, name: unrelatedGroup });
             }
         });
 
@@ -270,6 +282,17 @@ export function register() {
             assert(studentStream.frames.some((frame) => frame.rdoc), 'student still receives their projected record');
             assert(studentStream.frames.every((frame) => frame.rdoc?.score === undefined));
             studentStream.ws.close();
+        });
+
+        it('hides an in-progress OI detail on the problem page despite stale child ownership', async () => {
+            const f = await fixture('during', 'oi');
+            await f.seedRecord(actors.oldOwner);
+            assert((await model.contest.getStatus(domainId, f.tid, actors.oldOwner.uid))?.attend,
+                'the seeded OI record should create child attendance');
+            await get(actors.oldOwner, `/course/assessment/${f.tid}/problems`).expect(200);
+            const response = await get(actors.oldOwner, `/p/${f.pid}?tid=${f.tid}`).expect(200);
+            assert(response.body.tsdoc, 'the authorized student should receive public test status');
+            assert.equal(response.body.tsdoc.detail, undefined, 'OI detail must stay hidden until the classroom result window opens');
         });
 
         it('streams authorized formal and practice records through both real WebSocket routes', async () => {

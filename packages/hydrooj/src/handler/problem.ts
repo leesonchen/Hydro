@@ -70,8 +70,10 @@ function submissionParticipationMode(handler: {
 }, practice = false, pretest = false, classroomTeacher = false) {
     if (practice || pretest) return 'practice' as const;
     if (handler.team !== undefined || handler.user._id < 0) return 'team' as const;
+    const classroomAssessment = handler.tdoc?.sourceType === 'course_assessment';
     if (classroomTeacher || (handler.pdoc && handler.user.own(handler.pdoc))
-        || (handler.tdoc && (handler.user.own(handler.tdoc) || handler.user.hasPerm(PERM.PERM_EDIT_CONTEST)))
+        || (!classroomAssessment && handler.tdoc
+            && (handler.user.own(handler.tdoc) || handler.user.hasPerm(PERM.PERM_EDIT_CONTEST)))
         || handler.user.hasPerm(PERM.PERM_EDIT_PROBLEM)
         || (handler.pdoc?.reference && handler.problemFileUser && handler.problemFilePdoc
             && (handler.problemFileUser.own(handler.problemFilePdoc)
@@ -79,6 +81,17 @@ function submissionParticipationMode(handler: {
     if (handler.tdoc?.sourceType === 'course_assessment' && handler.tdoc.ratingPolicy?.enabled
         && !handler.tdoc.ratingPolicy.classroom?.participantUids?.includes(handler.user._id)) return 'unknown' as const;
     return 'official' as const;
+}
+
+function canShowProblemDetailRecord(handler: {
+    tdoc?: Tdoc;
+    user: User;
+    classroomTeacher?: boolean;
+}) {
+    if (!handler.tdoc) return false;
+    return handler.tdoc.sourceType === 'course_assessment'
+        ? handler.classroomTeacher || canShowClassroomSelfRecord(handler.tdoc)
+        : contest.canShowSelfRecord.call(handler, handler.tdoc, true);
 }
 
 function getCourseNodeIdByPid(tdoc: any, pid: number) {
@@ -594,7 +607,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
         };
         if (this.tdoc && this.tsdoc) {
             const fields = ['attend', 'startAt', 'endAt'];
-            if (contest.canShowSelfRecord.call(this, this.tdoc, true)) fields.push('detail');
+            if (canShowProblemDetailRecord(this)) fields.push('detail');
             this.tsdoc = pick(this.tsdoc, fields) as typeof this.tsdoc;
             this.response.body.tsdoc = this.tsdoc;
         }

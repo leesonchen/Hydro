@@ -61,8 +61,7 @@ async function runLocked(options: CertificationOptions, report: (message: any) =
                 || !participantUids.every((uid) => Number.isSafeInteger(uid) && uid > 0)) throw new ValidationError('classroomRoster');
             for (const uid of participantUids) {
                 const participant = await UserModel.getById(options.domainId, uid);
-                if (!participant?.hasPriv(PRIV.PRIV_USER_PROFILE) || await assertCourseAssessmentAccess(participant, tdoc)
-                    || !(await contest.getStatus(options.domainId, tdoc.docId, uid))?.attend) {
+                if (!participant?.hasPriv(PRIV.PRIV_USER_PROFILE) || await assertCourseAssessmentAccess(participant, tdoc)) {
                     throw new ValidationError('classroomParticipant', uid);
                 }
             }

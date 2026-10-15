@@ -36,7 +36,7 @@ const {
 fs.writeFileSync(root('__core-js.js'), `${list.map((i) => `import 'core-js/modules/${i}';`).join('\n')}\n`);
 
 export default async function (env: {
-  watch?: boolean, production?: boolean, measure?: boolean, dev?: boolean,
+  watch?: boolean; production?: boolean; measure?: boolean; dev?: boolean;
 } = {}) {
   // Keep normal builds offline-safe; include the optional font only if locally available.
   await prepareXiaolaiFont();
