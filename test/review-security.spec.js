@@ -97,7 +97,9 @@ before(async () => {
             return results;
         } },
         '../model/course': courseModel, '../model/structure': structure,
-        '../model/class': { ClassModel: { getGroupByName: async () => ({ students: [] }) } },
+        '../model/class': { ClassModel: {
+            getGroupByName: async () => ({ students: [] }), listGroup: async () => [],
+        } },
     });
     hooks = {};
     const plugin = load('packages/hydrooj/src/builtin/course-management/index.ts', {
@@ -167,6 +169,24 @@ test('real HTTP Bearer middleware honors a restricted token after a full-scope c
     app.use(base); app.use(userLayer);
     app.use((ctx) => { ctx.status = ctx.HydroContext.user.hasPerm(PERM.PERM_EDIT_HOMEWORK) ? 200 : 403; });
     await request(app.callback()).get('/d/d/test').set('Authorization', 'Bearer readonly').expect(403);
+});
+
+test('course lists include teacher-maintained and student-enrolled courses as my courses', async () => {
+    const course = await courseFixture({ assign: ['class-a'] });
+    const t = handler(handlers.CourseMainHandler, actor(3, PERM.PERM_VIEW_HOMEWORK));
+    await t.get('d');
+    assert(JSON.stringify(t.response.body.myCourses).includes(course.docId.toString()));
+    assert(!JSON.stringify(t.response.body.otherCourses).includes(course.docId.toString()));
+
+    const enrolled = actor(2, PERM.PERM_VIEW_HOMEWORK);
+    enrolled.group = ['class-a'];
+    const s = handler(handlers.CourseMainHandler, enrolled);
+    await s.get('d');
+    assert(JSON.stringify(s.response.body.myCourses).includes(course.docId.toString()));
+
+    const outsider = handler(handlers.CourseMainHandler, actor(4, PERM.PERM_VIEW_HOMEWORK));
+    await outsider.get('d');
+    assert(!JSON.stringify(outsider.response.body.myCourses).includes(course.docId.toString()));
 });
 
 test('SELF permission only bypasses assignment and release gates for owners and maintainers', async () => {
