@@ -69,11 +69,24 @@ export class RecordListHandler extends ContestDetailBaseHandler {
         }
         const viewingTeammate = !!(tid && this.team && typeof q.uid === 'number'
             && this.tsdoc?.members?.includes(q.uid));
-        if (!practice && q.uid !== this.user._id && !teamMembers && !viewingTeammate) this.checkPerm(PERM.PERM_VIEW_RECORD);
+        if (!tid && !practice && q.uid !== this.user._id && !teamMembers && !viewingTeammate) {
+            this.checkPerm(PERM.PERM_VIEW_RECORD);
+        }
+        let classroomManager = false;
         if (tid) {
             tdoc = await contest.get(domainId, tid);
             this.tdoc = tdoc;
             if (!tdoc) throw new ContestNotFoundError(domainId, pid);
+            if (tdoc.sourceType === 'course_assessment') {
+                classroomManager = await assertCourseAssessmentAccess(this.user, tdoc);
+                if (!practice && !classroomManager) {
+                    if (q.uid !== undefined && q.uid !== this.user._id) throw new PermissionError(PERM.PERM_VIEW_RECORD);
+                    q.uid = this.user._id;
+                    uidOrName = this.user._id.toString();
+                }
+            } else if (!practice && q.uid !== this.user._id && !teamMembers && !viewingTeammate) {
+                this.checkPerm(PERM.PERM_VIEW_RECORD);
+            }
             if (practice) {
                 if (tdoc.sourceType === 'course_assessment') await assertCourseAssessmentAccess(this.user, tdoc);
                 if (!canManagePractice(this.user, tdoc) && q.uid === undefined) {
@@ -84,12 +97,16 @@ export class RecordListHandler extends ContestDetailBaseHandler {
                     throw new PermissionError(PERM.PERM_VIEW_RECORD);
                 }
             }
-            if (!practice && !contest.canShowScoreboard.call(this, tdoc, true)) throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
+            if (!practice && tdoc.sourceType !== 'course_assessment'
+                && !contest.canShowScoreboard.call(this, tdoc, true)) throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             const viewingSelf = q.uid === this.user._id || !!teamMembers || viewingTeammate;
-            if (!practice && !contest[viewingSelf ? 'canShowSelfRecord' : 'canShowRecord'].call(this, tdoc, true)) {
+            if (!practice && !(tdoc.sourceType === 'course_assessment'
+                ? (classroomManager || contest.canShowSelfRecord.call(this, tdoc, true))
+                : contest[viewingSelf ? 'canShowSelfRecord' : 'canShowRecord'].call(this, tdoc, true))) {
                 throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             }
-            if (!practice && !this.team && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) {
+            if (!practice && !classroomManager && !this.team
+                && !(await contest.getStatus(domainId, tid, this.user._id))?.attend) {
                 const name = tdoc.rule === 'homework'
                     ? "You haven't claimed this homework yet."
                     : "You haven't attended this contest yet.";
@@ -133,7 +150,8 @@ export class RecordListHandler extends ContestDetailBaseHandler {
                         ? problem.getList(domainId, rdocs.map((rdoc) => rdoc.pid), canViewHiddenProblem, false, problem.PROJECTION_LIST)
                         : Object.fromEntries(uniqBy(rdocs, 'pid').map((rdoc) => [rdoc.pid, { ...problem.default, pid: rdoc.pid }])),
             ]);
-        if (!practice && this.tdoc && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+        if (!practice && this.tdoc && (this.tdoc.sourceType === 'course_assessment'
+            ? !classroomManager : !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST))) {
             rdocs = rdocs.map((i) => contest.applyProjection(tdoc, i, this.user));
         }
         this.response.body = {
