@@ -136,6 +136,12 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, clas
 }
 
 for (const kind of ['list', 'detail']) {
+    test(`${kind} rejects former course teachers even if child-contest ownership is stale`, async () => {
+        const f = fixture({ manager: false, assigned: true, classroom: true });
+        f.tdoc.owner = 7;
+        f.rdoc.uid = 11;
+        await assert.rejects(f.connect(kind, { uid: 11 }), /Permission/);
+    });
     test(`${kind} formal classroom record stream closes when parent access is revoked`, async () => {
         const f = fixture({ manager: false, assigned: true, classroom: true, formal: true });
         const h = await f.connect(kind);
