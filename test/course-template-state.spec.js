@@ -215,7 +215,8 @@ test('assessment metric and monitor edits preserve original timestamp precision 
         assert.equal(assessment.monitorMode, 'browser');
         assert.equal(assessment.beginAt, beginAt);
         assert.equal(assessment.endAt, endAt);
-        $('.dag-assessment-begin').trigger('blur');
+        $('.dag-assessment-begin-date').trigger('blur');
+        $('.dag-assessment-begin-time').trigger('blur');
         assessment = readDag(dom)[0].assessment;
         assert.equal(assessment.beginAt, beginAt);
         assert.equal(assessment.endAt, endAt);
@@ -232,10 +233,15 @@ test('editing one assessment bound changes only that bound', async () => {
     }] }));
     try {
         const changed = new Date(new Date(beginAt).getTime() + 60_000);
-        $('.dag-assessment-begin').val(dateTime.exports.formatDateTime(changed, undefined, true)).trigger('change');
+        const changedDisplay = dateTime.exports.formatDateTime(changed);
+        const [changedDate, changedTime] = changedDisplay.split(' ');
+        $('.dag-assessment-begin-date').val(changedDate).trigger('change');
+        $('.dag-assessment-begin-time').val(changedTime).trigger('change');
         const assessment = readDag(dom)[0].assessment;
-        assert.equal(assessment.beginAt, changed.toISOString().replace(/\.456Z$/, '.000Z'));
-        assert.equal(assessment.endAt, endAt);
+        const expectedBegin = dateTime.exports.parseDateTime(changedDisplay);
+        const duration = Math.round((new Date(endAt).getTime() - new Date(beginAt).getTime()) / 60000);
+        assert.equal(assessment.beginAt, expectedBegin.toISOString());
+        assert.equal(assessment.endAt, new Date(expectedBegin.getTime() + duration * 60000).toISOString());
     } finally {
         dom.window.close();
     }
@@ -254,8 +260,9 @@ test('lesson wall time converts from profile zone to browser local time for asse
             $('[name="lessonBeginAt"]').val('2026-10-12 09:00');
             $('[name="lessonEndAt"]').val('2026-10-12 11:00');
             $('.dag-kind').val('assessment').trigger('change');
-            assert.equal($('.dag-assessment-begin').val(), '2026-10-11 17:00:00');
-            assert.equal($('.dag-assessment-end').val(), '2026-10-11 19:00:00');
+            assert.equal($('.dag-assessment-begin-date').val(), '2026-10-11');
+            assert.equal($('.dag-assessment-begin-time').val(), '17:00');
+            assert.equal($('.dag-assessment-end').val(), '2026-10-11 19:00');
         } finally {
             dom.window.close();
         }

@@ -445,9 +445,10 @@ const page = new NamedPage(['course_edit', 'course_create'], () => {
               $beginDate.val(localBegin.slice(0, 10));
               $beginTime.val(localBegin.slice(11, 16));
             }
-            if (lessonBegin && lessonEnd && !$duration.val()) {
+            if (lessonBegin && lessonEnd) {
               $duration.val(Math.max(1, Math.round((lessonEnd.getTime() - lessonBegin.getTime()) / 60000)));
             }
+            updateAssessmentEnd();
           }
           syncAssessment();
         });
