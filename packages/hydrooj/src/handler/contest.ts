@@ -611,6 +611,7 @@ export class ContestEditHandler extends Handler {
 
 export class ContestManagementBaseHandler extends ContestDetailBaseHandler {
     async prepare() {
+        if (this.tdoc.sourceType === 'course_assessment') throw new ForbiddenError('请在课程管理中管理课堂测试。');
         if (!this.user.own(this.tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
     }
 }
