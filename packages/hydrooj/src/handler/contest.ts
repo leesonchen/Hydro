@@ -99,7 +99,10 @@ export class ContestDetailBaseHandler extends Handler {
         if (!tid) return; // ProblemDetailHandler also extends from ContestDetailBaseHandler
         this.tdoc = await contest.get(domainId, tid);
         this.classroomTeacher = await assertCourseAssessmentAccess(this.user, this.tdoc);
-        if (!this.classroomTeacher && !contest.canAccessAssignedContest(this.user, this.tdoc)) {
+        // Classroom eligibility was already checked against the parent course above.
+        // Its copied contest assign field is not a second source of truth.
+        if (this.tdoc.sourceType !== 'course_assessment'
+            && !contest.canAccessAssignedContest(this.user, this.tdoc)) {
             throw new NotAssignedError('contest', tid);
         }
         if (this.tdoc.allowTeam) {
