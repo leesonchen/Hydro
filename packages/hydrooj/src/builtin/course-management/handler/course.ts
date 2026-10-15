@@ -2094,8 +2094,8 @@ export class CourseScoreboardHandler extends Handler {
             if (!canEditCourse(this, tdoc)) throw new ForbiddenError('无权限查看课堂测试成绩板');
             const contestTid = new ObjectId(assessmentNode.assessment.contestTid);
             this.response.redirect = ext
-                ? this.url('contest_scoreboard_view', { tid: contestTid, view: ext })
-                : this.url('contest_scoreboard', { tid: contestTid });
+                ? this.url('classroom_scoreboard_view', { tid: contestTid, view: ext })
+                : this.url('classroom_scoreboard', { tid: contestTid });
             return;
         }
         if (ext) {
