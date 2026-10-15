@@ -91,7 +91,6 @@ async function getCourseAudience(domainId: string, tdoc: CourseTdoc) {
         ...(group?.teachers || []),
         tdoc.owner,
         ...(tdoc.maintainer || []),
-        (tdoc as any).editor,
     ].filter(Boolean));
     const studentUids = new Set<number>([
         ...(group?.students || []),
