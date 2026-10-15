@@ -144,7 +144,7 @@
       <li class="menu__item"><a class="menu__link" href="{{ url(testProblemRoute, tid=tdoc.docId) }}">
         <span class="icon icon-unordered_list"></span> {{ _('Problem List') }}
       </a></li>
-      {% if page_name == 'contest_detail' and tsdoc.attend and model.contest.isOngoing(tdoc, tsdoc) and tdoc.rule != 'homework' %}
+      {% if page_name == 'contest_detail' and not isClassroomTest and tsdoc.attend and model.contest.isOngoing(tdoc, tsdoc) and tdoc.rule != 'homework' %}
       <li class="menu__item">
         <form action="{{ url(testDetailRoute, tid=tdoc.docId) }}" method="POST" onsubmit='return confirm({{ _("Confirm end contest early? You will not be able to submit after this.")|json|safe }});'>
           <input type="hidden" name="operation" value="early_end">
