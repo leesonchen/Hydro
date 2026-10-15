@@ -866,8 +866,18 @@ async function resolveContestRegistration(domainId: string, tdoc: Tdoc, uid: num
 }
 
 export class ContestUserHandler extends ContestManagementBaseHandler {
+    private assertIndependentRoster() {
+        if (this.tdoc.sourceType === 'course_assessment') {
+            throw new ForbiddenError('课堂测试的学生名单和章节权限请在所属课程中管理');
+        }
+    }
+
     @param('tid', Types.ObjectId)
     async get(domainId: string, tid: ObjectId) {
+        if (this.tdoc.sourceType === 'course_assessment') {
+            this.response.redirect = this.url('course_manage', { tid: this.tdoc.sourceCourseTid });
+            return;
+        }
         const tsdocs = await contest.getMultiStatus(domainId, { docId: tid }).project({
             uid: 1, attend: 1, startAt: 1, unrank: 1, endAt: 1, displayName: 1, members: 1,
         }).toArray();
@@ -894,6 +904,7 @@ export class ContestUserHandler extends ContestManagementBaseHandler {
     @param('uids', Types.NumericArray)
     @param('unrank', Types.Boolean)
     async postAddUser(domainId: string, tid: ObjectId, uids: number[], unrank = false) {
+        this.assertIndependentRoster();
         if (uids.some((uid) => !Number.isSafeInteger(uid) || uid === 0)) throw new ValidationError('uids');
         uids = Array.from(new Set(uids));
         const participantUids = uids.filter((uid) => uid > 0);
@@ -915,6 +926,7 @@ export class ContestUserHandler extends ContestManagementBaseHandler {
     @param('tid', Types.ObjectId)
     @param('uid', Types.Int)
     async postRank(domainId: string, tid: ObjectId, uid: number) {
+        this.assertIndependentRoster();
         const { targetUid, tsdoc } = await resolveContestRegistration(domainId, this.tdoc, uid);
         await contest.setStatus(domainId, tid, targetUid, { unrank: !tsdoc.unrank });
         this.back();
@@ -923,6 +935,7 @@ export class ContestUserHandler extends ContestManagementBaseHandler {
     @param('tid', Types.ObjectId)
     @param('uid', Types.Int)
     async postResume(domainId: string, tid: ObjectId, uid: number) {
+        this.assertIndependentRoster();
         const { targetUid, tsdoc } = await resolveContestRegistration(domainId, this.tdoc, uid);
         if (this.tdoc.endAt <= new Date()) throw new ContestNotLiveError(domainId, tid);
         if (this.tdoc.duration && tsdoc.startAt) {
@@ -936,6 +949,7 @@ export class ContestUserHandler extends ContestManagementBaseHandler {
     @param('tid', Types.ObjectId)
     @param('uid', Types.Int)
     async postRemoveUser(domainId: string, tid: ObjectId, uid: number) {
+        this.assertIndependentRoster();
         if (!contest.isNotStarted(this.tdoc)) throw new ContestAlreadyStartedError();
         const { targetUid } = await resolveContestRegistration(domainId, this.tdoc, uid);
         await contest.cancelAttend(domainId, tid, targetUid);
