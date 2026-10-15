@@ -98,6 +98,7 @@ export class ContestDetailBaseHandler extends Handler {
     async __prepare(domainId: string, tid: ObjectId) {
         if (!tid) return; // ProblemDetailHandler also extends from ContestDetailBaseHandler
         this.tdoc = await contest.get(domainId, tid);
+        if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
         this.classroomTeacher = await assertCourseAssessmentAccess(this.user, this.tdoc);
         // Classroom eligibility was already checked against the parent course above.
         // Its copied contest assign field is not a second source of truth.
