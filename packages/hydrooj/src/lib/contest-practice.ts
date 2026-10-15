@@ -26,7 +26,10 @@ export function supportsPractice(tdoc: Tdoc) {
 }
 
 export function isPracticeOpen(tdoc: Tdoc) {
-    return supportsPractice(tdoc) && tdoc.allowPractice === true && contest.isDone(tdoc);
+    // Classroom tests default to practice, including existing tests without this setting.
+    // Ordinary contests keep their explicit opt-in behavior.
+    return supportsPractice(tdoc) && contest.isDone(tdoc)
+        && (tdoc.sourceType === 'course_assessment' ? tdoc.allowPractice !== false : tdoc.allowPractice === true);
 }
 
 export function canManagePractice(user: User, tdoc: Tdoc) {
