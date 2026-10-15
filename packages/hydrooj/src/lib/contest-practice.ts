@@ -41,10 +41,16 @@ export function canManagePractice(user: User, tdoc: Tdoc) {
 }
 
 export function canReadPractice(user: User, tdoc: Tdoc, uid: number) {
-    return supportsPractice(tdoc) && user._id > 0
-        && user.hasPerm(PERM.PERM_VIEW_CONTEST) && user.hasPerm(PERM.PERM_VIEW_PROBLEM)
-        && (canManagePractice(user, tdoc) || contest.canAccessAssignedContest(user, tdoc))
-        && (uid === user._id || canManagePractice(user, tdoc));
+    if (!supportsPractice(tdoc) || user._id <= 0) return false;
+    const manager = canManagePractice(user, tdoc);
+    if (tdoc.sourceType === 'course_assessment') {
+        // Caller must have validated the live parent-course enrollment and node grant.
+        // The child contest's stale assign or standalone contest perms are not authorities.
+        return (manager || (user.hasPerm(PERM.PERM_VIEW_HOMEWORK) && user.hasPerm(PERM.PERM_VIEW_PROBLEM)))
+            && (uid === user._id || manager);
+    }
+    return user.hasPerm(PERM.PERM_VIEW_CONTEST) && user.hasPerm(PERM.PERM_VIEW_PROBLEM)
+        && (manager || contest.canAccessAssignedContest(user, tdoc)) && (uid === user._id || manager);
 }
 
 function codeHash(tdoc: Tdoc) {
