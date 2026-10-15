@@ -157,6 +157,7 @@ export class RecordListHandler extends ContestDetailBaseHandler {
         let rdocs = invalid
             ? [] as RecordDoc[]
             : await cursor.skip((page - 1) * limit).limit(limit).toArray();
+        const recordPageHasRows = rdocs.length > 0;
         if (all || allDomain) {
             // Global contest permissions do not grant access to classroom records.
             const activities = new Map<string, Promise<Tdoc>>();
@@ -194,6 +195,7 @@ export class RecordListHandler extends ContestDetailBaseHandler {
         this.response.body = {
             page,
             rdocs,
+            recordPageHasRows,
             tdoc,
             pdict,
             udict,

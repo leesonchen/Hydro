@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
+import { dirname } from 'node:path';
 import { ObjectId } from 'mongodb';
 import * as supertest from 'supertest';
 import WebSocket from 'ws';
@@ -524,6 +525,43 @@ export function register() {
             const record = await model.record.coll.findOne({ _id: new ObjectId(result.body.rid) });
             assert.equal(record.practiceContest.toString(), tid.toString());
             await get(actors.teacher, `/contest/${tid}`).expect(403);
+        });
+
+        it('keeps the next-page link when a full global record page is removed by classroom authorization', async () => {
+            const f = await fixture('after');
+            const seed = await f.seedRecord();
+            const ordinaryTid = await model.contest.add(domainId, 'Ordinary pagination regression', '', ownerUid, 'ioi',
+                new Date(Date.now() - 3600000), new Date(Date.now() - 60000), [f.pid], false, {});
+            const ordinaryRecord = { ...seed, _id: new ObjectId(), contest: ordinaryTid, uid: actors.admin.uid };
+            await model.record.coll.insertOne(ordinaryRecord);
+            const pageSize = model.system.get('pagination.record');
+            assert(Number.isInteger(pageSize) && pageSize > 0);
+            // ObjectIds are generated after the ordinary record, placing exactly
+            // a full page of inaccessible classroom records ahead of it.
+            const hiddenRecords = Array.from({ length: pageSize }, () => ({ ...seed, _id: new ObjectId() }));
+            await model.record.coll.insertMany(hiddenRecords);
+            const query = `all=true&tid=${ordinaryTid}`;
+            const first = await get(actors.admin, `/record?${query}`).expect(200);
+            assert.deepEqual(first.body.rdocs, []);
+            assert.equal(first.body.recordPageHasRows, true, 'the raw database page still has records');
+            const second = await get(actors.admin, `/record?${query}&page=2`).expect(200);
+            assert(second.body.rdocs.some((row) => row._id === ordinaryRecord._id.toString()),
+                'the next page must retain the older ordinary contest record');
+            let renderer: any;
+            const previousUiAddon = global.addons['ui-default'];
+            try {
+                global.addons['ui-default'] = dirname(require.resolve('@hydrooj/ui-default/package.json'));
+                renderer = global.app.plugin(require('@hydrooj/ui-default/backendlib/template').TemplateService);
+                await renderer;
+                const html = await actors.admin.client.get(`/d/${domainId}/record?${query}`).accept('html').expect(200);
+                assert.match(html.text, /class="pager__item next link" href="\?page=2(?:&amp;|&)/);
+                for (const row of hiddenRecords) assert(!html.text.includes(`data-rid="${row._id}"`));
+                assert(!html.text.includes(actors.student.uname), 'an empty authorized page must not disclose its classroom submitter');
+            } finally {
+                await renderer?.dispose();
+                if (previousUiAddon === undefined) delete global.addons['ui-default'];
+                else global.addons['ui-default'] = previousUiAddon;
+            }
         });
 
         after(async () => {
