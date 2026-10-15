@@ -134,7 +134,7 @@
                           {% else %}
                             {{ problem.render_problem_title(pdoc, show_tags=false) }}
                           {% endif %}
-                          {% if feedbackUrl %}
+                          {% if feedbackUrl and handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
                             <a class="cf-scoreboard-entry" href="{{ feedbackUrl }}?pid={{ pid }}&amp;nodeId={{ node._id }}">记录课堂反馈</a>
                           {% endif %}
                         </td>
