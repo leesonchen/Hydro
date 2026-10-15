@@ -24,7 +24,7 @@ import {
     ProblemDoc, ProblemSearchOptions, ProblemStatusDoc, RecordDoc, Tdoc, User,
 } from '../interface';
 import { canSubmitPractice, isPracticeOpen } from '../lib/contest-practice';
-import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
+import { assertCourseAssessmentAccess, canShowClassroomSelfRecord } from '../lib/course-assessment-access';
 import { REFERENCE_CODE_TITLE } from '../lib/referenceCode';
 import { Logger } from '../logger';
 import { PERM, PRIV, STATUS } from '../model/builtin';
@@ -845,7 +845,9 @@ export class ProblemSubmitHandler extends ProblemDetailHandler {
                 ]);
             }
         }
-        if (tid && !practice && !pretest && !contest.canShowSelfRecord.call(this, this.tdoc)) {
+        if (tid && !practice && !pretest && !(this.tdoc.sourceType === 'course_assessment'
+            ? classroomTeacher || canShowClassroomSelfRecord(this.tdoc)
+            : contest.canShowSelfRecord.call(this, this.tdoc))) {
             this.response.body = { tid };
             this.response.redirect = this.url(this.tdoc.sourceType === 'course_assessment'
                 ? 'classroom_test_problemlist' : this.tdoc.rule === 'homework' ? 'homework_detail' : 'contest_problemlist', { tid });

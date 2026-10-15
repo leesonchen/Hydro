@@ -9,7 +9,7 @@ import {
 } from '../error';
 import { ContestStatusDoc, RecordDoc, Tdoc, User } from '../interface';
 import { canManageFeedback } from '../lib/classroomFeedbackAccess';
-import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
+import { assertCourseAssessmentAccess, canShowClassroomSelfRecord } from '../lib/course-assessment-access';
 import { canManagePractice, canReadPractice, canSubmitPractice } from '../lib/contest-practice';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
@@ -78,6 +78,9 @@ export class RecordListHandler extends ContestDetailBaseHandler {
             this.tdoc = tdoc;
             if (!tdoc) throw new ContestNotFoundError(domainId, pid);
             if (tdoc.sourceType === 'course_assessment') {
+                // Global record-list flags remove the contest predicate. A teacher's
+                // course-scoped grant must never authorize records in other activities.
+                if (all || allDomain) throw new PermissionError(PERM.PERM_VIEW_RECORD);
                 classroomManager = await assertCourseAssessmentAccess(this.user, tdoc);
                 if (!practice && !classroomManager) {
                     if (q.uid !== undefined && q.uid !== this.user._id) throw new PermissionError(PERM.PERM_VIEW_RECORD);
@@ -101,7 +104,7 @@ export class RecordListHandler extends ContestDetailBaseHandler {
                 && !contest.canShowScoreboard.call(this, tdoc, true)) throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             const viewingSelf = q.uid === this.user._id || !!teamMembers || viewingTeammate;
             if (!practice && !(tdoc.sourceType === 'course_assessment'
-                ? (classroomManager || contest.canShowSelfRecord.call(this, tdoc, true))
+                ? (classroomManager || canShowClassroomSelfRecord(tdoc))
                 : contest[viewingSelf ? 'canShowSelfRecord' : 'canShowRecord'].call(this, tdoc, true))) {
                 throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             }
@@ -258,7 +261,7 @@ export class RecordDetailHandler extends ContestDetailBaseHandler {
             }
             let canView = classroomManager || (this.tdoc.sourceType !== 'course_assessment' && this.user.own(this.tdoc));
             if (this.tdoc.sourceType === 'course_assessment') {
-                canView ||= contest.canShowSelfRecord.call(this, this.tdoc, true) && isOwnOrTeammate;
+                canView ||= canShowClassroomSelfRecord(this.tdoc) && isOwnOrTeammate;
             } else {
                 canView ||= contest.canShowRecord.call(this, this.tdoc);
                 canView ||= contest.canShowSelfRecord.call(this, this.tdoc, true) && isOwnOrTeammate;
@@ -458,9 +461,10 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
             this.tdoc = await contest.get(domainId, tid);
             if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
             if (this.tdoc.sourceType === 'course_assessment') {
+                if (all || allDomain) throw new PermissionError(PERM.PERM_VIEW_RECORD);
                 this.classroomManager = await assertCourseAssessmentAccess(this.user, this.tdoc);
                 if (!practice && !pretest && !this.classroomManager
-                    && !contest.canShowSelfRecord.call(this, this.tdoc, true)) {
+                    && !canShowClassroomSelfRecord(this.tdoc)) {
                     throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
                 }
             } else if (!practice && !pretest
@@ -506,7 +510,7 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         }
         if (!practice && !pretest && this.tdoc?.sourceType === 'course_assessment'
             && !this.classroomManager) {
-            if (all || allDomain || (this.uid !== undefined && this.uid !== this.user._id)) {
+            if (this.uid !== undefined && this.uid !== this.user._id) {
                 throw new PermissionError(PERM.PERM_VIEW_RECORD);
             }
             this.uid = this.user._id;
@@ -558,7 +562,10 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
                 if (this.tid && rdoc.contest?.toString() !== '0'.repeat(24)) {
                     const own = await contest.isOwnOrTeammateRecord(this.args.domainId, rdoc, this.user._id);
                     if (!own && !this.classroomManager && !contest.canShowRecord.call(this, this.tdoc, true)) return;
-                    if (own && !this.classroomManager && !contest.canShowSelfRecord.call(this, this.tdoc, true)) return;
+                    if (own && !this.classroomManager
+                        && !(this.tdoc?.sourceType === 'course_assessment'
+                            ? canShowClassroomSelfRecord(this.tdoc)
+                            : contest.canShowSelfRecord.call(this, this.tdoc, true))) return;
                 }
             }
         }
@@ -660,7 +667,7 @@ export class RecordDetailConnectionHandler extends ConnectionHandler {
             }
             let canView = classroomManager || (this.tdoc.sourceType !== 'course_assessment' && this.user.own(this.tdoc));
             if (this.tdoc.sourceType === 'course_assessment') {
-                canView ||= isOwnOrTeammate && contest.canShowSelfRecord.call(this, this.tdoc);
+                canView ||= isOwnOrTeammate && canShowClassroomSelfRecord(this.tdoc);
             } else {
                 canView ||= contest.canShowRecord.call(this, this.tdoc);
                 canView ||= isOwnOrTeammate && contest.canShowSelfRecord.call(this, this.tdoc);
