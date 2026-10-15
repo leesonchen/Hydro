@@ -139,7 +139,7 @@ export class ContestDetailBaseHandler extends Handler {
             practiceOpen: isPracticeOpen(this.tdoc),
             practiceReady: this.practiceReady,
             practiceHistory,
-            practiceManager: supportsPractice(this.tdoc) && canManagePractice(this.user, this.tdoc),
+            practiceManager: supportsPractice(this.tdoc) && canManagePractice(this.user, this.tdoc, this.classroomTeacher),
         });
         const pdoc = 'pdoc' in this ? (this as any).pdoc : {};
         this.response.body.overrideNav = [
@@ -374,7 +374,7 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
         };
         this.response.template = 'contest_problemlist.html';
         this.response.body.showScore = Object.values(this.tdoc.score || {}).some((i) => i && i !== 100);
-        const practice = canReadPractice(this.user, this.tdoc, this.user._id)
+        const practice = canReadPractice(this.user, this.tdoc, this.user._id, this.classroomTeacher)
             ? await getPracticeResults(domainId, tid, this.user._id, this.tdoc.pids) : {};
         if (supportsPractice(this.tdoc) && (isPracticeOpen(this.tdoc) || Object.keys(practice).length)) {
             this.response.body.correction = practice;
@@ -646,8 +646,7 @@ export class ContestManagementBaseHandler extends ContestDetailBaseHandler {
     async prepare() {
         if (this.tdoc.sourceType === 'course_assessment') {
             // Classroom test tools belong to the course instructors, not standalone contest admins.
-            if (!await assertCourseAssessmentAccess(this.user, this.tdoc)
-                || !canManagePractice(this.user, this.tdoc)) throw new ForbiddenError();
+            if (!await assertCourseAssessmentAccess(this.user, this.tdoc)) throw new ForbiddenError();
             return;
         }
         if (!this.user.own(this.tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
@@ -661,7 +660,7 @@ export class ContestCodeHandler extends Handler {
         await this.limitRate('contest_code', 60, 10);
         const [tdoc, tsdocs] = await contest.getAndListStatus(domainId, tid);
         const classroomManager = tdoc.sourceType === 'course_assessment'
-            && await assertCourseAssessmentAccess(this.user, tdoc) && canManagePractice(this.user, tdoc);
+            && await assertCourseAssessmentAccess(this.user, tdoc);
         if (tdoc.sourceType === 'course_assessment' && !classroomManager) {
             throw new ForbiddenError('只有课程教师和维护人可以导出课堂测试代码。');
         }
@@ -1062,7 +1061,7 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
             throw new ContestNotFoundError(domainId, tid);
         }
         const classroomManager = this.tdoc.sourceType === 'course_assessment'
-            && await assertCourseAssessmentAccess(this.user, this.tdoc) && canManagePractice(this.user, this.tdoc);
+            && await assertCourseAssessmentAccess(this.user, this.tdoc);
         // Standalone contest scoreboard permissions never authorize a student to view class results.
         if (this.tdoc.sourceType === 'course_assessment' && !classroomManager) throw new ForbiddenError();
         if (!classroomManager && !this.user.own(this.tdoc)) {
@@ -1112,8 +1111,7 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
 export class ClassroomScoreboardHandler extends ContestScoreboardHandler {
     async prepare() {
         if (this.tdoc?.sourceType !== 'course_assessment') throw new ContestNotFoundError(this.args.domainId, this.args.tid);
-        if (!await assertCourseAssessmentAccess(this.user, this.tdoc)
-            || !canManagePractice(this.user, this.tdoc)) throw new ForbiddenError();
+        if (!await assertCourseAssessmentAccess(this.user, this.tdoc)) throw new ForbiddenError();
     }
 }
 
@@ -1300,7 +1298,7 @@ export async function apply(ctx: Context) {
         scoreboard.addView('default', 'Default', { tdoc: 'tdoc', groups: 'groups', realtime: Types.Boolean }, {
             async display({ realtime, tdoc, groups }) {
                 if (realtime && !this.user.own(tdoc)
-                    && !(tdoc.sourceType === 'course_assessment' && canManagePractice(this.user, tdoc))) {
+                    && !(tdoc.sourceType === 'course_assessment' && this.classroomTeacher)) {
                     this.checkPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
                 }
                 const config: ScoreboardConfig = { isExport: false, showDisplayName: this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO) };
@@ -1324,7 +1322,7 @@ export async function apply(ctx: Context) {
         scoreboard.addView('ghost', 'Ghost', { tdoc: 'tdoc' }, {
             async display({ tdoc }) {
                 if (contest.isLocked(tdoc) && !this.user.own(tdoc)
-                    && !(tdoc.sourceType === 'course_assessment' && canManagePractice(this.user, tdoc))) {
+                    && !(tdoc.sourceType === 'course_assessment' && this.classroomTeacher)) {
                     this.checkPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
                 }
                 const [pdict, teams] = await Promise.all([
