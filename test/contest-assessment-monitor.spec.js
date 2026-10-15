@@ -271,6 +271,38 @@ test('classroom post-test practice defaults on, supports opt-out, and persists c
     await contest.edit('test', course.docId, { dag: reset });
     assert.equal((await contest.get('test', exam.docId)).allowPractice, true);
 });
+test('classroom practice respects parent course enrollment, unlocks, staff and explicit opt-out', async () => {
+    const { course, exam } = await courseFixture('oi', false);
+    const practice = load('packages/hydrooj/src/lib/contest-practice.ts', {
+        '../error': errors, '../model/builtin': { PERM, STATUS },
+        '../model/contest': contest, '../model/record': {},
+        '../service/db': { __esModule: true, default: { collection: (name) => db.collection(name) } },
+        './course-assessment-access': access,
+    });
+    const submitPerms = [PERM.PERM_VIEW_CONTEST, PERM.PERM_VIEW_PROBLEM, PERM.PERM_SUBMIT_PROBLEM];
+    const student = actor(42, submitPerms);
+    groups = [{ name: 'class-a', archive: false }];
+    await contest.setStatus('test', course.docId, 42, { attend: 1, allow: { 1: true } });
+    assert.equal((await contest.getStatus('test', exam.docId, 42))?.attend, undefined);
+    assert.equal(await practice.canSubmitPractice(student, exam), true);
+
+    await contest.setStatus('test', course.docId, 42, { 'allow.1': false });
+    await assert.rejects(practice.canSubmitPractice(student, exam), errors.NotAssignedError);
+    await contest.setStatus('test', course.docId, 42, { 'allow.1': true });
+
+    // Global course teachers do not need to belong to the child contest's assigned class.
+    groups = [];
+    const teacher = actor(99, [...submitPerms, PERM.PERM_EDIT_HOMEWORK]);
+    assert.equal(contest.canAccessAssignedContest(teacher, exam), false);
+    assert.equal(await practice.canSubmitPractice(teacher, exam), true);
+
+    const disabled = structuredClone((await contest.get('test', course.docId)).dag);
+    disabled[0].assessment.allowPractice = false;
+    await contest.edit('test', course.docId, { dag: disabled });
+    const updatedExam = await contest.get('test', exam.docId);
+    assert.equal(await practice.canSubmitPractice(teacher, updatedExam), false);
+});
+
 test('classroom post-test practice rejects non-boolean persisted flags', async () => {
     const { course } = await courseFixture();
     const dag = structuredClone(course.dag);
