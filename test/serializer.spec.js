@@ -19,7 +19,7 @@ test('public dictionary keys are preserved while internal fields on their values
         ['__proto__', [member]], ['_teacher', [member]], ['constructor', [member]],
     ]));
     const body = { members, domain: { _id: 'test', _join: { code: 'private' } }, _secret: 'private' };
-    const handler = { response: { publicDictionaries: [members] } };
+    const handler = { response: { publicDictionaries: [null, 1, members] } };
     const parsed = JSON.parse(JSON.stringify(body, serializer(false, handler)));
     assert.deepEqual(Object.keys(parsed.members), ['__proto__', '_teacher', 'constructor']);
     for (const users of Object.values(parsed.members)) assert.deepEqual(users, [{ _id: 1, role: '__proto__' }]);

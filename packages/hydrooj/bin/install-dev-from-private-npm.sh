@@ -26,7 +26,7 @@ MAINTENANCE_ACTIVE_FILE="$MAINTENANCE_DIR/active"
 MAINTENANCE_ACTIVE=0
 RELEASE_INCREMENTAL_INSTALL=0
 SKIP_RESTART="${SKIP_RESTART:-0}"
-PACKAGE_KEYS=("framework" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
+PACKAGE_KEYS=("common" "framework" "hydrooj" "ui-default" "hydrojudge" "fps-importer" "a11y" "import-hoj")
 SELECTED_PACKAGE_KEYS=()
 declare -A CURRENT_PACKAGE_VERSIONS=()
 declare -A REMOTE_PACKAGE_VERSIONS=()
@@ -83,8 +83,8 @@ log_error() {
 usage() {
     cat <<USAGE
 用法:
-  ./install-dev-from-private-npm.sh [install] [--no-restart] [--packages all|framework,hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
-  ./install-dev-from-private-npm.sh update [--no-restart] [--packages all|framework,hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
+  ./install-dev-from-private-npm.sh [install] [--no-restart] [--packages all|common,framework,hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
+  ./install-dev-from-private-npm.sh update [--no-restart] [--packages all|common,framework,hydrooj,ui-default,hydrojudge,fps-importer,a11y,import-hoj]
   ./install-dev-from-private-npm.sh update hydrojudge [--no-restart]
   ./install-dev-from-private-npm.sh check-updates
   ./install-dev-from-private-npm.sh upgrade-interactive [--no-restart]
@@ -222,6 +222,9 @@ package_version_from_dir() {
 
 package_name_for_key() {
     case "$1" in
+        common)
+            echo "@hydrooj/common"
+            ;;
         framework)
             echo "@hydrooj/framework"
             ;;
@@ -254,8 +257,11 @@ normalize_package_key() {
         all)
             echo "all"
             ;;
-        framework|hydrooj|ui-default|hydrojudge|fps-importer|a11y|import-hoj)
+        common|framework|hydrooj|ui-default|hydrojudge|fps-importer|a11y|import-hoj)
             echo "$1"
+            ;;
+        @hydrooj/common)
+            echo "common"
             ;;
         @hydrooj/framework)
             echo "framework"
@@ -340,7 +346,7 @@ parse_update_args() {
             --packages=*)
                 parse_package_selector "${1#--packages=}"
                 ;;
-            all|framework|hydrooj|ui-default|hydrojudge|fps-importer|a11y|import-hoj|@hydrooj/framework|@hydrooj/ui-default|@hydrooj/hydrojudge|@hydrooj/fps-importer|@hydrooj/a11y|@hydrooj/import-hoj)
+            all|common|framework|hydrooj|ui-default|hydrojudge|fps-importer|a11y|import-hoj|@hydrooj/common|@hydrooj/framework|@hydrooj/ui-default|@hydrooj/hydrojudge|@hydrooj/fps-importer|@hydrooj/a11y|@hydrooj/import-hoj)
                 parse_package_selector "$1"
                 ;;
             *)

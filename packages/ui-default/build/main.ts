@@ -16,6 +16,7 @@ async function runWebpack({
 }) {
   const compiler = webpack(await webpackConfig({ watch, production, measure }));
   if (dev) {
+    const backendTarget = process.env.HYDRO_UI_DEV_BACKEND || 'http://localhost:2333';
     const server = new WebpackDevServer({
       port: https ? 8001 : 8000,
       compress: true,
@@ -24,7 +25,7 @@ async function runWebpack({
       allowedHosts: 'all',
       proxy: [{
         context: (p) => p !== '/ws',
-        target: 'http://localhost:2333',
+        target: backendTarget,
         ws: true,
       }],
       client: {
