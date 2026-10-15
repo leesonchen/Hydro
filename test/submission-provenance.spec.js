@@ -162,6 +162,7 @@ test('the submission handler persists source-domain maintainers as staff while p
     let attended = true;
     let practiceReady = false;
     let childAssigned = true;
+    let parentAllowed = true;
     const user = (perms = []) => ({ _id: 2,
         own: (doc) => doc.owner === 2 || doc.maintainer?.includes(2), hasPerm: (p) => perms.includes(p) });
     const context = {
@@ -169,7 +170,10 @@ test('the submission handler persists source-domain maintainers as staff while p
         record: { add: (domainId, pid, uid, lang, code, _addTask, args) => recordModel.add(domainId, pid, uid, lang, code, false, args) },
         contest: { get: async () => tdoc, canAccessAssignedContest: () => childAssigned, isOngoing: () => true,
             updateStatus: async () => {}, canShowSelfRecord: () => true, getStatus: async () => ({ attend: attended }) },
-        assertCourseAssessmentAccess: async () => classroomTeacher,
+        assertCourseAssessmentAccess: async () => {
+            if (!parentAllowed) throw new context.ContestNotFoundError();
+            return classroomTeacher;
+        },
         ContestNotAttendedError: class extends Error {}, ContestNotFoundError: class extends Error {},
         canSubmitPractice: async () => practiceReady,
         setting: { langs: { cpp: { pretest: 'cpp' } } }, system: { get: () => 1000 },
@@ -232,7 +236,12 @@ test('the submission handler persists source-domain maintainers as staff while p
     assert.equal(teacherPractice.practiceContest.toString(), tid.toString());
     assert.equal(teacherPractice.contest, undefined);
     assert.equal(teacherPractice.participationMode, 'practice');
+    // Child-contest group assignments cannot revoke a valid parent-authorized practice submission.
     classroomTeacher = false;
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'practice');
+    // Revocation must be enforced by the live parent-course authorization instead.
+    parentAllowed = false;
     await assert.rejects(h.post('d', 'cpp', 'code', false, [], tid), context.ContestNotFoundError);
     practiceReady = false;
 });
