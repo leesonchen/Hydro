@@ -19,6 +19,8 @@ import { version } from '../../package.json';
 import prepareXiaolaiFont from '../downloadXiaolaiFont';
 import root from '../utils/root';
 
+const baseVersion = (version || '').split('-')[0];
+
 const {
   list,
   targets,
@@ -110,7 +112,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
     // sentry requires source-map while keep it simple in dev mode
     devtool: env.production ? 'source-map' : false,
     entry: {
-      [`hydro-${version}`]: './entry.js',
+      [`hydro-${baseVersion}`]: './entry.js',
       sentry: './sentry.ts',
       'default.theme': './theme/default.js',
       'service-worker': './service-worker.ts',
@@ -296,7 +298,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         monaco: 'monaco-editor/esm/vs/editor/editor.api',
       }),
       new ExtractCssPlugin({
-        filename: `[name]-${version}.css?[fullhash:6]`,
+        filename: `[name]-${baseVersion}.css?[fullhash:6]`,
       }),
       new WebpackManifestPlugin({}),
       new webpack.IgnorePlugin({ resourceRegExp: /(^\.\/locale$)/ }),
