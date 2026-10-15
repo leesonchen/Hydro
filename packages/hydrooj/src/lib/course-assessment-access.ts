@@ -10,6 +10,7 @@ export async function assertCourseAssessmentAccess(user: User, tdoc: Tdoc) {
     const deny = () => { throw new NotAssignedError('contest', tdoc.docId); };
     if (!tdoc.sourceCourseTid || !Number.isSafeInteger(tdoc.sourceNodeId)) deny();
     const course = await contest.get(tdoc.domainId, tdoc.sourceCourseTid);
+    if (!course) deny();
     const node = course.dag?.find((n) => n._id === tdoc.sourceNodeId);
     if (course.rule !== 'course' || course.assign?.includes('teachers')
         || node?.kind !== 'assessment' || node.assessment?.contestTid !== tdoc.docId.toString()) deny();
@@ -17,6 +18,8 @@ export async function assertCourseAssessmentAccess(user: User, tdoc: Tdoc) {
     const teacher = user.hasPerm(PERM.PERM_EDIT_HOMEWORK)
         || (user.own(course) && user.hasPerm(PERM.PERM_EDIT_HOMEWORK_SELF));
     if (teacher) return true;
+    // A classroom assessment must never bypass the parent's normal course-view permission.
+    if (!user.hasPerm(PERM.PERM_VIEW_HOMEWORK)) deny();
     const groups = await UserModel.listGroup(tdoc.domainId, user._id);
     // A classroom test cannot become open enrollment merely because assign is empty.
     // The parent course may allow open courses, but a real test requires a class or extra-student grant.
