@@ -167,7 +167,7 @@ export async function getAssessmentResults(domainId: string, course: CourseTdoc,
             ContestModel.get(domainId, tid),
             ContestModel.getStatus(domainId, tid, uid),
         ]);
-        if (exam.sourceType !== 'course_assessment'
+        if (!exam || exam.sourceType !== 'course_assessment'
             || exam.sourceCourseTid?.toString() !== course.docId.toString()
             || exam.sourceNodeId !== node._id) return;
         const finished = ContestModel.isDone(exam, tsdoc);

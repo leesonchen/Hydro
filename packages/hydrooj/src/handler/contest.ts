@@ -19,7 +19,7 @@ import { ContestStatusDoc, FileInfo, ScoreboardConfig, Tdoc } from '../interface
 import {
     canManagePractice, canReadPractice, canSubmitPractice, getPracticeResults, grantPracticeAccess, isPracticeOpen, supportsPractice,
 } from '../lib/contest-practice';
-import { assertCourseAssessmentAccess } from '../lib/course-assessment-access';
+import { assertCourseAssessmentAccess, canShowClassroomSelfRecord } from '../lib/course-assessment-access';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
@@ -389,7 +389,9 @@ export class ContestProblemListHandler extends ContestDetailBaseHandler {
         }
         this.response.body.tsdoc = this.tsdocAsPublic();
         const rawPsdict = this.tsdoc.detail || {};
-        const canViewRecord = contest.canShowSelfRecord.call(this, this.tdoc);
+        const canViewRecord = this.tdoc.sourceType === 'course_assessment'
+            ? this.classroomTeacher || canShowClassroomSelfRecord(this.tdoc)
+            : contest.canShowSelfRecord.call(this, this.tdoc);
         this.response.body.canViewRecord = canViewRecord;
         this.response.body.psdict = canViewRecord
             ? rawPsdict
@@ -1334,7 +1336,10 @@ export async function apply(ctx: Context) {
                 }
                 const [pdict, teams] = await Promise.all([
                     problem.getList(tdoc.domainId, tdoc.pids, true, false, problem.PROJECTION_LIST, true),
-                    contest.getMultiStatus(tdoc.domainId, { docId: tdoc._id }).toArray(),
+                    contest.getMultiStatus(tdoc.domainId, {
+                        docId: tdoc._id,
+                        ...(tdoc.sourceType === 'course_assessment' ? { attend: { $gt: 0 } } : {}),
+                    }).toArray(),
                 ]);
                 const udict = await user.getList(tdoc.domainId, teams.map((i) => i.uid));
                 const teamIds: Record<number, number> = {};
@@ -1364,7 +1369,7 @@ export async function apply(ctx: Context) {
                     `@contest "${escape(tdoc.title)}"`,
                     `@contlen ${Math.floor((tdoc.endAt.getTime() - tdoc.beginAt.getTime()) / Time.minute)}`,
                     `@problems ${tdoc.pids.length}`,
-                    `@teams ${tdoc.attend}`,
+                    `@teams ${tdoc.sourceType === 'course_assessment' ? teams.length : tdoc.attend}`,
                     `@submissions ${submissions.length}`,
                 ].concat(
                     tdoc.pids.map((i, idx) => `@p ${pid(idx)},${escape(pdict[i]?.title || 'Unknown Problem')},20,0`),
