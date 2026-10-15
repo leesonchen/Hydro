@@ -48,11 +48,12 @@
       #panel { display: flex; flex-direction: column; }
     {% endif %}
   </style>
+  {% set uiVersion = (global.Hydro.version['ui-default'] or '').split('-')[0] %}
   {% if process.env.DEV %}
     <script src="/default.theme.js?version={{ global.Hydro.version['ui-default'] }}"></script>
-    <link rel="stylesheet" media="all" href="/theme-{{ global.Hydro.version['ui-default'] }}.css?v={{ UiContext.constantVersion }}-{{ global.Hydro.version['ui-default'] }}">
+    <link rel="stylesheet" media="all" href="/theme-{{ uiVersion }}.css?v={{ UiContext.constantVersion }}-{{ global.Hydro.version['ui-default'] }}">
   {% else %}
-    <link rel="stylesheet" media="all" href="{{ UiContext.cdn_prefix }}theme-{{ global.Hydro.version['ui-default'] }}.css?v={{ UiContext.constantVersion }}-{{ global.Hydro.version['ui-default'] }}">
+    <link rel="stylesheet" media="all" href="{{ UiContext.cdn_prefix }}theme-{{ uiVersion }}.css?v={{ UiContext.constantVersion }}-{{ global.Hydro.version['ui-default'] }}">
   {% endif %}
   {% if not isIE(handler.request.headers['user-agent']) and not handler.session.legacy %}
     <script>
@@ -67,7 +68,7 @@
   {% if not isIE(handler.request.headers['user-agent']) and not handler.session.legacy %}
     <script type="text/javascript" src="{{ UiContext.cdn_prefix if UiContext.cdn_dynamic else '/' }}resource/{{ UiContext.constantVersion }}/entry.js"></script>
     <script type="text/javascript" src="{{ UiContext.cdn_prefix }}resource/{{ global.Hydro.version['ui-default'] }}/lang-{{ _('__id') }}.js"></script>
-    <script type="text/javascript" src="{{ UiContext.cdn_prefix }}hydro-{{ global.Hydro.version['ui-default'] }}.js?v={{ UiContext.constantVersion }}{% if process.env.DEV %}&version=dev{% endif %}"></script>
+    <script type="text/javascript" src="{{ UiContext.cdn_prefix }}hydro-{{ uiVersion }}.js?v={{ UiContext.constantVersion }}-{{ global.Hydro.version['ui-default'] }}{% if process.env.DEV %}&version=dev{% endif %}"></script>
   {% endif %}
   {% block body %}{% endblock %}
   {% block script %}{% endblock %}

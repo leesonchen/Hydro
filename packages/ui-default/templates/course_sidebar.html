@@ -24,7 +24,7 @@
     {% if practiceRatingUrl %}
       <li class="menu__item"><a class="menu__link" href="{{ practiceRatingUrl }}">练习评分（管理员试用）</a></li>
     {% endif %}
-    {% if feedbackUrl %}
+    {% if feedbackUrl and handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
       <li class="menu__item"><a class="menu__link" href="{{ feedbackUrl }}">课程反馈</a></li>
       <li class="menu__item"><a class="menu__link" href="{{ feedbackUrl }}?view=pending">待复测</a></li>
     {% endif %}

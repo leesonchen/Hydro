@@ -33,7 +33,7 @@
     {% endif %}
   </div>
   <div class="medium-3 columns">
-    {% if feedbackUrl %}
+    {% if feedbackUrl and handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
     <div class="section" id="classroom-feedback" data-feedback-url="{{ feedbackUrl }}">
       <a class="button" href="{{ feedbackUrl }}">课堂反馈</a>
     </div>

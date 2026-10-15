@@ -14,7 +14,9 @@ const argv = cac().parse();
 async function runWebpack({
   watch, production, measure, dev, https,
 }) {
-  const compiler = webpack(await webpackConfig({ watch, production, measure }));
+  const compiler = webpack(await webpackConfig({
+    watch, production, measure, dev,
+  }));
   if (dev) {
     const backendTarget = process.env.HYDRO_UI_DEV_BACKEND || 'http://localhost:2333';
     const server = new WebpackDevServer({

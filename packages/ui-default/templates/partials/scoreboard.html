@@ -94,7 +94,7 @@
             {%- else -%}
               <span data-tooltip="{{ column.hover }}">{{ column.value|string|nl2br|safe }}</span>
             {%- endif -%}
-            {% if feedbackUrl and tdoc.rule == 'course' and row[1].raw in feedbackRoster and rows[0][loop.index0].type == 'problem' %}
+            {% if feedbackUrl and handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) and tdoc.rule == 'course' and row[1].raw in feedbackRoster and rows[0][loop.index0].type == 'problem' %}
               <a class="cf-scoreboard-entry"
                  data-feedback-uid="{{ row[1].raw }}" data-feedback-pid="{{ rows[0][loop.index0].raw }}"
                  href="{{ feedbackUrl }}?studentUid={{ row[1].raw }}&amp;pid={{ rows[0][loop.index0].raw }}{% if feedbackNodeId %}&amp;nodeId={{ feedbackNodeId }}{% endif %}{% if column.type == 'record' and column.raw %}&amp;rid={{ column.raw }}{% endif %}">记录反馈</a>

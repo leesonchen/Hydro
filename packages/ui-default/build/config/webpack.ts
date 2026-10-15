@@ -19,6 +19,8 @@ import { version } from '../../package.json';
 import prepareXiaolaiFont from '../downloadXiaolaiFont';
 import root from '../utils/root';
 
+const baseVersion = (version || '').split('-')[0];
+
 const {
   list,
   targets,
@@ -33,7 +35,9 @@ const {
 });
 fs.writeFileSync(root('__core-js.js'), `${list.map((i) => `import 'core-js/modules/${i}';`).join('\n')}\n`);
 
-export default async function (env: { watch?: boolean, production?: boolean, measure?: boolean } = {}) {
+export default async function (env: {
+  watch?: boolean, production?: boolean, measure?: boolean, dev?: boolean,
+} = {}) {
   // Keep normal builds offline-safe; include the optional font only if locally available.
   await prepareXiaolaiFont();
   if (env.production) console.log(targets);
@@ -110,7 +114,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
     // sentry requires source-map while keep it simple in dev mode
     devtool: env.production ? 'source-map' : false,
     entry: {
-      [`hydro-${version}`]: './entry.js',
+      [`hydro-${baseVersion}`]: './entry.js',
       sentry: './sentry.ts',
       'default.theme': './theme/default.js',
       'service-worker': './service-worker.ts',
@@ -296,7 +300,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         monaco: 'monaco-editor/esm/vs/editor/editor.api',
       }),
       new ExtractCssPlugin({
-        filename: `[name]-${version}.css?[fullhash:6]`,
+        filename: `[name]-${baseVersion}.css?[fullhash:6]`,
       }),
       new WebpackManifestPlugin({}),
       new webpack.IgnorePlugin({ resourceRegExp: /(^\.\/locale$)/ }),
@@ -325,6 +329,10 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
       }),
       new webpack.DefinePlugin({
         'process.env.VERSION': JSON.stringify(require('@hydrooj/ui-default/package.json').version),
+        ...(env.dev ? {} : {
+          'module.hot': 'false',
+          'module.hot.data': 'undefined',
+        }),
       }),
       new webpack.optimize.MinChunkSizePlugin({
         minChunkSize: 128000,
