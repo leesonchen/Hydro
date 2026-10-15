@@ -20,8 +20,8 @@ function loadSource(relativePath, mocks) {
 
 const { PERM, PRIV } = loadSource('packages/common/permission.ts', {});
 const STATUS = { STATUS_WAITING: 0, STATUS_JUDGING: 20, STATUS_COMPILING: 21, STATUS_FETCHED: 22, STATUS_ACCEPTED: 1 };
-const view = PERM.PERM_VIEW_CONTEST | PERM.PERM_VIEW_PROBLEM;
-const manage = view | PERM.PERM_EDIT_CONTEST;
+const view = PERM.PERM_VIEW_CONTEST | PERM.PERM_VIEW_HOMEWORK | PERM.PERM_VIEW_PROBLEM;
+const manage = view | PERM.PERM_EDIT_CONTEST | PERM.PERM_EDIT_HOMEWORK;
 const errors = new Proxy({}, { get: (_target, name) => class extends Error { constructor() { super(name); } } });
 
 function deferred() {
@@ -30,12 +30,14 @@ function deferred() {
     return { promise, resolve };
 }
 
-function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, classroom = false } = {}) {
+function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, classroom = false,
+    formal = false, contestAdminOnly = false } = {}) {
     const domainId = 'practice-test';
     const tid = new ObjectId();
     const tdoc = { domainId, docId: tid, rule: 'oi', owner: 99, assign: assigned ? ['class'] : [],
         allowPractice: true, ...(classroom ? { sourceType: 'course_assessment' } : {}) };
-    const state = { account: { _id: 7, priv: PRIV.PRIV_USER_PROFILE }, perm: manager ? manage : view,
+    const state = { account: { _id: 7, priv: PRIV.PRIV_USER_PROFILE },
+        perm: contestAdminOnly ? view | PERM.PERM_EDIT_CONTEST : manager ? manage : view,
         groups: ['class'], fail: false, parentAllowed: true };
     class User {
         constructor(udoc, dudoc, originalScope = PERM.PERM_ALL) {
@@ -53,6 +55,8 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, clas
         canAccessAssignedContest: (actor, doc) => !doc.assign?.length || actor.own(doc)
             || doc.assign.some((name) => actor.group?.includes(name) || name === String(actor._id)),
         isOwnOrTeammateRecord: async (_domain, rdoc, uid) => rdoc.uid === uid,
+        canShowSelfRecord: () => true, canShowRecord: () => true, canShowScoreboard: () => true,
+        getStatus: async () => ({ attend: 1 }),
     };
     const user = {
         User,
@@ -63,14 +67,15 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, clas
     };
     const assertCourseAssessmentAccess = async () => {
         if (!state.parentAllowed) throw new Error('Parent course chapter access revoked');
-        return false;
+        return manager && !contestAdminOnly;
     };
     const practice = loadSource('packages/hydrooj/src/lib/contest-practice.ts', {
         './course-assessment-access': { assertCourseAssessmentAccess },
         '../error': errors, '../model/builtin': { PERM, STATUS }, '../model/contest': contest,
         '../model/record': {}, '../service/db': {},
     });
-    const rdoc = { _id: new ObjectId(), domainId, practiceContest: tid, uid: manager ? 11 : 7,
+    const rdoc = { _id: new ObjectId(), domainId,
+        ...(formal ? { contest: tid } : { practiceContest: tid }), uid: manager ? 11 : 7,
         pid: 42, status: STATUS.STATUS_WAITING, code: 'private code', compilerTexts: [], testCases: [] };
     class ConnectionHandler {
         sent = [];
@@ -96,7 +101,9 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, clas
         '../lib/course-assessment-access': { assertCourseAssessmentAccess },
         '../model/builtin': { PERM, PRIV, STATUS }, '../model/contest': contest,
         '../model/domain': { getDomainUser: async () => ({ perm: state.perm }) },
-        '../model/user': user, '../model/problem': { get: async () => ({ docId: 42 }), getVisibleStatus: async () => null },
+        '../model/user': user, '../model/problem': {
+            get: async () => ({ docId: 42 }), getVisibleStatus: async () => null, canViewBy: () => true,
+        },
         '../model/record': { get: async () => rdoc }, '../model/setting': {}, '../model/storage': {},
         '../model/system': {}, '../model/task': {}, '../utils': {}, './judge': {},
         './contest': { ContestDetailBaseHandler: ConnectionHandler },
@@ -108,7 +115,7 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, clas
         h.args = { domainId };
         h.renderHTML = async () => '<div>private record</div>';
         if (kind === 'list') await h.prepare(domainId, tid, 42, uid === undefined ? undefined : String(uid),
-            undefined, false, false, false, noTemplate, true);
+            undefined, false, false, false, noTemplate, !formal);
         else {
             await h.prepare(domainId, rdoc._id, noTemplate);
             // prepare starts an async update in the baseline implementation.
@@ -124,6 +131,27 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, clas
 }
 
 for (const kind of ['list', 'detail']) {
+    test(`${kind} formal classroom record stream closes when parent access is revoked`, async () => {
+        const f = fixture({ manager: false, assigned: true, classroom: true, formal: true });
+        const h = await f.connect(kind);
+        f.state.parentAllowed = false;
+        await f.push(h, kind);
+        assert.equal(h.sent.length, 0);
+        assert.deepEqual(h.closed, [4000]);
+    });
+    test(`${kind} denies classroom classmates even with generic contest-admin permission`, async () => {
+        const f = fixture({ manager: false, classroom: true, formal: true, contestAdminOnly: true });
+        f.rdoc.uid = 11;
+        await assert.rejects(f.connect(kind, { uid: 11 }), /Permission/);
+    });
+    test(`${kind} permits parent course teachers to read formal student submissions`, async () => {
+        const f = fixture({ manager: true, classroom: true, formal: true });
+        const h = await f.connect(kind);
+        await f.push(h, kind);
+        assert.equal(h.sent.length, 1);
+        assert.deepEqual(h.closed, []);
+        h.cleanup?.();
+    });
     test(`${kind} classroom practice stream closes when the parent course chapter is revoked`, async () => {
         const f = fixture({ manager: false, assigned: true, classroom: true });
         const h = await f.connect(kind);
