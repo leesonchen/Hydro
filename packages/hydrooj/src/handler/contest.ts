@@ -706,6 +706,16 @@ export class ContestCodeHandler extends Handler {
     }
 }
 
+export class ClassroomTestCodeHandler extends ContestCodeHandler {
+    @param('tid', Types.ObjectId)
+    @param('all', Types.Boolean)
+    async get(domainId: string, tid: ObjectId, all: boolean) {
+        const tdoc = await contest.get(domainId, tid);
+        if (tdoc?.sourceType !== 'course_assessment') throw new ContestNotFoundError(domainId, tid);
+        await super.get(domainId, tid, all);
+    }
+}
+
 export class ContestManagementHandler extends ContestManagementBaseHandler {
     async prepare() {
         await super.prepare();
@@ -1260,6 +1270,7 @@ export async function apply(ctx: Context) {
     ctx.Route('contest_manage', '/contest/:tid/management', ContestManagementHandler);
     ctx.Route('contest_clarification', '/contest/:tid/clarification', ContestClarificationHandler);
     ctx.Route('contest_code', '/contest/:tid/code', ContestCodeHandler, PERM.PERM_VIEW_CONTEST);
+    ctx.Route('classroom_test_code', '/course/assessment/:tid/code', ClassroomTestCodeHandler);
     ctx.Route('contest_file_download', '/contest/:tid/file/:type/:filename', ContestFileDownloadHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_user', '/contest/:tid/user', ContestUserHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_balloon', '/contest/:tid/balloon', ContestBalloonHandler, PERM.PERM_VIEW_CONTEST);
