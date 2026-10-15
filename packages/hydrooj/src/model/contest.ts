@@ -1474,7 +1474,11 @@ export async function getScoreboard(
     this: Handler, domainId: string, tid: ObjectId, config: ScoreboardConfig,
 ): Promise<[Tdoc, ScoreboardRow[], BaseUserDict, ProblemDict]> {
     const tdoc = await get(domainId, tid);
-    if (!canShowScoreboard.call(this, tdoc)) throw new ContestScoreboardHiddenError(tid);
+    // Classroom scoreboards are authorized by the handler's live parent-course check.
+    // Never require the separate contest scoreboard permission for a course teacher.
+    const classroomManager = tdoc.sourceType === 'course_assessment'
+        && (this as Handler & { classroomTeacher?: boolean }).classroomTeacher === true;
+    if (!classroomManager && !canShowScoreboard.call(this, tdoc)) throw new ContestScoreboardHiddenError(tid);
     const pdict = await problem.getList(domainId, tdoc.pids, true, true, problem.PROJECTION_CONTEST_DETAIL);
     if (tdoc.statsRecalc) {
         if (config.isExport) throw new BadRequestError('成绩重算尚未完成，请完成重算后再导出。');
