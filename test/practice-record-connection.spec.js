@@ -30,12 +30,13 @@ function deferred() {
     return { promise, resolve };
 }
 
-function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false } = {}) {
+function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, classroom = false } = {}) {
     const domainId = 'practice-test';
     const tid = new ObjectId();
-    const tdoc = { domainId, docId: tid, rule: 'oi', owner: 99, assign: assigned ? ['class'] : [], allowPractice: true };
+    const tdoc = { domainId, docId: tid, rule: 'oi', owner: 99, assign: assigned ? ['class'] : [],
+        allowPractice: true, ...(classroom ? { sourceType: 'course_assessment' } : {}) };
     const state = { account: { _id: 7, priv: PRIV.PRIV_USER_PROFILE }, perm: manager ? manage : view,
-        groups: ['class'], fail: false };
+        groups: ['class'], fail: false, parentAllowed: true };
     class User {
         constructor(udoc, dudoc, originalScope = PERM.PERM_ALL) {
             Object.assign(this, udoc, dudoc, { scope: originalScope });
@@ -60,7 +61,12 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false } = {
         coll: { findOne: async () => { if (state.fail) throw Error('ACL read failed'); return state.account; } },
         listGroup: async () => state.groups.map((name) => ({ name })),
     };
+    const assertCourseAssessmentAccess = async () => {
+        if (!state.parentAllowed) throw new Error('Parent course chapter access revoked');
+        return false;
+    };
     const practice = loadSource('packages/hydrooj/src/lib/contest-practice.ts', {
+        './course-assessment-access': { assertCourseAssessmentAccess },
         '../error': errors, '../model/builtin': { PERM, STATUS }, '../model/contest': contest,
         '../model/record': {}, '../service/db': {},
     });
@@ -87,6 +93,7 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false } = {
     const handlers = loadSource('packages/hydrooj/src/handler/record.ts', {
         lodash: { ...require('lodash'), throttle }, '../error': errors,
         '../lib/classroomFeedbackAccess': {}, '../lib/contest-practice': practice,
+        '../lib/course-assessment-access': { assertCourseAssessmentAccess },
         '../model/builtin': { PERM, PRIV, STATUS }, '../model/contest': contest,
         '../model/domain': { getDomainUser: async () => ({ perm: state.perm }) },
         '../model/user': user, '../model/problem': { get: async () => ({ docId: 42 }), getVisibleStatus: async () => null },
@@ -117,6 +124,14 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false } = {
 }
 
 for (const kind of ['list', 'detail']) {
+    test(`${kind} classroom practice stream closes when the parent course chapter is revoked`, async () => {
+        const f = fixture({ manager: false, assigned: true, classroom: true });
+        const h = await f.connect(kind);
+        f.state.parentAllowed = false;
+        await f.push(h, kind);
+        assert.equal(h.sent.length, 0);
+        assert.deepEqual(h.closed, [4000]);
+    });
     for (const change of ['demoted', 'removed from group', 'disabled', 'deleted']) {
         test(`${kind} practice stream stops after viewer is ${change}, despite a stale cached user`, async () => {
             const f = fixture({ manager: change === 'demoted', assigned: change === 'removed from group' });
