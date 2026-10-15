@@ -380,7 +380,7 @@ async function checkPracticeAccess(
     try {
         const [udoc, tdoc] = await Promise.all([
             user.coll.findOne({ _id: handler.user._id }),
-            contest.get(rdoc.domainId, rdoc.practiceContest),
+            contest.get(rdoc.domainId, rdoc.practiceContest || rdoc.contest),
         ]);
         let viewer: User;
         if (udoc && (udoc.priv & PRIV.PRIV_USER_PROFILE)) {
@@ -424,6 +424,7 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
     queue: Map<string, () => Promise<any>> = new Map();
     throttleQueueClear: ReturnType<typeof throttle>;
     practiceStopped = false;
+    classroomManager = false;
 
     @param('tid', Types.ObjectId, true)
     @param('pid', Types.ProblemId, true)
@@ -444,14 +445,22 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         if (tid) {
             this.tdoc = await contest.get(domainId, tid);
             if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
-            if (practice || pretest || contest.canShowScoreboard.call(this, this.tdoc, true)) this.tid = tid.toHexString();
-            else throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
-            if (!practice && !pretest
+            if (this.tdoc.sourceType === 'course_assessment') {
+                this.classroomManager = await assertCourseAssessmentAccess(this.user, this.tdoc);
+                if (!practice && !pretest && !this.classroomManager
+                    && !contest.canShowSelfRecord.call(this, this.tdoc, true)) {
+                    throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
+                }
+            } else if (!practice && !pretest
                 && !contest.canShowRecord.call(this, this.tdoc, true)
                 && !contest.canShowSelfRecord.call(this, this.tdoc, true)) {
                 throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
             }
-            if (!practice && !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST)) {
+            if (practice || pretest || this.tdoc.sourceType === 'course_assessment'
+                || contest.canShowScoreboard.call(this, this.tdoc, true)) this.tid = tid.toHexString();
+            else throw new PermissionError(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
+            if (!practice && (this.tdoc.sourceType === 'course_assessment'
+                ? !this.classroomManager : !this.user.own(this.tdoc) && !this.user.hasPerm(PERM.PERM_EDIT_CONTEST))) {
                 this.applyProjection = true;
             }
         }
@@ -479,7 +488,14 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
             if (!canManagePractice(this.user, this.tdoc) && this.uid === undefined) this.uid = this.user._id;
             if (!canReadPractice(this.user, this.tdoc, this.uid ?? this.user._id)) throw new PermissionError(PERM.PERM_VIEW_RECORD);
         }
-        if (!practice && this.uid !== this.user._id && !this.teamMembers) {
+        if (!practice && !pretest && this.tdoc?.sourceType === 'course_assessment'
+            && !this.classroomManager) {
+            if (all || allDomain || (this.uid !== undefined && this.uid !== this.user._id)) {
+                throw new PermissionError(PERM.PERM_VIEW_RECORD);
+            }
+            this.uid = this.user._id;
+        }
+        if (!practice && !this.classroomManager && this.uid !== this.user._id && !this.teamMembers) {
             const sameTeam = this.tdoc?.allowTeam && typeof this.uid === 'number'
                 && await contest.isSameTeam(domainId, this.tdoc.docId, this.uid, this.user._id);
             if (!sameTeam) this.checkPerm(PERM.PERM_VIEW_RECORD);
@@ -525,8 +541,8 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
                 if (rdoc.contest && ![this.tid, '000000000000000000000000'].includes(rdoc.contest.toString())) return;
                 if (this.tid && rdoc.contest?.toString() !== '0'.repeat(24)) {
                     const own = await contest.isOwnOrTeammateRecord(this.args.domainId, rdoc, this.user._id);
-                    if (!own && !contest.canShowRecord.call(this, this.tdoc, true)) return;
-                    if (own && !contest.canShowSelfRecord.call(this, this.tdoc, true)) return;
+                    if (!own && !this.classroomManager && !contest.canShowRecord.call(this, this.tdoc, true)) return;
+                    if (own && !this.classroomManager && !contest.canShowSelfRecord.call(this, this.tdoc, true)) return;
                 }
             }
         }
@@ -534,7 +550,8 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
         if (this.teamMembers) {
             if (!this.teamMembers.includes(rdoc.uid)) return;
         } else if (typeof this.uid === 'number' && rdoc.uid !== this.uid) return;
-        if (rdoc.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return;
+        if ((rdoc.practiceContest || (rdoc.contest && this.tdoc?.sourceType === 'course_assessment'))
+            && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return;
 
         let [udoc, pdoc] = await Promise.all([
             user.getById(this.args.domainId, rdoc.uid),
@@ -562,9 +579,11 @@ export class RecordMainConnectionHandler extends ConnectionHandler {
     queueSend(rid: string, fn: () => Promise<any>, rdoc?: RecordDoc) {
         if (this.practiceStopped) return;
         this.queue.set(rid, async () => {
-            if (rdoc?.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
+            if ((rdoc?.practiceContest || (rdoc?.contest && this.tdoc?.sourceType === 'course_assessment'))
+                && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
             const payload = await fn();
-            if (rdoc?.practiceContest && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
+            if ((rdoc?.practiceContest || (rdoc?.contest && this.tdoc?.sourceType === 'course_assessment'))
+                && !await checkPracticeAccess(this, rdoc, this.uid === undefined)) return null;
             return payload;
         });
         this.throttleQueueClear();
