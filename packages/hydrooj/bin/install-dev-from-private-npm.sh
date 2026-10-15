@@ -843,16 +843,22 @@ sync_ui_static_aliases() {
     fi
 
     local static_dir="$HYDRO_HOME/static"
-    local source_theme="$package_public_dir/theme-${ui_version}.css"
-    local source_hydro="$package_public_dir/hydro-${ui_version}.js"
+    local source_theme="$package_public_dir/theme-${base_version}.css"
+    local source_hydro="$package_public_dir/hydro-${base_version}.js"
     local target_theme="$static_dir/theme-${ui_version}.css"
     local target_hydro="$static_dir/hydro-${ui_version}.js"
 
+    if [ ! -f "$source_theme" ]; then
+        source_theme="$package_public_dir/theme-${ui_version}.css"
+    fi
     if [ ! -f "$source_theme" ]; then
         source_theme="$static_dir/theme-${base_version}.css"
     fi
     if [ ! -f "$source_theme" ]; then
         source_theme=$(find "$static_dir" "$package_public_dir" -maxdepth 1 -type f -name "theme-${base_version}-dev.*.css" 2>/dev/null | sort -V | tail -1 || true)
+    fi
+    if [ ! -f "$source_hydro" ]; then
+        source_hydro="$package_public_dir/hydro-${ui_version}.js"
     fi
     if [ ! -f "$source_hydro" ]; then
         source_hydro="$static_dir/hydro-${base_version}.js"
@@ -862,15 +868,18 @@ sync_ui_static_aliases() {
     fi
 
     mkdir -p "$static_dir"
+    cp -rf "$package_public_dir/." "$static_dir/" 2>/dev/null || true
     if [ -n "$source_theme" ] && [ -f "$source_theme" ]; then
         cp -f "$source_theme" "$target_theme"
+        cp -f "$source_theme" "$static_dir/theme-${base_version}.css"
     fi
     if [ -n "$source_hydro" ] && [ -f "$source_hydro" ]; then
         cp -f "$source_hydro" "$target_hydro"
+        cp -f "$source_hydro" "$static_dir/hydro-${base_version}.js"
     fi
 
-    if [ -f "$target_theme" ] && [ -f "$target_hydro" ]; then
-        log_ok "UI 静态资源已同步到 dev 版本名 (${ui_version})"
+    if [ -f "$static_dir/theme-${base_version}.css" ] && [ -f "$static_dir/hydro-${base_version}.js" ]; then
+        log_ok "UI 静态资源已同步到基础版本 (${base_version}) 及 dev 别名 (${ui_version})"
     else
         log_warn "部分静态资源未生成，建议检查 ${package_public_dir}"
     fi

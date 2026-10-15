@@ -381,11 +381,19 @@ sync_package() {
             if [[ "$package" == ui ]]; then
                 echo "    同步 UI public"
                 sync_directory_replace "$source/public" "$dest/public"
+                if container_exec test -d /root/.hydro/static; then
+                    echo "    同步 UI public 到 Caddy 静态目录 (/root/.hydro/static)"
+                    container_exec cp -rf "$dest/public/." /root/.hydro/static/
+                fi
             fi
             ;;
         ui-frontend)
             echo "    同步 UI public"
             sync_directory_replace "$source/public" "$dest/public"
+            if container_exec test -d /root/.hydro/static; then
+                echo "    同步 UI public 到 Caddy 静态目录 (/root/.hydro/static)"
+                container_exec cp -rf "$dest/public/." /root/.hydro/static/
+            fi
             ;;
         hydrojudge)
             container_exec rm -rf "$dest/src"
