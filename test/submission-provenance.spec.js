@@ -160,6 +160,7 @@ test('the submission handler persists source-domain maintainers as staff while p
     const tdoc = { docId: tid, owner: 99, rule: 'oi', pids: [1] };
     let classroomTeacher = false;
     let attended = true;
+    let practiceReady = false;
     const user = (perms = []) => ({ _id: 2,
         own: (doc) => doc.owner === 2 || doc.maintainer?.includes(2), hasPerm: (p) => perms.includes(p) });
     const context = {
@@ -169,7 +170,7 @@ test('the submission handler persists source-domain maintainers as staff while p
             updateStatus: async () => {}, canShowSelfRecord: () => true, getStatus: async () => ({ attend: attended }) },
         assertCourseAssessmentAccess: async () => classroomTeacher,
         ContestNotAttendedError: class extends Error {},
-        canSubmitPractice: async () => false,
+        canSubmitPractice: async () => practiceReady,
         setting: { langs: { cpp: { pretest: 'cpp' } } }, system: { get: () => 1000 },
     };
     vm.runInNewContext(ts.transpileModule(`${helper.getText(source)}\nclass Submit { ${post.getText(source)} }\nexports.Submit = Submit;`, {
@@ -214,6 +215,15 @@ test('the submission handler persists source-domain maintainers as staff while p
     assert.equal((await recordModel.get('d', h.response.body.rid)).participationMode, 'staff');
     classroomTeacher = false; attended = false;
     await assert.rejects(h.post('d', 'cpp', 'code', false, [], tid), context.ContestNotAttendedError);
+    // Chapter-authorized students can practice after the test without official enrollment.
+    practiceReady = true;
+    await h.post('d', 'cpp', 'code', false, [], tid);
+    const practiceRecord = await recordModel.get('d', h.response.body.rid);
+    assert.equal(practiceRecord.practiceContest.toString(), tid.toString());
+    assert.equal(practiceRecord.contest, undefined);
+    assert.equal(practiceRecord.participationMode, 'practice');
+    assert.equal(practiceRecord.classroomSession, undefined);
+    practiceReady = false;
 });
 
 test('record creation, reset and linked rejudge preserve immutable provenance', async () => {
