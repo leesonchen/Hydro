@@ -1031,6 +1031,8 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
         }
         const classroomManager = this.tdoc.sourceType === 'course_assessment'
             && await assertCourseAssessmentAccess(this.user, this.tdoc) && canManagePractice(this.user, this.tdoc);
+        // Standalone contest scoreboard permissions never authorize a student to view class results.
+        if (this.tdoc.sourceType === 'course_assessment' && !classroomManager) throw new ForbiddenError();
         if (!classroomManager && !this.user.own(this.tdoc)) {
             if (!contest.canShowScoreboard.call(this, this.tdoc, true)) throw new ContestScoreboardHiddenError(tid);
             if (contest.isNotStarted(this.tdoc)) throw new ContestNotLiveError(domainId, tid);
@@ -1071,6 +1073,15 @@ export class ContestScoreboardHandler extends ContestDetailBaseHandler {
         if (!contest.isDone(this.tdoc)) throw new ContestNotEndedError(domainId, tid);
         await contest.unlockScoreboard(domainId, tid);
         this.back();
+    }
+}
+
+/** Route aliases without contest-specific permission gates; the parent course enforces access. */
+export class ClassroomScoreboardHandler extends ContestScoreboardHandler {
+    async prepare() {
+        if (this.tdoc?.sourceType !== 'course_assessment') throw new ContestNotFoundError(this.args.domainId, this.args.tid);
+        if (!await assertCourseAssessmentAccess(this.user, this.tdoc)
+            || !canManagePractice(this.user, this.tdoc)) throw new ForbiddenError();
     }
 }
 
@@ -1247,9 +1258,12 @@ export async function apply(ctx: Context) {
     await ctx.inject(['scoreboard'], ({ Route, scoreboard }) => {
         Route('contest_scoreboard', '/contest/:tid/scoreboard', ContestScoreboardHandler, PERM.PERM_VIEW_CONTEST_SCOREBOARD);
         Route('contest_scoreboard_view', '/contest/:tid/scoreboard/:view', ContestScoreboardHandler, PERM.PERM_VIEW_CONTEST_SCOREBOARD);
+        Route('classroom_scoreboard', '/classroom/:tid/scoreboard', ClassroomScoreboardHandler);
+        Route('classroom_scoreboard_view', '/classroom/:tid/scoreboard/:view', ClassroomScoreboardHandler);
         scoreboard.addView('default', 'Default', { tdoc: 'tdoc', groups: 'groups', realtime: Types.Boolean }, {
             async display({ realtime, tdoc, groups }) {
-                if (realtime && !this.user.own(tdoc)) {
+                if (realtime && !this.user.own(tdoc)
+                    && !(tdoc.sourceType === 'course_assessment' && canManagePractice(this.user, tdoc))) {
                     this.checkPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
                 }
                 const config: ScoreboardConfig = { isExport: false, showDisplayName: this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO) };
@@ -1272,7 +1286,8 @@ export async function apply(ctx: Context) {
         });
         scoreboard.addView('ghost', 'Ghost', { tdoc: 'tdoc' }, {
             async display({ tdoc }) {
-                if (contest.isLocked(tdoc) && !this.user.own(tdoc)) {
+                if (contest.isLocked(tdoc) && !this.user.own(tdoc)
+                    && !(tdoc.sourceType === 'course_assessment' && canManagePractice(this.user, tdoc))) {
                     this.checkPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
                 }
                 const [pdict, teams] = await Promise.all([
