@@ -28,15 +28,17 @@
         <span class="icon icon-user"></span> {{ _('Attendee Manage') }}
       </a></li>
       {% endif %}
-      <li class="menu__item"><a class="menu__link" href="{{ url('contest_code', tid=tdoc.docId) }}" data-no-instant>
+      <li class="menu__item"><a class="menu__link" href="{{ url('classroom_test_code' if tdoc.sourceType == 'course_assessment' else 'contest_code', tid=tdoc.docId) }}" data-no-instant>
         <span class="icon icon-download"></span> {{ _('Export All Code') }}
       </a></li>
       <li class="menu__item"><a class="menu__link" href="{{ url('record_main', query={tid:tdoc.docId}) }}">
         <span class="icon icon-flag"></span> {{ _('All Submissions') }}
       </a></li>
+      {% if tdoc.sourceType != 'course_assessment' %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_balloon', tid=tdoc.docId) }}">
         <span class="icon icon-balloon"></span> {{ _('Balloon Status') }}
       </a></li>
+      {% endif %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_clarification', tid=tdoc.docId) }}">
         <span class="icon icon-comment--text"></span> {{ _('Contest Clarifications') }}
       </a></li>
