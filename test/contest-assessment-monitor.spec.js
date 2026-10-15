@@ -254,6 +254,36 @@ test('course synchronization is idempotent and updates class assignment and invi
     assert.equal(synced.rated, false);
     assert.equal(await document.coll.countDocuments({ sourceType: 'course_assessment' }), 1);
 });
+test('classroom subcontest owner and maintainer follow the live parent course', async () => {
+    const { course, exam } = await courseFixture();
+    const originalOwner = actor(7, [PERM.PERM_EDIT_HOMEWORK_SELF]);
+    assert.equal(await access.assertCourseAssessmentAccess(originalOwner, exam), true);
+    await contest.edit('test', course.docId, { owner: 9, maintainer: [11] });
+    const synced = await contest.get('test', exam.docId);
+    assert.equal(synced.owner, 9);
+    assert.deepEqual(synced.maintainer, [11]);
+    await assert.rejects(access.assertCourseAssessmentAccess(originalOwner, synced), errors.NotAssignedError);
+    assert.equal(await access.assertCourseAssessmentAccess(actor(9, [PERM.PERM_EDIT_HOMEWORK_SELF]), synced), true);
+    assert.equal(await access.assertCourseAssessmentAccess(actor(11, [PERM.PERM_EDIT_HOMEWORK_SELF]), synced), true);
+});
+
+test('staff code submissions without test attendance cannot complete a classroom assessment', async () => {
+    const { course, exam } = await courseFixture('oi', false);
+    const rid = ObjectId.createFromTime(Math.floor((exam.beginAt.getTime() + 1000) / 1000));
+    await contest.updateStatus('test', exam.docId, 7, rid, 1, {
+        status: STATUS.STATUS_ACCEPTED, score: 100,
+    });
+    const staff = await contest.getStatus('test', exam.docId, 7);
+    assert.equal(staff?.attend, undefined);
+    const result = (await assessment.getAssessmentResults('test', course, 7))[1];
+    assert.equal(result.attend, false);
+    assert.equal(result.completed, false);
+    assert.equal(result.score, null);
+    assert.equal((await contest.getMultiStatus('test', {
+        docId: exam.docId, attend: { $gt: 0 },
+    }).toArray()).some((row) => row.uid === 7), false);
+});
+
 test('classroom post-test practice defaults on, supports opt-out, and persists course edits', async () => {
     const { course, exam } = await courseFixture('oi', false);
     assert.equal(exam.allowPractice, true);
