@@ -57,6 +57,7 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, clas
         isOwnOrTeammateRecord: async (_domain, rdoc, uid) => rdoc.uid === uid,
         canShowSelfRecord: () => true, canShowRecord: () => true, canShowScoreboard: () => true,
         getStatus: async () => ({ attend: 1 }),
+        applyProjection: (_doc, record) => record,
     };
     const user = {
         User,
@@ -104,7 +105,11 @@ function fixture({ manager = true, scope = PERM.PERM_ALL, assigned = false, clas
         '../model/user': user, '../model/problem': {
             get: async () => ({ docId: 42 }), getVisibleStatus: async () => null, canViewBy: () => true,
         },
-        '../model/record': { get: async () => rdoc }, '../model/setting': {}, '../model/storage': {},
+        '../model/record': {
+            get: async () => rdoc,
+            RECORD_GENERATE: new ObjectId('000000000000000000000001'),
+            RECORD_PRETEST: new ObjectId('000000000000000000000002'),
+        }, '../model/setting': {}, '../model/storage': {},
         '../model/system': {}, '../model/task': {}, '../utils': {}, './judge': {},
         './contest': { ContestDetailBaseHandler: ConnectionHandler },
         '../service/server': { ConnectionHandler, param: noopDecorator, subscribe: noopDecorator, Types: {} },
