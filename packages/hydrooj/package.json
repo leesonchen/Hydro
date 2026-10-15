@@ -1,6 +1,6 @@
 {
     "name": "hydrooj",
-    "version": "5.0.7",
+    "version": "5.0.7-dev.9",
     "bin": {
         "hydro-maintenance": "bin/hydro-maintenance.js",
         "hydrooj": "bin/hydrooj.js"
