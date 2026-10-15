@@ -167,10 +167,10 @@
         <span class="icon icon-print"></span> {{ _('Print') }}
       </a></li>
     {% endif %}
-    {% if tdoc.monitorMode == 'browser' and (handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST)) %}
+    {% if tdoc.monitorMode == 'browser' and (practiceManager if tdoc.sourceType == 'course_assessment' else (handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST))) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_monitor', tid=tdoc.docId) }}"><span class="icon icon-flag"></span> 监考记录</a></li>
     {% endif %}
-    {% if handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST) %}
+    {% if tdoc.sourceType != 'course_assessment' and (handler.user.own(tdoc) or handler.user.hasPerm(perm.PERM_EDIT_CONTEST)) %}
       <li class="menu__item"><a class="menu__link" href="{{ url('contest_edit', tid=tdoc.docId) }}">
         <span class="icon icon-edit"></span> {{ tdoc.rule == 'course' and _('Edit Course') or _('Edit Contest') }}
       </a></li>
